@@ -26,6 +26,9 @@ public class CaveGameLoop : MonoBehaviour
     [Tooltip("過場播放速度倍率；2 = 所有淡入淡出與停留時間減半。")]
     public float transitionSpeed = 2f;
 
+    [Tooltip("F1 除錯面板是否一開始就顯示；遊戲中仍可按 F1 切換。")]
+    public bool showDebug = true;
+
     readonly CrewRoster roster = new();
     readonly List<string> deaths = new();
     readonly List<GameObject> crewFigures = new();
@@ -43,7 +46,6 @@ public class CaveGameLoop : MonoBehaviour
     float grabTimer;
     float hintUntil;
     bool waitingRestart;
-    bool showDebug;
     string logPath;
 
     void Awake()
