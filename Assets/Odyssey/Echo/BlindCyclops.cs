@@ -31,7 +31,7 @@ public class BlindCyclops : MonoBehaviour
     {
         this.player = player;
         seat = layout.Cave.CyclopsSeat;
-        Brain = new CyclopsBrain(Flat(seat), Flat(layout.Boulder.PushPoint), memory);
+        Brain = new CyclopsBrain(Flat(seat), memory);
         BuildBody();
 
         var breath = new GameObject("Breath").AddComponent<AudioSource>();

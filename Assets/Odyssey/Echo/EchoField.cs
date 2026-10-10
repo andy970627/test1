@@ -37,6 +37,8 @@ public class EchoField : MonoBehaviour
     readonly List<Pulse> pulses = new();
     readonly Vector4[] positions = new Vector4[MaxPulses];
     readonly Vector4[] colors = new Vector4[MaxPulses];
+    readonly float[] evictRadii = new float[MaxPulses];
+    readonly float[] evictAges = new float[MaxPulses];
 
     public IReadOnlyList<Pulse> Active => pulses;
 
@@ -63,7 +65,14 @@ public class EchoField : MonoBehaviour
     void OnSound(SoundEvent e, Vector3 worldPos)
     {
         if (pulses.Count >= MaxPulses)
-            pulses.RemoveAt(0);
+        {
+            for (int i = 0; i < pulses.Count; i++)
+            {
+                evictRadii[i] = pulses[i].Radius;
+                evictAges[i] = Time.time - pulses[i].StartTime;
+            }
+            pulses.RemoveAt(EchoBudget.IndexToEvict(evictRadii, evictAges, SpreadSeconds + FadeSeconds));
+        }
         pulses.Add(new Pulse(worldPos, SoundRules.Radius(e.Loudness), Time.time, ColorFor(SoundRules.Source(e.Kind))));
     }
 

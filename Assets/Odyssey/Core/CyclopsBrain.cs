@@ -17,7 +17,7 @@ namespace Odyssey.Core
         public const float SearchRadius = 1.5f;
         public const float BumpDistance = 1f;
 
-        readonly Vector2 boulder;
+
         readonly DecoyMemory memory;
         float targetLoudness;
         SoundKind targetKind;
@@ -30,9 +30,9 @@ namespace Odyssey.Core
         public float StateElapsed { get; private set; }
         public bool IsMoving => State == CyclopsState.Investigate || State == CyclopsState.Guard;
 
-        public CyclopsBrain(Vector2 start, Vector2 boulder, DecoyMemory memory)
+        public CyclopsBrain(Vector2 start, DecoyMemory memory)
         {
-            this.boulder = boulder;
+
             this.memory = memory;
             Reset(start);
         }
@@ -54,7 +54,7 @@ namespace Odyssey.Core
             if (e.Kind == SoundKind.Boulder)
             {
                 guarding = true;
-                SetTarget(boulder, e);
+                SetTarget(e.Position, e); // 巨石推開後位置會移動，跑向聲音實際發出的地方。
                 Enter(CyclopsState.Guard);
                 return;
             }

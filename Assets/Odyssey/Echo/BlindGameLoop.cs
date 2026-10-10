@@ -89,7 +89,7 @@ public class BlindGameLoop : MonoBehaviour
         wind.volume = 0.6f;
         wind.Play();
 
-        logPath = Path.Combine(Application.persistentDataPath, "cyclops_playtest.csv");
+        logPath = Path.Combine(Application.persistentDataPath, PlaytestCsv.FileName);
         if (!File.Exists(logPath))
             PlaytestCsv.TryAppend(logPath, PlaytestCsv.Header, out _);
 
@@ -244,7 +244,8 @@ public class BlindGameLoop : MonoBehaviour
             bottom = "按 R 重新開始";
         if (bottom != null)
         {
-            float h = line * 1.6f;
+            // 依實際換行算高度，窄的 Game 視窗也不會把第二行切掉。
+            float h = style.CalcHeight(new GUIContent(bottom), Screen.width - 48) + line * 0.4f;
             GUI.Box(new Rect(10, Screen.height - h - 10, Screen.width - 20, h), GUIContent.none);
             GUI.Label(new Rect(24, Screen.height - h - 4, Screen.width - 48, h), bottom, style);
         }

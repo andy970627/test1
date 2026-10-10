@@ -15,7 +15,7 @@ namespace Odyssey.Core.Tests
         public void SetUp()
         {
             memory = new DecoyMemory();
-            brain = new CyclopsBrain(Vector2.Zero, BoulderPos, memory);
+            brain = new CyclopsBrain(Vector2.Zero, memory);
         }
 
         static SoundEvent Snd(SoundKind kind, float x, float y) => SoundRules.Create(kind, new Vector2(x, y), 0f, null);
@@ -137,6 +137,13 @@ namespace Odyssey.Core.Tests
             brain.Tick(0.1f, Far);
             brain.Tick(5f, Far);
             Assert.AreEqual(CyclopsState.Search, brain.State);
+        }
+
+        [Test]
+        public void BoulderSound_GuardsWhereTheBoulderNowIs()
+        {
+            brain.Hear(Snd(SoundKind.Boulder, 1.4f, 9f));
+            Assert.AreEqual(new Vector2(1.4f, 9f), brain.Target);
         }
 
         [Test]

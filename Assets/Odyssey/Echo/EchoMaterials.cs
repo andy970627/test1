@@ -1,7 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>回聲材質；同一種顏色只建一份，重開一夜時不會一直產生新材質。</summary>
+/// <summary>回聲材質；同一種顏色只建一份，重開一夜時不會一直產生新材質。
+/// 著色器放在 Resources 資料夾，打包時才不會被剔除（Shader.Find 找得到）。</summary>
 public static class EchoMaterials
 {
     static readonly Dictionary<Color, Material> cache = new();
