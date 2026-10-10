@@ -35,6 +35,14 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void BackStep_WithinGrace_DoesNotFail()
+        {
+            var step = new PatStep(PatKind.Back, Side.Left, 1.5f);
+            Assert.AreEqual(FailReason.None, PatJudge.Evaluate(step, 0.1f, Breathing(Side.Left)));
+            Assert.AreEqual(FailReason.Gasped, PatJudge.Evaluate(step, PatJudge.BackGraceSeconds + 0.01f, Breathing(Side.Left)));
+        }
+
+        [Test]
         public void NoiseOutsideBackStep_DoesNotFail()
         {
             var step = new PatStep(PatKind.Telegraph, Side.Left, 1.0f);

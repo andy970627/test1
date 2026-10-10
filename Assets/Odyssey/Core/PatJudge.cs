@@ -5,9 +5,14 @@ namespace Odyssey.Core
     {
         public const float BackHearingThreshold = 0.2f;
 
-        public static FailReason Evaluate(PatStep step, ClingModel model)
+        /// <summary>手剛落到羊背上的這段時間不判定，讓玩家來得及憋氣。</summary>
+        public const float BackGraceSeconds = 0.4f;
+
+        public static FailReason Evaluate(PatStep step, ClingModel model) => Evaluate(step, float.MaxValue, model);
+
+        public static FailReason Evaluate(PatStep step, float stepElapsed, ClingModel model)
         {
-            if (step.Kind == PatKind.Back && model.Noise > BackHearingThreshold)
+            if (step.Kind == PatKind.Back && stepElapsed >= BackGraceSeconds && model.Noise > BackHearingThreshold)
                 return FailReason.Gasped;
             if (step.Kind == PatKind.Side && model.Lean == step.Side)
                 return FailReason.Touched;

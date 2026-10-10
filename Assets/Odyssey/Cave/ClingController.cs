@@ -119,7 +119,7 @@ public class ClingController : MonoBehaviour
 
         PatStep? step = cyclops.PattingSheep == Sheep ? cyclops.CurrentStep : null;
         if (reason == FailReason.None && step.HasValue)
-            reason = PatJudge.Evaluate(step.Value, Model);
+            reason = PatJudge.Evaluate(step.Value, cyclops.StepElapsed, Model);
 
         UpdateFeedback(step);
 

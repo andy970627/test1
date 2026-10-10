@@ -21,6 +21,17 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void IsAbove_StaysTrueWhileLoud()
+        {
+            var n = new NoiseModel();
+            n.Tick(0.1f, 1f, false);
+            n.Tick(0.1f, 1f, false);
+            Assert.IsTrue(n.IsAbove);
+            n.Tick(2f, 0f, false);
+            Assert.IsFalse(n.IsAbove);
+        }
+
+        [Test]
         public void Decays()
         {
             var n = new NoiseModel();

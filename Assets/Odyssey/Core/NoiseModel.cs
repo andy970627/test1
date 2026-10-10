@@ -13,6 +13,9 @@ namespace Odyssey.Core
 
         public float Level { get; private set; }
 
+        /// <summary>聲量目前是否高於門檻（巨人空下手時，只要還高於門檻就會再掃）。</summary>
+        public bool IsAbove => Level > Threshold;
+
         /// <summary>回傳本幀是否「由未超過變成超過」門檻。</summary>
         public bool Tick(float dt, float emitted, bool masked)
         {

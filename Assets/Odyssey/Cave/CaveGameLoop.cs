@@ -20,6 +20,7 @@ public class CaveGameLoop : MonoBehaviour
     public float bucketBumpNoise = 1f;
     public float bucketBumpRadius = 0.8f;
     public float doorwayRadius = 2f;
+    public float entranceGrabBlock = 2f;
     public float hintSeconds = 12f;
 
     readonly CrewRoster roster = new();
@@ -60,7 +61,7 @@ public class CaveGameLoop : MonoBehaviour
 
         logPath = Path.Combine(Application.persistentDataPath, "cyclops_playtest.csv");
         if (!File.Exists(logPath))
-            File.WriteAllText(logPath, PlaytestCsv.Header + "\n");
+            PlaytestCsv.TryAppend(logPath, PlaytestCsv.Header, out _);
         Debug.Log($"CaveGameLoop: 實測紀錄寫入 {logPath}");
 
         ResetRound();
@@ -129,7 +130,9 @@ public class CaveGameLoop : MonoBehaviour
         float emitted = player.CurrentNoise * (toEntrance < nearEntranceRadius ? nearEntranceNoiseMultiplier : 1f);
         if (player.CurrentNoise > 0f && Flat(p - layout.BucketPosition).magnitude < bucketBumpRadius)
             emitted = Mathf.Max(emitted, bucketBumpNoise);
-        if (noise.Tick(Time.deltaTime, emitted, flock.IsMasked(p)))
+        // 以聲量是否仍高於門檻觸發（巨人正在摸羊或掃手時會略過，空下手後只要還吵就再掃）。
+        noise.Tick(Time.deltaTime, emitted, flock.IsMasked(p));
+        if (noise.IsAbove)
             cyclops.SweepToward(p);
 
         // 巨人堵在洞口：想自己走出去，一定會被抓。
@@ -163,6 +166,9 @@ public class CaveGameLoop : MonoBehaviour
         {
             // 已經在洞口被摸或出洞的羊鑽不進去。
             if (s.State != SheepState.Wandering && s.State != SheepState.Queued)
+                continue;
+            // 快走到巨人面前的羊也不行：一鑽進去就要被摸背，來不及反應。
+            if (s.State == SheepState.Queued && Flat(s.transform.position - layout.EntrancePoint).magnitude < entranceGrabBlock)
                 continue;
             Vector3 to = Flat(s.transform.position - player.transform.position);
             float d = to.magnitude;
@@ -201,9 +207,8 @@ public class CaveGameLoop : MonoBehaviour
         if (state.Phase != LoopPhase.Sneak && state.Phase != LoopPhase.Cling)
             return;
         LoopPhase phase = state.Phase;
-        int night = roster.Night;
-        state.Fail(reason);
-        Log(phase, reason.ToString());
+        RoundRecord record = state.Fail(reason);
+        int night = record.Night;
 
         flock.Running = false;
         player.InputEnabled = false;
@@ -219,6 +224,7 @@ public class CaveGameLoop : MonoBehaviour
                 state.CaughtDone();
                 BeginIntro();
             });
+        Log(phase, reason.ToString(), record.Night, record.Crew);
     }
 
     void Escape()
@@ -226,8 +232,8 @@ public class CaveGameLoop : MonoBehaviour
         if (state.Phase != LoopPhase.Cling)
             return;
         state.Escape();
-        Log(LoopPhase.Cling, "Escaped");
         Show("", "你逃出去了。", "但你對著巨人喊出了自己的名字。", null, () => waitingRestart = true);
+        Log(LoopPhase.Cling, "Escaped", roster.Night, roster.Remaining);
     }
 
     void Show(string year, string title, string subtitle, Action onBlackout, Action onComplete)
@@ -262,12 +268,14 @@ public class CaveGameLoop : MonoBehaviour
         }
     }
 
-    void Log(LoopPhase phase, string outcome)
+    /// <summary>night／crew 是這一輪當時的夜數與同伴數（被吃之前）。寫不進去只警告，不影響遊戲。</summary>
+    void Log(LoopPhase phase, string outcome, int night, int crew)
     {
         bool ram = clingSheep != null && clingSheep.IsRam;
-        string line = PlaytestCsv.Line(DateTime.Now, roster.Night, roster.Remaining, ram, phase, outcome, Time.time - roundStart);
-        File.AppendAllText(logPath, line + "\n");
+        string line = PlaytestCsv.Line(DateTime.Now, night, crew, ram, phase, outcome, Time.time - roundStart);
         Debug.Log("[Cyclops] " + line);
+        if (!PlaytestCsv.TryAppend(logPath, line, out string error))
+            Debug.LogWarning($"CaveGameLoop: 無法寫入實測紀錄（檔案可能正被其他程式開著）：{error}");
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);

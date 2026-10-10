@@ -48,6 +48,18 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Fail_ReportsNightAndCrewBeforeEating()
+        {
+            var roster = new CrewRoster();
+            var s = new CaveLoopState(roster);
+            s.IntroDone();
+            RoundRecord record = s.Fail(FailReason.Swept);
+            Assert.AreEqual(1, record.Night);
+            Assert.AreEqual(12, record.Crew);
+            Assert.AreEqual(11, roster.Remaining);
+        }
+
+        [Test]
         public void IllegalTransition_Throws()
         {
             var s = new CaveLoopState(new CrewRoster());

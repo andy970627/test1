@@ -36,6 +36,7 @@ public class FirstPersonPlayer : MonoBehaviour
         cameraTransform = camGo.transform;
         cameraTransform.SetParent(transform, false);
         cameraTransform.localPosition = new Vector3(0f, 0.85f, 0f);
+        camGo.tag = "MainCamera";
         Camera = camGo.AddComponent<Camera>();
         Camera.clearFlags = CameraClearFlags.SolidColor;
         Camera.backgroundColor = Color.black;
