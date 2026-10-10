@@ -74,9 +74,9 @@ public static class LoopFailScreenBuilder
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
 
-        var yearText = CreateText("YearText", content, "第 8 年", 40, new Color32(0x8A, 0x9B, 0xA8, 0xFF));
-        var titleText = CreateText("TitleText", content, "被吹回島上", 72, new Color32(0xD9, 0xD4, 0xC7, 0xFF));
-        var subtitleText = CreateText("SubtitleText", content, "再試一次。", 28, new Color32(0x80, 0x80, 0x80, 0xFF));
+        var yearText = CreateText("YearText", content, "", 40, new Color32(0x8A, 0x9B, 0xA8, 0xFF));
+        var titleText = CreateText("TitleText", content, "", 72, new Color32(0xD9, 0xD4, 0xC7, 0xFF));
+        var subtitleText = CreateText("SubtitleText", content, "", 28, new Color32(0x80, 0x80, 0x80, 0xFF));
 
         var screen = root.AddComponent<LoopFailScreen>();
         var so = new SerializedObject(screen);
