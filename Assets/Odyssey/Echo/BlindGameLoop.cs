@@ -231,7 +231,10 @@ public class BlindGameLoop : MonoBehaviour
         float line = fontSize * 1.4f;
 
         if (State.Phase == LoopPhase.Night)
+        {
             DrawStones(fontSize);
+            DrawStamina(fontSize);
+        }
         if (State.Phase == LoopPhase.Night && player.PushHold01 > 0f)
             DrawPushBar(fontSize);
 
@@ -262,6 +265,19 @@ public class BlindGameLoop : MonoBehaviour
             var r = new Rect(Screen.width - (EchoPlayer.MaxStones - i) * (size + gap) - 10, Screen.height - bottomPad - size, size, size);
             Fill(r, i < player.Stones ? new Color(0.85f, 0.85f, 0.8f, 0.9f) : new Color(1f, 1f, 1f, 0.12f));
         }
+    }
+
+    /// <summary>左下角體力條：滿格時隱藏；耗盡、還不能跑時是紅色。</summary>
+    void DrawStamina(int fontSize)
+    {
+        var stamina = player.Stamina;
+        if (stamina.Value >= 1f)
+            return;
+        float w = Screen.width * 0.18f, h = fontSize * 0.4f;
+        var r = new Rect(10, Screen.height - fontSize * 3f - h, w, h);
+        Fill(r, new Color(1f, 1f, 1f, 0.15f));
+        Color fill = stamina.CanRun ? new Color(0.85f, 0.92f, 1f, 0.9f) : new Color(0.85f, 0.2f, 0.15f, 0.9f);
+        Fill(new Rect(r.x, r.y, w * stamina.Value, h), fill);
     }
 
     /// <summary>推巨石時畫面中央下方的進度條。</summary>

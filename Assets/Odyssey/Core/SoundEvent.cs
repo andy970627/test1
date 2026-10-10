@@ -2,8 +2,8 @@ using System.Numerics;
 
 namespace Odyssey.Core
 {
-    /// <summary>Step＝蹲著走；Run＝跑；Clap＝拍手；Stone＝石子落地；Boulder＝推巨石；Bleat＝羊叫；Cyclops＝巨人的腳步與呼吸。</summary>
-    public enum SoundKind { Step, Run, Clap, Stone, Boulder, Bleat, Cyclops }
+    /// <summary>Step＝蹲著走；Run＝跑；Clap＝拍手；Stone＝石子落地；Boulder＝推巨石；Bleat＝羊叫；Cyclops＝巨人的腳步與呼吸；Pant＝體力低時喘氣。</summary>
+    public enum SoundKind { Step, Run, Clap, Stone, Boulder, Bleat, Cyclops, Pant }
 
     /// <summary>聲音是誰發出的，決定聲波的顏色。</summary>
     public enum SoundSource { Player, Cyclops, Sheep }

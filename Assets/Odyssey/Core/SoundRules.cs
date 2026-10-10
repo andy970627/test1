@@ -23,6 +23,7 @@ namespace Odyssey.Core
             SoundKind.Boulder => 1.0f,
             SoundKind.Bleat => 0.5f,
             SoundKind.Cyclops => 0.15f,
+            SoundKind.Pant => 0.2f,
             _ => 0f,
         };
 

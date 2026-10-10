@@ -21,6 +21,13 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Loudness_Pant_IsPlayerAtPointTwo()
+        {
+            Assert.AreEqual(0.2f, SoundRules.Loudness(SoundKind.Pant));
+            Assert.AreEqual(SoundSource.Player, SoundRules.Source(SoundKind.Pant));
+        }
+
+        [Test]
         public void Radius_IsTwentyTimesLoudness()
         {
             Assert.AreEqual(10f, SoundRules.Radius(0.5f), 1e-5f);

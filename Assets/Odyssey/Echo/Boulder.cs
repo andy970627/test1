@@ -11,6 +11,12 @@ public class Boulder : MonoBehaviour
     public const float Depth = 1.8f;
     public const float SlidePerStep = 0.18f;
 
+    // 赭黃巨石配三道亮色刻痕，和灰褐岩壁 (0.28, 0.25, 0.22) 一眼分得出來。
+    static readonly Color StoneColor = new(0.62f, 0.48f, 0.3f);
+    static readonly Color GrooveColor = new(0.85f, 0.75f, 0.55f);
+    const float GrooveHeight = 0.08f;
+    const float GrooveDepth = 0.05f;
+
     static readonly Color NightGlow = new(0.05f, 0.08f, 0.25f);
     static readonly Color DawnGlow = new(0.7f, 0.7f, 0.65f);
 
@@ -37,7 +43,8 @@ public class Boulder : MonoBehaviour
         body = bodyGo.transform;
         body.SetParent(transform, false);
         body.localScale = new Vector3(Width, Height, Depth);
-        bodyGo.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.3f, 0.27f, 0.24f));
+        bodyGo.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(StoneColor);
+        AddGrooves(body);
 
         var blocker = new GameObject("GapBlocker").AddComponent<BoxCollider>();
         blocker.transform.SetParent(transform, false);
@@ -54,6 +61,25 @@ public class Boulder : MonoBehaviour
 
         SetProgress(0);
         SetDawn(0f);
+    }
+
+    /// <summary>推的那一面（朝洞內，−Z）三道橫向刻痕；掛在 body 底下跟著滑，沒有碰撞。</summary>
+    static void AddGrooves(Transform body)
+    {
+        var material = EchoMaterials.Create(GrooveColor);
+        for (int i = 0; i < 3; i++)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "Groove" + i;
+            Destroy(go.GetComponent<Collider>());
+            go.GetComponent<Renderer>().sharedMaterial = material;
+            // body 的 localScale 是巨石尺寸，子物件用比例座標，世界尺寸換算回來。
+            var t = go.transform;
+            t.SetParent(body, false);
+            float y = (i - 1) * 0.25f; // 高度的 −25%、0、+25%
+            t.localPosition = new Vector3(0f, y, -0.5f - GrooveDepth / 2f / Depth);
+            t.localScale = new Vector3(0.8f, GrooveHeight / Height, GrooveDepth / Depth);
+        }
     }
 
     public void SetProgress(int steps)

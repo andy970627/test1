@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 黑暗中的奧德修斯：腳步、跑、拍手、丟石子、推巨石、撿石子。每個動作都會發出聲音（SoundBus）。
+/// 黑暗中的奧德修斯：腳步、跑（受體力限制，低體力會喘氣）、拍手、丟石子、推巨石、撿石子。每個動作都會發出聲音（SoundBus）。
 /// 移動與視角沿用同一個物件上的 FirstPersonPlayer。
 /// </summary>
 public class EchoPlayer : MonoBehaviour
@@ -33,6 +33,7 @@ public class EchoPlayer : MonoBehaviour
     bool inputEnabled;
 
     public int Stones { get; private set; } = StartStones;
+    public Stamina Stamina { get; } = new();
     public float PushHold01 => Mathf.Clamp01(pushHold / PushHoldSeconds);
 
     /// <summary>站在巨石前、面向巨石（推的範圍內）。</summary>
@@ -68,6 +69,7 @@ public class EchoPlayer : MonoBehaviour
     public void ResetForNight()
     {
         Stones = StartStones;
+        Stamina.Reset();
         pushHold = 0f;
         stepTimer = 0f;
         lastPosition = transform.position;
@@ -87,7 +89,12 @@ public class EchoPlayer : MonoBehaviour
             return;
         }
 
-        bool running = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
+        // 站著不動按 Shift 不算跑，不耗體力。
+        bool wantRun = (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed)
+            && Flat(controller.velocity).sqrMagnitude > 0.01f;
+        bool running = Stamina.Tick(Time.deltaTime, wantRun);
+        if (Stamina.PantDue(Time.deltaTime))
+            SoundBus.Emit(SoundKind.Pant, body.CameraTransform.position);
         body.walkSpeed = running ? RunSpeed : CrouchSpeed;
         UpdateSteps(running);
 
