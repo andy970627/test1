@@ -55,7 +55,7 @@
 | 放下 | 按 G 放在腳下 |
 | 重置 | 每夜回到新的位置，玩家手上清空 |
 
-`BoulderModel` 新增 `Push(int steps)`：回傳實際前進的格數。
+~~`BoulderModel` 新增 `Push(int steps)`~~（取消，見第 13 節 A）。
 
 ## 5. 雜物
 
@@ -118,7 +118,7 @@
 
 - 規則核心先寫失敗測試：
   - `CrewRoster.Lose`
-  - `BoulderModel.Push(int)`
+  - `BoulderSlide`（第 13 節 E）
   - `CyclopsBrain` 的丟岩石（骰子、冷卻、8 m、守石時）與吃同伴
   - 新的聲量
   - 羊圈減半
