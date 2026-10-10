@@ -12,7 +12,7 @@ public class DebugPanel : MonoBehaviour
     const int DeathLines = 6;
 
     static readonly Color Track = new(1f, 1f, 1f, 0.15f);
-    static readonly Color Panel = new(0f, 0f, 0f, 0.65f);
+    static readonly Color TickGap = new(0f, 0f, 0f, 0.65f);
     static readonly Color Wall = new(0.6f, 0.55f, 0.5f, 0.8f);
     static readonly Color PlayerColor = Color.white;
     static readonly Color SheepColor = new(1f, 0.9f, 0.55f);
@@ -58,8 +58,6 @@ public class DebugPanel : MonoBehaviour
         float mapH = Screen.height * 0.3f;
         float mapW = mapH * (MapMaxX - MapMinX) / (MapMaxZ - MapMinZ);
         float panelW = Mathf.Max(mapW, fontSize * 14f) + 20f;
-        float panelH = mapH + line * (5 + DeathLines) + 30f;
-        Fill(new Rect(10, 10, panelW, panelH), Panel);
 
         var map = new Rect(20, 20, mapW, mapH);
         DrawMap(map);
@@ -95,13 +93,12 @@ public class DebugPanel : MonoBehaviour
         Fill(r, Track);
         Fill(new Rect(r.x, r.y, r.width * Mathf.Clamp01(value), r.height), color);
         for (int i = 1; i < ticks; i++)
-            Fill(new Rect(r.x + r.width * i / ticks - 1f, r.y, 2f, r.height), Panel);
+            Fill(new Rect(r.x + r.width * i / ticks - 1f, r.y, 2f, r.height), TickGap);
         y += line;
     }
 
     void DrawMap(Rect map)
     {
-        Fill(map, new Color(0f, 0f, 0f, 0.5f));
         // 洞壁：半軸 15 × 10 的橢圓。
         for (int i = 0; i < 64; i++)
         {
