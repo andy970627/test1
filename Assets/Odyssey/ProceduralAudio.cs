@@ -84,6 +84,23 @@ public static class ProceduralAudio
         return Make("GiantBreath", data);
     }
 
+    /// <summary>洞外的海風：低通噪音帶緩慢起伏，8 秒可循環。越接近洞口越大聲，當作離出口多遠的線索。</summary>
+    public static AudioClip SeaWind()
+    {
+        int length = SampleRate * 8;
+        var data = new float[length];
+        var rng = new System.Random(13);
+        float lowpass = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += 0.04f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            float swell = 0.55f + 0.45f * Mathf.Sin(2f * Mathf.PI * t / 8f);
+            data[i] = lowpass * swell * 1.6f;
+        }
+        return Make("SeaWind", data);
+    }
+
     static void AddThump(float[] data, float start, float gain)
     {
         int begin = (int)(start * SampleRate);

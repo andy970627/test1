@@ -59,6 +59,19 @@ public class CaveGameLoop : MonoBehaviour
         cyclops.PatFinished += s => s.ContinueOutside();
         cling.Failed += Fail;
 
+        // 洞外的海風：越接近洞口越大聲。
+        var wind = new GameObject("SeaWind").AddComponent<AudioSource>();
+        wind.transform.SetParent(caveRoot, false);
+        wind.transform.position = layout.OutsidePoint + Vector3.up;
+        wind.clip = ProceduralAudio.SeaWind();
+        wind.loop = true;
+        wind.spatialBlend = 1f;
+        wind.rolloffMode = AudioRolloffMode.Linear;
+        wind.minDistance = 2f;
+        wind.maxDistance = 24f;
+        wind.volume = 0.8f;
+        wind.Play();
+
         logPath = Path.Combine(Application.persistentDataPath, "cyclops_playtest.csv");
         if (!File.Exists(logPath))
             PlaytestCsv.TryAppend(logPath, PlaytestCsv.Header, out _);
@@ -282,30 +295,39 @@ public class CaveGameLoop : MonoBehaviour
 
     void OnGUI()
     {
-        var style = new GUIStyle(GUI.skin.label) { fontSize = 18, wordWrap = true };
-        style.normal.textColor = new Color(0.9f, 0.88f, 0.82f);
+        // 字級跟著螢幕高度放大，Game 視窗縮小時也讀得到。
+        int fontSize = Mathf.Max(22, Screen.height / 28);
+        var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = true };
+        style.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
+        float line = fontSize * 1.4f;
 
+        string bottom = null;
         if (Time.time < hintUntil)
-        {
-            string hint = state.Phase == LoopPhase.Cling
-                ? "滑鼠左/右鍵＝左/右手抓緊・空白鍵憋氣・A/D 往左/右貼"
+            bottom = state.Phase == LoopPhase.Cling
+                ? "滑鼠左/右鍵＝左/右手抓緊・空白鍵憋氣・A/D 往左/右貼\n滑鼠轉頭・按住 Shift 往貼的那側探頭（那側的手會放開）"
                 : "WASD 蹲著移動・滑鼠看・對著羊按住 E 鑽到羊肚下";
-            GUI.Label(new Rect(20, Screen.height - 60, Screen.width - 40, 50), hint, style);
+        else if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))
+            bottom = "按 R 重新開始";
+        if (bottom != null)
+        {
+            float h = line * 2.2f;
+            GUI.Box(new Rect(10, Screen.height - h - 10, Screen.width - 20, h), GUIContent.none);
+            GUI.Label(new Rect(24, Screen.height - h - 4, Screen.width - 48, h), bottom, style);
         }
-        if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))
-            GUI.Label(new Rect(20, Screen.height - 60, Screen.width - 40, 50), "按 R 重新開始", style);
 
         if (!showDebug)
             return;
         var m = cling.Model;
         PatStep? step = cyclops.CurrentStep;
         string stepText = step.HasValue ? $"{step.Value.Kind}・{(step.Value.Side == Side.Left ? "左" : "右")}" : "—";
-        GUI.Box(new Rect(10, 10, 460, 230), GUIContent.none);
-        GUI.Label(new Rect(20, 15, 440, 225),
+        float width = Mathf.Min(Screen.width - 20, fontSize * 24f);
+        float height = line * 8f;
+        GUI.Box(new Rect(10, 10, width, height), GUIContent.none);
+        GUI.Label(new Rect(24, 16, width - 28, height),
             $"階段：{state.Phase}・第 {roster.Night} 夜・同伴 {roster.Remaining}\n" +
             $"聲量：{noise.Level:F2}（門檻 {noise.Threshold:F2}）・洞裡剩 {flock.RemainingInCave} 隻羊\n" +
             (m != null
-                ? $"握力 左 {m.GripLeft:F2} 右 {m.GripRight:F2}・下滑 {m.Slide:F2}\n氧氣 {m.Oxygen:F2}・重心 {(m.Lean == Side.Left ? "左" : "右")}・噪音 {m.Noise:F2}\n"
+                ? $"握力 左 {m.GripLeft:F2} 右 {m.GripRight:F2}・下滑 {m.Slide:F2}\n氧氣 {m.Oxygen:F2}・重心 {(m.Lean == Side.Left ? "左" : "右")}{(m.IsPeeking ? "・探頭中" : "")}・噪音 {m.Noise:F2}\n"
                 : "（尚未抱上羊）\n\n") +
             $"巨人：{stepText}{(cyclops.PattingSheep == clingSheep && clingSheep != null ? "（摸的是你這隻）" : "")}\n" +
             $"紀錄：{logPath}", style);

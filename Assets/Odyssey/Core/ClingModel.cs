@@ -18,6 +18,7 @@ namespace Odyssey.Core
         public float Noise { get; private set; }
         public Side Lean { get; private set; } = Side.Left;
         public bool HoldingBreath { get; private set; }
+        public bool IsPeeking { get; private set; }
 
         public ClingModel(ClingParams parameters, bool isRam)
         {
@@ -26,7 +27,17 @@ namespace Odyssey.Core
         }
 
         public FailReason Tick(float dt, bool holdLeft, bool holdRight, bool holdBreath, Side lean)
+            => Tick(dt, holdLeft, holdRight, holdBreath, lean, false);
+
+        /// <summary>peeking：頭往 lean 那一側探出去，那一側的手得放開撐住身體；開始探頭的那一刻羊毛會沙沙作響。</summary>
+        public FailReason Tick(float dt, bool holdLeft, bool holdRight, bool holdBreath, Side lean, bool peeking)
         {
+            if (peeking)
+            {
+                if (lean == Side.Left) holdLeft = false;
+                else holdRight = false;
+            }
+
             GripLeft = UpdateGrip(GripLeft, holdLeft, dt);
             GripRight = UpdateGrip(GripRight, holdRight, dt);
             int hands = (holdLeft && GripLeft > 0f ? 1 : 0) + (holdRight && GripRight > 0f ? 1 : 0);
@@ -46,6 +57,9 @@ namespace Odyssey.Core
             if (lean != Lean)
                 Noise = Math.Max(Noise, p.LeanSwitchNoise);
             Lean = lean;
+            if (peeking && !IsPeeking)
+                Noise = Math.Max(Noise, p.PeekNoise);
+            IsPeeking = peeking;
 
             if (Slide >= 1f - Epsilon)
                 return FailReason.Fell;

@@ -65,6 +65,30 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Peeking_ReleasesLeanSideHand()
+        {
+            var m = Normal();
+            for (int i = 0; i < 10; i++)
+                m.Tick(0.1f, true, true, false, Side.Left, peeking: true);
+            Assert.AreEqual(1f, m.GripLeft, 1e-4f);
+            Assert.AreEqual(0.88f, m.GripRight, 1e-4f);
+            Assert.AreEqual(0.08f, m.Slide, 1e-4f);
+            Assert.IsTrue(m.IsPeeking);
+        }
+
+        [Test]
+        public void PeekStart_SpikesNoise_EvenWhileHoldingBreath()
+        {
+            var m = Normal();
+            m.Tick(0.1f, true, true, true, Side.Left, peeking: false);
+            Assert.AreEqual(0f, m.Noise);
+            m.Tick(0.1f, true, true, true, Side.Left, peeking: true);
+            Assert.GreaterOrEqual(m.Noise, 0.5f);
+            m.Tick(0.1f, true, true, true, Side.Left, peeking: true);
+            Assert.AreEqual(0f, m.Noise);
+        }
+
+        [Test]
         public void Noise_ZeroWhileHolding_AndSpikesOnLeanSwitch()
         {
             var m = Normal();

@@ -24,6 +24,9 @@ public class Cyclops : MonoBehaviour
     readonly PatQueue<Sheep> queue = new();
     System.Random rng;
     Transform hand;
+    Transform handShadow;
+    Vector3 outside;
+    AudioSource handRustle;
     Transform arm;
     Vector3 shoulder;
     Vector3 restPosition;
@@ -55,6 +58,7 @@ public class Cyclops : MonoBehaviour
         BuildBody();
         shoulder = transform.TransformPoint(new Vector3(-1.1f, 4f, 0.3f));
         restPosition = transform.TransformPoint(new Vector3(-1.4f, 1.6f, 1.4f));
+        outside = layout.OutsidePoint;
         hand.position = restPosition;
 
         breath = new GameObject("Breath").AddComponent<AudioSource>();
@@ -73,6 +77,13 @@ public class Cyclops : MonoBehaviour
         roar.minDistance = 4f;
         roar.maxDistance = 40f;
         roar.playOnAwake = false;
+
+        handRustle = hand.gameObject.AddComponent<AudioSource>();
+        handRustle.clip = ProceduralAudio.WoolRustle();
+        handRustle.spatialBlend = 1f;
+        handRustle.minDistance = 1.5f;
+        handRustle.maxDistance = 25f;
+        handRustle.playOnAwake = false;
 
         queue.StepStarted += OnStepStarted;
         queue.Finished += s => PatFinished?.Invoke(s);
@@ -131,6 +142,7 @@ public class Cyclops : MonoBehaviour
         }
 
         UpdateArm();
+        UpdateHandShadow();
         breath.transform.position = PattingSheep != null ? hand.position : HeadPosition;
 
         if (speech != null)
@@ -179,7 +191,22 @@ public class Cyclops : MonoBehaviour
             ramLine++;
             speechUntil = Time.time + 3f;
         }
+        // 手在羊毛上摩擦的聲音：排隊時聽得出前面的羊正被摸到哪一步。
+        if (step.Kind != PatKind.Telegraph)
+            handRustle.Play();
         StepStarted?.Invoke(sheep, step);
+    }
+
+    void UpdateHandShadow()
+    {
+        Vector3 away = outside - hand.position;
+        away.y = 0f;
+        float height = Mathf.Max(0f, hand.position.y - CaveBuilder.GroundHeight(hand.position));
+        Vector3 p = hand.position + away.normalized * Mathf.Min(1.5f, height * 0.5f);
+        p.y = CaveBuilder.GroundHeight(p) + 0.02f;
+        handShadow.position = p;
+        if (away.sqrMagnitude > 0.0001f)
+            handShadow.rotation = Quaternion.LookRotation(away);
     }
 
     void UpdateArm()
@@ -203,6 +230,9 @@ public class Cyclops : MonoBehaviour
 
         hand = Part(PrimitiveType.Cube, "Hand", null, Vector3.zero, new Vector3(0.8f, 0.4f, 1.4f), skin).transform;
         arm = Part(PrimitiveType.Cube, "Arm", null, Vector3.zero, Vector3.one, skin).transform;
+        // 炭火在洞內、手在洞口，影子往洞口外的地上落；從羊肚下往前看得到手在哪。
+        handShadow = Part(PrimitiveType.Cylinder, "HandShadow", null, Vector3.zero, new Vector3(1.1f, 0.005f, 1.6f), new Color(0.01f, 0.01f, 0.01f)).transform;
+        handShadow.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
         var speechGo = new GameObject("Speech");
         speechGo.transform.SetParent(transform, false);

@@ -6,11 +6,18 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 抱在羊肚底下：把鏡頭掛到羊肚下，讀左右手、憋氣、重心輸入餵給 ClingModel，
 /// 依巨人目前的摸羊步驟用 PatJudge 判定，並用身體回饋（下沉、抖動、心跳、暗角、傾斜、羊毛凹陷）表現狀態。
+/// 滑鼠可在羊肚下有限範圍轉頭；按住 Shift 往所貼的一側探頭（那側的手得放開）。
 /// </summary>
 public class ClingController : MonoBehaviour
 {
     public ClingParams parameters = new();
-    public float cameraPitch = 35f;
+    public float lookSensitivity = 0.08f;
+    public float defaultPitch = 5f;
+    public float yawLimit = 80f;
+    public float pitchMin = -30f;
+    public float pitchMax = 60f;
+    public float peekDistance = 0.6f;
+    public float peekSeconds = 0.25f;
     public float slideDrop = 0.35f;
     public float leanRoll = 8f;
     public float leanShift = 0.1f;
@@ -34,6 +41,9 @@ public class ClingController : MonoBehaviour
     Vector3 lastSheepPosition;
     float walked;
     float bobTimer;
+    float lookYaw;
+    float lookPitch;
+    float peekAmount;
     bool active;
 
     public ClingModel Model { get; private set; }
@@ -50,6 +60,9 @@ public class ClingController : MonoBehaviour
         lean = Side.Left;
         walked = 0f;
         bobTimer = 0f;
+        lookYaw = 0f;
+        lookPitch = defaultPitch;
+        peekAmount = 0f;
         lastSheepPosition = sheep.transform.position;
 
         originalParent = cam.transform.parent;
@@ -112,9 +125,21 @@ public class ClingController : MonoBehaviour
         else if (keyboard.dKey.isPressed && !keyboard.aKey.isPressed)
             lean = Side.Right;
 
+        // 羊肚下有限範圍轉頭，從羊腿縫隙往外看。
+        if (Cursor.lockState == CursorLockMode.Locked)
+        {
+            Vector2 look = mouse.delta.ReadValue() * lookSensitivity;
+            lookYaw = Mathf.Clamp(lookYaw + look.x, -yawLimit, yawLimit);
+            lookPitch = Mathf.Clamp(lookPitch + look.y, pitchMin, pitchMax);
+        }
+
+        bool peeking = keyboard.leftShiftKey.isPressed;
+        peekAmount = Mathf.MoveTowards(peekAmount, peeking ? 1f : 0f, Time.deltaTime / peekSeconds);
+
         Side previousLean = Model.Lean;
-        FailReason reason = Model.Tick(Time.deltaTime, mouse.leftButton.isPressed, mouse.rightButton.isPressed, keyboard.spaceKey.isPressed, lean);
-        if (Model.Lean != previousLean)
+        bool wasPeeking = Model.IsPeeking;
+        FailReason reason = Model.Tick(Time.deltaTime, mouse.leftButton.isPressed, mouse.rightButton.isPressed, keyboard.spaceKey.isPressed, lean, peeking);
+        if (Model.Lean != previousLean || (Model.IsPeeking && !wasPeeking))
             rustle.Play();
 
         PatStep? step = cyclops.PattingSheep == Sheep ? cyclops.CurrentStep : null;
@@ -156,8 +181,10 @@ public class ClingController : MonoBehaviour
             jitter.x += (step.Value.Side == Side.Left ? -1f : 1f) * Mathf.Abs(jitter.x);
 
         float sideSign = lean == Side.Left ? -1f : 1f;
-        cam.transform.localPosition = new Vector3(sideSign * leanShift, -Model.Slide * slideDrop + bob, 0f) + jitter;
-        cam.transform.localRotation = Quaternion.Euler(-cameraPitch, 0f, -sideSign * leanRoll);
+        // 探頭時頭從羊肚下往所貼的一側滑出去、略為抬高。
+        Vector3 peekOffset = new Vector3(sideSign * peekDistance, 0.1f, 0f) * peekAmount;
+        cam.transform.localPosition = new Vector3(sideSign * leanShift, -Model.Slide * slideDrop + bob, 0f) + peekOffset + jitter;
+        cam.transform.localRotation = Quaternion.Euler(-lookPitch, lookYaw, -sideSign * leanRoll * (1f - peekAmount));
 
         float deprivation = 1f - Model.Oxygen;
         heartbeat.volume = deprivation;

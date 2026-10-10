@@ -17,5 +17,6 @@ namespace Odyssey.Core
         public float BreathingNoiseBase = 0.25f;
         public float BreathingNoiseDeprived = 0.5f;
         public float LeanSwitchNoise = 0.5f;
+        public float PeekNoise = 0.5f;
     }
 }
