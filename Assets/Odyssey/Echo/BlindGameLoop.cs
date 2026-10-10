@@ -47,6 +47,7 @@ public class BlindGameLoop : MonoBehaviour
         var caveRoot = new GameObject("Cave").transform;
         Layout = BlindCaveBuilder.Build(caveRoot, seed);
         echo = gameObject.AddComponent<EchoField>();
+        gameObject.AddComponent<DebugPanel>().Init(this);
 
         foreach (var spot in Layout.StoneSpots)
         {
