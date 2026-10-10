@@ -67,6 +67,10 @@ public class Sheep : MonoBehaviour
             return;
         State = SheepState.Queued;
         pathIndex = 0;
+        // 出發時大聲叫一次，讓玩家知道又有一隻羊要往洞口走了。
+        voice.pitch *= 0.85f;
+        voice.PlayOneShot(s_BleatClip, 2.5f);
+        bleatUntil = Time.time + BleatSeconds;
     }
 
     public void ContinueOutside()

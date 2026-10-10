@@ -101,6 +101,41 @@ public static class ProceduralAudio
         return Make("SeaWind", data);
     }
 
+    /// <summary>玩家的呼吸：吸 1.2 秒、吐 1.5 秒的氣音，3 秒可循環。音量與速度由抱緊段依缺氧程度調整。</summary>
+    public static AudioClip Breathing()
+    {
+        int length = SampleRate * 3;
+        var data = new float[length];
+        var rng = new System.Random(17);
+        float lowpass = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += 0.18f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            float inhale = t < 1.2f ? Mathf.Sin(Mathf.PI * t / 1.2f) * 0.7f : 0f;
+            float exhale = t >= 1.3f && t < 2.8f ? Mathf.Sin(Mathf.PI * (t - 1.3f) / 1.5f) : 0f;
+            data[i] = lowpass * (inhale + exhale) * 0.9f;
+        }
+        return Make("Breathing", data);
+    }
+
+    /// <summary>憋太久後放開的大口吸氣：0.7 秒、急促上揚。</summary>
+    public static AudioClip Gasp()
+    {
+        int length = (int)(SampleRate * 0.7f);
+        var data = new float[length];
+        var rng = new System.Random(19);
+        float lowpass = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += 0.3f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            float envelope = Mathf.Clamp01(t / 0.08f) * Mathf.Exp(-3.5f * t);
+            data[i] = lowpass * envelope * 1.4f;
+        }
+        return Make("Gasp", data);
+    }
+
     static void AddThump(float[] data, float start, float gain)
     {
         int begin = (int)(start * SampleRate);

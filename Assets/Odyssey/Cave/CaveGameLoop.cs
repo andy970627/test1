@@ -125,6 +125,7 @@ public class CaveGameLoop : MonoBehaviour
 
     void Update()
     {
+        UpdateDawn();
         var keyboard = Keyboard.current;
         if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
             showDebug = !showDebug;
@@ -141,6 +142,16 @@ public class CaveGameLoop : MonoBehaviour
             UpdateSneak(keyboard);
         else if (state.Phase == LoopPhase.Cling)
             UpdateCling();
+    }
+
+    /// <summary>羊群出洞的進度用天色表現：羊越走越少，洞口的月光越轉成黎明的暖色、越亮。</summary>
+    void UpdateDawn()
+    {
+        if (layout.Moonlight == null || flock.sheepCount <= 0)
+            return;
+        float progress = 1f - (float)flock.RemainingInCave / flock.sheepCount;
+        layout.Moonlight.color = Color.Lerp(new Color(0.55f, 0.65f, 1f), new Color(1f, 0.72f, 0.5f), progress);
+        layout.Moonlight.intensity = Mathf.Lerp(4f, 7f, progress);
     }
 
     void UpdateSneak(Keyboard keyboard)

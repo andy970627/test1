@@ -14,4 +14,6 @@ public struct CaveLayout
     public Vector3[] QueuePath;
     /// <summary>羊遊走的範圍。</summary>
     public Bounds Floor;
+    /// <summary>洞外照進來的月光；羊群越走越少，光就越接近黎明。</summary>
+    public Light Moonlight;
 }

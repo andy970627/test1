@@ -50,7 +50,7 @@ public static class CaveBuilder
 
         BuildFire(root, OnGround(new Vector3(-1f, 0f, -1f)));
         BuildProps(root, layout);
-        BuildMoonlight(root);
+        layout.Moonlight = BuildMoonlight(root);
         return layout;
     }
 
@@ -187,7 +187,7 @@ public static class CaveBuilder
         Primitive(PrimitiveType.Cylinder, "MilkPail", root, layout.BucketPosition + new Vector3(0f, 0.3f, 0f), new Vector3(0.5f, 0.3f, 0.5f), new Color(0.4f, 0.3f, 0.2f));
     }
 
-    static void BuildMoonlight(Transform root)
+    static Light BuildMoonlight(Transform root)
     {
         var moon = new GameObject("Moonlight").AddComponent<Light>();
         moon.transform.SetParent(root, false);
@@ -199,6 +199,7 @@ public static class CaveBuilder
         moon.range = 30f;
         moon.spotAngle = 50f;
         moon.shadows = LightShadows.Soft;
+        return moon;
     }
 
     static GameObject MeshObject(string name, Transform root, Vector3[] vertices, List<int> triangles, Color color)

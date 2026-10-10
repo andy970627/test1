@@ -18,7 +18,11 @@ public class ClingController : MonoBehaviour
     public float pitchMax = 60f;
     public float peekDistance = 0.6f;
     public float peekSeconds = 0.25f;
-    public float slideDrop = 0.35f;
+    public float slideDrop = 0.12f;
+    public float fieldOfView = 95f;
+    public float eyeHeight = 0.1f;
+    public float minGroundClearance = 0.15f;
+    public float eyeLightIntensity = 0.9f;
     public float leanRoll = 8f;
     public float leanShift = 0.1f;
     public float stepLength = 0.5f;
@@ -29,6 +33,10 @@ public class ClingController : MonoBehaviour
     Vector3 originalLocalPosition;
     Quaternion originalLocalRotation;
     float originalNear;
+    float originalFov;
+    AudioSource breathing;
+    AudioSource gasp;
+    float holdTime;
 
     Cyclops cyclops;
     Transform rig;
@@ -69,12 +77,23 @@ public class ClingController : MonoBehaviour
         originalLocalPosition = cam.transform.localPosition;
         originalLocalRotation = cam.transform.localRotation;
         originalNear = cam.nearClipPlane;
+        originalFov = cam.fieldOfView;
 
         rig = new GameObject("ClingRig").transform;
         rig.SetParent(sheep.BellyAnchor, false);
         cam.transform.SetParent(rig, false);
+        rig.localPosition = new Vector3(0f, eyeHeight, 0f);
         cam.nearClipPlane = 0.02f;
+        cam.fieldOfView = fieldOfView;
         BuildWool(sheep);
+        // 眼睛適應黑暗後的微光：照亮羊肚、羊腿與附近地面。
+        var eyeLight = new GameObject("EyeLight").AddComponent<Light>();
+        eyeLight.transform.SetParent(rig, false);
+        eyeLight.type = LightType.Point;
+        eyeLight.color = new Color(0.8f, 0.76f, 0.68f);
+        eyeLight.range = 4f;
+        eyeLight.intensity = eyeLightIntensity;
+        eyeLight.shadows = LightShadows.None;
         BuildVignette();
 
         heartbeat = gameObject.AddComponent<AudioSource>();
@@ -85,6 +104,14 @@ public class ClingController : MonoBehaviour
         rustle = gameObject.AddComponent<AudioSource>();
         rustle.clip = ProceduralAudio.WoolRustle();
         rustle.playOnAwake = false;
+        breathing = gameObject.AddComponent<AudioSource>();
+        breathing.clip = ProceduralAudio.Breathing();
+        breathing.loop = true;
+        breathing.Play();
+        gasp = gameObject.AddComponent<AudioSource>();
+        gasp.clip = ProceduralAudio.Gasp();
+        gasp.playOnAwake = false;
+        holdTime = 0f;
 
         active = true;
     }
@@ -98,6 +125,7 @@ public class ClingController : MonoBehaviour
             cam.transform.localPosition = originalLocalPosition;
             cam.transform.localRotation = originalLocalRotation;
             cam.nearClipPlane = originalNear;
+            cam.fieldOfView = originalFov;
         }
         if (rig != null)
             Destroy(rig.gameObject);
@@ -107,6 +135,10 @@ public class ClingController : MonoBehaviour
             Destroy(heartbeat);
         if (rustle != null)
             Destroy(rustle);
+        if (breathing != null)
+            Destroy(breathing);
+        if (gasp != null)
+            Destroy(gasp);
         Sheep = null;
         Model = null;
     }
@@ -186,9 +218,27 @@ public class ClingController : MonoBehaviour
         cam.transform.localPosition = new Vector3(sideSign * leanShift, -Model.Slide * slideDrop + bob, 0f) + peekOffset + jitter;
         cam.transform.localRotation = Quaternion.Euler(-lookPitch, lookYaw, -sideSign * leanRoll * (1f - peekAmount));
 
+        // 地面起伏時鏡頭不能沉進地板。
+        Vector3 eye = cam.transform.position;
+        float floor = CaveBuilder.GroundHeight(eye) + minGroundClearance;
+        if (eye.y < floor)
+            cam.transform.position = new Vector3(eye.x, floor, eye.z);
+
         float deprivation = 1f - Model.Oxygen;
         heartbeat.volume = deprivation;
         heartbeat.pitch = Mathf.Lerp(1f, 1.8f, deprivation);
+
+        // 自己的呼吸：憋氣時完全安靜；越缺氧，喘得越大聲越急。憋超過 1.5 秒再放開會大口吸氣。
+        breathing.volume = Model.HoldingBreath ? 0f : 0.3f + 0.7f * deprivation;
+        breathing.pitch = Mathf.Lerp(1f, 1.6f, deprivation);
+        if (Model.HoldingBreath)
+            holdTime += Time.deltaTime;
+        else
+        {
+            if (holdTime > 1.5f)
+                gasp.PlayOneShot(gasp.clip, 0.5f + deprivation);
+            holdTime = 0f;
+        }
         var c = vignette.color;
         c.a = deprivation * 0.85f;
         vignette.color = c;
@@ -200,7 +250,7 @@ public class ClingController : MonoBehaviour
         {
             float dentSide = showDent ? (step.Value.Side == Side.Left ? -1f : 1f) * 0.2f : 0f;
             float press = step.Value.Kind == PatKind.Side ? 0.06f : 0.03f;
-            dent.localPosition = new Vector3(dentSide, 0.14f - press, 0f);
+            dent.localPosition = new Vector3(dentSide, 0.14f - eyeHeight - press, 0f);
         }
     }
 
@@ -209,8 +259,6 @@ public class ClingController : MonoBehaviour
         Color wool = sheep.IsRam ? new Color(0.55f, 0.51f, 0.44f) : new Color(0.78f, 0.75f, 0.68f);
         float s = sheep.IsRam ? 1.4f : 1f;
         // 兩側垂下的羊毛遮住大半視野，只留前方縫隙看地面與月光。
-        foreach (float side in new[] { -1f, 1f })
-            Wool("WoolFringe", new Vector3(side * 0.3f * s, 0.06f, 0f), new Vector3(0.06f, 0.22f, 1f * s), wool);
         Wool("WoolBack", new Vector3(0f, 0.06f, -0.45f * s), new Vector3(0.6f * s, 0.22f, 0.06f), wool);
         dent = Wool("HandDent", Vector3.zero, new Vector3(0.4f, 0.06f, 0.4f), new Color(0.12f, 0.1f, 0.09f)).transform;
         dent.gameObject.SetActive(false);
