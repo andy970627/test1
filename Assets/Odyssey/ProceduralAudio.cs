@@ -5,34 +5,6 @@ public static class ProceduralAudio
 {
     const int SampleRate = 44100;
 
-    /// <summary>忘憂果的誘惑：撥弦的里拉琴旋律（Karplus-Strong 撥弦合成，五聲音階）。</summary>
-    public static AudioClip Lyre()
-    {
-        float[] melody = { 329.63f, 392f, 440f, 392f, 329.63f, 293.66f, 261.63f, 293.66f,
-                           329.63f, 329.63f, 293.66f, 261.63f, 293.66f, 329.63f, 392f, 261.63f };
-        const float step = 0.6f;
-        int length = (int)(SampleRate * melody.Length * step);
-        var data = new float[length];
-        var rng = new System.Random(11);
-        for (int n = 0; n < melody.Length; n++)
-        {
-            int start = (int)(n * step * SampleRate);
-            int noteLength = Mathf.Min(SampleRate * 2, length - start);
-            int period = Mathf.Max(2, Mathf.RoundToInt(SampleRate / melody[n]));
-            var buffer = new float[period];
-            for (int i = 0; i < period; i++)
-                buffer[i] = (float)rng.NextDouble() * 2f - 1f;
-            for (int i = 0; i < noteLength; i++)
-            {
-                int idx = i % period;
-                float sample = buffer[idx];
-                buffer[idx] = 0.996f * 0.5f * (buffer[idx] + buffer[(idx + 1) % period]);
-                data[start + i] += sample * 0.3f;
-            }
-        }
-        return Make("Lyre", data);
-    }
-
     /// <summary>獨眼巨人的怒吼：低頻 + 濾波噪音。</summary>
     public static AudioClip Roar()
     {
@@ -52,21 +24,75 @@ public static class ProceduralAudio
         return Make("Roar", data);
     }
 
-    /// <summary>島外傳來的海浪聲：濾波噪音配上緩慢起伏（6 秒一道浪，12 秒循環）。</summary>
-    public static AudioClip SeaWaves()
+    /// <summary>羊叫：約 0.8 秒，基頻 300→250Hz、6Hz 顫音，帶一點鼻音泛音。</summary>
+    public static AudioClip Bleat()
     {
-        int length = SampleRate * 12;
+        int length = (int)(SampleRate * 0.8f);
         var data = new float[length];
-        var rng = new System.Random(3);
+        float phase = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float f = Mathf.Lerp(300f, 250f, t / 0.8f) * (1f + 0.04f * Mathf.Sin(2f * Mathf.PI * 6f * t));
+            phase += 2f * Mathf.PI * f / SampleRate;
+            float envelope = Mathf.Clamp01(t / 0.05f) * Mathf.Clamp01((0.8f - t) / 0.2f);
+            data[i] = envelope * (0.35f * Mathf.Sin(phase) + 0.15f * Mathf.Sin(2f * phase) + 0.1f * Mathf.Sin(3f * phase));
+        }
+        return Make("Bleat", data);
+    }
+
+    /// <summary>心跳：1 秒一拍、兩下 50Hz 低頻脈衝，可無縫循環。</summary>
+    public static AudioClip Heartbeat()
+    {
+        var data = new float[SampleRate];
+        AddThump(data, 0f, 0.8f);
+        AddThump(data, 0.22f, 0.55f);
+        return Make("Heartbeat", data);
+    }
+
+    /// <summary>羊毛摩擦：0.4 秒的濾波噪音。</summary>
+    public static AudioClip WoolRustle()
+    {
+        int length = (int)(SampleRate * 0.4f);
+        var data = new float[length];
+        var rng = new System.Random(5);
         float lowpass = 0f;
         for (int i = 0; i < length; i++)
         {
             float t = (float)i / SampleRate;
-            lowpass += 0.03f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
-            float swell = Mathf.Sin(Mathf.PI * t / 6f);
-            data[i] = lowpass * (0.25f + 0.75f * swell * swell) * 1.2f;
+            lowpass += 0.25f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            float envelope = Mathf.Sin(Mathf.PI * t / 0.4f);
+            data[i] = lowpass * envelope * 0.8f;
         }
-        return Make("SeaWaves", data);
+        return Make("WoolRustle", data);
+    }
+
+    /// <summary>巨人的呼吸：3 秒一吸一吐的低頻濾波噪音，可無縫循環。</summary>
+    public static AudioClip GiantBreath()
+    {
+        int length = SampleRate * 3;
+        var data = new float[length];
+        var rng = new System.Random(9);
+        float lowpass = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += 0.015f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            float swell = Mathf.Sin(Mathf.PI * t / 1.5f);
+            data[i] = lowpass * swell * swell * 4f;
+        }
+        return Make("GiantBreath", data);
+    }
+
+    static void AddThump(float[] data, float start, float gain)
+    {
+        int begin = (int)(start * SampleRate);
+        int length = (int)(0.15f * SampleRate);
+        for (int i = 0; i < length && begin + i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            data[begin + i] += gain * Mathf.Sin(2f * Mathf.PI * 50f * t) * Mathf.Exp(-25f * t);
+        }
     }
 
     static AudioClip Make(string name, float[] data)

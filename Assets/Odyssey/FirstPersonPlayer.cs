@@ -1,38 +1,46 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-/// <summary>第一人稱移動：WASD、Shift 跑步、滑鼠環顧。直接讀 Input System 裝置，不依賴 Action 設定。</summary>
+/// <summary>
+/// 蹲姿第一人稱：WASD 慢速移動、滑鼠環顧，並回報本幀發出的聲量。
+/// 直接讀 Input System 裝置，不依賴 Action 設定。
+/// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class FirstPersonPlayer : MonoBehaviour
 {
-    public float walkSpeed = 3f;
-    public float sprintSpeed = 5.5f;
+    public float walkSpeed = 1.2f;
     public float lookSensitivity = 0.08f;
+    public float moveNoise = 0.3f;
     public bool InputEnabled { get; set; } = true;
 
     CharacterController controller;
     Transform cameraTransform;
     float pitch;
     float verticalVelocity;
+    bool bodyActive = true;
 
     public Transform CameraTransform => cameraTransform;
+    public Camera Camera { get; private set; }
+
+    /// <summary>本幀有水平位移時為 moveNoise，否則 0。</summary>
+    public float CurrentNoise { get; private set; }
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
-        controller.height = 1.7f;
+        controller.height = 1.0f;
         controller.radius = 0.3f;
-        controller.center = new Vector3(0f, 0.85f, 0f);
+        controller.center = new Vector3(0f, 0.5f, 0f);
 
         var camGo = new GameObject("PlayerCamera");
         cameraTransform = camGo.transform;
         cameraTransform.SetParent(transform, false);
-        cameraTransform.localPosition = new Vector3(0f, 1.6f, 0f);
-        var cam = camGo.AddComponent<Camera>();
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = Color.black;
-        cam.nearClipPlane = 0.05f;
-        cam.fieldOfView = 70f;
+        cameraTransform.localPosition = new Vector3(0f, 0.85f, 0f);
+        Camera = camGo.AddComponent<Camera>();
+        Camera.clearFlags = CameraClearFlags.SolidColor;
+        Camera.backgroundColor = Color.black;
+        Camera.nearClipPlane = 0.05f;
+        Camera.fieldOfView = 70f;
         camGo.AddComponent<AudioListener>();
     }
 
@@ -40,6 +48,7 @@ public class FirstPersonPlayer : MonoBehaviour
 
     void Update()
     {
+        CurrentNoise = 0f;
         var keyboard = Keyboard.current;
         var mouse = Mouse.current;
         if (keyboard == null || mouse == null)
@@ -50,7 +59,7 @@ public class FirstPersonPlayer : MonoBehaviour
         else if (mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
             LockCursor(true);
 
-        if (!InputEnabled)
+        if (!InputEnabled || !bodyActive)
             return;
 
         if (Cursor.lockState == CursorLockMode.Locked)
@@ -65,12 +74,24 @@ public class FirstPersonPlayer : MonoBehaviour
             (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f),
             0f,
             (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f));
-        float speed = keyboard.leftShiftKey.isPressed ? sprintSpeed : walkSpeed;
-        Vector3 move = transform.TransformDirection(Vector3.ClampMagnitude(input, 1f)) * speed;
+        Vector3 move = transform.TransformDirection(Vector3.ClampMagnitude(input, 1f)) * walkSpeed;
 
         verticalVelocity = controller.isGrounded ? -1f : verticalVelocity - 9.81f * Time.deltaTime;
+        Vector3 before = transform.position;
         move.y = verticalVelocity;
         controller.Move(move * Time.deltaTime);
+
+        Vector3 delta = transform.position - before;
+        delta.y = 0f;
+        if (delta.sqrMagnitude > 1e-6f)
+            CurrentNoise = moveNoise;
+    }
+
+    /// <summary>停用／啟用身體（碰撞與移動），不動鏡頭。鑽到羊肚下時停用。</summary>
+    public void SetBodyActive(bool active)
+    {
+        bodyActive = active;
+        controller.enabled = active;
     }
 
     public void Teleport(Vector3 position, float yaw)
@@ -79,7 +100,7 @@ public class FirstPersonPlayer : MonoBehaviour
         transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
         pitch = 0f;
         cameraTransform.localEulerAngles = Vector3.zero;
-        controller.enabled = true;
+        controller.enabled = bodyActive;
     }
 
     public void FaceTowards(Vector3 worldPoint)
