@@ -21,8 +21,8 @@ namespace Odyssey.Core.Tests
         [Test]
         public void Line_UsesInvariantFormat()
         {
-            string line = PlaytestCsv.Line(new DateTime(2026, 10, 10, 12, 0, 0), 3, 10, true, LoopPhase.Cling, "Touched", 12.34f);
-            Assert.AreEqual("2026-10-10 12:00:00,3,10,1,Cling,Touched,12.3", line);
+            string line = PlaytestCsv.Line(new DateTime(2026, 10, 10, 12, 0, 0), 3, 10, 5, LoopPhase.Night, "Dawn", 12.34f);
+            Assert.AreEqual("2026-10-10 12:00:00,3,10,5,Night,Dawn,12.3", line);
         }
     }
 }

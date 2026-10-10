@@ -2,7 +2,7 @@ using System;
 
 namespace Odyssey.Core
 {
-    public enum LoopPhase { Intro, Sneak, Cling, Caught, Escaped, Wiped }
+    public enum LoopPhase { Intro, Night, Caught, Escaped, Wiped }
 
     /// <summary>被抓那一輪的夜數與當時剩下的同伴（被吃之前）。</summary>
     public readonly struct RoundRecord
@@ -17,7 +17,7 @@ namespace Odyssey.Core
         }
     }
 
-    /// <summary>一輪的狀態機：開場 → 選羊 → 抱緊 → 逃出／被抓。</summary>
+    /// <summary>一夜的狀態機：開場 → 夜晚 → 逃出／被抓。</summary>
     public sealed class CaveLoopState
     {
         readonly CrewRoster roster;
@@ -27,14 +27,13 @@ namespace Odyssey.Core
 
         public CaveLoopState(CrewRoster roster) => this.roster = roster;
 
-        public void IntroDone() => Move(LoopPhase.Intro, LoopPhase.Sneak);
-        public void Grabbed() => Move(LoopPhase.Sneak, LoopPhase.Cling);
-        public void Escape() => Move(LoopPhase.Cling, LoopPhase.Escaped);
+        public void IntroDone() => Move(LoopPhase.Intro, LoopPhase.Night);
+        public void Escape() => Move(LoopPhase.Night, LoopPhase.Escaped);
         public void CaughtDone() => Move(LoopPhase.Caught, LoopPhase.Intro);
 
         public RoundRecord Fail(FailReason reason)
         {
-            if (Phase != LoopPhase.Sneak && Phase != LoopPhase.Cling)
+            if (Phase != LoopPhase.Night)
                 throw new InvalidOperationException($"Cannot fail during {Phase}");
             var record = new RoundRecord(roster.Night, roster.Remaining);
             LastFail = reason;

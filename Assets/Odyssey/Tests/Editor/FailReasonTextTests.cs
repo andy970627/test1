@@ -21,9 +21,9 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void Touched_MentionsTheHand()
+        public void Touched_MentionsSound()
         {
-            StringAssert.Contains("手", FailReasonText.Describe(FailReason.Touched));
+            StringAssert.Contains("聲音", FailReasonText.Describe(FailReason.Touched));
         }
     }
 }

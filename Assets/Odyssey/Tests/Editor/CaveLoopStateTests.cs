@@ -11,18 +11,17 @@ namespace Odyssey.Core.Tests
             var s = new CaveLoopState(new CrewRoster());
             Assert.AreEqual(LoopPhase.Intro, s.Phase);
             s.IntroDone();
-            s.Grabbed();
+            Assert.AreEqual(LoopPhase.Night, s.Phase);
             s.Escape();
             Assert.AreEqual(LoopPhase.Escaped, s.Phase);
         }
 
         [Test]
-        public void FailInCling_EatsOneAndGoesCaught()
+        public void FailInNight_EatsOneAndGoesCaught()
         {
             var roster = new CrewRoster();
             var s = new CaveLoopState(roster);
             s.IntroDone();
-            s.Grabbed();
             s.Fail(FailReason.Touched);
             Assert.AreEqual(LoopPhase.Caught, s.Phase);
             Assert.AreEqual(FailReason.Touched, s.LastFail);
@@ -39,11 +38,11 @@ namespace Odyssey.Core.Tests
             for (int i = 0; i < 11; i++)
             {
                 s.IntroDone();
-                s.Fail(FailReason.Swept);
+                s.Fail(FailReason.Bumped);
                 s.CaughtDone();
             }
             s.IntroDone();
-            s.Fail(FailReason.FlockGone);
+            s.Fail(FailReason.Dawn);
             Assert.AreEqual(LoopPhase.Wiped, s.Phase);
         }
 
@@ -53,17 +52,26 @@ namespace Odyssey.Core.Tests
             var roster = new CrewRoster();
             var s = new CaveLoopState(roster);
             s.IntroDone();
-            RoundRecord record = s.Fail(FailReason.Swept);
+            RoundRecord record = s.Fail(FailReason.Dawn);
             Assert.AreEqual(1, record.Night);
             Assert.AreEqual(12, record.Crew);
             Assert.AreEqual(11, roster.Remaining);
         }
 
         [Test]
+        public void FailTwice_SecondThrows()
+        {
+            var s = new CaveLoopState(new CrewRoster());
+            s.IntroDone();
+            s.Fail(FailReason.Touched);
+            Assert.Throws<InvalidOperationException>(() => s.Fail(FailReason.Dawn));
+        }
+
+        [Test]
         public void IllegalTransition_Throws()
         {
             var s = new CaveLoopState(new CrewRoster());
-            Assert.Throws<InvalidOperationException>(() => s.Grabbed());
+            Assert.Throws<InvalidOperationException>(() => s.Escape());
         }
 
         [Test]
@@ -74,7 +82,7 @@ namespace Odyssey.Core.Tests
             for (int i = 0; i < 12; i++)
             {
                 s.IntroDone();
-                s.Fail(FailReason.Swept);
+                s.Fail(FailReason.Touched);
                 if (s.Phase == LoopPhase.Caught)
                     s.CaughtDone();
             }
