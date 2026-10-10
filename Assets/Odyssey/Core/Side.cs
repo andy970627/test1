@@ -12,5 +12,7 @@ namespace Odyssey.Core
         Gasped,     // 喘出聲被聽到
         FlockGone,  // 羊全部出洞，沒抱上任何一隻
         Swept,      // 選羊時被往聲音掃來的手碰到
+        Bumped,     // 撞上巨人
+        Dawn,       // 天亮，巨人把巨石推回原位
     }
 }
