@@ -65,7 +65,8 @@ public class DebugPanel : MonoBehaviour
         float y = map.yMax + 10f;
         CyclopsState state = loop.Cyclops.Brain.State;
         Fill(new Rect(20, y + line * 0.2f, line * 0.6f, line * 0.6f), StateColor(state));
-        GUI.Label(new Rect(20 + line, y, panelW, line), $"巨人：{StateName(state)}", style);
+        string hold = loop.Cyclops.Brain.HoldingBoulder ? "・守著巨石" : "";
+        GUI.Label(new Rect(20 + line, y, panelW, line), $"巨人：{StateName(state)}{hold}", style);
         y += line;
 
         float barW = panelW - fontSize * 6f - 20f;

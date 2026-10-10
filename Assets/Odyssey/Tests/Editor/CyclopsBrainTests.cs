@@ -48,7 +48,7 @@ namespace Odyssey.Core.Tests
         {
             brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
             brain.Tick(1f, Far);
-            Assert.AreEqual(2.5f, brain.Position.X, 1e-4f);
+            Assert.AreEqual(3.5f, brain.Position.X, 1e-4f);
             Assert.IsTrue(brain.IsMoving);
         }
 
@@ -68,7 +68,7 @@ namespace Odyssey.Core.Tests
             brain.Hear(Snd(SoundKind.Clap, 1f, 0f));
             Assert.AreEqual(FailReason.None, brain.Tick(1f, Far));
             Assert.AreEqual(CyclopsState.Search, brain.State);
-            Assert.AreEqual(FailReason.Touched, brain.Tick(0.1f, new Vector2(1f, 1.4f)));
+            Assert.AreEqual(FailReason.Touched, brain.Tick(0.1f, new Vector2(1f, 1.9f)));
         }
 
         [Test]
@@ -76,7 +76,7 @@ namespace Odyssey.Core.Tests
         {
             brain.Hear(Snd(SoundKind.Clap, 1f, 0f));
             brain.Tick(1f, Far);
-            Assert.AreEqual(FailReason.None, brain.Tick(0.1f, new Vector2(1f, 1.6f)));
+            Assert.AreEqual(FailReason.None, brain.Tick(0.1f, new Vector2(1f, 2.1f)));
             brain.Tick(2.95f, Far);
             Assert.AreEqual(CyclopsState.Listen, brain.State);
         }
@@ -114,7 +114,7 @@ namespace Odyssey.Core.Tests
             brain.Hear(Snd(SoundKind.Boulder, BoulderPos));
             brain.Tick(1f, Far);
             Assert.AreEqual(CyclopsState.Guard, brain.State);
-            Assert.AreEqual(4f, brain.Position.Y, 1e-4f);
+            Assert.AreEqual(5f, brain.Position.Y, 1e-4f);
             brain.Tick(2f, Far);
             Assert.AreEqual(CyclopsState.Search, brain.State);
             brain.Tick(5.9f, Far);
@@ -137,6 +137,66 @@ namespace Odyssey.Core.Tests
             brain.Tick(0.1f, Far);
             brain.Tick(5f, Far);
             Assert.AreEqual(CyclopsState.Search, brain.State);
+        }
+
+        void GuardUntilHolding()
+        {
+            brain.Hear(Snd(SoundKind.Boulder, BoulderPos));
+            brain.Tick(1f, Far);
+            brain.Tick(1f, Far);
+            brain.Tick(6.1f, Far);
+            Assert.AreEqual(CyclopsState.Listen, brain.State);
+            Assert.IsTrue(brain.HoldingBoulder);
+        }
+
+        [Test]
+        public void Holding_IgnoresClapFarFromBoulder()
+        {
+            GuardUntilHolding();
+            brain.Hear(Snd(SoundKind.Clap, 0f, 1f));
+            Assert.AreEqual(CyclopsState.Listen, brain.State);
+        }
+
+        [Test]
+        public void Holding_ChecksClapNearBoulder_ThenWalksBack()
+        {
+            GuardUntilHolding();
+            brain.Hear(Snd(SoundKind.Clap, 0f, 6f));
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            brain.Tick(1f, Far);
+            Assert.AreEqual(CyclopsState.Search, brain.State);
+            brain.Tick(3.1f, Far);
+            Assert.AreEqual(BoulderPos, brain.Target);
+            brain.Tick(2f, Far);
+            Assert.AreEqual(CyclopsState.Listen, brain.State);
+            Assert.AreEqual(BoulderPos, brain.Position);
+            Assert.IsTrue(brain.HoldingBoulder);
+        }
+
+        [Test]
+        public void Holding_StoneLuresHimAway()
+        {
+            GuardUntilHolding();
+            brain.Hear(Snd(SoundKind.Stone, 0f, 1f));
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            Assert.IsFalse(brain.HoldingBoulder);
+        }
+
+        [Test]
+        public void Holding_BleatLuresHimAway()
+        {
+            GuardUntilHolding();
+            brain.Hear(Snd(SoundKind.Bleat, 0f, 1f));
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            Assert.IsFalse(brain.HoldingBoulder);
+        }
+
+        [Test]
+        public void Reset_ClearsHolding()
+        {
+            GuardUntilHolding();
+            brain.Reset(Vector2.Zero);
+            Assert.IsFalse(brain.HoldingBoulder);
         }
 
         [Test]
