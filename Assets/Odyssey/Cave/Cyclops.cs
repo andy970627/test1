@@ -228,8 +228,18 @@ public class Cyclops : MonoBehaviour
         Part(PrimitiveType.Cube, "KneeL", transform, new Vector3(-0.9f, 1.2f, 1.2f), new Vector3(0.9f, 0.9f, 1.8f), skin);
         Part(PrimitiveType.Cube, "KneeR", transform, new Vector3(0.9f, 1.2f, 1.2f), new Vector3(0.9f, 0.9f, 1.8f), skin);
 
-        hand = Part(PrimitiveType.Cube, "Hand", null, Vector3.zero, new Vector3(0.8f, 0.4f, 1.4f), skin).transform;
-        arm = Part(PrimitiveType.Cube, "Arm", null, Vector3.zero, Vector3.one, skin).transform;
+        // 手和手臂用較淺的粗糙皮膚色、手掌放大，並帶一點炭火映在手上的暖光，在暗洞裡才看得到。
+        Color handSkin = new(0.34f, 0.27f, 0.21f);
+        hand = Part(PrimitiveType.Cube, "Hand", null, Vector3.zero, new Vector3(1.1f, 0.5f, 1.8f), handSkin).transform;
+        arm = Part(PrimitiveType.Cube, "Arm", null, Vector3.zero, Vector3.one, handSkin).transform;
+        var glint = new GameObject("HandGlint").AddComponent<Light>();
+        glint.transform.SetParent(hand, false);
+        glint.transform.localPosition = new Vector3(0f, 0.6f, 0f);
+        glint.type = LightType.Point;
+        glint.color = new Color(1f, 0.6f, 0.35f);
+        glint.range = 3.5f;
+        glint.intensity = 1.2f;
+        glint.shadows = LightShadows.None;
         // 炭火在洞內、手在洞口，影子往洞口外的地上落；從羊肚下往前看得到手在哪。
         handShadow = Part(PrimitiveType.Cylinder, "HandShadow", null, Vector3.zero, new Vector3(1.1f, 0.005f, 1.6f), new Color(0.01f, 0.01f, 0.01f)).transform;
         handShadow.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

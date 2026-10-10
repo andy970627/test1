@@ -14,6 +14,8 @@ public class Sheep : MonoBehaviour
     const float QueueSpacing = 1.6f;
     const float ArriveDistance = 0.25f;
     const float BleatSeconds = 0.8f;
+    const float BleatMinInterval = 9f;
+    const float BleatMaxInterval = 20f;
 
     static AudioClip s_BleatClip;
 
@@ -47,13 +49,15 @@ public class Sheep : MonoBehaviour
         voice = gameObject.AddComponent<AudioSource>();
         voice.clip = s_BleatClip;
         voice.spatialBlend = 1f;
-        voice.minDistance = 1.5f;
-        voice.maxDistance = 25f;
+        voice.minDistance = 1f;
+        voice.maxDistance = 12f;
+        voice.rolloffMode = AudioRolloffMode.Linear;
+        voice.volume = 0.35f;
         voice.pitch = isRam ? 0.75f : UnityEngine.Random.Range(0.9f, 1.15f);
         voice.playOnAwake = false;
 
         State = SheepState.Wandering;
-        nextBleat = Time.time + UnityEngine.Random.Range(4f, 10f);
+        nextBleat = Time.time + UnityEngine.Random.Range(BleatMinInterval, BleatMaxInterval);
         PickWanderTarget();
     }
 
@@ -93,7 +97,7 @@ public class Sheep : MonoBehaviour
         {
             voice.Play();
             bleatUntil = Time.time + BleatSeconds;
-            nextBleat = Time.time + UnityEngine.Random.Range(4f, 10f);
+            nextBleat = Time.time + UnityEngine.Random.Range(BleatMinInterval, BleatMaxInterval);
         }
     }
 

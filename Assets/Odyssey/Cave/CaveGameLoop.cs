@@ -23,7 +23,11 @@ public class CaveGameLoop : MonoBehaviour
     public float entranceGrabBlock = 2f;
     public float hintSeconds = 12f;
 
+    [Tooltip("過場播放速度倍率；2 = 所有淡入淡出與停留時間減半。")]
+    public float transitionSpeed = 2f;
+
     readonly CrewRoster roster = new();
+    readonly List<string> deaths = new();
     readonly List<GameObject> crewFigures = new();
     CaveLoopState state;
     CaveLayout layout;
@@ -85,14 +89,17 @@ public class CaveGameLoop : MonoBehaviour
     void BeginIntro()
     {
         player.InputEnabled = false;
-        Show($"第 {roster.Night} 夜", "被困在獨眼巨人的洞穴", $"剩下 {roster.Remaining} 名同伴", ResetRound, () =>
-        {
-            state.IntroDone();
-            flock.Running = true;
-            player.InputEnabled = true;
-            roundStart = Time.time;
-            hintUntil = Time.time + hintSeconds;
-        });
+        Show($"第 {roster.Night} 夜", "被困在獨眼巨人的洞穴", $"剩下 {roster.Remaining} 名同伴", ResetRound, StartSneak);
+    }
+
+    /// <summary>過場結束，回到洞底開始選羊。</summary>
+    void StartSneak()
+    {
+        state.IntroDone();
+        flock.Running = true;
+        player.InputEnabled = true;
+        roundStart = Time.time;
+        hintUntil = Time.time + hintSeconds;
     }
 
     /// <summary>黑畫面時重置：羊群重新生成、巨人放下手、玩家回洞底、角落的同伴重新排好。</summary>
@@ -125,6 +132,7 @@ public class CaveGameLoop : MonoBehaviour
         {
             waitingRestart = false;
             state.Restart();
+            deaths.Clear();
             BeginIntro();
             return;
         }
@@ -229,13 +237,17 @@ public class CaveGameLoop : MonoBehaviour
         if (phase == LoopPhase.Sneak)
             player.FaceTowards(cyclops.HeadPosition);
 
+        string cause = FailReasonText.Describe(reason);
+        deaths.Add($"第 {night} 夜：{cause}");
+
+        // 死亡原因與下一夜合成同一個過場，緊接在被抓之後，不再另外播開場。
         if (state.Phase == LoopPhase.Wiped)
-            Show($"第 {night} 夜", "洞裡只剩下你。", "", null, () => waitingRestart = true);
+            Show($"第 {night} 夜", "洞裡只剩下你。", cause, null, () => waitingRestart = true);
         else
-            Show($"第 {night} 夜", "巨人吃掉了一名同伴", "再試一次。", ResetRound, () =>
+            Show($"第 {night} 夜・{cause}", "巨人吃掉了一名同伴", $"第 {roster.Night} 夜・剩下 {roster.Remaining} 名同伴", ResetRound, () =>
             {
                 state.CaughtDone();
-                BeginIntro();
+                StartSneak();
             });
         Log(phase, reason.ToString(), record.Night, record.Crew);
     }
@@ -253,7 +265,7 @@ public class CaveGameLoop : MonoBehaviour
     {
         if (LoopFailScreen.Instance != null)
         {
-            LoopFailScreen.Instance.ShowMessage(year, title, subtitle, onBlackout, onComplete);
+            LoopFailScreen.Instance.ShowMessage(year, title, subtitle, onBlackout, onComplete, transitionSpeed);
             return;
         }
         onBlackout?.Invoke();
@@ -315,21 +327,127 @@ public class CaveGameLoop : MonoBehaviour
             GUI.Label(new Rect(24, Screen.height - h - 4, Screen.width - 48, h), bottom, style);
         }
 
-        if (!showDebug)
-            return;
-        var m = cling.Model;
-        PatStep? step = cyclops.CurrentStep;
-        string stepText = step.HasValue ? $"{step.Value.Kind}・{(step.Value.Side == Side.Left ? "左" : "右")}" : "—";
-        float width = Mathf.Min(Screen.width - 20, fontSize * 24f);
-        float height = line * 8f;
-        GUI.Box(new Rect(10, 10, width, height), GUIContent.none);
-        GUI.Label(new Rect(24, 16, width - 28, height),
-            $"階段：{state.Phase}・第 {roster.Night} 夜・同伴 {roster.Remaining}\n" +
-            $"聲量：{noise.Level:F2}（門檻 {noise.Threshold:F2}）・洞裡剩 {flock.RemainingInCave} 隻羊\n" +
-            (m != null
-                ? $"握力 左 {m.GripLeft:F2} 右 {m.GripRight:F2}・下滑 {m.Slide:F2}\n氧氣 {m.Oxygen:F2}・重心 {(m.Lean == Side.Left ? "左" : "右")}{(m.IsPeeking ? "・探頭中" : "")}・噪音 {m.Noise:F2}\n"
-                : "（尚未抱上羊）\n\n") +
-            $"巨人：{stepText}{(cyclops.PattingSheep == clingSheep && clingSheep != null ? "（摸的是你這隻）" : "")}\n" +
-            $"紀錄：{logPath}", style);
+        if (showDebug)
+            DrawDebugPanel(style, fontSize, line);
     }
+
+    static readonly Color Good = new(0.35f, 0.8f, 0.4f);
+    static readonly Color Warn = new(0.95f, 0.75f, 0.2f);
+    static readonly Color Danger = new(0.9f, 0.25f, 0.2f);
+    static readonly Color Track = new(1f, 1f, 1f, 0.15f);
+
+    /// <summary>F1 除錯面板：用長條、點數與羊的示意圖表示數值，不顯示原始數字。</summary>
+    void DrawDebugPanel(GUIStyle style, int fontSize, float line)
+    {
+        var m = cling.Model;
+        float width = Mathf.Min(Screen.width - 20, fontSize * 20f);
+        float labelWidth = fontSize * 5.5f;
+        float barWidth = width - labelWidth - 40f;
+        float barHeight = fontSize * 0.7f;
+        int rows = 4 + (m != null ? 6 : 1) + Mathf.Min(5, deaths.Count) + (deaths.Count > 0 ? 1 : 0);
+        GUI.Box(new Rect(10, 10, width, rows * line + 24), GUIContent.none);
+        float y = 20f;
+
+        Row(style, ref y, line, labelWidth, PhaseName(state.Phase) + $"・第 {roster.Night} 夜");
+        Pips(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), roster.Remaining, CrewRoster.StartingCrew, Good);
+        Row(style, ref y, line, labelWidth, "同伴");
+        Pips(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), flock.RemainingInCave, flock.sheepCount, new Color(0.85f, 0.82f, 0.74f));
+        Row(style, ref y, line, labelWidth, "洞裡的羊");
+        Bar(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), noise.Level, noise.IsAbove ? Danger : Good, noise.Threshold);
+        Row(style, ref y, line, labelWidth, "聲量");
+
+        if (m != null)
+        {
+            Bar(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), m.GripLeft, m.GripLeft < 0.3f ? Danger : Good);
+            Row(style, ref y, line, labelWidth, "左手握力");
+            Bar(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), m.GripRight, m.GripRight < 0.3f ? Danger : Good);
+            Row(style, ref y, line, labelWidth, "右手握力");
+            Bar(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), m.Slide, m.Slide > 0.6f ? Danger : Warn);
+            Row(style, ref y, line, labelWidth, "下滑");
+            Bar(new Rect(28 + labelWidth, y + (line - barHeight) / 2f, barWidth, barHeight), m.Oxygen, m.Oxygen < 0.3f ? Danger : new Color(0.35f, 0.6f, 0.95f));
+            Row(style, ref y, line, labelWidth, m.HoldingBreath ? "氧氣（憋氣）" : "氧氣");
+            SheepDiagram(new Rect(28 + labelWidth, y, barWidth, line * 2f - 6f), m);
+            Row(style, ref y, line, labelWidth, "巨人的手");
+            Row(style, ref y, line, labelWidth, m.IsPeeking ? "（探頭中）" : "");
+        }
+        else
+        {
+            Row(style, ref y, line, labelWidth, "（尚未抱上羊）");
+        }
+
+        if (deaths.Count > 0)
+        {
+            Row(style, ref y, line, width, "死亡紀錄");
+            for (int i = Mathf.Max(0, deaths.Count - 5); i < deaths.Count; i++)
+                Row(style, ref y, line, width, "・" + deaths[i]);
+        }
+    }
+
+    static void Row(GUIStyle style, ref float y, float line, float labelWidth, string label)
+    {
+        GUI.Label(new Rect(24, y, Mathf.Max(labelWidth, 400f), line), label, style);
+        y += line;
+    }
+
+    static void Bar(Rect r, float value, Color fill, float? marker = null)
+    {
+        Fill(r, Track);
+        Fill(new Rect(r.x, r.y, r.width * Mathf.Clamp01(value), r.height), fill);
+        if (marker.HasValue)
+            Fill(new Rect(r.x + r.width * marker.Value - 1.5f, r.y - 3f, 3f, r.height + 6f), Color.white);
+    }
+
+    static void Pips(Rect r, int count, int total, Color color)
+    {
+        float size = r.height;
+        float gap = Mathf.Min(size * 0.5f, (r.width - size * total) / Mathf.Max(1, total - 1));
+        for (int i = 0; i < total; i++)
+            Fill(new Rect(r.x + i * (size + gap), r.y, size, size), i < count ? color : Track);
+    }
+
+    /// <summary>從上往下看的羊：中間是羊背，左右兩格是羊側。巨人的手在哪一格就亮哪一格；藍點是你貼的那一側。</summary>
+    void SheepDiagram(Rect r, ClingModel m)
+    {
+        PatStep? step = cyclops.PattingSheep != null && cyclops.PattingSheep == clingSheep ? cyclops.CurrentStep : null;
+        float w = r.height * 1.6f;
+        var back = new Rect(r.x + w * 0.35f, r.y, w * 0.9f, r.height);
+        var left = new Rect(r.x, r.y, w * 0.32f, r.height);
+        var right = new Rect(back.xMax + w * 0.03f, r.y, w * 0.32f, r.height);
+        Fill(left, Track);
+        Fill(back, new Color(0.85f, 0.82f, 0.74f, 0.35f));
+        Fill(right, Track);
+        if (step.HasValue)
+        {
+            var s = step.Value;
+            Rect side = s.Side == Side.Left ? left : right;
+            if (s.Kind == PatKind.Back)
+                Fill(back, Warn);
+            else
+                Fill(side, s.Kind == PatKind.Side ? Danger : Warn);
+        }
+        Rect leanSide = m.Lean == Side.Left ? left : right;
+        float dot = leanSide.width * 0.6f;
+        Fill(new Rect(leanSide.center.x - dot / 2f, leanSide.center.y - dot / 2f, dot, dot), new Color(0.35f, 0.6f, 0.95f));
+        if (cyclops.PattingSheep != null && cyclops.PattingSheep != clingSheep)
+            Fill(new Rect(right.xMax + 12f, r.center.y - 4f, r.height * 0.5f, 8f), Warn); // 正在摸前面的羊
+    }
+
+    static void Fill(Rect r, Color c)
+    {
+        var old = GUI.color;
+        GUI.color = c;
+        GUI.DrawTexture(r, Texture2D.whiteTexture);
+        GUI.color = old;
+    }
+
+    static string PhaseName(LoopPhase phase) => phase switch
+    {
+        LoopPhase.Intro => "過場",
+        LoopPhase.Sneak => "選羊",
+        LoopPhase.Cling => "抱緊",
+        LoopPhase.Caught => "被抓",
+        LoopPhase.Escaped => "逃出",
+        LoopPhase.Wiped => "全滅",
+        _ => phase.ToString(),
+    };
 }

@@ -74,14 +74,15 @@ public class LoopFailScreen : MonoBehaviour
         => ShowMessage(FormatYear(loopCount), defaultTitle, defaultSubtitle, onBlackout, onComplete);
 
     /// <summary>同失敗畫面的流程，但文字自訂（例如結局）。</summary>
-    public void ShowMessage(string year, string title, string subtitle, Action onBlackout = null, Action onComplete = null)
+    /// <param name="speed">播放速度倍率；2 = 所有淡入淡出與停留時間減半。</param>
+    public void ShowMessage(string year, string title, string subtitle, Action onBlackout = null, Action onComplete = null, float speed = 1f)
     {
         if (IsPlaying)
             return;
         if (yearText != null) yearText.text = year;
         if (titleText != null) titleText.text = title;
         if (subtitleText != null) subtitleText.text = subtitle;
-        StartCoroutine(Run(true, onBlackout, onComplete));
+        StartCoroutine(Run(true, onBlackout, onComplete, speed));
     }
 
     /// <summary>不帶文字的短暫黑場轉場。</summary>
@@ -89,24 +90,25 @@ public class LoopFailScreen : MonoBehaviour
     {
         if (IsPlaying)
             return;
-        StartCoroutine(Run(false, onBlackout, onComplete));
+        StartCoroutine(Run(false, onBlackout, onComplete, 1f));
     }
 
-    IEnumerator Run(bool withText, Action onBlackout, Action onComplete)
+    IEnumerator Run(bool withText, Action onBlackout, Action onComplete, float speed)
     {
+        float k = 1f / Mathf.Max(0.01f, speed);
         IsPlaying = true;
         screenGroup.blocksRaycasts = true;
         contentGroup.alpha = 0f;
 
-        yield return Fade(screenGroup, 0f, 1f, withText ? fadeToBlack : quickFade);
+        yield return Fade(screenGroup, 0f, 1f, (withText ? fadeToBlack : quickFade) * k);
         onBlackout?.Invoke();
         if (withText)
         {
-            yield return Fade(contentGroup, 0f, 1f, textFadeIn);
-            yield return new WaitForSecondsRealtime(hold);
-            yield return Fade(contentGroup, 1f, 0f, textFadeOut);
+            yield return Fade(contentGroup, 0f, 1f, textFadeIn * k);
+            yield return new WaitForSecondsRealtime(hold * k);
+            yield return Fade(contentGroup, 1f, 0f, textFadeOut * k);
         }
-        yield return Fade(screenGroup, 1f, 0f, withText ? fadeFromBlack : quickFade);
+        yield return Fade(screenGroup, 1f, 0f, (withText ? fadeFromBlack : quickFade) * k);
 
         SetHidden();
         IsPlaying = false;
