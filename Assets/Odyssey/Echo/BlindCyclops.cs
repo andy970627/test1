@@ -31,7 +31,8 @@ public class BlindCyclops : MonoBehaviour
     {
         this.player = player;
         seat = layout.Cave.CyclopsSeat;
-        Brain = new CyclopsBrain(Flat(seat), memory);
+        var rng = new System.Random();
+        Brain = new CyclopsBrain(Flat(seat), memory, rng.NextDouble);
         BuildBody();
 
         var breath = new GameObject("Breath").AddComponent<AudioSource>();
@@ -78,7 +79,7 @@ public class BlindCyclops : MonoBehaviour
     {
         if (!Active || Brain == null)
             return;
-        FailReason result = Brain.Tick(Time.deltaTime, Flat(player.position));
+        FailReason result = Brain.Tick(Time.deltaTime, Flat(player.position)).Player;
         SyncTransform();
         AnimateArms();
         EmitOwnSounds();

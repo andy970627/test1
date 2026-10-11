@@ -42,6 +42,8 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Investigate => "追聲",
         CyclopsState.Search => "摸索",
         CyclopsState.Guard => "守石",
+        CyclopsState.Throw => "丟岩石",
+        CyclopsState.Eat => "吃同伴",
         _ => "聆聽",
     };
 
