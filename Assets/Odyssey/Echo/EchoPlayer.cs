@@ -61,11 +61,15 @@ public class EchoPlayer : MonoBehaviour
     /// <summary>正在塞楔子（0.6 秒內不能推）。</summary>
     public bool Wedging => wedgeBusy >= 0f;
 
+    int enabledFrame = -1;
+
     public bool InputEnabled
     {
         get => inputEnabled;
         set
         {
+            if (value && !inputEnabled)
+                enabledFrame = Time.frameCount;
             inputEnabled = value;
             if (body != null)
                 body.InputEnabled = value;
@@ -174,7 +178,8 @@ public class EchoPlayer : MonoBehaviour
         crew.Running = running;
         UpdateSteps(running);
 
-        if (keyboard.qKey.wasPressedThisFrame)
+        // 空白鍵拍手；簡報也是按空白鍵開始，開始那一幀的空白鍵不算拍手。
+        if (keyboard.spaceKey.wasPressedThisFrame && Time.frameCount != enabledFrame)
         {
             SoundBus.Emit(SoundKind.Clap, body.CameraTransform.position);
             Used?.Invoke(PromptKind.Clap);

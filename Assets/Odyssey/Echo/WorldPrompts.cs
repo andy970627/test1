@@ -110,7 +110,7 @@ public class WorldPrompts : MonoBehaviour
         // 走路只在每夜開頭提示。
         if (loop.Dawn.Elapsed < PerNightPromptSeconds)
             Add(PromptKind.Move, "WASD 走・Shift 跑");
-        Add(PromptKind.Clap, "Q 拍手：照亮四周（巨人也聽得到）");
+        Add(PromptKind.Clap, "空白鍵 拍手：照亮四周（巨人也聽得到）");
         if (player.Stones > 0 && !player.CarryingStake)
             Add(PromptKind.Throw, "左鍵 丟石子：落地聲會把巨人引過去");
         if (player.CarryingStake && !player.AtBoulder)
