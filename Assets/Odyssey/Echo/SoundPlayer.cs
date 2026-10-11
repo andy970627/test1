@@ -1,24 +1,37 @@
+using System;
 using Odyssey.Core;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 /// <summary>
-/// 不照亮的聲音要真的聽得到（規格第 19 節 B）：在聲音的位置播 3D 程式音效。
+/// 每個會出聲的動作都有實際音效（規格第 19 節 B、第 22 節 A）：在聲音的位置播 3D 程式音效。
 /// 巨人有自己專用的聲道（掛在他身上、不會被搶走），依狀態播腳步、跑步、掃摸、嚼食；
-/// 其他聲音（玩家與同伴的腳步、喘氣、岩石落地）輪流用共用聲道。羊叫與同伴嗚咽已經在牠們身上播，不重播。
+/// 其他聲音輪流用共用聲道（搶最早開始播的那個）。羊叫與同伴嗚咽已經在牠們身上播，不重播。
+/// 另有 2D 聲道播只有玩家聽得到的小回饋（不經過 SoundBus，巨人聽不到、不照亮；規格第 22 節 B）。
 /// </summary>
 public class SoundPlayer : MonoBehaviour
 {
-    const int Voices = 12;
+    const int Voices = 16;
     const float GiantMin = 2f;
     const float GiantMax = 30f;
 
     readonly AudioSource[] voices = new AudioSource[Voices];
-    int next;
-    AudioSource giantVoice;
+    readonly float[] startedAt = new float[Voices];
+    AudioSource giantVoice, local;
+    Func<float> openingFraction;
     AudioClip giantStep, giantSweep, chew, footStep, heavyStep, pant, rockImpact;
+    AudioClip clap, stone, grind, heavy, slip, wedge, pail, soft, hay, scrape, wedgePulled;
 
-    public void Init(BlindCyclops cyclops)
+    public AudioClip PebbleClick { get; private set; }
+    public AudioClip CrewReply { get; private set; }
+    public AudioClip WoodTap { get; private set; }
+    public AudioClip LearnChime { get; private set; }
+    public AudioClip BoulderSettle { get; private set; }
+
+    /// <summary>openingFraction：巨石開口 ÷ 全開，磨擦聲的音高跟著變高。</summary>
+    public void Init(BlindCyclops cyclops, Func<float> openingFraction)
     {
+        this.openingFraction = openingFraction;
         giantStep = ProceduralAudio.GiantStep();
         giantSweep = ProceduralAudio.GiantSweep();
         chew = ProceduralAudio.Chew();
@@ -26,16 +39,36 @@ public class SoundPlayer : MonoBehaviour
         heavyStep = ProceduralAudio.HeavyStep();
         pant = ProceduralAudio.Gasp();
         rockImpact = ProceduralAudio.RockImpact();
+        clap = ProceduralAudio.Clap();
+        stone = ProceduralAudio.StoneKnock();
+        grind = ProceduralAudio.Grind();
+        heavy = ProceduralAudio.BoulderHeavy();
+        slip = ProceduralAudio.Slip();
+        wedge = ProceduralAudio.WedgeClick();
+        pail = ProceduralAudio.PailClatter();
+        soft = ProceduralAudio.SoftThud();
+        hay = ProceduralAudio.WoolRustle();
+        scrape = ProceduralAudio.WoodScrape();
+        wedgePulled = ProceduralAudio.WedgePulled();
+        PebbleClick = ProceduralAudio.PebbleClick();
+        CrewReply = ProceduralAudio.CrewReply();
+        WoodTap = ProceduralAudio.WoodTap();
+        LearnChime = ProceduralAudio.LearnChime();
+        BoulderSettle = ProceduralAudio.BoulderSettle();
 
         for (int i = 0; i < Voices; i++)
         {
             var go = new GameObject("SoundVoice");
             go.transform.SetParent(transform, false);
             voices[i] = NewSource(go, 1f, 10f);
+            startedAt[i] = float.NegativeInfinity;
         }
         var giantGo = new GameObject("GiantVoice");
         giantGo.transform.SetParent(cyclops.transform, false);
         giantVoice = NewSource(giantGo, GiantMin, GiantMax);
+        local = NewSource(new GameObject("LocalVoice"), 1f, 2f);
+        local.transform.SetParent(transform, false);
+        local.spatialBlend = 0f;
 
         cyclops.Sounded += OnGiant;
         SoundBus.Emitted += OnSound;
@@ -83,28 +116,51 @@ public class SoundPlayer : MonoBehaviour
 
     void OnSound(SoundEvent e, Vector3 at)
     {
+        float v = e.Loudness;
         switch (e.Kind)
         {
-            case SoundKind.Step:
-                Play(footStep, at, e.Loudness, Random.Range(0.9f, 1.1f), 1f, 8f);
-                break;
-            case SoundKind.Run:
-                Play(heavyStep, at, e.Loudness, Random.Range(0.9f, 1.1f), 1f, 12f);
-                break;
-            case SoundKind.Pant:
-                Play(pant, at, e.Loudness, 0.8f, 1f, 8f);
-                break;
-            case SoundKind.RockImpact:
-                Play(rockImpact, at, e.Loudness, 1f, 3f, 40f);
-                break;
+            case SoundKind.Step: Play(footStep, at, v, Random.Range(0.9f, 1.1f), 1f, 8f); break;
+            case SoundKind.Run: Play(heavyStep, at, v, Random.Range(0.9f, 1.1f), 1f, 12f); break;
+            case SoundKind.Pant: Play(pant, at, v, 0.8f, 1f, 8f); break;
+            case SoundKind.RockImpact: Play(rockImpact, at, v, 1f, 3f, 40f); break;
+            case SoundKind.Clap: Play(clap, at, v, Random.Range(0.95f, 1.05f), 2f, 20f); break;
+            case SoundKind.Stone: Play(stone, at, v, Random.Range(0.9f, 1.15f), 1f, 20f); break;
+            case SoundKind.Grind: Play(grind, at, v, 0.8f + 0.5f * Mathf.Clamp01(openingFraction()), 2f, 15f); break;
+            case SoundKind.Boulder: Play(heavy, at, v * 0.7f, 0.9f + 0.3f * Mathf.Clamp01(openingFraction()), 3f, 30f); break;
+            case SoundKind.Slip: Play(slip, at, v, 0.7f, 1f, 8f); break;
+            case SoundKind.Wedge: Play(wedge, at, v, 1f, 1f, 10f); break;
+            case SoundKind.Clatter: Play(pail, at, v, Random.Range(0.95f, 1.05f), 2f, 20f); break;
+            case SoundKind.Cheese: Play(soft, at, v, 1f, 1f, 10f); break;
+            case SoundKind.Wicker: Play(hay, at, v, 1.2f, 1f, 8f); break;
+            case SoundKind.Drag: Play(scrape, at, v, Random.Range(0.9f, 1.1f), 1f, 8f); break;
         }
     }
 
-    /// <summary>聲量越小越安靜（羊圈裡的腳步明顯變輕）。</summary>
+    /// <summary>巨人拔掉楔子：「喀」一聲加石子彈出，在巨石位置播。</summary>
+    public void WedgePulled(Vector3 at) => Play(wedgePulled, at, 0.6f, 1f, 2f, 20f);
+
+    /// <summary>巨石被巨人拔回、往回滑：沉重的磨擦。</summary>
+    public void PulledBack(Vector3 at) => Play(grind, at, 0.5f, 0.6f, 2f, 20f);
+
+    /// <summary>只有玩家聽得到的小回饋。</summary>
+    public void PlayLocal(AudioClip clip, float volume = 0.6f) => local.PlayOneShot(clip, volume);
+
+    /// <summary>聲量越小越安靜（羊圈裡的腳步明顯變輕）；共用聲道搶最早開始播的那個。</summary>
     void Play(AudioClip clip, Vector3 at, float loudness, float pitch, float min, float max)
     {
-        var source = voices[next];
-        next = (next + 1) % Voices;
+        int oldest = 0;
+        for (int i = 0; i < Voices; i++)
+        {
+            if (!voices[i].isPlaying)
+            {
+                oldest = i;
+                break;
+            }
+            if (startedAt[i] < startedAt[oldest])
+                oldest = i;
+        }
+        startedAt[oldest] = Time.time;
+        var source = voices[oldest];
         source.transform.position = at;
         source.minDistance = min;
         source.maxDistance = max;

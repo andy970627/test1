@@ -209,6 +209,163 @@ public static class ProceduralAudio
         return Make("HeavyStep", data);
     }
 
+    /// <summary>拍掌：0.08 秒的清脆高頻噪音。</summary>
+    public static AudioClip Clap() => Burst("Clap", 0.08f, 0.9f, 0.9f, 71);
+
+    /// <summary>石頭敲擊：0.15 秒，一聲 420Hz 的短敲加細碎噪音。</summary>
+    public static AudioClip StoneKnock()
+    {
+        var data = new float[(int)(SampleRate * 0.15f)];
+        AddThump(data, 0f, 0.4f, 420f, 45f);
+        AddGravel(data, 0f, 0.05f, 0.3f, 81);
+        return Make("StoneKnock", data);
+    }
+
+    /// <summary>巨石磨擦：0.5 秒的低頻粗噪音，起落平緩；音高由播放時決定。</summary>
+    public static AudioClip Grind() => Rumble("Grind", 0.5f, 0.06f, 0.7f, 91);
+
+    /// <summary>猛推、卡住：重磨擦加一聲悶響。</summary>
+    public static AudioClip BoulderHeavy()
+    {
+        var data = new float[(int)(SampleRate * 0.6f)];
+        AddRumble(data, 0.6f, 0.08f, 0.6f, 101);
+        AddThump(data, 0f, 0.25f, 65f, 9f);
+        return Make("BoulderHeavy", data);
+    }
+
+    /// <summary>巨石回滑：0.8 秒小聲的慢磨擦。</summary>
+    public static AudioClip Slip() => Rumble("Slip", 0.8f, 0.03f, 0.4f, 111);
+
+    /// <summary>石子卡進縫：一聲短促的「咔」。</summary>
+    public static AudioClip WedgeClick()
+    {
+        var data = new float[(int)(SampleRate * 0.1f)];
+        AddThump(data, 0f, 0.5f, 900f, 70f);
+        AddGravel(data, 0f, 0.04f, 0.3f, 121);
+        return Make("WedgeClick", data);
+    }
+
+    /// <summary>木桶翻倒：0.5 秒內三下空心的木頭碰撞。</summary>
+    public static AudioClip PailClatter()
+    {
+        var data = new float[(int)(SampleRate * 0.5f)];
+        AddThump(data, 0f, 0.4f, 180f, 30f);
+        AddThump(data, 0.14f, 0.3f, 210f, 35f);
+        AddThump(data, 0.3f, 0.2f, 160f, 35f);
+        return Make("PailClatter", data);
+    }
+
+    /// <summary>軟物落地（乳酪）。</summary>
+    public static AudioClip SoftThud()
+    {
+        var data = new float[(int)(SampleRate * 0.15f)];
+        AddThump(data, 0f, 0.5f, 110f, 35f);
+        return Make("SoftThud", data);
+    }
+
+    /// <summary>拖木樁：0.3 秒的木頭刮地。</summary>
+    public static AudioClip WoodScrape() => Rumble("WoodScrape", 0.3f, 0.3f, 0.5f, 131);
+
+    /// <summary>撿到石子：兩顆小石子輕碰（只有玩家聽得到）。</summary>
+    public static AudioClip PebbleClick()
+    {
+        var data = new float[(int)(SampleRate * 0.15f)];
+        AddThump(data, 0f, 0.25f, 1100f, 80f);
+        AddThump(data, 0.06f, 0.18f, 1300f, 80f);
+        return Make("PebbleClick", data);
+    }
+
+    /// <summary>同伴低聲回應：0.35 秒的低沉氣聲（只有玩家聽得到）。</summary>
+    public static AudioClip CrewReply()
+    {
+        var data = new float[(int)(SampleRate * 0.35f)];
+        float phase = 0f;
+        var rng = new System.Random(141);
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            phase += 2f * Mathf.PI * Mathf.Lerp(150f, 120f, t / 0.35f) / SampleRate;
+            float breath = ((float)rng.NextDouble() * 2f - 1f) * 0.15f;
+            data[i] = (0.25f * Mathf.Sin(phase) + breath) * Mathf.Sin(Mathf.PI * t / 0.35f);
+        }
+        return Make("CrewReply", data);
+    }
+
+    /// <summary>拿起木樁：木頭輕敲（只有玩家聽得到）。</summary>
+    public static AudioClip WoodTap()
+    {
+        var data = new float[(int)(SampleRate * 0.12f)];
+        AddThump(data, 0f, 0.4f, 260f, 40f);
+        return Make("WoodTap", data);
+    }
+
+    /// <summary>提示學會：輕柔的一聲鈴（只有玩家聽得到）。</summary>
+    public static AudioClip LearnChime()
+    {
+        var data = new float[(int)(SampleRate * 0.6f)];
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            data[i] = 0.2f * (Mathf.Sin(2f * Mathf.PI * 880f * t) + 0.5f * Mathf.Sin(2f * Mathf.PI * 1320f * t)) * Mathf.Exp(-6f * t);
+        }
+        return Make("LearnChime", data);
+    }
+
+    /// <summary>巨石每推開 25%：低沉的一聲「咚」（只有玩家聽得到）。</summary>
+    public static AudioClip BoulderSettle()
+    {
+        var data = new float[(int)(SampleRate * 0.7f)];
+        AddThump(data, 0f, 0.6f, 50f, 6f);
+        AddThump(data, 0f, 0.25f, 100f, 8f);
+        return Make("BoulderSettle", data);
+    }
+
+    /// <summary>巨人拔掉楔子：一聲「喀」加石子彈出。</summary>
+    public static AudioClip WedgePulled()
+    {
+        var data = new float[(int)(SampleRate * 0.4f)];
+        AddThump(data, 0f, 0.5f, 700f, 50f);
+        AddThump(data, 0.12f, 0.3f, 420f, 45f);
+        AddGravel(data, 0.12f, 0.15f, 0.25f, 151);
+        return Make("WedgePulled", data);
+    }
+
+    static AudioClip Burst(string name, float seconds, float gain, float smoothing, int seed)
+    {
+        var data = new float[(int)(SampleRate * seconds)];
+        var rng = new System.Random(seed);
+        float lowpass = 0f;
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += smoothing * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            data[i] = gain * lowpass * Mathf.Exp(-40f * t) * Mathf.Clamp01((seconds - t) / 0.01f);
+        }
+        return Make(name, data);
+    }
+
+    static AudioClip Rumble(string name, float seconds, float smoothing, float gain, int seed)
+    {
+        var data = new float[(int)(SampleRate * seconds)];
+        AddRumble(data, seconds, smoothing, gain, seed);
+        return Make(name, data);
+    }
+
+    /// <summary>低頻粗噪音，起落平緩（磨擦、刮地）。</summary>
+    static void AddRumble(float[] data, float seconds, float smoothing, float gain, int seed)
+    {
+        var rng = new System.Random(seed);
+        float lowpass = 0f;
+        int length = Mathf.Min(data.Length, (int)(SampleRate * seconds));
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += smoothing * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            float envelope = Mathf.Clamp01(t / 0.05f) * Mathf.Clamp01((seconds - t) / 0.1f);
+            data[i] += gain * lowpass / Mathf.Sqrt(smoothing) * 0.6f * envelope;
+        }
+    }
+
     static void AddThump(float[] data, float start, float gain, float hz, float decay)
     {
         int begin = (int)(start * SampleRate);

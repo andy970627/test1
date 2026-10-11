@@ -12,6 +12,22 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Used_ReturnsTrueOnlyWhenRetiring()
+        {
+            var t = new PromptTracker();
+            for (int i = 0; i < 2; i++)
+            {
+                t.MarkShown(PromptKind.Push, i);
+                Assert.IsFalse(t.Used(PromptKind.Push, i + 0.5f));
+            }
+            t.MarkShown(PromptKind.Push, 2f);
+            Assert.IsTrue(t.Used(PromptKind.Push, 2.5f));
+            t.MarkShown(PromptKind.Push, 3f);
+            Assert.IsFalse(t.Used(PromptKind.Push, 3.5f));
+            Assert.IsFalse(t.Used(PromptKind.Wedge, 3.5f));
+        }
+
+        [Test]
         public void Retires_AfterThreeUses()
         {
             var t = new PromptTracker();

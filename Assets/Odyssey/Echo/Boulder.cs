@@ -26,6 +26,7 @@ public class Boulder : MonoBehaviour
     Transform body;
     Transform gapLight;
     Material rimMaterial;
+    float dawn;
     Material gapMaterial;
     Vector3 center;
     float slide;
@@ -126,6 +127,7 @@ public class Boulder : MonoBehaviour
         gapLight.localPosition = new Vector3(-Width / 2f + slide / 2f, 0f, Depth / 2f + 0.05f);
         gapLight.localScale = new Vector3(gap, Height, 1f);
         gapLight.gameObject.SetActive(slide > 0.005f);
+        UpdateGapGlow();
     }
 
     /// <summary>開口為 opening 時，楔子塞在縫裡、貼著巨石左緣的地面位置。</summary>
@@ -154,10 +156,20 @@ public class Boulder : MonoBehaviour
         }
     }
 
+    /// <summary>縫光：隨天亮從深藍變灰白，並且越推開越亮（×(1 + 2 × 開口 ÷ 全開)，規格第 22 節 C）。</summary>
+    void UpdateGapGlow()
+    {
+        if (gapMaterial == null)
+            return;
+        float open = Mathf.Clamp01(slide / Odyssey.Core.BoulderSlide.FullOpen);
+        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open));
+    }
+
     /// <summary>fraction：0 = 入夜，1 = 天亮；縫裡的光從深藍漸變到灰白。</summary>
     public void SetDawn(float fraction)
     {
-        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, Mathf.Clamp01(fraction)));
+        dawn = Mathf.Clamp01(fraction);
+        UpdateGapGlow();
         OdysseyMaterials.SetEmission(rimMaterial, Color.Lerp(MoonGlow, DawnGlow, Mathf.Clamp01(fraction)));
     }
 }

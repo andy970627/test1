@@ -80,6 +80,9 @@ public class EchoPlayer : MonoBehaviour
 
     public event Action EscapeRequested;
 
+    /// <summary>撿到一顆石子（地上的或彈出來的）；只給玩家聽的小回饋用。</summary>
+    public event Action PickedUpStone;
+
     /// <summary>玩家用了某個操作（給遊戲內提示計次）。</summary>
     public event Action<PromptKind> Used;
 
@@ -343,6 +346,7 @@ public class EchoPlayer : MonoBehaviour
                 continue;
             p.Take();
             Stones++;
+            PickedUpStone?.Invoke();
             if (Stones >= MaxStones)
                 return;
         }
@@ -353,6 +357,7 @@ public class EchoPlayer : MonoBehaviour
                 continue;
             s.Take();
             Stones++;
+            PickedUpStone?.Invoke();
             if (Stones >= MaxStones)
                 return;
         }

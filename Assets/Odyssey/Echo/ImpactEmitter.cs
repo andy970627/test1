@@ -8,6 +8,9 @@ using UnityEngine;
 public class ImpactEmitter : MonoBehaviour
 {
     readonly ImpactGate gate = new();
+
+    /// <summary>同一物件 0.3 秒內只響一次；物件自己另外發的撞擊聲（例如奶桶倒下）也要過這個閘。</summary>
+    public ImpactGate Gate => gate;
     SoundKind kind;
     float maxLoudness;
 

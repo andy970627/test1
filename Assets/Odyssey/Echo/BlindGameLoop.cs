@@ -23,6 +23,10 @@ public class BlindGameLoop : MonoBehaviour
     EchoField echo;
     Transform gapWhistle;
     BoulderFeel feel;
+    SoundPlayer sounds;
+    float settleFlash;
+    readonly BoulderMilestones milestones = new();
+    const float SettleFlashSeconds = 0.3f;
     MissionHud hud;
     float nightStart;
     bool waitingRestart;
@@ -101,7 +105,16 @@ public class BlindGameLoop : MonoBehaviour
         player.EscapeRequested += Escape;
         feel = gameObject.AddComponent<BoulderFeel>();
         feel.Init(Layout.Boulder, body);
-        player.Used += kind => Prompts.Used(kind, Time.time);
+        player.Used += kind =>
+        {
+            // 只有玩家聽得到的小回饋（規格第 22 節 B）：學會提示、拿起木樁、帶到同伴。
+            MarkUsed(kind);
+            if (kind == PromptKind.TakeStake)
+                sounds?.PlayLocal(sounds.WoodTap);
+            else if (kind == PromptKind.Recruit)
+                sounds?.PlayLocal(sounds.CrewReply);
+        };
+        player.PickedUpStone += () => sounds?.PlayLocal(sounds.PebbleClick, 0.5f);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
         gameObject.AddComponent<SituationHints>().Init(this, Hints);
         hud = gameObject.AddComponent<MissionHud>();
@@ -114,7 +127,8 @@ public class BlindGameLoop : MonoBehaviour
         Cyclops.AteCrew += OnAteCrew;
         Cyclops.RockLanded += OnRockLanded;
         Cyclops.PulledWedge += OnPulledWedge;
-        gameObject.AddComponent<SoundPlayer>().Init(Cyclops);
+        sounds = gameObject.AddComponent<SoundPlayer>();
+        sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
 
         // 洞外的海風從巨石後面傳來：整個洞都聽得到，越接近洞口越大聲、左右聲道分得清；
         // 縫旁再加一道從縫鑽進來的細呼嘯聲。
@@ -129,6 +143,13 @@ public class BlindGameLoop : MonoBehaviour
             PlaytestCsv.TryAppend(logPath, PlaytestCsv.Header, out _);
 
         ResetNight();
+    }
+
+    /// <summary>記一次「做到了」；剛好學會（提示收起）時播一聲只有玩家聽得到的小鈴。</summary>
+    void MarkUsed(PromptKind kind)
+    {
+        if (Prompts.Used(kind, Time.time))
+            sounds?.PlayLocal(sounds.LearnChime, 0.35f);
     }
 
     static AudioSource Loop3D(string name, Transform parent, Vector3 at, AudioClip clip, AudioRolloffMode rolloff,
@@ -191,6 +212,8 @@ public class BlindGameLoop : MonoBehaviour
     void ResetNight()
     {
         Slide.Reset();
+        milestones.Reset();
+        settleFlash = 0f;
         Layout.Boulder.SetOpening(0f);
         Layout.Boulder.ShowWedges(Slide.StoneWedges);
         Stake.PlaceAt(Layout.StakeSpot);
@@ -256,7 +279,7 @@ public class BlindGameLoop : MonoBehaviour
         UpdateSheepRush();
         UpdateClutter();
         if (player.MovedTonight >= MovePromptMeters)
-            Prompts.Used(PromptKind.Move, Time.time);
+            MarkUsed(PromptKind.Move);
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
@@ -270,10 +293,18 @@ public class BlindGameLoop : MonoBehaviour
         BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake);
         Layout.Boulder.SetOpening(Slide.Opening);
         gapWhistle.position = Layout.Boulder.GapPoint + Vector3.up;
+        // 每推開 25%（這一夜第一次）巨石沉一聲、進度條閃一下（規格第 22 節 C）。
+        if (milestones.Update(Slide.Opening) > 0)
+        {
+            sounds.PlayLocal(sounds.BoulderSettle, 0.7f);
+            settleFlash = SettleFlashSeconds;
+        }
+        settleFlash = Mathf.Max(0f, settleFlash - Time.deltaTime);
         Layout.Boulder.ShowWedges(Slide.StoneWedges);
         feel.Tick(player.PushMode, noise.Catch, Slide.Opening < before, Slide.MaxOpening);
         Vector3 face = Layout.Boulder.PushPoint;
-        if (noise.Grind)
+        // 卡住時只發 Boulder（巨響），不再同時發 Grind，避免兩聲疊在一起。
+        if (noise.Grind && !noise.Catch)
             SoundBus.Emit(SoundKind.Grind, face);
         if (noise.Heavy || noise.Catch)
             SoundBus.Emit(SoundKind.Boulder, face);
@@ -290,6 +321,7 @@ public class BlindGameLoop : MonoBehaviour
             {
                 pullNoiseTimer = 0f;
                 SoundBus.Emit(SoundKind.Cyclops, face);
+                sounds.PulledBack(face);
             }
         }
         else
@@ -326,6 +358,7 @@ public class BlindGameLoop : MonoBehaviour
         {
             LooseStone.Spawn(gap + new Vector3(0f, 0f, -0.3f), new Vector3(0f, 2f, -3f), null, knockedLoose: true);
             SoundBus.Emit(SoundKind.Slip, face);
+            sounds.WedgePulled(gap);
         }
         if (Rush.Squeezing >= 0)
         {
@@ -416,6 +449,7 @@ public class BlindGameLoop : MonoBehaviour
         Vector3 gap = Layout.Boulder.GapPoint + new Vector3(0f, 0f, -0.3f);
         LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null, knockedLoose: true);
         SoundBus.Emit(SoundKind.Cyclops, gap);
+        sounds.WedgePulled(gap);
         Hints.Trigger(HintKind.PulledWedge);
     }
 
@@ -547,7 +581,8 @@ public class BlindGameLoop : MonoBehaviour
         float w = Screen.width * 0.2f, h = fontSize * 0.4f;
         var r = new Rect((Screen.width - w) / 2f, Screen.height * 0.6f, w, h);
         Fill(r, new Color(1f, 1f, 1f, 0.15f));
-        Fill(new Rect(r.x, r.y, w * Slide.Opening / BoulderSlide.FullOpen, h), new Color(0.85f, 0.92f, 1f, 0.9f));
+        Color fill = settleFlash > 0f ? Color.white : new Color(0.85f, 0.92f, 1f, 0.9f);
+        Fill(new Rect(r.x, r.y, w * Slide.Opening / BoulderSlide.FullOpen, h), fill);
     }
 
     static void Fill(Rect r, Color c)

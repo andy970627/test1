@@ -36,19 +36,23 @@ namespace Odyssey.Core
         /// <summary>這種提示在 time 時畫在畫面上。</summary>
         public void MarkShown(PromptKind kind, float time) => lastShown[(int)kind] = time;
 
-        /// <summary>玩家做了這個操作；提示 2 秒內出現過才算學會一次（沒看到提示就亂按到的不算）。</summary>
-        public void Used(PromptKind kind, float time)
+        /// <summary>
+        /// 玩家做了這個操作；提示 2 秒內出現過才算學會一次（沒看到提示就亂按到的不算）。
+        /// 回傳這次是否剛好讓這種提示收起（學會了，播一聲小鈴）。
+        /// </summary>
+        public bool Used(PromptKind kind, float time)
         {
             int i = (int)kind;
             if (time - lastShown[i] > ShownGrace)
-                return;
+                return false;
             if (PerNight(kind))
             {
                 if (usedTonight[i])
-                    return;
+                    return false;
                 usedTonight[i] = true;
             }
             uses[i]++;
+            return kind != PromptKind.Escape && uses[i] == UsesToRetire;
         }
 
         public void NewNight()

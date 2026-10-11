@@ -14,6 +14,7 @@ public class MilkPail : MonoBehaviour
     Vector3 home;
     bool knocked;
     bool fallSounded;
+    ImpactEmitter impacts;
 
     /// <summary>傾斜超過 45° 算倒了。</summary>
     public bool Fallen => Vector3.Angle(Vector3.up, transform.up) > 45f;
@@ -32,7 +33,8 @@ public class MilkPail : MonoBehaviour
         body = gameObject.AddComponent<Rigidbody>();
         body.mass = 2f;
         body.collisionDetectionMode = CollisionDetectionMode.Continuous;
-        gameObject.AddComponent<ImpactEmitter>().Init(SoundKind.Clatter, SoundRules.Loudness(SoundKind.Clatter));
+        impacts = gameObject.AddComponent<ImpactEmitter>();
+        impacts.Init(SoundKind.Clatter, SoundRules.Loudness(SoundKind.Clatter));
         Stand();
     }
 
@@ -62,7 +64,9 @@ public class MilkPail : MonoBehaviour
         if (fallSounded || !Fallen)
             return;
         fallSounded = true;
-        SoundBus.Emit(SoundKind.Clatter, transform.position);
+        // 碰撞剛響過就不再重複（和 ImpactEmitter 共用 0.3 秒的閘）。
+        if (impacts.Gate.TryFire(Time.time))
+            SoundBus.Emit(SoundKind.Clatter, transform.position);
     }
 
     public void Stand()
