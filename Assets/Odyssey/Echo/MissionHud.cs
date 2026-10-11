@@ -84,14 +84,8 @@ public class MissionHud : MonoBehaviour
         Label(new Rect(0, y, Screen.width, titleStyle.fontSize * 1.5f), $"第 {loop.Roster.Night} 夜", titleStyle, Text);
         y += titleStyle.fontSize * 2f;
 
-        string[] lines =
-        {
-            "目標：天亮前把封住洞口的巨石推開，從縫裡鑽出去。",
-            "洞裡一片漆黑：你發出的聲音會短暫照亮四周，瞎眼的巨人也聽得到。",
-            "巨石一放手就會滑回去：塞石子當楔子，保住推開的進度。",
-            $"洞裡還躲著 {loop.Roster.Remaining} 名同伴，找到他們，一起帶出去。",
-            "被巨人抓到，他會吃掉一名同伴，這一夜重來。",
-        };
+        // 只講目標；其他規則由教學與情境提示在用得到時一句一句講（規格第 17 節）。
+        string[] lines = { "目標：天亮前把封住洞口的巨石推開，從縫裡鑽出去。" };
         foreach (string line in lines)
         {
             float h = bodyStyle.CalcHeight(new GUIContent(line), width);

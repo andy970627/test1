@@ -4,7 +4,8 @@ using UnityEngine;
 
 /// <summary>
 /// 遊戲內的操作提示：靠近能互動的東西時，提示浮在它上方；離開就消失。
-/// 同一種提示用過 3 次就不再出現（PromptTracker）。文字加陰影、不加背景。
+/// 同一種提示用過 3 次就不再出現（PromptTracker），每個位置一次只有一行。文字加陰影、不加背景。
+/// 第一夜教學中只畫教學那一行。
 /// </summary>
 public class WorldPrompts : MonoBehaviour
 {
@@ -14,6 +15,9 @@ public class WorldPrompts : MonoBehaviour
     const float CrewLift = 1.45f;
     const float CenterHeight = 0.62f;
     const float StuckNoticeReach = 3f;
+    const float WedgeFirstOpening = 0.05f;
+    const float PerNightPromptSeconds = 20f;
+    const string WedgeText = "右鍵 塞石子當楔子（按住 拔回）";
 
     static readonly Color Text = new(0.97f, 0.95f, 0.88f);
     static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
@@ -38,19 +42,31 @@ public class WorldPrompts : MonoBehaviour
         if (style == null || style.fontSize != fontSize)
             style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter, wordWrap = false };
 
+        // 教學中準星下方只有教學那一行，其他提示都先不出現。
+        lines.Clear();
+        var tutorial = loop.Tutorial;
+        if (tutorial.Active)
+        {
+            lines.Add((tutorial.Text, tutorial.Kind));
+            DrawLines(new Vector2(Screen.width / 2f, Screen.height * CenterHeight));
+            return;
+        }
+
         var player = loop.Player;
         Vector3 me = loop.PlayerPosition;
         Boulder boulder = loop.Layout.Boulder;
 
-        // 巨石
-        lines.Clear();
+        // 巨石：一次一行，先講眼前最用得到的——拿著木樁先講插木樁；已經推開一點就先講楔子。
         if (player.AtBoulder && !loop.Slide.IsOpen)
         {
-            Add(PromptKind.Push, "E 推・Shift＋E 猛推");
-            if (player.Stones > 0 || loop.Slide.StoneWedges.Count > 0)
-                Add(PromptKind.Wedge, "右鍵 塞石子當楔子（按住 拔回）");
+            bool canWedge = player.Stones > 0 || loop.Slide.StoneWedges.Count > 0;
             if (player.CarryingStake)
                 Add(PromptKind.PlantStake, "G 插木樁");
+            if (canWedge && loop.Slide.Opening >= WedgeFirstOpening)
+                Add(PromptKind.Wedge, WedgeText);
+            Add(PromptKind.Push, "E 推・Shift＋E 猛推");
+            if (canWedge)
+                Add(PromptKind.Wedge, WedgeText);
         }
         DrawAt(boulder.PushPoint + Vector3.up * BoulderLift);
 
@@ -92,8 +108,12 @@ public class WorldPrompts : MonoBehaviour
 
         // 準星下方：沒有特定物體的操作
         lines.Clear();
-        Add(PromptKind.Move, "WASD 走・Shift 跑");
-        Add(PromptKind.Clap, "Q 拍手：照亮四周（巨人也聽得到）");
+        // 走路、拍手只在每夜開頭提示；沒用到也不要整夜擋住後面的提示。
+        if (loop.Dawn.Elapsed < PerNightPromptSeconds)
+        {
+            Add(PromptKind.Move, "WASD 走・Shift 跑");
+            Add(PromptKind.Clap, "Q 拍手：照亮四周（巨人也聽得到）");
+        }
         if (player.Stones > 0 && !player.CarryingStake)
             Add(PromptKind.Throw, "左鍵 丟石子：落地聲會把巨人引過去");
         if (player.CarryingStake && !player.AtBoulder)
@@ -126,9 +146,10 @@ public class WorldPrompts : MonoBehaviour
 
     const string StoneLegend = "石子：丟出去引開巨人，或塞進縫當楔子";
 
+    /// <summary>同一個位置一次只顯示一行：已經有一行還沒學會的，後面的先不出現（規格第 17 節 B）。</summary>
     void Add(PromptKind kind, string text)
     {
-        if (tracker.ShouldShow(kind))
+        if (lines.Count == 0 && tracker.ShouldShow(kind))
             lines.Add((text, kind));
     }
 

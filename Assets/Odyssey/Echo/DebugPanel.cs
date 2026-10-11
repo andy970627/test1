@@ -125,6 +125,17 @@ public class DebugPanel : MonoBehaviour
             GUI.Label(new Rect(20, y, panelW, line), $"羊：出去 {gone}{(loop.Rush.Stuck ? "／卡住" : "")}", style);
             y += line;
         }
+        if (loop.Tutorial.Active)
+        {
+            string sleep = loop.Tutorial.Asleep ? "・巨人沉睡" : "";
+            GUI.Label(new Rect(20, y, panelW, line), $"教學：第 {(int)loop.Tutorial.Step + 1} 步{sleep}", style);
+            y += line;
+        }
+        if (loop.Hints.Current is HintKind hint)
+        {
+            GUI.Label(new Rect(20, y, panelW, line), $"提示：{hint}", style);
+            y += line;
+        }
 
         // 死亡紀錄：一夜一行，前面的色塊表示結果。
         foreach (var night in loop.Nights.Lines)

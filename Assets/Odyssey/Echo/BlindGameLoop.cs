@@ -60,6 +60,10 @@ public class BlindGameLoop : MonoBehaviour
     public IReadOnlyList<WanderingSheep> Sheep => sheep;
     /// <summary>F1 死亡紀錄：每夜一行。</summary>
     public NightLog Nights { get; } = new();
+    /// <summary>第一夜巨人沉睡時的循序教學。</summary>
+    public TutorialSteps Tutorial { get; } = new();
+    /// <summary>情境提示：每種整場只講一次，重新開始也保留。</summary>
+    public HintQueue Hints { get; } = new();
 
     void Awake()
     {
@@ -97,8 +101,13 @@ public class BlindGameLoop : MonoBehaviour
         player.EscapeRequested += Escape;
         feel = gameObject.AddComponent<BoulderFeel>();
         feel.Init(Layout.Boulder, body);
-        player.Used += kind => Prompts.Used(kind, Time.time);
+        player.Used += kind =>
+        {
+            Prompts.Used(kind, Time.time);
+            Tutorial.OnUsed(kind);
+        };
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
+        gameObject.AddComponent<SituationHints>().Init(this, Hints);
         hud = gameObject.AddComponent<MissionHud>();
         hud.Init(this);
 
@@ -149,8 +158,33 @@ public class BlindGameLoop : MonoBehaviour
     {
         State.IntroDone();
         player.InputEnabled = true;
-        Cyclops.Active = true;
+        // 第一夜先教學：巨人沉睡到教學最後一步才醒。
+        if (Roster.Night == 1)
+            Tutorial.Start();
+        else
+            Tutorial.Skip();
+        Cyclops.Active = !Tutorial.Asleep;
         nightStart = Time.time;
+    }
+
+    /// <summary>推進教學；巨人在教學最後一步醒來，低吼一聲。</summary>
+    void UpdateTutorial()
+    {
+        if (!Tutorial.Active)
+            return;
+        bool wasAsleep = Tutorial.Asleep;
+        Tutorial.OnMoved(player.MovedTonight);
+        if (player.AtBoulder)
+            Tutorial.OnAtBoulder();
+        Tutorial.Tick(Time.deltaTime, Slide.Opening);
+        if (wasAsleep && !Tutorial.Asleep)
+        {
+            Cyclops.Active = true;
+            // CSV 的秒數從巨人醒來算，不含教學。
+            nightStart = Time.time;
+            Cyclops.Roar();
+            SoundBus.Emit(SoundKind.Cyclops, Cyclops.HeadPosition);
+        }
     }
 
     /// <summary>
@@ -170,6 +204,7 @@ public class BlindGameLoop : MonoBehaviour
         LostTonight = 0;
         Rush.Reset();
         Prompts.NewNight();
+        Hints.NewNight();
         RescuedLastEscape = 0;
         pullNoiseTimer = 0f;
         Dawn.Reset();
@@ -225,6 +260,9 @@ public class BlindGameLoop : MonoBehaviour
         UpdateClutter();
         if (player.MovedTonight >= MovePromptMeters)
             Prompts.Used(PromptKind.Move, Time.time);
+        UpdateTutorial();
+        if (Tutorial.Asleep)
+            return;
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
@@ -244,6 +282,8 @@ public class BlindGameLoop : MonoBehaviour
             SoundBus.Emit(SoundKind.Grind, face);
         if (noise.Heavy || noise.Catch)
             SoundBus.Emit(SoundKind.Boulder, face);
+        if (noise.Catch)
+            Hints.Trigger(HintKind.Catch);
         if (noise.Slip)
             SoundBus.Emit(SoundKind.Slip, face);
 
@@ -331,6 +371,8 @@ public class BlindGameLoop : MonoBehaviour
         int pen = PenIndexAt(pos);
         if (pen != insidePen)
             SoundBus.Emit(SoundKind.Wicker, pos);
+        if (pen >= 0 && insidePen < 0)
+            Hints.Trigger(HintKind.Pen);
         insidePen = pen;
     }
 
@@ -347,6 +389,7 @@ public class BlindGameLoop : MonoBehaviour
         if (State.Phase != LoopPhase.Night || index < 0 || index >= Crew.Members.Count)
             return;
         LoseCrew(Crew.Members[index]);
+        Hints.Trigger(HintKind.CrewEaten);
     }
 
     void OnRockLanded(Vector3 landing)
@@ -378,6 +421,7 @@ public class BlindGameLoop : MonoBehaviour
         Vector3 gap = Layout.Boulder.GapPoint + new Vector3(0f, 0f, -0.3f);
         LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null, knockedLoose: true);
         SoundBus.Emit(SoundKind.Cyclops, gap);
+        Hints.Trigger(HintKind.PulledWedge);
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
