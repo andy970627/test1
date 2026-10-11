@@ -38,9 +38,10 @@ namespace Odyssey.Core
 
         public void Lose() => lostTonight++;
 
-        public void End(int night, NightOutcome outcome, int rescued = 0)
+        /// <param name="eaten">被抓時巨人有沒有真的吃掉一名同伴（洞裡已經沒人時為 false）。</param>
+        public void End(int night, NightOutcome outcome, int rescued = 0, bool eaten = true)
         {
-            int lost = lostTonight + (outcome == NightOutcome.Escaped ? 0 : 1);
+            int lost = lostTonight + (outcome != NightOutcome.Escaped && eaten ? 1 : 0);
             lostTonight = 0;
             string text = $"第 {night} 夜  {Describe(outcome, rescued)}";
             if (lost > 0)

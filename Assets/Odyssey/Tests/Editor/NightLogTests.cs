@@ -52,6 +52,16 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void CaughtWithNobodyLeftToEat_DoesNotAddOne()
+        {
+            var log = new NightLog();
+            log.Lose();
+            log.End(4, NightOutcome.Touched, eaten: false);
+            Assert.AreEqual(1, log.Lines[0].Lost);
+            Assert.AreEqual("第 4 夜  被摸到  −1 名同伴", log.Lines[0].Text);
+        }
+
+        [Test]
         public void KeepsLastSixNights()
         {
             var log = new NightLog();

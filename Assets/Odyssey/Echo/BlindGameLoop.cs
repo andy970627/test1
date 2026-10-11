@@ -397,7 +397,7 @@ public class BlindGameLoop : MonoBehaviour
             body.FaceTowards(Cyclops.HeadPosition);
 
         string cause = FailReasonText.Describe(reason);
-        Nights.End(night, NightLog.From(reason));
+        Nights.End(night, NightLog.From(reason), eaten: record.Crew > 0);
 
         // 死亡原因與下一夜合成同一個過場，緊接在被抓之後，不再另外播開場。
         if (State.Phase == LoopPhase.Wiped)

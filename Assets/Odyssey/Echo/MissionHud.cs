@@ -53,6 +53,8 @@ public class MissionHud : MonoBehaviour
     {
         if (loop == null)
             return;
+        // 簡報要蓋在 F1 除錯面板上面（depth 越小越上層）。
+        GUI.depth = -10;
         EnsureStyles();
         if (BriefingOpen)
             DrawBriefing();
@@ -69,7 +71,7 @@ public class MissionHud : MonoBehaviour
             return;
         titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleLeft, wordWrap = true };
-        listStyle = new GUIStyle(GUI.skin.label) { fontSize = list, alignment = TextAnchor.MiddleLeft };
+        listStyle = new GUIStyle(GUI.skin.label) { fontSize = list, alignment = TextAnchor.MiddleLeft, wordWrap = false };
     }
 
     void DrawBriefing()
@@ -106,7 +108,7 @@ public class MissionHud : MonoBehaviour
     {
         int font = listStyle.fontSize;
         float line = font * 1.5f;
-        float width = Screen.width * 0.22f;
+        float width = Mathf.Max(Screen.width * 0.22f, listStyle.CalcSize(new GUIContent("帶同伴：跟隨 12／洞裡還有 12")).x);
         float x = Screen.width - width - 20f;
         float y = 20f;
         float barH = font * 0.35f;

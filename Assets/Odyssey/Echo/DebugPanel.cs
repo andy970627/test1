@@ -83,7 +83,7 @@ public class DebugPanel : MonoBehaviour
             return;
 
         int fontSize = Mathf.Max(22, Screen.height / 28);
-        var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize };
+        var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = false };
         style.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
         float line = fontSize * 1.4f;
 
