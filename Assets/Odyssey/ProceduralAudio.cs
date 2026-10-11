@@ -147,6 +147,93 @@ public static class ProceduralAudio
         }
     }
 
+    /// <summary>巨人的腳步：0.5 秒的低沉重踩（60Hz 加 120Hz 泛音，筆電喇叭也聽得到），加一點碎石噪音。</summary>
+    public static AudioClip GiantStep()
+    {
+        var data = new float[(int)(SampleRate * 0.5f)];
+        AddThump(data, 0f, 0.45f, 60f, 10f);
+        AddThump(data, 0f, 0.2f, 120f, 14f);
+        AddGravel(data, 0f, 0.25f, 0.25f, 11);
+        return Make("GiantStep", data);
+    }
+
+    /// <summary>巨人雙手掃過地面：0.6 秒、先強後弱的粗糙摩擦。</summary>
+    public static AudioClip GiantSweep()
+    {
+        var data = new float[(int)(SampleRate * 0.6f)];
+        var rng = new System.Random(41);
+        float lowpass = 0f;
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += 0.15f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            data[i] = 0.9f * lowpass * Mathf.Sin(Mathf.PI * t / 0.6f);
+        }
+        return Make("GiantSweep", data);
+    }
+
+    /// <summary>嚼食：0.3 秒內兩下濕的碎裂聲。</summary>
+    public static AudioClip Chew()
+    {
+        var data = new float[(int)(SampleRate * 0.3f)];
+        AddThump(data, 0f, 0.3f, 90f, 25f);
+        AddGravel(data, 0f, 0.08f, 0.45f, 51);
+        AddGravel(data, 0.14f, 0.1f, 0.4f, 52);
+        return Make("Chew", data);
+    }
+
+    /// <summary>巨人丟的岩石落地：0.9 秒的重擊加大片碎石。</summary>
+    public static AudioClip RockImpact()
+    {
+        var data = new float[(int)(SampleRate * 0.9f)];
+        AddThump(data, 0f, 0.5f, 55f, 6f);
+        AddThump(data, 0f, 0.2f, 110f, 9f);
+        AddGravel(data, 0f, 0.7f, 0.3f, 61);
+        return Make("RockImpact", data);
+    }
+
+    /// <summary>蹲著走的腳步：0.12 秒的輕微碎石聲。</summary>
+    public static AudioClip FootStep()
+    {
+        var data = new float[(int)(SampleRate * 0.12f)];
+        AddGravel(data, 0f, 0.12f, 0.35f, 21);
+        return Make("FootStep", data);
+    }
+
+    /// <summary>跑步的腳步：0.2 秒，較重的碎石聲加一下悶響。</summary>
+    public static AudioClip HeavyStep()
+    {
+        var data = new float[(int)(SampleRate * 0.2f)];
+        AddThump(data, 0f, 0.35f, 70f, 30f);
+        AddGravel(data, 0f, 0.18f, 0.6f, 31);
+        return Make("HeavyStep", data);
+    }
+
+    static void AddThump(float[] data, float start, float gain, float hz, float decay)
+    {
+        int begin = (int)(start * SampleRate);
+        for (int i = 0; begin + i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            data[begin + i] += gain * Mathf.Sin(2f * Mathf.PI * hz * t) * Mathf.Exp(-decay * t);
+        }
+    }
+
+    /// <summary>碎石：濾波噪音，起音快、指數衰減。</summary>
+    static void AddGravel(float[] data, float start, float seconds, float gain, int seed)
+    {
+        var rng = new System.Random(seed);
+        int begin = (int)(start * SampleRate);
+        int length = (int)(seconds * SampleRate);
+        float lowpass = 0f;
+        for (int i = 0; i < length && begin + i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            lowpass += 0.4f * ((float)rng.NextDouble() * 2f - 1f - lowpass);
+            data[begin + i] += gain * lowpass * Mathf.Clamp01(t / 0.005f) * Mathf.Exp(-5f * t / seconds);
+        }
+    }
+
     static AudioClip Make(string name, float[] data)
     {
         var clip = AudioClip.Create(name, data.Length, 1, SampleRate, false);

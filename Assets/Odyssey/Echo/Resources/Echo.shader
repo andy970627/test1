@@ -45,6 +45,7 @@ Shader "Odyssey/Echo"
             float _EchoNow;
             float _EchoSpread;
             float _EchoFade;
+            float _EchoHear[16];    // 巨人聽得到的半徑；0 = 不畫邊
 
             half4 frag(Varyings i) : SV_Target
             {
@@ -68,6 +69,10 @@ Shader "Odyssey/Echo"
                         lit += color * (1 - saturate((age - sweptAt) / fade));
                     }
                     ring += color * (1 - saturate(abs(d - front) / 0.4)) * (1 - saturate(age / fade));
+                    // 難度：巨人聽得到的那一圈，波前掃到後畫一道淡淡的邊（亮度為波前的一半）。
+                    float hear = _EchoHear[k];
+                    if (hear > 0 && front >= min(hear, radius))
+                        ring += color * 0.5 * (1 - saturate(abs(d - hear) / 0.15)) * (1 - saturate(age / fade));
                 }
                 return half4(_BaseColor.rgb * lit * 2 + ring * 0.6, 1);
             }

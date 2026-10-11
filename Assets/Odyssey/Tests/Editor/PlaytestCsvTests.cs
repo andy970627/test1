@@ -21,20 +21,20 @@ namespace Odyssey.Core.Tests
         [Test]
         public void Line_UsesInvariantFormat()
         {
-            string line = PlaytestCsv.Line(new DateTime(2026, 10, 10, 12, 0, 0), 3, 10, 72, 2, 1, LoopPhase.Night, "Dawn", 12.34f);
-            Assert.AreEqual("2026-10-10 12:00:00,3,10,72,2,1,Night,Dawn,12.3", line);
+            string line = PlaytestCsv.Line(new DateTime(2026, 10, 10, 12, 0, 0), 3, 10, 72, 2, 1, LoopPhase.Night, "Dawn", 12.34f, DifficultyLevel.Familiar);
+            Assert.AreEqual("2026-10-10 12:00:00,3,10,72,2,1,Night,Dawn,12.3,Familiar", line);
         }
 
         [Test]
         public void FileName_IsSeparateFromV1Columns()
         {
-            Assert.AreEqual("blind_cave_v2_playtest.csv", PlaytestCsv.FileName);
+            Assert.AreEqual("blind_cave_v3_playtest.csv", PlaytestCsv.FileName);
         }
 
         [Test]
         public void Header_HasRescuedAndLost()
         {
-            Assert.AreEqual("time,night,crew,boulder,rescued,lost,phase,outcome,seconds", PlaytestCsv.Header);
+            Assert.AreEqual("time,night,crew,boulder,rescued,lost,phase,outcome,seconds,difficulty", PlaytestCsv.Header);
         }
     }
 }

@@ -91,6 +91,13 @@ namespace Odyssey.Core
 
         bool OnGuard => guarding || HoldingBoulder || chasingNearBoulder;
 
+        /// <summary>難度：乘在移動速度與聽覺半徑上（規格第 18 節）。</summary>
+        public DifficultyLevel Level { get; set; } = DifficultyLevel.Normal;
+
+        /// <summary>這種聲音的聽覺半徑倍率：難度 × 石子學習（回聲畫聽覺邊也用這個）。</summary>
+        public float HearingMultiplierFor(SoundKind kind) =>
+            (kind == SoundKind.Stone ? memory.StoneRadiusMultiplier : 1f) * Difficulty.HearingMultiplier(Level);
+
         public CyclopsBrain(Vector2 start, DecoyMemory memory, Func<double> roll)
         {
             this.memory = memory;
@@ -112,8 +119,7 @@ namespace Odyssey.Core
 
         public void Hear(SoundEvent e)
         {
-            float multiplier = e.Kind == SoundKind.Stone ? memory.StoneRadiusMultiplier : 1f;
-            if (!SoundRules.CanHear(e, Position, multiplier))
+            if (!SoundRules.CanHear(e, Position, HearingMultiplierFor(e.Kind)))
                 return;
 
             // 巨石自己往回滑（Slip）時，已經守在旁邊的巨人不必重新摸一次：只記下巨石現在的位置。
@@ -245,7 +251,7 @@ namespace Odyssey.Core
 
         void Move(float dt)
         {
-            float speed = State == CyclopsState.Guard ? RunSpeed : WalkSpeed;
+            float speed = (State == CyclopsState.Guard ? RunSpeed : WalkSpeed) * Difficulty.SpeedMultiplier(Level);
             Vector2 toTarget = Target - Position;
             float distance = toTarget.Length();
             float step = Math.Min(speed * dt, distance);

@@ -31,6 +31,8 @@ public class BlindCyclops : MonoBehaviour
     public event Action<int> AteCrew;
     public event Action<Vector3> RockLanded;
     public event Action PulledWedge;
+    /// <summary>巨人自己發出聲音的那一刻（腳步、掃摸、嚼食、呼吸），帶著當時的狀態；SoundPlayer 依狀態播音效。</summary>
+    public event Action<CyclopsState> Sounded;
 
     /// <summary>飛行中岩石的落點（給除錯面板）；沒有為 null。</summary>
     public Vector3? IncomingRock => rock != null ? rock.Target : null;
@@ -168,6 +170,7 @@ public class BlindCyclops : MonoBehaviour
             return;
         soundTimer = 0f;
         SoundBus.Emit(SoundKind.Cyclops, transform.position + Vector3.up * SoundHeight);
+        Sounded?.Invoke(Brain.State);
     }
 
     void BuildBody()

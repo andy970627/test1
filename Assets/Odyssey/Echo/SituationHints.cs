@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// 情境提示（規格第 17 節 C）：看著巨人、巨石、羊群、雜物與聲音，某件事第一次發生時講一句，
-/// 畫在畫面上方中央（文字加陰影、不加背景）。教學中與夜晚以外暫停。
+/// 畫在畫面上方中央（文字加陰影、不加背景）。夜晚以外暫停。
 /// </summary>
 public class SituationHints : MonoBehaviour
 {
@@ -32,7 +32,7 @@ public class SituationHints : MonoBehaviour
 
     void OnDestroy() => SoundBus.Emitted -= OnSound;
 
-    bool Paused => loop.State.Phase != LoopPhase.Night || loop.Tutorial.Active;
+    bool Paused => loop.State.Phase != LoopPhase.Night;
 
     void OnSound(SoundEvent e, Vector3 at)
     {

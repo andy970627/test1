@@ -21,17 +21,20 @@ public class MissionHud : MonoBehaviour
     static readonly Color DawnBar = new(0.7f, 0.7f, 0.65f);
 
     BlindGameLoop loop;
-    Action onStart;
+    Action<DifficultyLevel> onStart;
+    DifficultyLevel selected;
     float briefingSince;
-    GUIStyle titleStyle, bodyStyle, listStyle;
+    GUIStyle titleStyle, bodyStyle, listStyle, choiceStyle;
 
     public bool BriefingOpen { get; private set; }
 
     public void Init(BlindGameLoop loop) => this.loop = loop;
 
-    public void ShowBriefing(Action onStart)
+    /// <summary>開場簡報：一句目標＋選難度（預設上次選的）；3 秒後按空白鍵開始，回傳選的難度。</summary>
+    public void ShowBriefing(DifficultyLevel current, Action<DifficultyLevel> onStart)
     {
         this.onStart = onStart;
+        selected = current;
         briefingSince = Time.time;
         BriefingOpen = true;
     }
@@ -41,12 +44,24 @@ public class MissionHud : MonoBehaviour
     void Update()
     {
         var keyboard = Keyboard.current;
-        if (!BriefingOpen || keyboard == null || !CanStart || !keyboard.spaceKey.wasPressedThisFrame)
+        if (!BriefingOpen || keyboard == null)
+            return;
+        if (keyboard.leftArrowKey.wasPressedThisFrame && selected > DifficultyLevel.Familiar)
+            selected--;
+        if (keyboard.rightArrowKey.wasPressedThisFrame && selected < DifficultyLevel.Hard)
+            selected++;
+        if (keyboard.digit1Key.wasPressedThisFrame)
+            selected = DifficultyLevel.Familiar;
+        if (keyboard.digit2Key.wasPressedThisFrame)
+            selected = DifficultyLevel.Normal;
+        if (keyboard.digit3Key.wasPressedThisFrame)
+            selected = DifficultyLevel.Hard;
+        if (!CanStart || !keyboard.spaceKey.wasPressedThisFrame)
             return;
         BriefingOpen = false;
         var start = onStart;
         onStart = null;
-        start?.Invoke();
+        start?.Invoke(selected);
     }
 
     void OnGUI()
@@ -70,6 +85,7 @@ public class MissionHud : MonoBehaviour
         if (titleStyle != null && titleStyle.fontSize == title && bodyStyle.fontSize == body && listStyle.fontSize == list)
             return;
         titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
+        choiceStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleCenter, wordWrap = false };
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleLeft, wordWrap = true };
         listStyle = new GUIStyle(GUI.skin.label) { fontSize = list, alignment = TextAnchor.MiddleLeft, wordWrap = false };
     }
@@ -84,14 +100,25 @@ public class MissionHud : MonoBehaviour
         Label(new Rect(0, y, Screen.width, titleStyle.fontSize * 1.5f), $"第 {loop.Roster.Night} 夜", titleStyle, Text);
         y += titleStyle.fontSize * 2f;
 
-        // 只講目標；其他規則由教學與情境提示在用得到時一句一句講（規格第 17 節）。
-        string[] lines = { "目標：天亮前把封住洞口的巨石推開，從縫裡鑽出去。" };
-        foreach (string line in lines)
+        // 只講目標；其他規則由物體提示與情境提示在用得到時講（規格第 17、18 節）。
+        const string goal = "目標：天亮前把封住洞口的巨石推開，從縫裡鑽出去。";
+        float goalH = bodyStyle.CalcHeight(new GUIContent(goal), width);
+        Label(new Rect(x, y, width, goalH), goal, bodyStyle, Text);
+        y += goalH + bodyStyle.fontSize * 2f;
+
+        // 難度：三選一，選中的亮、其他暗；底下一句說明。
+        float slot = width / 3f;
+        float rowH = choiceStyle.fontSize * 1.6f;
+        for (int i = 0; i < 3; i++)
         {
-            float h = bodyStyle.CalcHeight(new GUIContent(line), width);
-            Label(new Rect(x, y, width, h), line, bodyStyle, Text);
-            y += h + bodyStyle.fontSize * 0.5f;
+            var level = (DifficultyLevel)i;
+            string name = level == selected ? $"［ {Difficulty.Name(level)} ］" : Difficulty.Name(level);
+            Label(new Rect(x + slot * i, y, slot, rowH), name, choiceStyle, level == selected ? Text : Dim);
         }
+        y += rowH;
+        Label(new Rect(x, y, width, rowH), Difficulty.Blurb(selected), choiceStyle, Text);
+        y += rowH;
+        Label(new Rect(x, y, width, rowH), "← → 或 1／2／3 選難度", choiceStyle, Dim);
 
         if (CanStart)
             Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "按空白鍵開始", titleStyle, Dim);

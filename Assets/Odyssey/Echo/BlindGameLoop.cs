@@ -21,6 +21,7 @@ public class BlindGameLoop : MonoBehaviour
     FirstPersonPlayer body;
     EchoPlayer player;
     EchoField echo;
+    Transform gapWhistle;
     BoulderFeel feel;
     MissionHud hud;
     float nightStart;
@@ -36,7 +37,6 @@ public class BlindGameLoop : MonoBehaviour
     const float PullNoiseSeconds = 0.5f;
     const float PailReach = 0.6f;
     const float RackReach = 0.8f;
-    const float RescueReach = 3f;
     const float MovePromptMeters = 3f;
 
     public CaveLoopState State { get; private set; }
@@ -60,8 +60,8 @@ public class BlindGameLoop : MonoBehaviour
     public IReadOnlyList<WanderingSheep> Sheep => sheep;
     /// <summary>F1 死亡紀錄：每夜一行。</summary>
     public NightLog Nights { get; } = new();
-    /// <summary>第一夜巨人沉睡時的循序教學。</summary>
-    public TutorialSteps Tutorial { get; } = new();
+    /// <summary>簡報選的難度：整局固定，按 R 重新開始時記住上次選的。</summary>
+    public DifficultyLevel Difficulty { get; private set; } = DifficultyLevel.Normal;
     /// <summary>情境提示：每種整場只講一次，重新開始也保留。</summary>
     public HintQueue Hints { get; } = new();
 
@@ -101,11 +101,7 @@ public class BlindGameLoop : MonoBehaviour
         player.EscapeRequested += Escape;
         feel = gameObject.AddComponent<BoulderFeel>();
         feel.Init(Layout.Boulder, body);
-        player.Used += kind =>
-        {
-            Prompts.Used(kind, Time.time);
-            Tutorial.OnUsed(kind);
-        };
+        player.Used += kind => Prompts.Used(kind, Time.time);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
         gameObject.AddComponent<SituationHints>().Init(this, Hints);
         hud = gameObject.AddComponent<MissionHud>();
@@ -118,25 +114,39 @@ public class BlindGameLoop : MonoBehaviour
         Cyclops.AteCrew += OnAteCrew;
         Cyclops.RockLanded += OnRockLanded;
         Cyclops.PulledWedge += OnPulledWedge;
+        gameObject.AddComponent<SoundPlayer>().Init(Cyclops);
 
-        // 洞外的海風從巨石後面傳來：越接近洞口越大聲。
-        var wind = new GameObject("SeaWind").AddComponent<AudioSource>();
-        wind.transform.SetParent(caveRoot, false);
-        wind.transform.position = Layout.Cave.OutsidePoint + Vector3.up;
-        wind.clip = ProceduralAudio.SeaWind();
-        wind.loop = true;
-        wind.spatialBlend = 1f;
-        wind.rolloffMode = AudioRolloffMode.Linear;
-        wind.minDistance = 2f;
-        wind.maxDistance = 24f;
-        wind.volume = 0.6f;
-        wind.Play();
+        // 洞外的海風從巨石後面傳來：整個洞都聽得到，越接近洞口越大聲、左右聲道分得清；
+        // 縫旁再加一道從縫鑽進來的細呼嘯聲。
+        AudioClip windClip = ProceduralAudio.SeaWind();
+        var wind = Loop3D("SeaWind", caveRoot, Layout.Cave.OutsidePoint + Vector3.up, windClip, AudioRolloffMode.Logarithmic, 3f, 60f, 0.8f, 1f);
+        wind.spread = 0f;
+        gapWhistle = Loop3D("GapWhistle", caveRoot, Layout.Boulder.GapPoint + Vector3.up, windClip, AudioRolloffMode.Linear, 1f, 8f, 0.4f, 1.8f).transform;
+
 
         logPath = Path.Combine(Application.persistentDataPath, PlaytestCsv.FileName);
         if (!File.Exists(logPath))
             PlaytestCsv.TryAppend(logPath, PlaytestCsv.Header, out _);
 
         ResetNight();
+    }
+
+    static AudioSource Loop3D(string name, Transform parent, Vector3 at, AudioClip clip, AudioRolloffMode rolloff,
+        float min, float max, float volume, float pitch)
+    {
+        var source = new GameObject(name).AddComponent<AudioSource>();
+        source.transform.SetParent(parent, false);
+        source.transform.position = at;
+        source.clip = clip;
+        source.loop = true;
+        source.spatialBlend = 1f;
+        source.rolloffMode = rolloff;
+        source.minDistance = min;
+        source.maxDistance = max;
+        source.volume = volume;
+        source.pitch = pitch;
+        source.Play();
+        return source;
     }
 
     void Start() => BeginIntro();
@@ -148,7 +158,12 @@ public class BlindGameLoop : MonoBehaviour
         Show($"第 {Roster.Night} 夜", "巨人瞎了，洞口被巨石封住", $"剩下 {Roster.Remaining} 名同伴", ResetNight, () =>
         {
             if (Roster.Night == 1)
-                hud.ShowBriefing(StartNight);
+                hud.ShowBriefing(Difficulty, level =>
+                {
+                    Difficulty = level;
+                    ApplyDifficulty();
+                    StartNight();
+                });
             else
                 StartNight();
         });
@@ -158,33 +173,15 @@ public class BlindGameLoop : MonoBehaviour
     {
         State.IntroDone();
         player.InputEnabled = true;
-        // 第一夜先教學：巨人沉睡到教學最後一步才醒。
-        if (Roster.Night == 1)
-            Tutorial.Start();
-        else
-            Tutorial.Skip();
-        Cyclops.Active = !Tutorial.Asleep;
+        Cyclops.Active = true;
         nightStart = Time.time;
     }
 
-    /// <summary>推進教學；巨人在教學最後一步醒來，低吼一聲。</summary>
-    void UpdateTutorial()
+    /// <summary>把難度套到巨人（速度、聽覺）與回聲（聽覺範圍的邊）。</summary>
+    void ApplyDifficulty()
     {
-        if (!Tutorial.Active)
-            return;
-        bool wasAsleep = Tutorial.Asleep;
-        Tutorial.OnMoved(player.MovedTonight);
-        if (player.AtBoulder)
-            Tutorial.OnAtBoulder();
-        Tutorial.Tick(Time.deltaTime, Slide.Opening);
-        if (wasAsleep && !Tutorial.Asleep)
-        {
-            Cyclops.Active = true;
-            // CSV 的秒數從巨人醒來算，不含教學。
-            nightStart = Time.time;
-            Cyclops.Roar();
-            SoundBus.Emit(SoundKind.Cyclops, Cyclops.HeadPosition);
-        }
+        Cyclops.Brain.Level = Difficulty;
+        echo.HearingFor = Cyclops.Brain.HearingMultiplierFor;
     }
 
     /// <summary>
@@ -260,9 +257,6 @@ public class BlindGameLoop : MonoBehaviour
         UpdateClutter();
         if (player.MovedTonight >= MovePromptMeters)
             Prompts.Used(PromptKind.Move, Time.time);
-        UpdateTutorial();
-        if (Tutorial.Asleep)
-            return;
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
@@ -275,6 +269,7 @@ public class BlindGameLoop : MonoBehaviour
         float before = Slide.Opening;
         BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake);
         Layout.Boulder.SetOpening(Slide.Opening);
+        gapWhistle.position = Layout.Boulder.GapPoint + Vector3.up;
         Layout.Boulder.ShowWedges(Slide.StoneWedges);
         feel.Tick(player.PushMode, noise.Catch, Slide.Opening < before, Slide.MaxOpening);
         Vector3 face = Layout.Boulder.PushPoint;
@@ -460,12 +455,8 @@ public class BlindGameLoop : MonoBehaviour
         // 縫裡有羊正在鑽或卡住時鑽不出去。
         if (State.Phase != LoopPhase.Night || !Slide.IsOpen || !Rush.GapClear)
             return;
-        // 縫 3 m 內的跟隨者一起鑽出去。
-        Vector3 gap = Layout.Boulder.GapPoint;
-        RescuedLastEscape = 0;
-        foreach (var m in Crew.Followers)
-            if (Flat(m.transform.position - gap).magnitude <= RescueReach)
-                RescuedLastEscape++;
+        // 正在跟隨的同伴全部一起鑽出去；蹲著待命的隊伍留在原地（縫前會提示「F 隊伍跟上」）。
+        RescuedLastEscape = Crew.Crouching ? 0 : Crew.Followers.Count;
         State.Escape();
         player.InputEnabled = false;
         feel.ResetForNight();
@@ -489,7 +480,7 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>night／crew 是這一夜當時的夜數與同伴數（被吃之前）。寫不進去只警告，不影響遊戲。</summary>
     void Log(string outcome, int night, int crew)
     {
-        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), RescuedLastEscape, LostTonight, LoopPhase.Night, outcome, Time.time - nightStart);
+        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), RescuedLastEscape, LostTonight, LoopPhase.Night, outcome, Time.time - nightStart, Difficulty);
         Debug.Log("[BlindCave] " + line);
         if (!PlaytestCsv.TryAppend(logPath, line, out string error))
             Debug.LogWarning($"BlindGameLoop: 無法寫入實測紀錄（檔案可能正被其他程式開著）：{error}");

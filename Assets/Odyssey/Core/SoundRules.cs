@@ -49,6 +49,13 @@ namespace Odyssey.Core
         public static bool IsBoulder(SoundKind kind) =>
             kind == SoundKind.Boulder || kind == SoundKind.Grind || kind == SoundKind.Slip;
 
+        /// <summary>會照亮四周的聲音（規格第 19 節 A）：只有玩家主動弄出來的；其他聲音巨人照樣聽得到，但只有聲音。</summary>
+        public static bool Lights(SoundKind kind) => kind switch
+        {
+            SoundKind.Clap or SoundKind.Stone or SoundKind.Boulder or SoundKind.Grind or SoundKind.Wedge or SoundKind.Clatter => true,
+            _ => false,
+        };
+
         public static float Radius(float loudness) => loudness * RadiusPerLoudness;
 
         /// <summary>建立聲音：聲量先乘 scale（羊圈、撞擊力道），羊叫以外的聲音若在最近一次羊叫的 3 m、1 秒內，再 ×0.4。</summary>

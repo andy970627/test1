@@ -20,9 +20,12 @@ public class Boulder : MonoBehaviour
 
     static readonly Color NightGlow = new(0.05f, 0.08f, 0.25f);
     static readonly Color DawnGlow = new(0.7f, 0.7f, 0.65f);
+    static readonly Color MoonGlow = new(0.10f, 0.12f, 0.18f);
+    const float RimWidth = 0.06f;
 
     Transform body;
     Transform gapLight;
+    Material rimMaterial;
     Material gapMaterial;
     Vector3 center;
     float slide;
@@ -52,6 +55,8 @@ public class Boulder : MonoBehaviour
         body.localScale = new Vector3(Width, Height, Depth);
         bodyGo.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(StoneColor);
         AddGrooves(body);
+        rimMaterial = OdysseyMaterials.Create(Color.black, MoonGlow);
+        AddMoonRim(body, rimMaterial);
 
         var blocker = new GameObject("GapBlocker").AddComponent<BoxCollider>();
         blocker.transform.SetParent(transform, false);
@@ -86,6 +91,29 @@ public class Boulder : MonoBehaviour
             float y = (i - 1) * 0.25f; // 高度的 −25%、0、+25%
             t.localPosition = new Vector3(0f, y, -0.5f - GrooveDepth / 2f / Depth);
             t.localScale = new Vector3(0.8f, GrooveHeight / Height, GrooveDepth / Depth);
+        }
+    }
+
+    /// <summary>
+    /// 巨石左右與上緣透出的一絲月光（規格第 19 節 C）：自發光，不用回聲也看得到，當作洞口的方向座標。
+    /// 掛在 body 底下跟著滑，沒有碰撞。
+    /// </summary>
+    static void AddMoonRim(Transform body, Material material)
+    {
+        float w = RimWidth;
+        Rim("RimLeft", new Vector3(-0.5f + w / 2f / Width, 0f, -0.5f), new Vector3(w / Width, 1f, 0.02f / Depth));
+        Rim("RimRight", new Vector3(0.5f - w / 2f / Width, 0f, -0.5f), new Vector3(w / Width, 1f, 0.02f / Depth));
+        Rim("RimTop", new Vector3(0f, 0.5f - w / 2f / Height, -0.5f), new Vector3(1f, w / Height, 0.02f / Depth));
+
+        void Rim(string name, Vector3 localPos, Vector3 localScale)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            Destroy(go.GetComponent<Collider>());
+            go.GetComponent<Renderer>().sharedMaterial = material;
+            go.transform.SetParent(body, false);
+            go.transform.localPosition = localPos + new Vector3(0f, 0f, -0.011f / Depth);
+            go.transform.localScale = localScale;
         }
     }
 
@@ -130,5 +158,6 @@ public class Boulder : MonoBehaviour
     public void SetDawn(float fraction)
     {
         OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, Mathf.Clamp01(fraction)));
+        OdysseyMaterials.SetEmission(rimMaterial, Color.Lerp(MoonGlow, DawnGlow, Mathf.Clamp01(fraction)));
     }
 }

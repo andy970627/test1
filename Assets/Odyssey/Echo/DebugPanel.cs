@@ -98,7 +98,7 @@ public class DebugPanel : MonoBehaviour
         CyclopsState state = loop.Cyclops.Brain.State;
         Fill(new Rect(20, y + line * 0.2f, line * 0.6f, line * 0.6f), StateColor(state));
         string hold = loop.Cyclops.Brain.HoldingBoulder ? "・守著巨石" : "";
-        GUI.Label(new Rect(20 + line, y, panelW, line), $"巨人：{StateName(state)}{hold}", style);
+        GUI.Label(new Rect(20 + line, y, panelW, line), $"巨人：{StateName(state)}{hold}・{Difficulty.Name(loop.Difficulty)}", style);
         y += line;
 
         float barW = panelW - fontSize * 6f - 20f;
@@ -123,12 +123,6 @@ public class DebugPanel : MonoBehaviour
                 if (g)
                     gone++;
             GUI.Label(new Rect(20, y, panelW, line), $"羊：出去 {gone}{(loop.Rush.Stuck ? "／卡住" : "")}", style);
-            y += line;
-        }
-        if (loop.Tutorial.Active)
-        {
-            string sleep = loop.Tutorial.Asleep ? "・巨人沉睡" : "";
-            GUI.Label(new Rect(20, y, panelW, line), $"教學：第 {(int)loop.Tutorial.Step + 1} 步{sleep}", style);
             y += line;
         }
         if (loop.Hints.Current is HintKind hint)

@@ -9,6 +9,16 @@ namespace Odyssey.Core.Tests
         static readonly List<SoundEvent> NoBleats = new();
 
         [Test]
+        public void Lights_OnlyActiveSounds()
+        {
+            foreach (var k in new[] { SoundKind.Clap, SoundKind.Stone, SoundKind.Boulder, SoundKind.Grind, SoundKind.Wedge, SoundKind.Clatter })
+                Assert.IsTrue(SoundRules.Lights(k), k.ToString());
+            foreach (var k in new[] { SoundKind.Step, SoundKind.Run, SoundKind.Pant, SoundKind.Drag, SoundKind.Cheese, SoundKind.Wicker,
+                         SoundKind.Bleat, SoundKind.Whimper, SoundKind.Slip, SoundKind.Cyclops, SoundKind.RockImpact })
+                Assert.IsFalse(SoundRules.Lights(k), k.ToString());
+        }
+
+        [Test]
         public void Loudness_MatchesSpec()
         {
             Assert.AreEqual(0.15f, SoundRules.Loudness(SoundKind.Step));
