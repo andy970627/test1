@@ -24,6 +24,15 @@ namespace Odyssey.Core
             SoundKind.Bleat => 0.5f,
             SoundKind.Cyclops => 0.15f,
             SoundKind.Pant => 0.2f,
+            SoundKind.Whimper => 0.2f,
+            SoundKind.RockImpact => 0.8f,
+            SoundKind.Drag => 0.25f,
+            SoundKind.Clatter => 0.7f,
+            SoundKind.Cheese => 0.4f,
+            SoundKind.Wicker => 0.25f,
+            SoundKind.Grind => 0.3f,
+            SoundKind.Slip => 0.15f,
+            SoundKind.Wedge => 0.25f,
             _ => 0f,
         };
 
@@ -31,15 +40,21 @@ namespace Odyssey.Core
         {
             SoundKind.Bleat => SoundSource.Sheep,
             SoundKind.Cyclops => SoundSource.Cyclops,
+            SoundKind.RockImpact => SoundSource.Cyclops,
+            SoundKind.Whimper => SoundSource.Crew,
             _ => SoundSource.Player,
         };
 
+        /// <summary>巨石的聲音（猛推、輕推、回滑）：巨人聽到就跑回去守石。</summary>
+        public static bool IsBoulder(SoundKind kind) =>
+            kind == SoundKind.Boulder || kind == SoundKind.Grind || kind == SoundKind.Slip;
+
         public static float Radius(float loudness) => loudness * RadiusPerLoudness;
 
-        /// <summary>建立聲音；羊叫以外的聲音若在最近一次羊叫的 3 m、1 秒內，聲量 ×0.4。</summary>
-        public static SoundEvent Create(SoundKind kind, Vector2 position, float time, IReadOnlyList<SoundEvent> recentBleats)
+        /// <summary>建立聲音：聲量先乘 scale（羊圈、撞擊力道），羊叫以外的聲音若在最近一次羊叫的 3 m、1 秒內，再 ×0.4。</summary>
+        public static SoundEvent Create(SoundKind kind, Vector2 position, float time, IReadOnlyList<SoundEvent> recentBleats, float scale = 1f)
         {
-            float loudness = Loudness(kind);
+            float loudness = Loudness(kind) * scale;
             if (kind != SoundKind.Bleat && recentBleats != null)
                 foreach (var bleat in recentBleats)
                 {
@@ -56,7 +71,7 @@ namespace Odyssey.Core
         /// <summary>巨人在 listener 能否聽到；巨人自己的聲音永遠不算。邊界上算聽得到。</summary>
         public static bool CanHear(SoundEvent e, Vector2 listener, float radiusMultiplier = 1f)
         {
-            if (e.Kind == SoundKind.Cyclops)
+            if (SoundRules.Source(e.Kind) == SoundSource.Cyclops)
                 return false;
             return Vector2.Distance(e.Position, listener) <= Radius(e.Loudness) * radiusMultiplier + 1e-4f;
         }

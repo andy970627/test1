@@ -7,5 +7,6 @@ namespace Odyssey.Core
         Touched,    // 巨人循著聲音摸到
         Bumped,     // 撞上巨人
         Dawn,       // 天亮，巨人把巨石推回原位
+        Crushed,    // 被巨人扔來的岩石砸中
     }
 }

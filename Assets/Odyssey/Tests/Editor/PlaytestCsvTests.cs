@@ -21,8 +21,14 @@ namespace Odyssey.Core.Tests
         [Test]
         public void Line_UsesInvariantFormat()
         {
-            string line = PlaytestCsv.Line(new DateTime(2026, 10, 10, 12, 0, 0), 3, 10, 5, LoopPhase.Night, "Dawn", 12.34f);
-            Assert.AreEqual("2026-10-10 12:00:00,3,10,5,Night,Dawn,12.3", line);
+            string line = PlaytestCsv.Line(new DateTime(2026, 10, 10, 12, 0, 0), 3, 10, 72, 2, 1, LoopPhase.Night, "Dawn", 12.34f);
+            Assert.AreEqual("2026-10-10 12:00:00,3,10,72,2,1,Night,Dawn,12.3", line);
+        }
+
+        [Test]
+        public void Header_HasRescuedAndLost()
+        {
+            Assert.AreEqual("time,night,crew,boulder,rescued,lost,phase,outcome,seconds", PlaytestCsv.Header);
         }
     }
 }

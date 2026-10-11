@@ -31,6 +31,18 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Loop_FailWithNoCrewLeft_Wipes()
+        {
+            var roster = new CrewRoster();
+            var s = new CaveLoopState(roster);
+            for (int i = 0; i < 12; i++)
+                roster.Lose();
+            s.IntroDone();
+            s.Fail(FailReason.Touched);
+            Assert.AreEqual(LoopPhase.Wiped, s.Phase);
+        }
+
+        [Test]
         public void TwelfthFail_GoesWiped()
         {
             var roster = new CrewRoster();

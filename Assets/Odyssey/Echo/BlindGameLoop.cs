@@ -216,7 +216,7 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>night／crew 是這一夜當時的夜數與同伴數（被吃之前）。寫不進去只警告，不影響遊戲。</summary>
     void Log(string outcome, int night, int crew)
     {
-        string line = PlaytestCsv.Line(DateTime.Now, night, crew, BoulderProgress.Progress, LoopPhase.Night, outcome, Time.time - nightStart);
+        string line = PlaytestCsv.Line(DateTime.Now, night, crew, BoulderProgress.Progress * 18, 0, 0, LoopPhase.Night, outcome, Time.time - nightStart);
         Debug.Log("[BlindCave] " + line);
         if (!PlaytestCsv.TryAppend(logPath, line, out string error))
             Debug.LogWarning($"BlindGameLoop: 無法寫入實測紀錄（檔案可能正被其他程式開著）：{error}");

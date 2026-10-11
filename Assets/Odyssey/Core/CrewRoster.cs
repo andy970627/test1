@@ -16,6 +16,13 @@ namespace Odyssey.Core
             Night++;
         }
 
+        /// <summary>同伴被巨人吃掉或被岩石砸死：人數 −1，這一夜繼續，夜數不變。</summary>
+        public void Lose()
+        {
+            if (Remaining > 0)
+                Remaining--;
+        }
+
         public void Reset()
         {
             Remaining = StartingCrew;

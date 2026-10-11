@@ -8,6 +8,7 @@ namespace Odyssey.Core
             FailReason.Touched => "巨人循著聲音摸到了你",
             FailReason.Bumped => "你撞上了巨人",
             FailReason.Dawn => "天亮了，巨人把石頭推了回去",
+            FailReason.Crushed => "巨人朝聲音扔來的岩石砸中了你",
             _ => "",
         };
     }

@@ -25,5 +25,19 @@ namespace Odyssey.Core.Tests
             Assert.AreEqual(0, r.Remaining);
             Assert.AreEqual(13, r.Night);
         }
+
+        [Test]
+        public void Roster_Lose_KeepsNight()
+        {
+            var r = new CrewRoster();
+            r.Lose();
+            r.Lose();
+            Assert.AreEqual(10, r.Remaining);
+            Assert.AreEqual(1, r.Night);
+            for (int i = 0; i < 20; i++)
+                r.Lose();
+            Assert.AreEqual(0, r.Remaining);
+            Assert.AreEqual(1, r.Night);
+        }
     }
 }

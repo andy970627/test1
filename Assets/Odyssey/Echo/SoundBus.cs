@@ -12,11 +12,12 @@ public static class SoundBus
     /// <summary>聲音（含羊叫遮蔽後的聲量）與它在世界中的位置。</summary>
     public static event Action<SoundEvent, Vector3> Emitted;
 
-    public static void Emit(SoundKind kind, Vector3 worldPos)
+    /// <summary>scale：聲量倍率（羊圈內的腳步 0.5、撞擊依力道）。</summary>
+    public static void Emit(SoundKind kind, Vector3 worldPos, float scale = 1f)
     {
         float now = Time.time;
         recentBleats.RemoveAll(b => now - b.Time > SoundRules.MaskSeconds);
-        var e = SoundRules.Create(kind, new NVector2(worldPos.x, worldPos.z), now, recentBleats);
+        var e = SoundRules.Create(kind, new NVector2(worldPos.x, worldPos.z), now, recentBleats, scale);
         if (kind == SoundKind.Bleat)
             recentBleats.Add(e);
         Emitted?.Invoke(e, worldPos);

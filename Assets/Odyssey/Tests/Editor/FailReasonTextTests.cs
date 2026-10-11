@@ -21,6 +21,12 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Crushed_MatchesSpec()
+        {
+            Assert.AreEqual("巨人朝聲音扔來的岩石砸中了你", FailReasonText.Describe(FailReason.Crushed));
+        }
+
+        [Test]
         public void Touched_MentionsSound()
         {
             StringAssert.Contains("聲音", FailReasonText.Describe(FailReason.Touched));

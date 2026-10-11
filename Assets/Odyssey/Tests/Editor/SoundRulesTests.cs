@@ -21,6 +21,53 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Loudness_V2Kinds()
+        {
+            Assert.AreEqual(0.2f, SoundRules.Loudness(SoundKind.Whimper));
+            Assert.AreEqual(0.8f, SoundRules.Loudness(SoundKind.RockImpact));
+            Assert.AreEqual(0.25f, SoundRules.Loudness(SoundKind.Drag));
+            Assert.AreEqual(0.7f, SoundRules.Loudness(SoundKind.Clatter));
+            Assert.AreEqual(0.4f, SoundRules.Loudness(SoundKind.Cheese));
+            Assert.AreEqual(0.25f, SoundRules.Loudness(SoundKind.Wicker));
+            Assert.AreEqual(0.3f, SoundRules.Loudness(SoundKind.Grind));
+            Assert.AreEqual(0.15f, SoundRules.Loudness(SoundKind.Slip));
+            Assert.AreEqual(0.25f, SoundRules.Loudness(SoundKind.Wedge));
+        }
+
+        [Test]
+        public void Source_WhimperIsCrew_RockIsCyclops()
+        {
+            Assert.AreEqual(SoundSource.Crew, SoundRules.Source(SoundKind.Whimper));
+            Assert.AreEqual(SoundSource.Cyclops, SoundRules.Source(SoundKind.RockImpact));
+            foreach (var k in new[] { SoundKind.Drag, SoundKind.Clatter, SoundKind.Cheese, SoundKind.Wicker, SoundKind.Grind, SoundKind.Slip, SoundKind.Wedge })
+                Assert.AreEqual(SoundSource.Player, SoundRules.Source(k), k.ToString());
+        }
+
+        [Test]
+        public void CanHear_RockImpactNeverHeard()
+        {
+            var e = new SoundEvent(SoundKind.RockImpact, Vector2.Zero, 0.8f, 0f);
+            Assert.IsFalse(SoundRules.CanHear(e, Vector2.Zero));
+        }
+
+        [Test]
+        public void IsBoulder_BoulderGrindSlipOnly()
+        {
+            Assert.IsTrue(SoundRules.IsBoulder(SoundKind.Boulder));
+            Assert.IsTrue(SoundRules.IsBoulder(SoundKind.Grind));
+            Assert.IsTrue(SoundRules.IsBoulder(SoundKind.Slip));
+            Assert.IsFalse(SoundRules.IsBoulder(SoundKind.Wedge));
+            Assert.IsFalse(SoundRules.IsBoulder(SoundKind.Stone));
+            Assert.IsFalse(SoundRules.IsBoulder(SoundKind.Clap));
+        }
+
+        [Test]
+        public void Create_ScaleHalvesStep()
+        {
+            Assert.AreEqual(0.075f, SoundRules.Create(SoundKind.Step, Vector2.Zero, 0f, null, 0.5f).Loudness, 1e-6f);
+        }
+
+        [Test]
         public void Loudness_Pant_IsPlayerAtPointTwo()
         {
             Assert.AreEqual(0.2f, SoundRules.Loudness(SoundKind.Pant));
