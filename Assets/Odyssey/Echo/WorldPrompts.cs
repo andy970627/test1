@@ -8,8 +8,8 @@ using UnityEngine;
 /// </summary>
 public class WorldPrompts : MonoBehaviour
 {
-    const float BoulderLift = 1.4f;
-    const float GapLift = 1f;
+    const float BoulderLift = 0.2f;
+    const float GapLift = 0.1f;
     const float StakeLift = 0.6f;
     const float CrewLift = 1.45f;
     const float CenterHeight = 0.62f;
@@ -112,7 +112,11 @@ public class WorldPrompts : MonoBehaviour
         Vector3 screen = cam.WorldToScreenPoint(world);
         if (screen.z <= 0f)
             return;
-        DrawLines(new Vector2(screen.x, Screen.height - screen.y));
+        // 站得很近時物體在視野上緣外：把提示夾在螢幕內，整疊字都看得到。
+        float lineHeight = style.fontSize * 1.35f;
+        float x = Mathf.Clamp(screen.x, 200f, Screen.width - 200f);
+        float y = Mathf.Clamp(Screen.height - screen.y, lines.Count * lineHeight + 10f, Screen.height - 10f);
+        DrawLines(new Vector2(x, y));
     }
 
     /// <summary>從錨點往上堆：最後一行貼著錨點。</summary>

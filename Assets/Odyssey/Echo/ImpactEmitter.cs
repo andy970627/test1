@@ -19,6 +19,9 @@ public class ImpactEmitter : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
+        // 推巨石掉下的碎石只是畫面，砸到東西不能弄出巨人聽得到的聲音。
+        if (collision.collider.GetComponent<SilentGrit>() != null)
+            return;
         float loudness = ImpactSound.Loudness(maxLoudness, collision.relativeVelocity.magnitude);
         if (loudness <= 0f || !gate.TryFire(Time.time))
             return;

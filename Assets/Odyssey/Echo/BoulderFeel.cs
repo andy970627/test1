@@ -140,6 +140,7 @@ public class BoulderFeel : MonoBehaviour
             face.x + Random.Range(-Boulder.Width * 0.4f, Boulder.Width * 0.4f),
             boulder.BaseCenter.y + Random.Range(0.1f, 0.4f),
             face.z - 0.06f);
+        go.AddComponent<SilentGrit>();
         var rb = go.AddComponent<Rigidbody>();
         rb.mass = 0.05f;
         rb.linearVelocity = new Vector3(Random.Range(-0.3f, 0.3f), Random.Range(0f, 0.4f), Random.Range(-0.8f, -0.2f));
