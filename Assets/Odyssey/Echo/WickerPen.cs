@@ -1,0 +1,47 @@
+using UnityEngine;
+
+/// <summary>
+/// 柳條編的羊圈：低矮圍欄、地上鋪乾草，沒有碰撞。圈內腳步聲減半，跨過圍欄會沙沙響一下（Wicker）。
+/// </summary>
+public class WickerPen : MonoBehaviour
+{
+    const float FenceHeight = 0.5f;
+    const float FenceThickness = 0.08f;
+    static readonly Color Wicker = new(0.5f, 0.4f, 0.25f);
+    static readonly Color Hay = new(0.62f, 0.55f, 0.32f);
+
+    Vector3 center;
+    Vector2 size;
+
+    public Vector3 Center => center;
+    public Vector2 Size => size;
+
+    public void Init(Vector3 groundCenter, Vector2 size)
+    {
+        center = groundCenter;
+        this.size = size;
+        transform.position = groundCenter;
+
+        Piece("Hay", new Vector3(0f, 0.02f, 0f), new Vector3(size.x, 0.02f, size.y), Hay);
+        float hx = size.x / 2f, hz = size.y / 2f, y = FenceHeight / 2f;
+        Piece("FenceN", new Vector3(0f, y, hz), new Vector3(size.x, FenceHeight, FenceThickness), Wicker);
+        Piece("FenceS", new Vector3(0f, y, -hz), new Vector3(size.x, FenceHeight, FenceThickness), Wicker);
+        Piece("FenceE", new Vector3(hx, y, 0f), new Vector3(FenceThickness, FenceHeight, size.y), Wicker);
+        Piece("FenceW", new Vector3(-hx, y, 0f), new Vector3(FenceThickness, FenceHeight, size.y), Wicker);
+    }
+
+    /// <summary>平面上是否在圈內（不看高度）。</summary>
+    public bool Contains(Vector3 p) =>
+        Mathf.Abs(p.x - center.x) <= size.x / 2f && Mathf.Abs(p.z - center.z) <= size.y / 2f;
+
+    void Piece(string name, Vector3 localPos, Vector3 scale, Color color)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = name;
+        Destroy(go.GetComponent<Collider>());
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = localPos;
+        go.transform.localScale = scale;
+        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(color);
+    }
+}
