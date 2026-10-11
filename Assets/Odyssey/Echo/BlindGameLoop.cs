@@ -22,6 +22,7 @@ public class BlindGameLoop : MonoBehaviour
     EchoPlayer player;
     EchoField echo;
     BoulderFeel feel;
+    MissionHud hud;
     float nightStart;
     bool waitingRestart;
     string logPath;
@@ -98,6 +99,8 @@ public class BlindGameLoop : MonoBehaviour
         feel.Init(Layout.Boulder, body);
         player.Used += kind => Prompts.Used(kind, Time.time);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
+        hud = gameObject.AddComponent<MissionHud>();
+        hud.Init(this);
 
         Cyclops = new GameObject("Cyclops").AddComponent<BlindCyclops>();
         Cyclops.transform.SetParent(caveRoot, false);
@@ -132,7 +135,14 @@ public class BlindGameLoop : MonoBehaviour
     void BeginIntro()
     {
         player.InputEnabled = false;
-        Show($"第 {Roster.Night} 夜", "巨人瞎了，洞口被巨石封住", $"剩下 {Roster.Remaining} 名同伴", ResetNight, StartNight);
+        // 第一夜（含按 R 重來）先看任務簡報，3 秒後按空白鍵才開始。
+        Show($"第 {Roster.Night} 夜", "巨人瞎了，洞口被巨石封住", $"剩下 {Roster.Remaining} 名同伴", ResetNight, () =>
+        {
+            if (Roster.Night == 1)
+                hud.ShowBriefing(StartNight);
+            else
+                StartNight();
+        });
     }
 
     void StartNight()
