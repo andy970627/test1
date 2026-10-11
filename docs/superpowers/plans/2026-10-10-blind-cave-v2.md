@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在雙盲洞穴加入同伴（找、帶、被吃）、巨人丟岩石、會滑回的巨石與楔子、橄欖木樁、剛體雜物（石子、奶桶、乳酪）、柳條羊圈，並讓守石的巨人接著追巨石附近的聲音。
+**Goal:** 在雙盲洞穴加入同伴（找、帶、被吃）、巨人丟岩石、會滑回的巨石與楔子、橄欖木樁、剛體雜物（石子、奶桶、乳酪）、柳條羊圈、天光引羊，並讓守石的巨人接著追巨石附近的聲音。
 
 **Architecture:** 新規則全部放進 `Odyssey.Core`，先寫 NUnit 測試：聲音種類、`CrewRoster.Lose`、`BoulderSlide`（連續開口、楔子、回滑）、`ImpactSound`（撞擊聲量）、`FollowTrail`、`CyclopsBrain`（丟岩石、吃同伴、守石追聲、拔楔子）。Unity 層在 `Assets/Odyssey/Echo/` 新增同伴、木樁、剛體雜物、岩石元件，`BlindGameLoop` 負責串接。
 
@@ -458,7 +458,75 @@
 - [ ] **Step 3: 提交**
   訊息：`feat(blind2): wire boulder slide, crew, rocks, stake and clutter into the night loop`
 
-### Task 10: 除錯面板
+### Task 10: 天光引羊（規格第 14 節）
+
+**Files:**
+- Create: `Assets/Odyssey/Core/SheepRush.cs`
+- Test: `Assets/Odyssey/Tests/Editor/SheepRushTests.cs`
+- Modify: `Assets/Odyssey/Core/BoulderSlide.cs`（新增 `Jolt`）、`BoulderSlideTests.cs`、`Assets/Odyssey/Echo/WanderingSheep.cs`、`BlindGameLoop.cs`
+
+**Interfaces:**
+- Consumes: Task 2 的 `BoulderSlide`（`Opening`、`Floor`、`GiantPull()`）；Task 7 的 `LooseStone.Spawn`；Task 9 的 `BlindGameLoop` 每幀流程。
+- Produces:
+  - `BoulderSlide.Jolt(float meters)`：開口退 `meters`，不低於 `Floor`
+  - `sealed class SheepRush`
+    - 常數：`RushSpeed = 1.2f`、`JostleReach = 1.5f`、`JostleMin = 2f`、`JostleMax = 4f`、`JoltMeters = 0.05f`、`KnockChance = 0.3f`、`SqueezeWidth = 1.0f`、`SqueezeReach = 1.5f`、`SqueezeSeconds = 2f`、`FreeWidth = 1.2f`、`StuckBleatSeconds = 1.5f`
+    - `SheepRush(int sheepCount, Func<double> roll)`
+    - `bool Active`（第一次全開後為 true，之後不再變回 false，直到 `Reset`）
+    - `int Squeezing`（正在鑽或卡住的羊 index，沒有為 −1）、`bool Stuck`、`IReadOnlyList<bool> Gone`
+    - `bool GapClear => Squeezing < 0`
+    - `RushTick Tick(float dt, float opening, IReadOnlyList<float> distToPushFace, IReadOnlyList<float> distToGap)`
+    - `void Reset()`
+  - `readonly struct RushTick { IReadOnlyList<int> Jostled; bool Knock; int Escaped; bool StuckBleat; }`
+    - `Jostled`：這一幀撞巨石的羊 index
+    - `Knock`：這一幀有一次撞擊擲中 30%（每幀最多一次）
+    - `Escaped`：這一幀鑽完離開的羊 index，沒有為 −1
+    - `StuckBleat`：卡住的羊該哀叫
+  - `WanderingSheep`：`void RushTo(Vector3 gap)`（改用 1.2 m/s 走向縫，不再亂逛）、`void Leave()`（隱藏）、`ResetForNight()` 恢復亂逛並重新出現
+  - `BlindGameLoop`：
+    - `Slide.Opening >= FullOpen` 讓 `SheepRush` 啟動的那一幀，對每隻羊呼叫 `RushTo(GapPoint)`
+    - 每個 `Jostled` → 在該羊位置發 `Bleat`，`Slide.Jolt(0.05)`
+    - `Knock` 且 `Slide.GiantPull()` 為 true → 照 Task 9 從縫口彈出 `LooseStone`，並在 `PushPoint` 發一次 `Slip`
+    - `Escaped` → 該羊 `Leave()`
+    - `StuckBleat` → 在 `GapPoint` 發 `Bleat`
+    - `Escape` 條件加上 `Rush.GapClear`；不通過時底部提示「有羊擠在縫裡」
+    - `ResetNight` 時 `Rush.Reset()`
+
+**規則**
+- 每隻羊各自一個撞擊計時器，進入 `JostleReach` 時以 `roll()` 抽 2～4 秒，到時撞一次再重抽；離開範圍時計時器停住。
+- 每次撞擊消耗一次 `roll()` 判定 30%。
+- 沒有羊在鑽時，`opening ≥ 1.0` 且有未離開的羊在縫 1.5 m 內 → 最近的那隻開始鑽（2 秒）。
+- 鑽的途中 `opening < 1.0` → `Stuck = true`，鑽的計時器停住；卡住時每 1.5 秒 `StuckBleat`；`opening ≥ 1.2` → 解除卡住，鑽的計時器**從 0 重新算** 2 秒。
+- 鑽完 → `Gone[i] = true`，`Escaped = i`，`Squeezing = −1`。
+- 還沒 `Active` 時 `Tick` 什麼都不做（開口第一次 ≥ 1.44 那一幀啟動）。
+
+- [ ] **Step 1: 寫失敗測試**
+
+  | 測試 | 情境 | 預期 |
+  |---|---|---|
+  | `Jolt_StopsAtFloor` | 開口 0.52、楔子 0.5，`Jolt(0.05)` | Opening == 0.5 |
+  | `Inactive_UntilFullOpen` | opening 1.4，羊都在 1 m 內，Tick 10 秒 | `Active` false，沒有任何撞擊或鑽 |
+  | `Activates_OnceAtFullOpen` | opening 1.44 Tick 一次後 opening 0.5 | `Active` 仍為 true |
+  | `Jostle_EveryRolledInterval` | roll 恆為 0.5（間隔 3 秒、不擲中 30%），一隻羊在 1 m 內，每次 Tick 0.5 共 12 次 | `Jostled` 含 0 的幀剛好 2 次，`Knock` 從未為 true |
+  | `Jostle_LowRoll_Knocks` | roll 恆為 0.0（間隔 2 秒、擲中） | 第一次撞擊那幀 `Knock` true |
+  | `OutOfReach_NoJostle` | 羊在 2 m 外 | 從不撞 |
+  | `Squeeze_StartsAtOneMeter_TakesTwoSeconds` | opening 1.44 後羊在縫 1 m 內，Tick 2.1 秒 | `Escaped == 0`、`Gone[0]`、`GapClear` |
+  | `Squeeze_OneAtATime` | 兩隻羊都在縫旁 | 第一隻鑽完前 `Squeezing` 不變 |
+  | `Narrowing_Sticks_AndBleats` | 鑽 1 秒時 opening 0.9，再 Tick 3 秒（每 0.5） | `Stuck`、`StuckBleat` 剛好 2 次、`!GapClear` |
+  | `Reopen_FreesAndRestartsSqueeze` | 承上，opening 1.2 再 Tick 1.9 秒 | 還沒鑽完；再 0.2 秒 → `Escaped` |
+  | `Between_StaysStuck` | 卡住後 opening 1.1 | 仍 `Stuck` |
+  | `Reset_ClearsAll` | 有羊離開、有羊卡住 | `Active` false、`GapClear`、`Gone` 全 false |
+- [ ] **Step 2: 執行測試確認失敗**
+  執行：`dotnet test tools/CoreTests`
+  預期：編譯失敗。
+- [ ] **Step 3: 實作 `Jolt`、`SheepRush`、`WanderingSheep`、`BlindGameLoop` 的串接**
+- [ ] **Step 4: 驗證**
+  - `dotnet test tools/CoreTests` → 全過
+  - `compile-check` → 0 錯誤
+- [ ] **Step 5: 提交**
+  訊息：`feat(blind2): sheep rush the gap at full open, jostle wedges loose, get stuck`
+
+### Task 11: 除錯面板
 
 **Files:**
 - Modify: `Assets/Odyssey/Echo/DebugPanel.cs`
@@ -472,7 +540,7 @@
   - 羊圈：框
   - 地上的石子：灰點
   - 飛行中的岩石落點：紅叉。`BlindCyclops` 公開 `Vector3? IncomingRock`
-- 文字：「同伴：跟隨 X／躲著 Y」
+- 文字：「同伴：跟隨 X／躲著 Y」；羊群啟動後加「羊：出去 X／卡住」（`SheepRush`）
 - 長條：「岩石」＝ 1 − `ThrowCooldownLeft / ThrowCooldown`
 - 不加背景（使用者規則）。
 
@@ -481,11 +549,11 @@
 - [ ] **Step 3: 提交**
   訊息：`feat(blind2): debug panel shows boulder wedges, crew, stake, clutter and rocks`
 
-### Task 11: 收尾
+### Task 12: 收尾
 
 - [ ] **Step 1: 對照規格**
-  規格 v2 第 2～13 節逐條對照實作，數值完全一致。
+  規格 v2 第 2～14 節逐條對照實作，數值完全一致。
 - [ ] **Step 2: 審查**
   找一個新的審查者（Opus）審查 `00b4e11..HEAD`，一次修完 Critical 與 Important 的問題（每個修正都先寫失敗測試）。
 - [ ] **Step 3: 回報使用者**
-  列出還沒實測的項目（規格第 10 節與第 13 節 E）。
+  列出還沒實測的項目（規格第 10 節、第 13 節 E、第 14 節）。
