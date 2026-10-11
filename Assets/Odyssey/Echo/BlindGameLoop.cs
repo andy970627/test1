@@ -28,6 +28,14 @@ public class BlindGameLoop : MonoBehaviour
     bool waitingRestart;
     string logPath;
     int seed = 1;
+    Vector3 lastPlayerPos;
+    int insidePen = -1;
+    float pullNoiseTimer;
+
+    const float PullNoiseSeconds = 0.5f;
+    const float PailReach = 0.6f;
+    const float RackReach = 0.8f;
+    const float RescueReach = 3f;
 
     public CaveLoopState State { get; private set; }
     public CrewRoster Roster { get; } = new();
@@ -35,6 +43,8 @@ public class BlindGameLoop : MonoBehaviour
     public CrewLine Crew { get; private set; }
     public OliveStake Stake { get; private set; }
     public EchoPlayer Player => player;
+    public int RescuedLastEscape { get; private set; }
+    public int LostTonight { get; private set; }
     public DawnClock Dawn { get; } = new();
     public DecoyMemory Decoys { get; } = new();
     public BlindCyclops Cyclops { get; private set; }
@@ -80,8 +90,11 @@ public class BlindGameLoop : MonoBehaviour
 
         Cyclops = new GameObject("Cyclops").AddComponent<BlindCyclops>();
         Cyclops.transform.SetParent(caveRoot, false);
-        Cyclops.Init(Layout, Decoys, body.transform);
+        Cyclops.Init(Layout, Decoys, body.transform, Crew.Positions);
         Cyclops.CaughtPlayer += Fail;
+        Cyclops.AteCrew += OnAteCrew;
+        Cyclops.RockLanded += OnRockLanded;
+        Cyclops.PulledWedge += OnPulledWedge;
 
         // 洞外的海風從巨石後面傳來：越接近洞口越大聲。
         var wind = new GameObject("SeaWind").AddComponent<AudioSource>();
@@ -120,13 +133,23 @@ public class BlindGameLoop : MonoBehaviour
         hintUntil = Time.time + hintSeconds;
     }
 
-    /// <summary>黑畫面時重置：巨石回原位、巨人回座、石子重新散落、玩家回洞底。</summary>
+    /// <summary>
+    /// 黑畫面時重置：巨石回原位、楔子清掉、巨人回座、石子重新散落、雜物扶正、
+    /// 同伴重新躲進洞裡（每夜換位置）、木樁回到原處、玩家回洞底。
+    /// </summary>
     void ResetNight()
     {
         Slide.Reset();
         Layout.Boulder.SetOpening(0f);
         Layout.Boulder.ShowWedges(Slide.StoneWedges);
         Stake.PlaceAt(Layout.StakeSpot);
+        LooseStone.ClearAll();
+        Layout.Rack.ClearWheels();
+        foreach (var pail in Layout.Pails)
+            pail.Stand();
+        LostTonight = 0;
+        RescuedLastEscape = 0;
+        pullNoiseTimer = 0f;
         Dawn.Reset();
         Layout.Boulder.SetDawn(0f);
         Decoys.Reset();
@@ -141,7 +164,23 @@ public class BlindGameLoop : MonoBehaviour
         Vector3 toCenter = -spawn;
         body.Teleport(spawn + Vector3.up * 0.05f, Mathf.Atan2(toCenter.x, toCenter.z) * Mathf.Rad2Deg);
         player.ResetForNight();
+        Crew.Spawn(Roster.Remaining, ShuffledCrewSpots(), seed * 1000 + Roster.Night);
+        lastPlayerPos = body.transform.position;
+        insidePen = PenIndexAt(lastPlayerPos);
         waitingRestart = false;
+    }
+
+    /// <summary>同伴躲藏點每夜換一個順序，人數少於點數時每夜躲在不同地方。</summary>
+    List<Vector3> ShuffledCrewSpots()
+    {
+        var spots = new List<Vector3>(Layout.CrewSpots);
+        var rng = new System.Random(seed * 7919 + Roster.Night);
+        for (int i = spots.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (spots[i], spots[j]) = (spots[j], spots[i]);
+        }
+        return spots;
     }
 
     void Update()
@@ -159,6 +198,7 @@ public class BlindGameLoop : MonoBehaviour
         if (State.Phase != LoopPhase.Night)
             return;
         UpdateBoulder();
+        UpdateClutter();
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
@@ -178,7 +218,100 @@ public class BlindGameLoop : MonoBehaviour
             SoundBus.Emit(SoundKind.Boulder, face);
         if (noise.Slip)
             SoundBus.Emit(SoundKind.Slip, face);
+
+        // 巨人拔掉楔子後巨石往回滑：那是巨人弄出來的聲音，他自己聽不到。
+        if (Slide.PullingBack)
+        {
+            pullNoiseTimer += Time.deltaTime;
+            if (pullNoiseTimer >= PullNoiseSeconds)
+            {
+                pullNoiseTimer = 0f;
+                SoundBus.Emit(SoundKind.Cyclops, face);
+            }
+        }
+        else
+            pullNoiseTimer = 0f;
     }
+
+    /// <summary>奶桶、乳酪架、羊圈：人走過就會出聲。</summary>
+    void UpdateClutter()
+    {
+        Vector3 pos = body.transform.position;
+        bool moved = Flat(pos - lastPlayerPos).sqrMagnitude > 1e-6f;
+        lastPlayerPos = pos;
+        if (!moved)
+            return;
+
+        foreach (var pail in Layout.Pails)
+        {
+            if (Flat(pail.transform.position - pos).magnitude <= PailReach)
+                pail.Knock(pos);
+            if (Crew.Crouching)
+                continue;
+            foreach (var m in Crew.Followers)
+                if (Flat(pail.transform.position - m.transform.position).magnitude <= PailReach)
+                    pail.Knock(m.transform.position);
+        }
+
+        // 乳酪架沿 z 軸長 2 m：量到木板中線最近的點。
+        Vector3 rack = Layout.Rack.Position;
+        Vector3 nearest = new(rack.x, pos.y, Mathf.Clamp(pos.z, rack.z - 1f, rack.z + 1f));
+        if (Flat(nearest - pos).magnitude <= RackReach)
+            Layout.Rack.Brush();
+
+        int pen = PenIndexAt(pos);
+        if (pen != insidePen)
+            SoundBus.Emit(SoundKind.Wicker, pos);
+        insidePen = pen;
+    }
+
+    int PenIndexAt(Vector3 p)
+    {
+        for (int i = 0; i < Layout.Pens.Length; i++)
+            if (Layout.Pens[i].Contains(p))
+                return i;
+        return -1;
+    }
+
+    void OnAteCrew(int index)
+    {
+        if (State.Phase != LoopPhase.Night || index < 0 || index >= Crew.Members.Count)
+            return;
+        LoseCrew(Crew.Members[index], "一名同伴被巨人吃掉了");
+    }
+
+    void OnRockLanded(Vector3 landing)
+    {
+        if (State.Phase != LoopPhase.Night)
+            return;
+        var at = new System.Numerics.Vector2(landing.x, landing.z);
+        foreach (var m in new List<CrewMember>(Crew.Members))
+            if (CyclopsBrain.RockHits(at, new System.Numerics.Vector2(m.transform.position.x, m.transform.position.z)))
+                LoseCrew(m, "一名同伴被岩石砸死了");
+        Vector3 p = body.transform.position;
+        if (CyclopsBrain.RockHits(at, new System.Numerics.Vector2(p.x, p.z)))
+            Fail(FailReason.Crushed);
+    }
+
+    void LoseCrew(CrewMember m, string what)
+    {
+        Crew.Remove(m);
+        Roster.Lose();
+        LostTonight++;
+        deaths.Add($"第 {Roster.Night} 夜・{what}");
+    }
+
+    /// <summary>巨人摸完巨石，拔掉最外面的石子楔子：石子從縫口彈進洞裡。</summary>
+    void OnPulledWedge()
+    {
+        if (State.Phase != LoopPhase.Night || !Slide.GiantPull())
+            return;
+        Vector3 gap = Layout.Boulder.GapPoint + new Vector3(0f, 0f, -0.3f);
+        LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null);
+        SoundBus.Emit(SoundKind.Cyclops, gap);
+    }
+
+    static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
 
     void Fail(FailReason reason)
     {
@@ -212,10 +345,16 @@ public class BlindGameLoop : MonoBehaviour
     {
         if (State.Phase != LoopPhase.Night || !Slide.IsOpen)
             return;
+        // 縫 3 m 內的跟隨者一起鑽出去。
+        Vector3 gap = Layout.Boulder.GapPoint;
+        RescuedLastEscape = 0;
+        foreach (var m in Crew.Followers)
+            if (Flat(m.transform.position - gap).magnitude <= RescueReach)
+                RescuedLastEscape++;
         State.Escape();
         player.InputEnabled = false;
         Cyclops.Active = false;
-        Show("", "你逃出去了。", "但你對著巨人喊出了自己的名字。", null, () => waitingRestart = true);
+        Show("", "你逃出去了。", $"帶出 {RescuedLastEscape} 名同伴。但你對著巨人喊出了自己的名字。", null, () => waitingRestart = true);
         Log("Escaped", Roster.Night, Roster.Remaining);
     }
 
@@ -233,7 +372,7 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>night／crew 是這一夜當時的夜數與同伴數（被吃之前）。寫不進去只警告，不影響遊戲。</summary>
     void Log(string outcome, int night, int crew)
     {
-        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), 0, 0, LoopPhase.Night, outcome, Time.time - nightStart);
+        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), RescuedLastEscape, LostTonight, LoopPhase.Night, outcome, Time.time - nightStart);
         Debug.Log("[BlindCave] " + line);
         if (!PlaytestCsv.TryAppend(logPath, line, out string error))
             Debug.LogWarning($"BlindGameLoop: 無法寫入實測紀錄（檔案可能正被其他程式開著）：{error}");
@@ -257,7 +396,7 @@ public class BlindGameLoop : MonoBehaviour
 
         string bottom = null;
         if (State.Phase == LoopPhase.Night && Time.time < hintUntil)
-            bottom = "WASD 蹲著走・Shift 跑・Q 拍手・左鍵 丟石子・對巨石按住 E 推・F1 除錯";
+            bottom = "WASD 走・Shift 跑・Q 拍手・左鍵 丟石子・E 推／撿／帶人・Shift＋E 猛推・右鍵 塞楔子・F 隊伍蹲下・G 木樁";
         else if (State.Phase == LoopPhase.Night && Slide.IsOpen)
             bottom = "縫夠寬了：走到縫前按 E 鑽出去";
         else if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))

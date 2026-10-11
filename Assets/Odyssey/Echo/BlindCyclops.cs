@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Odyssey.Core;
 using UnityEngine;
 using NVector2 = System.Numerics.Vector2;
@@ -12,6 +13,7 @@ public class BlindCyclops : MonoBehaviour
     const float MoveStepSeconds = 0.7f;
     const float RunStepSeconds = 0.45f;
     const float IdleBreathSeconds = 4f;
+    const float EatChewSeconds = 0.5f;
     const float SoundHeight = 1.5f;
 
     Vector3 seat;
@@ -26,10 +28,21 @@ public class BlindCyclops : MonoBehaviour
     public Vector3 HeadPosition => transform.position + Vector3.up * 3.8f;
 
     public event Action<FailReason> CaughtPlayer;
+    public event Action<int> AteCrew;
+    public event Action<Vector3> RockLanded;
+    public event Action PulledWedge;
 
-    public void Init(BlindCaveLayout layout, DecoyMemory memory, Transform player)
+    /// <summary>飛行中岩石的落點（給除錯面板）；沒有為 null。</summary>
+    public Vector3? IncomingRock => rock != null ? rock.Target : null;
+
+    Func<IReadOnlyList<NVector2>> crewPositions;
+    ThrownRock rock;
+    CyclopsState lastState;
+
+    public void Init(BlindCaveLayout layout, DecoyMemory memory, Transform player, Func<IReadOnlyList<NVector2>> crewPositions)
     {
         this.player = player;
+        this.crewPositions = crewPositions;
         seat = layout.Cave.CyclopsSeat;
         var rng = new System.Random();
         Brain = new CyclopsBrain(Flat(seat), memory, rng.NextDouble);
@@ -63,7 +76,11 @@ public class BlindCyclops : MonoBehaviour
     {
         Active = false;
         Brain.Reset(Flat(seat));
+        lastState = Brain.State;
         soundTimer = 0f;
+        if (rock != null)
+            Destroy(rock.gameObject);
+        rock = null;
         SyncTransform();
     }
 
@@ -79,15 +96,43 @@ public class BlindCyclops : MonoBehaviour
     {
         if (!Active || Brain == null)
             return;
-        FailReason result = Brain.Tick(Time.deltaTime, Flat(player.position)).Player;
+        CyclopsTick tick = Brain.Tick(Time.deltaTime, Flat(player.position), crewPositions());
         SyncTransform();
         AnimateArms();
+
+        // 開始蓄力丟岩石時低吼一聲。
+        if (Brain.State == CyclopsState.Throw && lastState != CyclopsState.Throw)
+        {
+            Roar();
+            SoundBus.Emit(SoundKind.Cyclops, HeadPosition);
+        }
+        lastState = Brain.State;
         EmitOwnSounds();
-        if (result != FailReason.None)
+
+        if (tick.RockReleased)
+            Throw(tick.RockTarget);
+        if (tick.PullWedge)
+            PulledWedge?.Invoke();
+        if (tick.EatenCrew >= 0)
+            AteCrew?.Invoke(tick.EatenCrew);
+        if (tick.Player != FailReason.None)
         {
             Active = false;
-            CaughtPlayer?.Invoke(result);
+            CaughtPlayer?.Invoke(tick.Player);
         }
+    }
+
+    void Throw(NVector2 target)
+    {
+        var to = new Vector3(target.X, 0f, target.Y);
+        to.y = CaveBuilder.GroundHeight(to);
+        rock = new GameObject("ThrownRock").AddComponent<ThrownRock>();
+        rock.Launch(HeadPosition + Vector3.up * 0.5f, to, CyclopsBrain.FlightSeconds, landing =>
+        {
+            rock = null;
+            SoundBus.Emit(SoundKind.RockImpact, landing + Vector3.up * 0.3f);
+            RockLanded?.Invoke(landing);
+        });
     }
 
     void SyncTransform()
@@ -115,6 +160,7 @@ public class BlindCyclops : MonoBehaviour
             CyclopsState.Guard => RunStepSeconds,
             CyclopsState.Investigate => MoveStepSeconds,
             CyclopsState.Search => MoveStepSeconds,
+            CyclopsState.Eat => EatChewSeconds,
             _ => IdleBreathSeconds,
         };
         soundTimer += Time.deltaTime;
