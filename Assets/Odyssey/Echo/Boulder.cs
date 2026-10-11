@@ -27,6 +27,12 @@ public class Boulder : MonoBehaviour
     Vector3 center;
     float slide;
 
+    /// <summary>會滑動的那塊石頭本體（BoulderFeel 用來加晃動）。</summary>
+    public Transform Body => body;
+
+    /// <summary>巨石還沒推開時的底面中心（地面上）。</summary>
+    public Vector3 BaseCenter => center - new Vector3(0f, Height / 2f, 0f);
+
     /// <summary>巨石朝洞內那一面的中心（離地 1 m）。</summary>
     public Vector3 PushPoint => center + new Vector3(slide, 1f - Height / 2f, -Depth / 2f);
 

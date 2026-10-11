@@ -23,6 +23,7 @@ public class BlindGameLoop : MonoBehaviour
     FirstPersonPlayer body;
     EchoPlayer player;
     EchoField echo;
+    BoulderFeel feel;
     float nightStart;
     float hintUntil;
     bool waitingRestart;
@@ -90,6 +91,8 @@ public class BlindGameLoop : MonoBehaviour
         Stake.Init();
         player.Init(body, Layout.Boulder, Slide, pickups, Stake, Crew, p => BlindCaveBuilder.StepScale(Layout, p));
         player.EscapeRequested += Escape;
+        feel = gameObject.AddComponent<BoulderFeel>();
+        feel.Init(Layout.Boulder, body);
 
         Cyclops = new GameObject("Cyclops").AddComponent<BlindCyclops>();
         Cyclops.transform.SetParent(caveRoot, false);
@@ -158,6 +161,7 @@ public class BlindGameLoop : MonoBehaviour
         Layout.Boulder.SetDawn(0f);
         Decoys.Reset();
         Cyclops.ResetForNight();
+        feel.ResetForNight();
         foreach (var p in pickups)
             p.Respawn();
         foreach (var s in sheep)
@@ -213,9 +217,11 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>推進巨石的滑動，依結果發出輕推、猛推、回滑的聲音。</summary>
     void UpdateBoulder()
     {
+        float before = Slide.Opening;
         BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake);
         Layout.Boulder.SetOpening(Slide.Opening);
         Layout.Boulder.ShowWedges(Slide.StoneWedges);
+        feel.Tick(player.PushMode, noise.Catch, Slide.Opening < before, Slide.MaxOpening);
         Vector3 face = Layout.Boulder.PushPoint;
         if (noise.Grind)
             SoundBus.Emit(SoundKind.Grind, face);
@@ -367,6 +373,7 @@ public class BlindGameLoop : MonoBehaviour
         int night = record.Night;
 
         player.InputEnabled = false;
+        feel.ResetForNight();
         Cyclops.Active = false;
         Cyclops.Roar();
         if (reason != FailReason.Dawn)
@@ -400,6 +407,7 @@ public class BlindGameLoop : MonoBehaviour
                 RescuedLastEscape++;
         State.Escape();
         player.InputEnabled = false;
+        feel.ResetForNight();
         Cyclops.Active = false;
         Show("", "你逃出去了。", $"帶出 {RescuedLastEscape} 名同伴。但你對著巨人喊出了自己的名字。", null, () => waitingRestart = true);
         Log("Escaped", Roster.Night, Roster.Remaining);

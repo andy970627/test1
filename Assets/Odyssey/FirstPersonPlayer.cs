@@ -47,6 +47,18 @@ public class FirstPersonPlayer : MonoBehaviour
 
     void Start() => LockCursor(true);
 
+    /// <summary>額外加在鏡頭上的效果（推巨石時前傾、震動）；預設 0，不影響視角本身。</summary>
+    public float FeelPitch { get; set; }
+    public Vector3 FeelOffset { get; set; }
+
+    static readonly Vector3 CameraHeight = new(0f, 0.85f, 0f);
+
+    void LateUpdate()
+    {
+        cameraTransform.localEulerAngles = new Vector3(pitch + FeelPitch, 0f, 0f);
+        cameraTransform.localPosition = CameraHeight + FeelOffset;
+    }
+
     void Update()
     {
         CurrentNoise = 0f;
