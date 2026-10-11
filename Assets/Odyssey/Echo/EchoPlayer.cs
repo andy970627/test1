@@ -71,6 +71,15 @@ public class EchoPlayer : MonoBehaviour
 
     public event Action EscapeRequested;
 
+    /// <summary>玩家用了某個操作（給遊戲內提示計次）。</summary>
+    public event Action<PromptKind> Used;
+
+    /// <summary>這一夜走過的距離（公尺）。</summary>
+    public float MovedTonight { get; private set; }
+
+    /// <summary>開口全開、站在縫前（按 E 就能鑽出去的位置）。</summary>
+    public bool AtGap { get; private set; }
+
     public void Init(FirstPersonPlayer body, Boulder boulder, BoulderSlide slide, IReadOnlyList<StonePickup> pickups,
         OliveStake stake, CrewLine crew, Func<Vector3, float> stepScale)
     {
@@ -91,6 +100,7 @@ public class EchoPlayer : MonoBehaviour
         Stones = StartStones;
         Stamina.Reset();
         stepTimer = 0f;
+        MovedTonight = 0f;
         lastPosition = transform.position;
         ClearActions();
     }
@@ -123,6 +133,8 @@ public class EchoPlayer : MonoBehaviour
         Vector3 forward = Flat(body.CameraTransform.forward).normalized;
         Vector3 toPush = Flat(boulder.PushPoint - transform.position);
         AtBoulder = toPush.magnitude <= PushReach && Vector3.Dot(forward, toPush.normalized) > PushFacingDot;
+        AtGap = slide.IsOpen && Flat(boulder.GapPoint - transform.position).magnitude <= PushReach;
+        PushMode wasPushing = PushMode;
 
         bool ePressedUsed = HandleInteract(keyboard);
         UpdateWedgeButton(mouse, dt);
@@ -131,7 +143,11 @@ public class EchoPlayer : MonoBehaviour
         bool pushing = AtBoulder && keyboard.eKey.isPressed && !ePressedUsed && !Wedging && rightHeld < 0f;
         bool running = false;
         if (pushing)
+        {
             PushMode = Stamina.Tick(dt, shift) ? PushMode.Heavy : PushMode.Light;
+            if (wasPushing == PushMode.None)
+                Used?.Invoke(PromptKind.Push);
+        }
         else
         {
             PushMode = PushMode.None;
@@ -145,14 +161,20 @@ public class EchoPlayer : MonoBehaviour
         UpdateSteps(running);
 
         if (keyboard.qKey.wasPressedThisFrame)
+        {
             SoundBus.Emit(SoundKind.Clap, body.CameraTransform.position);
+            Used?.Invoke(PromptKind.Clap);
+        }
 
         // 這一幀才重新鎖住游標的那一下點擊不算丟石子；拿著木樁不能丟。
         if (wasLocked && mouse.leftButton.wasPressedThisFrame && Stones > 0 && !CarryingStake)
             Throw();
 
         if (keyboard.fKey.wasPressedThisFrame)
+        {
             crew.ToggleCrouch();
+            Used?.Invoke(PromptKind.Crouch);
+        }
         if (keyboard.gKey.wasPressedThisFrame && CarryingStake)
             DropOrPlantStake();
 
@@ -175,12 +197,14 @@ public class EchoPlayer : MonoBehaviour
             if (stake.Planted)
                 slide.RemoveStake();
             stake.AttachTo(body.CameraTransform);
+            Used?.Invoke(PromptKind.TakeStake);
             return true;
         }
         var hiding = crew.NearestHiding(transform.position, CrewReach);
         if (hiding != null)
         {
             crew.Recruit(hiding);
+            Used?.Invoke(PromptKind.Recruit);
             return true;
         }
         return false;
@@ -231,6 +255,7 @@ public class EchoPlayer : MonoBehaviour
             return;
         Stones--;
         slide.AddStoneWedge();
+        Used?.Invoke(PromptKind.Wedge);
         SoundBus.Emit(SoundKind.Wedge, boulder.WedgePoint(slide.Opening));
     }
 
@@ -238,6 +263,7 @@ public class EchoPlayer : MonoBehaviour
     {
         if (!slide.RemoveOutermostStoneWedge())
             return;
+        Used?.Invoke(PromptKind.Wedge);
         if (Stones < MaxStones)
             Stones++;
         else
@@ -250,9 +276,13 @@ public class EchoPlayer : MonoBehaviour
         {
             stake.PlantAt(boulder.WedgePoint(slide.Opening));
             slide.PlantStake();
+            Used?.Invoke(PromptKind.PlantStake);
         }
         else
+        {
             stake.PlaceAt(transform.position + body.CameraTransform.forward * 0.5f);
+            Used?.Invoke(PromptKind.DropStake);
+        }
     }
 
     void UpdateSteps(bool running)
@@ -260,6 +290,7 @@ public class EchoPlayer : MonoBehaviour
         Vector3 delta = transform.position - lastPosition;
         delta.y = 0f;
         lastPosition = transform.position;
+        MovedTonight += delta.magnitude;
         if (delta.sqrMagnitude < 1e-6f)
         {
             stepTimer = 0f;
@@ -277,6 +308,7 @@ public class EchoPlayer : MonoBehaviour
     void Throw()
     {
         Stones--;
+        Used?.Invoke(PromptKind.Throw);
         Transform cam = body.CameraTransform;
         LooseStone.Spawn(cam.position + cam.forward * 0.5f, cam.forward * 9f + Vector3.up * 2f, controller);
     }

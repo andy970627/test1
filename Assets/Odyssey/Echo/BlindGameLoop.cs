@@ -12,7 +12,6 @@ using UnityEngine.InputSystem;
 public class BlindGameLoop : MonoBehaviour
 {
     public const int SheepCount = 9;
-    public float hintSeconds = 12f;
 
     [Tooltip("過場播放速度倍率；2 = 所有淡入淡出與停留時間減半。")]
     public float transitionSpeed = 2f;
@@ -25,7 +24,6 @@ public class BlindGameLoop : MonoBehaviour
     EchoField echo;
     BoulderFeel feel;
     float nightStart;
-    float hintUntil;
     bool waitingRestart;
     string logPath;
     int seed = 1;
@@ -39,6 +37,7 @@ public class BlindGameLoop : MonoBehaviour
     const float PailReach = 0.6f;
     const float RackReach = 0.8f;
     const float RescueReach = 3f;
+    const float MovePromptMeters = 3f;
 
     public CaveLoopState State { get; private set; }
     public CrewRoster Roster { get; } = new();
@@ -46,6 +45,10 @@ public class BlindGameLoop : MonoBehaviour
     public CrewLine Crew { get; private set; }
     public OliveStake Stake { get; private set; }
     public EchoPlayer Player => player;
+    public FirstPersonPlayer Body => body;
+
+    /// <summary>遊戲內提示用過幾次；跨夜、重新開始都保留。</summary>
+    public PromptTracker Prompts { get; } = new();
     public int RescuedLastEscape { get; private set; }
     public int LostTonight { get; private set; }
     public SheepRush Rush { get; } = new(SheepCount, new System.Random().NextDouble);
@@ -93,6 +96,8 @@ public class BlindGameLoop : MonoBehaviour
         player.EscapeRequested += Escape;
         feel = gameObject.AddComponent<BoulderFeel>();
         feel.Init(Layout.Boulder, body);
+        player.Used += Prompts.Used;
+        gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
 
         Cyclops = new GameObject("Cyclops").AddComponent<BlindCyclops>();
         Cyclops.transform.SetParent(caveRoot, false);
@@ -136,7 +141,6 @@ public class BlindGameLoop : MonoBehaviour
         player.InputEnabled = true;
         Cyclops.Active = true;
         nightStart = Time.time;
-        hintUntil = Time.time + hintSeconds;
     }
 
     /// <summary>
@@ -155,6 +159,7 @@ public class BlindGameLoop : MonoBehaviour
             pail.Stand();
         LostTonight = 0;
         Rush.Reset();
+        Prompts.NewNight();
         RescuedLastEscape = 0;
         pullNoiseTimer = 0f;
         Dawn.Reset();
@@ -208,6 +213,8 @@ public class BlindGameLoop : MonoBehaviour
         UpdateBoulder();
         UpdateSheepRush();
         UpdateClutter();
+        if (player.MovedTonight >= MovePromptMeters)
+            Prompts.Used(PromptKind.Move);
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
@@ -449,16 +456,9 @@ public class BlindGameLoop : MonoBehaviour
         if (State.Phase == LoopPhase.Night && player.AtBoulder && !Slide.IsOpen)
             DrawPushBar(fontSize);
 
+        // 操作提示都在遊戲裡（WorldPrompts）；底部只留重新開始。
         string bottom = null;
-        if (State.Phase == LoopPhase.Night && Time.time < hintUntil)
-            bottom = "WASD 走・Shift 跑・Q 拍手・左鍵 丟石子・E 推／撿／帶人・Shift＋E 猛推・右鍵 塞楔子・F 隊伍蹲下・G 木樁";
-        else if (State.Phase == LoopPhase.Night && Rush.Stuck)
-            bottom = "有羊卡在縫裡：把巨石推開讓牠出去";
-        else if (State.Phase == LoopPhase.Night && Slide.IsOpen && !Rush.GapClear)
-            bottom = "有羊擠在縫裡";
-        else if (State.Phase == LoopPhase.Night && Slide.IsOpen)
-            bottom = "縫夠寬了：走到縫前按 E 鑽出去";
-        else if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))
+        if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))
             bottom = "按 R 重新開始";
         if (bottom != null)
         {
