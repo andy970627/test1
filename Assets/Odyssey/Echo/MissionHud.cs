@@ -46,9 +46,9 @@ public class MissionHud : MonoBehaviour
         var keyboard = Keyboard.current;
         if (!BriefingOpen || keyboard == null)
             return;
-        if (keyboard.leftArrowKey.wasPressedThisFrame && selected > DifficultyLevel.Familiar)
+        if ((keyboard.aKey.wasPressedThisFrame || keyboard.leftArrowKey.wasPressedThisFrame) && selected > DifficultyLevel.Familiar)
             selected--;
-        if (keyboard.rightArrowKey.wasPressedThisFrame && selected < DifficultyLevel.Hard)
+        if ((keyboard.dKey.wasPressedThisFrame || keyboard.rightArrowKey.wasPressedThisFrame) && selected < DifficultyLevel.Hard)
             selected++;
         if (keyboard.digit1Key.wasPressedThisFrame)
             selected = DifficultyLevel.Familiar;
@@ -118,7 +118,7 @@ public class MissionHud : MonoBehaviour
         y += rowH;
         Label(new Rect(x, y, width, rowH), Difficulty.Blurb(selected), choiceStyle, Text);
         y += rowH;
-        Label(new Rect(x, y, width, rowH), "← → 或 1／2／3 選難度", choiceStyle, Dim);
+        Label(new Rect(x, y, width, rowH), "A／D 選難度", choiceStyle, Dim);
 
         if (CanStart)
             Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "按空白鍵開始", titleStyle, Dim);
