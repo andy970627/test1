@@ -160,6 +160,9 @@ namespace Odyssey.Core
             return true;
         }
 
+        /// <summary>羊撞巨石：開口退 meters，不低於最外面的楔子。</summary>
+        public void Jolt(float meters) => Opening = Math.Max(Floor, Opening - meters);
+
         /// <summary>把木樁插在目前開口，巨人拔不掉。</summary>
         public void PlantStake() => StakeWedge = Opening;
 

@@ -245,6 +245,28 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Jolt_StopsAtFloor()
+        {
+            var s = new BoulderSlide();
+            PushTo(s, 0.5f);
+            s.AddStoneWedge();
+            float wedge = s.Opening;
+            PushTo(s, wedge + 0.02f);
+            s.Jolt(0.05f);
+            Assert.AreEqual(wedge, s.Opening, 1e-6f);
+        }
+
+        [Test]
+        public void Jolt_BacksOffFromFullOpen()
+        {
+            var s = new BoulderSlide();
+            s.Tick(20f, PushMode.Heavy, false);
+            s.Jolt(0.05f);
+            Assert.AreEqual(BoulderSlide.FullOpen - 0.05f, s.Opening, 1e-5f);
+            Assert.IsFalse(s.IsOpen);
+        }
+
+        [Test]
         public void Reset_ClearsEverything()
         {
             var s = new BoulderSlide();

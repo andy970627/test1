@@ -31,6 +31,8 @@ public class BlindGameLoop : MonoBehaviour
     Vector3 lastPlayerPos;
     int insidePen = -1;
     float pullNoiseTimer;
+    readonly float[] sheepToFace = new float[SheepCount];
+    readonly float[] sheepToGap = new float[SheepCount];
 
     const float PullNoiseSeconds = 0.5f;
     const float PailReach = 0.6f;
@@ -45,6 +47,7 @@ public class BlindGameLoop : MonoBehaviour
     public EchoPlayer Player => player;
     public int RescuedLastEscape { get; private set; }
     public int LostTonight { get; private set; }
+    public SheepRush Rush { get; } = new(SheepCount, new System.Random().NextDouble);
     public DawnClock Dawn { get; } = new();
     public DecoyMemory Decoys { get; } = new();
     public BlindCyclops Cyclops { get; private set; }
@@ -148,6 +151,7 @@ public class BlindGameLoop : MonoBehaviour
         foreach (var pail in Layout.Pails)
             pail.Stand();
         LostTonight = 0;
+        Rush.Reset();
         RescuedLastEscape = 0;
         pullNoiseTimer = 0f;
         Dawn.Reset();
@@ -198,6 +202,7 @@ public class BlindGameLoop : MonoBehaviour
         if (State.Phase != LoopPhase.Night)
             return;
         UpdateBoulder();
+        UpdateSheepRush();
         UpdateClutter();
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
@@ -231,6 +236,47 @@ public class BlindGameLoop : MonoBehaviour
         }
         else
             pullNoiseTimer = 0f;
+    }
+
+    /// <summary>天光引羊：縫全開後羊群湧向洞口，撞鬆巨石、一隻隻鑽出去、可能卡在縫裡。</summary>
+    void UpdateSheepRush()
+    {
+        Boulder boulder = Layout.Boulder;
+        Vector3 face = boulder.PushPoint;
+        Vector3 gap = boulder.GapPoint;
+        for (int i = 0; i < sheep.Count; i++)
+        {
+            Vector3 p = sheep[i].transform.position;
+            float dx = Mathf.Max(0f, Mathf.Abs(p.x - face.x) - Boulder.Width / 2f);
+            float dz = Mathf.Abs(p.z - face.z);
+            sheepToFace[i] = Mathf.Sqrt(dx * dx + dz * dz);
+            sheepToGap[i] = Flat(p - gap).magnitude;
+        }
+
+        bool wasActive = Rush.Active;
+        RushTick t = Rush.Tick(Time.deltaTime, Slide.Opening, sheepToFace, sheepToGap);
+        if (!wasActive && Rush.Active)
+            foreach (var s in sheep)
+                s.RushTo(gap + new Vector3(0.8f, 0f, -0.7f));
+
+        foreach (int i in t.Jostled)
+        {
+            sheep[i].Bleat();
+            Slide.Jolt(SheepRush.JoltMeters);
+        }
+        if (t.Knock && Slide.GiantPull())
+        {
+            LooseStone.Spawn(gap + new Vector3(0f, 0f, -0.3f), new Vector3(0f, 2f, -3f), null);
+            SoundBus.Emit(SoundKind.Slip, face);
+        }
+        if (Rush.Squeezing >= 0)
+        {
+            sheep[Rush.Squeezing].SqueezeAt(gap);
+            if (t.StuckBleat)
+                sheep[Rush.Squeezing].Bleat();
+        }
+        if (t.Escaped >= 0)
+            sheep[t.Escaped].Leave();
     }
 
     /// <summary>奶桶、乳酪架、羊圈：人走過就會出聲。</summary>
@@ -343,7 +389,8 @@ public class BlindGameLoop : MonoBehaviour
 
     void Escape()
     {
-        if (State.Phase != LoopPhase.Night || !Slide.IsOpen)
+        // 縫裡有羊正在鑽或卡住時鑽不出去。
+        if (State.Phase != LoopPhase.Night || !Slide.IsOpen || !Rush.GapClear)
             return;
         // 縫 3 m 內的跟隨者一起鑽出去。
         Vector3 gap = Layout.Boulder.GapPoint;
@@ -397,6 +444,10 @@ public class BlindGameLoop : MonoBehaviour
         string bottom = null;
         if (State.Phase == LoopPhase.Night && Time.time < hintUntil)
             bottom = "WASD 走・Shift 跑・Q 拍手・左鍵 丟石子・E 推／撿／帶人・Shift＋E 猛推・右鍵 塞楔子・F 隊伍蹲下・G 木樁";
+        else if (State.Phase == LoopPhase.Night && Rush.Stuck)
+            bottom = "有羊卡在縫裡：把巨石推開讓牠出去";
+        else if (State.Phase == LoopPhase.Night && Slide.IsOpen && !Rush.GapClear)
+            bottom = "有羊擠在縫裡";
         else if (State.Phase == LoopPhase.Night && Slide.IsOpen)
             bottom = "縫夠寬了：走到縫前按 E 鑽出去";
         else if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))

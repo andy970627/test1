@@ -1,7 +1,7 @@
 using Odyssey.Core;
 using UnityEngine;
 
-/// <summary>在洞裡亂走的羊：不時咩叫，照亮自己周圍，也蓋過 3 m 內的其他聲音。</summary>
+/// <summary>在洞裡亂走的羊：不時咩叫，照亮自己周圍，也蓋過 3 m 內的其他聲音。縫全開後湧向洞口。</summary>
 public class WanderingSheep : MonoBehaviour
 {
     const float Speed = 0.6f;
@@ -14,6 +14,7 @@ public class WanderingSheep : MonoBehaviour
     Vector3 target;
     float pauseUntil;
     float nextBleat;
+    bool rushing;
 
     public bool IsRam { get; private set; }
 
@@ -35,8 +36,36 @@ public class WanderingSheep : MonoBehaviour
         ResetForNight();
     }
 
+    /// <summary>天光引羊：改用 1.2 m/s 朝縫走（停在 goal 附近），不再亂逛。</summary>
+    public void RushTo(Vector3 goal)
+    {
+        rushing = true;
+        target = goal + new Vector3(Range(-1.2f, 1.2f), 0f, Range(-0.8f, 0f));
+        pauseUntil = 0f;
+    }
+
+    /// <summary>鑽縫：直接站進縫裡。</summary>
+    public void SqueezeAt(Vector3 gap)
+    {
+        transform.position = Ground(gap);
+        target = transform.position;
+    }
+
+    /// <summary>鑽出去了：這一夜不再出現。</summary>
+    public void Leave() => gameObject.SetActive(false);
+
+    /// <summary>咩一聲（撞巨石、卡在縫裡）。</summary>
+    public void Bleat()
+    {
+        voice.pitch = IsRam ? 0.8f : Range(0.95f, 1.15f);
+        voice.Play();
+        SoundBus.Emit(SoundKind.Bleat, transform.position + Vector3.up * 0.6f);
+    }
+
     public void ResetForNight()
     {
+        gameObject.SetActive(true);
+        rushing = false;
         transform.position = Ground(RandomPoint());
         target = RandomPoint();
         pauseUntil = 0f;
@@ -48,9 +77,7 @@ public class WanderingSheep : MonoBehaviour
         if (Time.time >= nextBleat)
         {
             nextBleat = Time.time + Range(MinBleat, MaxBleat);
-            voice.pitch = IsRam ? 0.8f : Range(0.95f, 1.15f);
-            voice.Play();
-            SoundBus.Emit(SoundKind.Bleat, transform.position + Vector3.up * 0.6f);
+            Bleat();
         }
 
         if (Time.time < pauseUntil)
@@ -59,11 +86,15 @@ public class WanderingSheep : MonoBehaviour
         to.y = 0f;
         if (to.magnitude < 0.2f)
         {
+            // 湧向縫的羊到了就擠在那裡不走。
+            if (rushing)
+                return;
             pauseUntil = Time.time + Range(MinPause, MaxPause);
             target = RandomPoint();
             return;
         }
-        Vector3 next = transform.position + to.normalized * Mathf.Min(Speed * Time.deltaTime, to.magnitude);
+        float speed = rushing ? SheepRush.RushSpeed : Speed;
+        Vector3 next = transform.position + to.normalized * Mathf.Min(speed * Time.deltaTime, to.magnitude);
         transform.SetPositionAndRotation(Ground(next), Quaternion.LookRotation(to));
     }
 
