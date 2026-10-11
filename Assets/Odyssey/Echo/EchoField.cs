@@ -46,6 +46,7 @@ public class EchoField : MonoBehaviour
     {
         SoundSource.Cyclops => new Color(0.8f, 0.12f, 0.08f),
         SoundSource.Sheep => new Color(1f, 0.9f, 0.55f),
+        SoundSource.Crew => new Color(0.55f, 0.9f, 0.6f),
         _ => new Color(0.85f, 0.92f, 1f),
     };
 
