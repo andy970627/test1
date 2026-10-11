@@ -132,9 +132,7 @@ public class EchoPlayer : MonoBehaviour
     {
         Stones--;
         Transform cam = body.CameraTransform;
-        var go = new GameObject("ThrownStone");
-        go.transform.position = cam.position + cam.forward * 0.5f;
-        go.AddComponent<ThrownStone>().Launch(cam.forward * 9f + Vector3.up * 2f, controller);
+        LooseStone.Spawn(cam.position + cam.forward * 0.5f, cam.forward * 9f + Vector3.up * 2f, controller);
     }
 
     void UpdateBoulder(Keyboard keyboard)
@@ -173,6 +171,16 @@ public class EchoPlayer : MonoBehaviour
             if (p.Taken || Flat(p.transform.position - transform.position).magnitude > PickupReach)
                 continue;
             p.Take();
+            Stones++;
+            if (Stones >= MaxStones)
+                return;
+        }
+        // 丟出去、停在地上的石子也撿得回來。
+        foreach (var s in new List<LooseStone>(LooseStone.All))
+        {
+            if (s == null || !s.Settled || Flat(s.transform.position - transform.position).magnitude > PickupReach)
+                continue;
+            s.Take();
             Stones++;
             if (Stones >= MaxStones)
                 return;
