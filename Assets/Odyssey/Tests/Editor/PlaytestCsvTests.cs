@@ -26,6 +26,12 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void FileName_IsSeparateFromV1Columns()
+        {
+            Assert.AreEqual("blind_cave_v2_playtest.csv", PlaytestCsv.FileName);
+        }
+
+        [Test]
         public void Header_HasRescuedAndLost()
         {
             Assert.AreEqual("time,night,crew,boulder,rescued,lost,phase,outcome,seconds", PlaytestCsv.Header);

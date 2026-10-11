@@ -22,12 +22,14 @@ public class LooseStone : MonoBehaviour
     /// <summary>速度低於 0.2 m/s 視為停下，可以撿起。</summary>
     public bool Settled => Time.time - spawnTime >= MinAirSeconds && body.linearVelocity.magnitude < SettleSpeed;
 
-    public static LooseStone Spawn(Vector3 pos, Vector3 velocity, Collider ignore)
+    /// <param name="knockedLoose">被巨人拔掉或被羊撞掉的楔子：彈跳聲算巨人那邊的聲音（暗紅），巨人聽不到，
+    /// 不會把剛拔完楔子的巨人引開，也不算玩家騙他的石子。</param>
+    public static LooseStone Spawn(Vector3 pos, Vector3 velocity, Collider ignore, bool knockedLoose = false)
     {
         var go = new GameObject("LooseStone");
         go.transform.position = pos;
         var stone = go.AddComponent<LooseStone>();
-        stone.Build(velocity, ignore);
+        stone.Build(velocity, ignore, knockedLoose);
         all.Add(stone);
         return stone;
     }
@@ -46,7 +48,7 @@ public class LooseStone : MonoBehaviour
         Destroy(gameObject);
     }
 
-    void Build(Vector3 velocity, Collider ignore)
+    void Build(Vector3 velocity, Collider ignore, bool knockedLoose)
     {
         spawnTime = Time.time;
         var ball = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -64,7 +66,7 @@ public class LooseStone : MonoBehaviour
         body.mass = 0.2f;
         body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         body.linearVelocity = velocity;
-        gameObject.AddComponent<ImpactEmitter>().Init(SoundKind.Stone, SoundRules.Loudness(SoundKind.Stone));
+        gameObject.AddComponent<ImpactEmitter>().Init(knockedLoose ? SoundKind.Cyclops : SoundKind.Stone, SoundRules.Loudness(SoundKind.Stone));
     }
 
     void OnCollisionEnter(Collision collision)

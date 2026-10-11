@@ -22,7 +22,7 @@ namespace Odyssey.Core.Tests
         [Test]
         public void PlaytestFile_IsSeparateFromOldCling()
         {
-            Assert.AreEqual("blind_cave_playtest.csv", PlaytestCsv.FileName);
+            Assert.AreNotEqual("cyclops_playtest.csv", PlaytestCsv.FileName);
         }
     }
 }

@@ -266,7 +266,7 @@ public class BlindGameLoop : MonoBehaviour
         }
         if (t.Knock && Slide.GiantPull())
         {
-            LooseStone.Spawn(gap + new Vector3(0f, 0f, -0.3f), new Vector3(0f, 2f, -3f), null);
+            LooseStone.Spawn(gap + new Vector3(0f, 0f, -0.3f), new Vector3(0f, 2f, -3f), null, knockedLoose: true);
             SoundBus.Emit(SoundKind.Slip, face);
         }
         if (Rush.Squeezing >= 0)
@@ -353,7 +353,7 @@ public class BlindGameLoop : MonoBehaviour
         if (State.Phase != LoopPhase.Night || !Slide.GiantPull())
             return;
         Vector3 gap = Layout.Boulder.GapPoint + new Vector3(0f, 0f, -0.3f);
-        LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null);
+        LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null, knockedLoose: true);
         SoundBus.Emit(SoundKind.Cyclops, gap);
     }
 

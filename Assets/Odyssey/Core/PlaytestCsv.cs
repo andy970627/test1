@@ -7,8 +7,8 @@ namespace Odyssey.Core
     /// <summary>實測紀錄每輪一行。</summary>
     public static class PlaytestCsv
     {
-        /// <summary>和舊版（選羊＋抱緊）的 cyclops_playtest.csv 分開，避免欄位標題對不上。</summary>
-        public const string FileName = "blind_cave_playtest.csv";
+        /// <summary>v2 多了 rescued、lost 兩欄，和 v1 的 blind_cave_playtest.csv 分開，避免欄位標題對不上。</summary>
+        public const string FileName = "blind_cave_v2_playtest.csv";
 
         /// <summary>boulder＝這一夜開口最大值（公分）；rescued＝帶出的同伴；lost＝這一夜被吃或砸死的同伴。</summary>
         public const string Header = "time,night,crew,boulder,rescued,lost,phase,outcome,seconds";

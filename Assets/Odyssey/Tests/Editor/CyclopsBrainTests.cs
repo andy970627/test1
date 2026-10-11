@@ -329,6 +329,22 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void GuardSearch_RepeatedSlipNearby_DoesNotRestart()
+        {
+            brain.Hear(Snd(SoundKind.Boulder, Gate));
+            RunFor(2f, Far);
+            Assert.AreEqual(CyclopsState.Search, brain.State);
+            int pulls = 0;
+            for (int i = 0; i < 5; i++)
+            {
+                pulls += RunFor(1f, Far);
+                brain.Hear(Snd(SoundKind.Slip, Gate.X - 0.1f * i, 0f));
+            }
+            Assert.AreEqual(1, pulls);
+            Assert.IsTrue(brain.HoldingBoulder);
+        }
+
+        [Test]
         public void GuardSearch_Complete_PullsWedgeOnce()
         {
             brain.Hear(Snd(SoundKind.Boulder, Gate));

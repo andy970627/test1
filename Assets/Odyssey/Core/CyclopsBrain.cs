@@ -116,6 +116,14 @@ namespace Odyssey.Core
             if (!SoundRules.CanHear(e, Position, multiplier))
                 return;
 
+            // 巨石自己往回滑（Slip）時，已經守在旁邊的巨人不必重新摸一次：只記下巨石現在的位置。
+            if (e.Kind == SoundKind.Slip && (guarding || HoldingBoulder) && Vector2.Distance(e.Position, holdPoint) <= HoldLeash)
+            {
+                holdPoint = e.Position;
+                if (State == CyclopsState.Guard)
+                    Target = e.Position;
+                return;
+            }
             if (SoundRules.IsBoulder(e.Kind))
             {
                 // 巨石推開後位置會移動，跑向聲音實際發出的地方。

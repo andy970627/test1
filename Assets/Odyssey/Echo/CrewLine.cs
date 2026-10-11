@@ -10,6 +10,9 @@ using NVector2 = System.Numerics.Vector2;
 /// </summary>
 public class CrewLine : MonoBehaviour
 {
+    // 跟隨者最快只比玩家快一點，跟得上隊伍但趕不上瞬移。
+    const float CatchUpFactor = 1.2f;
+
     readonly List<CrewMember> members = new();
     readonly List<CrewMember> followers = new();
     readonly Dictionary<CrewMember, float> stepTimers = new();
@@ -130,8 +133,12 @@ public class CrewLine : MonoBehaviour
         for (int i = 0; i < followers.Count; i++)
         {
             var m = followers[i];
+            // 用走路（或跑步）的速度走到隊伍裡的位置：從蹲下起身、或剛加入時不會瞬間移過去。
             NVector2 p = trail.PositionAt(i);
-            m.MoveTo(new Vector3(p.X, 0f, p.Y));
+            Vector3 goal = new(p.X, 0f, p.Y);
+            float maxStep = (Running ? EchoPlayer.RunSpeed : EchoPlayer.CrouchSpeed) * CatchUpFactor * Time.deltaTime;
+            Vector3 here = FlatV(m.transform.position);
+            m.MoveTo(Vector3.MoveTowards(here, goal, maxStep));
             Vector3 delta = FlatV(m.transform.position - lastPositions[m]);
             lastPositions[m] = m.transform.position;
             if (delta.sqrMagnitude < 1e-6f)

@@ -12,6 +12,8 @@ public class MilkPail : MonoBehaviour
 
     Rigidbody body;
     Vector3 home;
+    bool knocked;
+    bool fallSounded;
 
     /// <summary>傾斜超過 45° 算倒了。</summary>
     public bool Fallen => Vector3.Angle(Vector3.up, transform.up) > 45f;
@@ -37,8 +39,10 @@ public class MilkPail : MonoBehaviour
     /// <summary>從 from 的方向在桶頂推一下，把它推倒；已經倒了就不再推。</summary>
     public void Knock(Vector3 from)
     {
-        if (Fallen)
+        // 每次扶正後只推一次：人站在旁邊時每幀都會呼叫，不能一直疊加速度把桶打飛。
+        if (knocked || Fallen)
             return;
+        knocked = true;
         Vector3 dir = transform.position - from;
         dir.y = 0f;
         if (dir.sqrMagnitude < 1e-4f)
@@ -49,8 +53,22 @@ public class MilkPail : MonoBehaviour
         body.AddForceAtPosition(dir * KnockSpeed, top, ForceMode.VelocityChange);
     }
 
+    /// <summary>
+    /// 倒下的那一下要響：桶本來就貼著地，翻倒時碰撞接觸不一定會重新開始，
+    /// OnCollisionEnter 可能不觸發，所以傾斜超過 45° 時直接發一次 Clatter。
+    /// </summary>
+    void Update()
+    {
+        if (fallSounded || !Fallen)
+            return;
+        fallSounded = true;
+        SoundBus.Emit(SoundKind.Clatter, transform.position);
+    }
+
     public void Stand()
     {
+        knocked = false;
+        fallSounded = false;
         body.linearVelocity = Vector3.zero;
         body.angularVelocity = Vector3.zero;
         transform.SetPositionAndRotation(home, Quaternion.identity);
