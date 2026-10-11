@@ -5,8 +5,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 黑暗中的奧德修斯：腳步、跑（受體力限制，低體力會喘氣）、拍手、丟石子、推巨石、撿石子。每個動作都會發出聲音（SoundBus）。
-/// 移動與視角沿用同一個物件上的 FirstPersonPlayer。
+/// 黑暗中的奧德修斯：腳步、跑（受體力限制，低體力會喘氣）、拍手、丟石子、撿石子；
+/// 對巨石輕推（E）或猛推（Shift＋E）、塞或拔石子楔子（右鍵）；撿、放、插橄欖木樁（E／G）；帶同伴、讓隊伍蹲下（E／F）。
+/// 每個動作都會發出聲音（SoundBus）。移動與視角沿用同一個物件上的 FirstPersonPlayer。
 /// </summary>
 public class EchoPlayer : MonoBehaviour
 {
@@ -16,28 +17,44 @@ public class EchoPlayer : MonoBehaviour
     public const float RunStepSeconds = 0.35f;
     public const int MaxStones = 3;
     public const int StartStones = 1;
-    public const float PushHoldSeconds = 1f;
     public const float PushReach = 1.5f;
     public const float PickupReach = 0.8f;
+    public const float StakeReach = 1.2f;
+    public const float CrewReach = 1.2f;
+    public const float WedgeSeconds = 0.6f;
+    public const float PullWedgeSeconds = 1f;
     const float PushFacingDot = 0.7f;
 
     FirstPersonPlayer body;
     Boulder boulder;
+    BoulderSlide slide;
     IReadOnlyList<StonePickup> pickups;
-    Func<bool> boulderOpen;
+    OliveStake stake;
+    CrewLine crew;
+    Func<Vector3, float> stepScale;
     CharacterController controller;
     Vector3 lastPosition;
     float stepTimer;
-    float pushHold;
     bool wasLocked;
     bool inputEnabled;
 
+    // 右鍵：按下開始計時；按住滿 1 秒拔回楔子，沒按滿就塞一顆（從按下起共花 0.6 秒）。
+    float rightHeld = -1f;
+    bool rightPulled;
+    float wedgeBusy = -1f;
+
     public int Stones { get; private set; } = StartStones;
     public Stamina Stamina { get; } = new();
-    public float PushHold01 => Mathf.Clamp01(pushHold / PushHoldSeconds);
+
+    /// <summary>這一幀對巨石的推法，由 BlindGameLoop 傳給 BoulderSlide.Tick。</summary>
+    public PushMode PushMode { get; private set; }
+    public bool CarryingStake => stake != null && stake.Carried;
 
     /// <summary>站在巨石前、面向巨石（推的範圍內）。</summary>
     public bool AtBoulder { get; private set; }
+
+    /// <summary>正在塞楔子（0.6 秒內不能推）。</summary>
+    public bool Wedging => wedgeBusy >= 0f;
 
     public bool InputEnabled
     {
@@ -48,19 +65,22 @@ public class EchoPlayer : MonoBehaviour
             if (body != null)
                 body.InputEnabled = value;
             if (!value)
-                pushHold = 0f;
+                ClearActions();
         }
     }
 
-    public event Action PushCompleted;
     public event Action EscapeRequested;
 
-    public void Init(FirstPersonPlayer body, Boulder boulder, IReadOnlyList<StonePickup> pickups, Func<bool> boulderOpen)
+    public void Init(FirstPersonPlayer body, Boulder boulder, BoulderSlide slide, IReadOnlyList<StonePickup> pickups,
+        OliveStake stake, CrewLine crew, Func<Vector3, float> stepScale)
     {
         this.body = body;
         this.boulder = boulder;
+        this.slide = slide;
         this.pickups = pickups;
-        this.boulderOpen = boulderOpen;
+        this.stake = stake;
+        this.crew = crew;
+        this.stepScale = stepScale;
         controller = body.GetComponent<CharacterController>();
         InputEnabled = false;
         ResetForNight();
@@ -70,9 +90,17 @@ public class EchoPlayer : MonoBehaviour
     {
         Stones = StartStones;
         Stamina.Reset();
-        pushHold = 0f;
         stepTimer = 0f;
         lastPosition = transform.position;
+        ClearActions();
+    }
+
+    void ClearActions()
+    {
+        PushMode = PushMode.None;
+        rightHeld = -1f;
+        rightPulled = false;
+        wedgeBusy = -1f;
     }
 
     void Update()
@@ -84,30 +112,147 @@ public class EchoPlayer : MonoBehaviour
             return;
         if (!inputEnabled)
         {
+            PushMode = PushMode.None;
             lastPosition = transform.position;
             wasLocked = locked;
             return;
         }
 
-        // 站著不動按 Shift 不算跑，不耗體力。
-        bool wantRun = (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed)
-            && Flat(controller.velocity).sqrMagnitude > 0.01f;
-        bool running = Stamina.Tick(Time.deltaTime, wantRun);
-        if (Stamina.PantDue(Time.deltaTime))
+        float dt = Time.deltaTime;
+        bool shift = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
+        Vector3 forward = Flat(body.CameraTransform.forward).normalized;
+        Vector3 toPush = Flat(boulder.PushPoint - transform.position);
+        AtBoulder = toPush.magnitude <= PushReach && Vector3.Dot(forward, toPush.normalized) > PushFacingDot;
+
+        bool ePressedUsed = HandleInteract(keyboard);
+        UpdateWedgeButton(mouse, dt);
+
+        // 體力每幀只算一次：推巨石時 Shift 是猛推，否則是跑步（拿著木樁不能跑）。
+        bool pushing = AtBoulder && keyboard.eKey.isPressed && !ePressedUsed && !Wedging && rightHeld < 0f;
+        bool running = false;
+        if (pushing)
+            PushMode = Stamina.Tick(dt, shift) ? PushMode.Heavy : PushMode.Light;
+        else
+        {
+            PushMode = PushMode.None;
+            bool wantRun = shift && !CarryingStake && Flat(controller.velocity).sqrMagnitude > 0.01f;
+            running = Stamina.Tick(dt, wantRun);
+        }
+        if (Stamina.PantDue(dt))
             SoundBus.Emit(SoundKind.Pant, body.CameraTransform.position);
         body.walkSpeed = running ? RunSpeed : CrouchSpeed;
+        crew.Running = running;
         UpdateSteps(running);
 
         if (keyboard.qKey.wasPressedThisFrame)
             SoundBus.Emit(SoundKind.Clap, body.CameraTransform.position);
 
-        // 這一幀才重新鎖住游標的那一下點擊不算丟石子。
-        if (wasLocked && mouse.leftButton.wasPressedThisFrame && Stones > 0)
+        // 這一幀才重新鎖住游標的那一下點擊不算丟石子；拿著木樁不能丟。
+        if (wasLocked && mouse.leftButton.wasPressedThisFrame && Stones > 0 && !CarryingStake)
             Throw();
 
-        UpdateBoulder(keyboard);
+        if (keyboard.fKey.wasPressedThisFrame)
+            crew.ToggleCrouch();
+        if (keyboard.gKey.wasPressedThisFrame && CarryingStake)
+            DropOrPlantStake();
+
         UpdatePickups();
         wasLocked = locked;
+    }
+
+    /// <summary>E 按下的優先順序：鑽縫 → 撿木樁 → 帶同伴；回傳這一下是否已被用掉（就不算推）。</summary>
+    bool HandleInteract(Keyboard keyboard)
+    {
+        if (!keyboard.eKey.wasPressedThisFrame)
+            return false;
+        if (slide.IsOpen && Flat(boulder.GapPoint - transform.position).magnitude <= PushReach)
+        {
+            EscapeRequested?.Invoke();
+            return true;
+        }
+        if (!CarryingStake && Flat(stake.transform.position - transform.position).magnitude <= StakeReach)
+        {
+            if (stake.Planted)
+                slide.RemoveStake();
+            stake.AttachTo(body.CameraTransform);
+            return true;
+        }
+        var hiding = crew.NearestHiding(transform.position, CrewReach);
+        if (hiding != null)
+        {
+            crew.Recruit(hiding);
+            return true;
+        }
+        return false;
+    }
+
+    void UpdateWedgeButton(Mouse mouse, float dt)
+    {
+        if (wedgeBusy >= 0f)
+        {
+            wedgeBusy -= dt;
+            if (wedgeBusy < 0f)
+                PlaceWedge();
+        }
+
+        if (mouse.rightButton.wasPressedThisFrame && AtBoulder && wedgeBusy < 0f)
+        {
+            rightHeld = 0f;
+            rightPulled = false;
+        }
+        if (rightHeld < 0f)
+            return;
+
+        if (mouse.rightButton.isPressed && AtBoulder)
+        {
+            rightHeld += dt;
+            if (!rightPulled && rightHeld >= PullWedgeSeconds)
+            {
+                rightPulled = true;
+                PullWedge();
+            }
+            return;
+        }
+
+        // 放開（或離開巨石）：沒拔過就塞一顆，從按下起共花 0.6 秒。
+        if (!rightPulled && AtBoulder && Stones > 0)
+            wedgeBusy = Mathf.Max(0f, WedgeSeconds - rightHeld);
+        rightHeld = -1f;
+        if (wedgeBusy == 0f)
+        {
+            wedgeBusy = -1f;
+            PlaceWedge();
+        }
+    }
+
+    void PlaceWedge()
+    {
+        if (Stones <= 0)
+            return;
+        Stones--;
+        slide.AddStoneWedge();
+        SoundBus.Emit(SoundKind.Wedge, boulder.WedgePoint(slide.Opening));
+    }
+
+    void PullWedge()
+    {
+        if (!slide.RemoveOutermostStoneWedge())
+            return;
+        if (Stones < MaxStones)
+            Stones++;
+        else
+            LooseStone.Spawn(transform.position + Vector3.up * 0.3f, Vector3.zero, controller);
+    }
+
+    void DropOrPlantStake()
+    {
+        if (AtBoulder)
+        {
+            stake.PlantAt(boulder.WedgePoint(slide.Opening));
+            slide.PlantStake();
+        }
+        else
+            stake.PlaceAt(transform.position + body.CameraTransform.forward * 0.5f);
     }
 
     void UpdateSteps(bool running)
@@ -121,11 +266,12 @@ public class EchoPlayer : MonoBehaviour
             return;
         }
         stepTimer += Time.deltaTime;
-        if (stepTimer >= (running ? RunStepSeconds : CrouchStepSeconds))
-        {
-            stepTimer = 0f;
-            SoundBus.Emit(running ? SoundKind.Run : SoundKind.Step, transform.position);
-        }
+        if (stepTimer < (running ? RunStepSeconds : CrouchStepSeconds))
+            return;
+        stepTimer = 0f;
+        // 拿著木樁時是拖行聲；羊圈裡的腳步聲減半。
+        SoundKind kind = CarryingStake ? SoundKind.Drag : running ? SoundKind.Run : SoundKind.Step;
+        SoundBus.Emit(kind, transform.position, stepScale(transform.position));
     }
 
     void Throw()
@@ -133,33 +279,6 @@ public class EchoPlayer : MonoBehaviour
         Stones--;
         Transform cam = body.CameraTransform;
         LooseStone.Spawn(cam.position + cam.forward * 0.5f, cam.forward * 9f + Vector3.up * 2f, controller);
-    }
-
-    void UpdateBoulder(Keyboard keyboard)
-    {
-        Vector3 forward = Flat(body.CameraTransform.forward).normalized;
-        Vector3 toPush = Flat(boulder.PushPoint - transform.position);
-        AtBoulder = toPush.magnitude <= PushReach && Vector3.Dot(forward, toPush.normalized) > PushFacingDot;
-
-        if (boulderOpen())
-        {
-            pushHold = 0f;
-            if (keyboard.eKey.wasPressedThisFrame && Flat(boulder.GapPoint - transform.position).magnitude <= PushReach)
-                EscapeRequested?.Invoke();
-            return;
-        }
-
-        if (AtBoulder && keyboard.eKey.isPressed)
-        {
-            pushHold += Time.deltaTime;
-            if (pushHold >= PushHoldSeconds)
-            {
-                pushHold = 0f;
-                PushCompleted?.Invoke();
-            }
-        }
-        else
-            pushHold = 0f;
     }
 
     void UpdatePickups()

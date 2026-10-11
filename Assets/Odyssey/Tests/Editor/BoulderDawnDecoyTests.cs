@@ -5,37 +5,6 @@ namespace Odyssey.Core.Tests
     public class BoulderDawnDecoyTests
     {
         [Test]
-        public void Boulder_EightPushesOpens()
-        {
-            var b = new BoulderModel();
-            for (int i = 0; i < 7; i++)
-                Assert.IsTrue(b.Push());
-            Assert.IsFalse(b.IsOpen);
-            Assert.IsTrue(b.Push());
-            Assert.IsTrue(b.IsOpen);
-        }
-
-        [Test]
-        public void Boulder_PushWhenOpen_ReturnsFalseAndStaysAtEight()
-        {
-            var b = new BoulderModel();
-            for (int i = 0; i < 8; i++)
-                b.Push();
-            Assert.IsFalse(b.Push());
-            Assert.AreEqual(8, b.Progress);
-        }
-
-        [Test]
-        public void Boulder_Reset_GoesToZero()
-        {
-            var b = new BoulderModel();
-            b.Push();
-            b.Reset();
-            Assert.AreEqual(0, b.Progress);
-            Assert.IsFalse(b.IsOpen);
-        }
-
-        [Test]
         public void Dawn_After240Seconds_IsDawn()
         {
             var d = new DawnClock();

@@ -1,7 +1,8 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 封住洞口的巨石：每推一格往 +X 滑開一點，左邊露出一道縫，縫裡透出天光。
+/// 封住洞口的巨石：推開時往 +X 滑，左邊露出一道縫，縫裡透出天光；塞進縫的楔子看得見。
 /// 縫後面有一道看不見的牆，只能在推開後對著縫按 E 鑽出去。
 /// </summary>
 public class Boulder : MonoBehaviour
@@ -9,7 +10,7 @@ public class Boulder : MonoBehaviour
     public const float Width = 6.0f;
     public const float Height = 3.6f;
     public const float Depth = 1.8f;
-    public const float SlidePerStep = 0.18f;
+    readonly List<Transform> wedgeMarks = new();
 
     // 赭黃巨石配三道亮色刻痕，和灰褐岩壁 (0.28, 0.25, 0.22) 一眼分得出來。
     static readonly Color StoneColor = new(0.62f, 0.48f, 0.3f);
@@ -59,7 +60,7 @@ public class Boulder : MonoBehaviour
         gapMaterial = OdysseyMaterials.Create(Color.black, NightGlow);
         lightGo.GetComponent<Renderer>().sharedMaterial = gapMaterial;
 
-        SetProgress(0);
+        SetOpening(0f);
         SetDawn(0f);
     }
 
@@ -82,14 +83,41 @@ public class Boulder : MonoBehaviour
         }
     }
 
-    public void SetProgress(int steps)
+    /// <summary>巨石往 +X 滑開 meters，縫的光跟著變寬。</summary>
+    public void SetOpening(float meters)
     {
-        slide = steps * SlidePerStep;
+        slide = meters;
         body.localPosition = new Vector3(slide, 0f, 0f);
         float gap = Mathf.Max(slide, 0.01f);
         gapLight.localPosition = new Vector3(-Width / 2f + slide / 2f, 0f, Depth / 2f + 0.05f);
         gapLight.localScale = new Vector3(gap, Height, 1f);
-        gapLight.gameObject.SetActive(steps > 0);
+        gapLight.gameObject.SetActive(slide > 0.005f);
+    }
+
+    /// <summary>開口為 opening 時，楔子塞在縫裡、貼著巨石左緣的地面位置。</summary>
+    public Vector3 WedgePoint(float opening) =>
+        center + new Vector3(-Width / 2f + opening - 0.08f, -Height / 2f, -Depth / 2f + 0.15f);
+
+    /// <summary>在每顆石子楔子的位置顯示一塊灰色小石頭（木樁由 OliveStake 自己顯示）。</summary>
+    public void ShowWedges(IReadOnlyList<float> stones)
+    {
+        while (wedgeMarks.Count < stones.Count)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "Wedge";
+            Destroy(go.GetComponent<Collider>());
+            go.transform.SetParent(transform, false);
+            go.transform.localScale = new Vector3(0.14f, 0.12f, 0.2f);
+            go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.6f, 0.6f, 0.58f));
+            wedgeMarks.Add(go.transform);
+        }
+        for (int i = 0; i < wedgeMarks.Count; i++)
+        {
+            bool used = i < stones.Count;
+            wedgeMarks[i].gameObject.SetActive(used);
+            if (used)
+                wedgeMarks[i].position = WedgePoint(stones[i]) + Vector3.up * 0.06f;
+        }
     }
 
     /// <summary>fraction：0 = 入夜，1 = 天亮；縫裡的光從深藍漸變到灰白。</summary>

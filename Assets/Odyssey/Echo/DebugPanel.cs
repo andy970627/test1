@@ -72,7 +72,7 @@ public class DebugPanel : MonoBehaviour
         y += line;
 
         float barW = panelW - fontSize * 6f - 20f;
-        Bar("巨石", (float)loop.BoulderProgress.Progress / BoulderModel.StepsToOpen, BoulderModel.StepsToOpen, new Color(0.75f, 0.6f, 0.4f), ref y, line, barW, style);
+        Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, new Color(0.75f, 0.6f, 0.4f), ref y, line, barW, style);
         Bar("天亮", loop.Dawn.Fraction, 0, new Color(0.7f, 0.75f, 0.95f), ref y, line, barW, style);
         Bar("石子", loop.Decoys.StoneRadiusMultiplier, 0, new Color(0.85f, 0.85f, 0.8f), ref y, line, barW, style);
         for (int i = 0; i < DecoyMemory.FooledLimit; i++)

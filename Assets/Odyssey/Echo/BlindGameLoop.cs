@@ -31,7 +31,10 @@ public class BlindGameLoop : MonoBehaviour
 
     public CaveLoopState State { get; private set; }
     public CrewRoster Roster { get; } = new();
-    public BoulderModel BoulderProgress { get; } = new();
+    public BoulderSlide Slide { get; } = new();
+    public CrewLine Crew { get; private set; }
+    public OliveStake Stake { get; private set; }
+    public EchoPlayer Player => player;
     public DawnClock Dawn { get; } = new();
     public DecoyMemory Decoys { get; } = new();
     public BlindCyclops Cyclops { get; private set; }
@@ -67,8 +70,12 @@ public class BlindGameLoop : MonoBehaviour
 
         body = new GameObject("Player").AddComponent<FirstPersonPlayer>();
         player = body.gameObject.AddComponent<EchoPlayer>();
-        player.Init(body, Layout.Boulder, pickups, () => BoulderProgress.IsOpen);
-        player.PushCompleted += OnPushed;
+        Crew = new GameObject("Crew").AddComponent<CrewLine>();
+        Crew.transform.SetParent(caveRoot, false);
+        Crew.Init(body.transform, p => BlindCaveBuilder.StepScale(Layout, p));
+        Stake = new GameObject("OliveStake").AddComponent<OliveStake>();
+        Stake.Init();
+        player.Init(body, Layout.Boulder, Slide, pickups, Stake, Crew, p => BlindCaveBuilder.StepScale(Layout, p));
         player.EscapeRequested += Escape;
 
         Cyclops = new GameObject("Cyclops").AddComponent<BlindCyclops>();
@@ -116,8 +123,10 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>黑畫面時重置：巨石回原位、巨人回座、石子重新散落、玩家回洞底。</summary>
     void ResetNight()
     {
-        BoulderProgress.Reset();
-        Layout.Boulder.SetProgress(0);
+        Slide.Reset();
+        Layout.Boulder.SetOpening(0f);
+        Layout.Boulder.ShowWedges(Slide.StoneWedges);
+        Stake.PlaceAt(Layout.StakeSpot);
         Dawn.Reset();
         Layout.Boulder.SetDawn(0f);
         Decoys.Reset();
@@ -149,18 +158,26 @@ public class BlindGameLoop : MonoBehaviour
 
         if (State.Phase != LoopPhase.Night)
             return;
+        UpdateBoulder();
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
             Fail(FailReason.Dawn);
     }
 
-    void OnPushed()
+    /// <summary>推進巨石的滑動，依結果發出輕推、猛推、回滑的聲音。</summary>
+    void UpdateBoulder()
     {
-        if (State.Phase != LoopPhase.Night || !BoulderProgress.Push())
-            return;
-        Layout.Boulder.SetProgress(BoulderProgress.Progress);
-        SoundBus.Emit(SoundKind.Boulder, Layout.Boulder.PushPoint);
+        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake);
+        Layout.Boulder.SetOpening(Slide.Opening);
+        Layout.Boulder.ShowWedges(Slide.StoneWedges);
+        Vector3 face = Layout.Boulder.PushPoint;
+        if (noise.Grind)
+            SoundBus.Emit(SoundKind.Grind, face);
+        if (noise.Heavy)
+            SoundBus.Emit(SoundKind.Boulder, face);
+        if (noise.Slip)
+            SoundBus.Emit(SoundKind.Slip, face);
     }
 
     void Fail(FailReason reason)
@@ -193,7 +210,7 @@ public class BlindGameLoop : MonoBehaviour
 
     void Escape()
     {
-        if (State.Phase != LoopPhase.Night || !BoulderProgress.IsOpen)
+        if (State.Phase != LoopPhase.Night || !Slide.IsOpen)
             return;
         State.Escape();
         player.InputEnabled = false;
@@ -216,7 +233,7 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>night／crew 是這一夜當時的夜數與同伴數（被吃之前）。寫不進去只警告，不影響遊戲。</summary>
     void Log(string outcome, int night, int crew)
     {
-        string line = PlaytestCsv.Line(DateTime.Now, night, crew, BoulderProgress.Progress * 18, 0, 0, LoopPhase.Night, outcome, Time.time - nightStart);
+        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), 0, 0, LoopPhase.Night, outcome, Time.time - nightStart);
         Debug.Log("[BlindCave] " + line);
         if (!PlaytestCsv.TryAppend(logPath, line, out string error))
             Debug.LogWarning($"BlindGameLoop: 無法寫入實測紀錄（檔案可能正被其他程式開著）：{error}");
@@ -235,13 +252,13 @@ public class BlindGameLoop : MonoBehaviour
             DrawStones(fontSize);
             DrawStamina(fontSize);
         }
-        if (State.Phase == LoopPhase.Night && player.PushHold01 > 0f)
+        if (State.Phase == LoopPhase.Night && player.AtBoulder && !Slide.IsOpen)
             DrawPushBar(fontSize);
 
         string bottom = null;
         if (State.Phase == LoopPhase.Night && Time.time < hintUntil)
             bottom = "WASD 蹲著走・Shift 跑・Q 拍手・左鍵 丟石子・對巨石按住 E 推・F1 除錯";
-        else if (State.Phase == LoopPhase.Night && BoulderProgress.IsOpen)
+        else if (State.Phase == LoopPhase.Night && Slide.IsOpen)
             bottom = "縫夠寬了：走到縫前按 E 鑽出去";
         else if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))
             bottom = "按 R 重新開始";
@@ -280,13 +297,13 @@ public class BlindGameLoop : MonoBehaviour
         Fill(new Rect(r.x, r.y, w * stamina.Value, h), fill);
     }
 
-    /// <summary>推巨石時畫面中央下方的進度條。</summary>
+    /// <summary>站在巨石前時畫面中央下方顯示開口。</summary>
     void DrawPushBar(int fontSize)
     {
         float w = Screen.width * 0.2f, h = fontSize * 0.4f;
         var r = new Rect((Screen.width - w) / 2f, Screen.height * 0.6f, w, h);
         Fill(r, new Color(1f, 1f, 1f, 0.15f));
-        Fill(new Rect(r.x, r.y, w * player.PushHold01, h), new Color(0.85f, 0.92f, 1f, 0.9f));
+        Fill(new Rect(r.x, r.y, w * Slide.Opening / BoulderSlide.FullOpen, h), new Color(0.85f, 0.92f, 1f, 0.9f));
     }
 
     static void Fill(Rect r, Color c)
