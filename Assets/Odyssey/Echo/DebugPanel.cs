@@ -12,7 +12,6 @@ public class DebugPanel : MonoBehaviour
     public bool showDebug = true;
 
     const float MapMinX = -16f, MapMaxX = 16f, MapMinZ = -12f, MapMaxZ = 14f;
-    const int DeathLines = 6;
 
     static readonly Color Track = new(1f, 1f, 1f, 0.15f);
     static readonly Color TickGap = new(0f, 0f, 0f, 0.65f);
@@ -47,6 +46,13 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Throw => new Color(1f, 0.45f, 0.1f),
         CyclopsState.Eat => new Color(0.6f, 0.05f, 0.05f),
         _ => new Color(0.6f, 0.6f, 0.6f),
+    };
+
+    static Color OutcomeColor(NightOutcome outcome) => outcome switch
+    {
+        NightOutcome.Dawn => new Color(0.55f, 0.65f, 0.95f),
+        NightOutcome.Escaped => new Color(0.55f, 0.9f, 0.6f),
+        _ => new Color(0.9f, 0.25f, 0.2f),
     };
 
     string BoulderMode()
@@ -120,10 +126,11 @@ public class DebugPanel : MonoBehaviour
             y += line;
         }
 
-        int start = Mathf.Max(0, loop.Deaths.Count - DeathLines);
-        for (int i = start; i < loop.Deaths.Count; i++)
+        // 死亡紀錄：一夜一行，前面的色塊表示結果。
+        foreach (var night in loop.Nights.Lines)
         {
-            GUI.Label(new Rect(20, y, panelW, line), loop.Deaths[i], style);
+            Fill(new Rect(20, y + line * 0.25f, line * 0.5f, line * 0.5f), OutcomeColor(night.Outcome));
+            GUI.Label(new Rect(20 + line * 0.8f, y, panelW, line), night.Text, style);
             y += line;
         }
     }

@@ -16,7 +16,6 @@ public class BlindGameLoop : MonoBehaviour
     [Tooltip("過場播放速度倍率；2 = 所有淡入淡出與停留時間減半。")]
     public float transitionSpeed = 2f;
 
-    readonly List<string> deaths = new();
     readonly List<WanderingSheep> sheep = new();
     readonly List<StonePickup> pickups = new();
     FirstPersonPlayer body;
@@ -58,7 +57,8 @@ public class BlindGameLoop : MonoBehaviour
     public BlindCaveLayout Layout { get; private set; }
     public Vector3 PlayerPosition => body.transform.position;
     public IReadOnlyList<WanderingSheep> Sheep => sheep;
-    public IReadOnlyList<string> Deaths => deaths;
+    /// <summary>F1 死亡紀錄：每夜一行。</summary>
+    public NightLog Nights { get; } = new();
 
     void Awake()
     {
@@ -203,7 +203,7 @@ public class BlindGameLoop : MonoBehaviour
         {
             waitingRestart = false;
             State.Restart();
-            deaths.Clear();
+            Nights.Clear();
             BeginIntro();
             return;
         }
@@ -336,7 +336,7 @@ public class BlindGameLoop : MonoBehaviour
     {
         if (State.Phase != LoopPhase.Night || index < 0 || index >= Crew.Members.Count)
             return;
-        LoseCrew(Crew.Members[index], "一名同伴被巨人吃掉了");
+        LoseCrew(Crew.Members[index]);
     }
 
     void OnRockLanded(Vector3 landing)
@@ -346,18 +346,18 @@ public class BlindGameLoop : MonoBehaviour
         var at = new System.Numerics.Vector2(landing.x, landing.z);
         foreach (var m in new List<CrewMember>(Crew.Members))
             if (CyclopsBrain.RockHits(at, new System.Numerics.Vector2(m.transform.position.x, m.transform.position.z)))
-                LoseCrew(m, "一名同伴被岩石砸死了");
+                LoseCrew(m);
         Vector3 p = body.transform.position;
         if (CyclopsBrain.RockHits(at, new System.Numerics.Vector2(p.x, p.z)))
             Fail(FailReason.Crushed);
     }
 
-    void LoseCrew(CrewMember m, string what)
+    void LoseCrew(CrewMember m)
     {
         Crew.Remove(m);
         Roster.Lose();
         LostTonight++;
-        deaths.Add($"第 {Roster.Night} 夜・{what}");
+        Nights.Lose();
     }
 
     /// <summary>巨人摸完巨石，拔掉最外面的石子楔子：石子從縫口彈進洞裡。</summary>
@@ -387,7 +387,7 @@ public class BlindGameLoop : MonoBehaviour
             body.FaceTowards(Cyclops.HeadPosition);
 
         string cause = FailReasonText.Describe(reason);
-        deaths.Add($"第 {night} 夜・{cause}");
+        Nights.End(night, NightLog.From(reason));
 
         // 死亡原因與下一夜合成同一個過場，緊接在被抓之後，不再另外播開場。
         if (State.Phase == LoopPhase.Wiped)
@@ -416,6 +416,7 @@ public class BlindGameLoop : MonoBehaviour
         player.InputEnabled = false;
         feel.ResetForNight();
         Cyclops.Active = false;
+        Nights.End(Roster.Night, NightOutcome.Escaped, RescuedLastEscape);
         Show("", "你逃出去了。", $"帶出 {RescuedLastEscape} 名同伴。但你對著巨人喊出了自己的名字。", null, () => waitingRestart = true);
         Log("Escaped", Roster.Night, Roster.Remaining);
     }
