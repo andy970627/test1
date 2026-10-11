@@ -84,24 +84,24 @@ namespace Odyssey.Core.Tests
         {
             var memory = new DecoyMemory();
             var brain = Brain(DifficultyLevel.Hard, memory);
-            Assert.AreEqual(1.3f, brain.HearingMultiplierFor(SoundKind.Stone), 1e-5f);
+            Assert.AreEqual(1.3f, brain.HearingMultiplierFor(SoundKind.Arrow), 1e-5f);
             for (int i = 0; i < DecoyMemory.FooledLimit; i++)
                 memory.RecordFooled();
-            Assert.AreEqual(0.65f, brain.HearingMultiplierFor(SoundKind.Stone), 1e-5f);
+            Assert.AreEqual(0.65f, brain.HearingMultiplierFor(SoundKind.Arrow), 1e-5f);
             Assert.AreEqual(1.3f, brain.HearingMultiplierFor(SoundKind.Clap), 1e-5f);
         }
 
         [Test]
-        public void StoneLearning_StacksWithDifficulty()
+        public void ArrowLearning_StacksWithDifficulty()
         {
             var memory = new DecoyMemory();
             for (int i = 0; i < DecoyMemory.FooledLimit; i++)
                 memory.RecordFooled();
             var brain = Brain(DifficultyLevel.Familiar, memory);
-            // Stone 0.6 → 12 m × 0.5（學會）× 0.6（熟悉）= 3.6 m
-            brain.Hear(Snd(SoundKind.Stone, 3.7f, 0f));
+            // Arrow 0.5 → 10 m × 0.5（學會）× 0.6（熟悉）= 3 m
+            brain.Hear(Snd(SoundKind.Arrow, 3.1f, 0f));
             Assert.AreEqual(CyclopsState.Listen, brain.State);
-            brain.Hear(Snd(SoundKind.Stone, 3.5f, 0f));
+            brain.Hear(Snd(SoundKind.Arrow, 2.9f, 0f));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
         }
     }

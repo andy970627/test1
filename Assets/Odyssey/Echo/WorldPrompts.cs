@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// 遊戲內的操作提示：靠近能互動的東西時，它能做的事全部浮在它上方（不排順序）；離開就消失。
-/// 沒有特定物體的操作（走、拍手、丟石子、放下木樁）是右下角石子圖示上方的小字按鍵說明，不擋畫面中央。
+/// 沒有特定物體的操作（走、拍手、射箭、放下木樁）是右下角石子圖示上方的小字按鍵說明，不擋畫面中央。
 /// 同一種提示看到後做到 3 次就不再出現（PromptTracker）。文字加陰影、不加背景（規格第 19 節 D）。
 /// </summary>
 public class WorldPrompts : MonoBehaviour
@@ -111,12 +111,14 @@ public class WorldPrompts : MonoBehaviour
         if (loop.Dawn.Elapsed < PerNightPromptSeconds)
             Add(PromptKind.Move, "WASD 走・Shift 跑");
         Add(PromptKind.Clap, "空白鍵 拍手：照亮四周（巨人也聽得到）");
-        if (player.Stones > 0 && !player.CarryingStake)
-            Add(PromptKind.Throw, "左鍵 丟石子：落地聲會把巨人引過去");
+        if (player.Arrows > 0 && !player.CarryingStake)
+            Add(PromptKind.Shoot, "按住左鍵 拉弓・放開 射箭");
         if (player.CarryingStake && !player.AtBoulder)
             Add(PromptKind.DropStake, "G 放下木樁");
-        if (player.Stones > 0 && (tracker.ShouldShow(PromptKind.Throw) || tracker.ShouldShow(PromptKind.Wedge)))
-            lines.Add(("石子：丟出去引開巨人，或塞進縫當楔子", null));
+        if (player.Arrows > 0 && tracker.ShouldShow(PromptKind.Shoot))
+            lines.Add(("箭：落點會照亮遠處、引開巨人（要撿回來）", null));
+        if (player.Stones > 0 && tracker.ShouldShow(PromptKind.Wedge))
+            lines.Add(("石子：塞進縫當楔子", null));
         if (lines.Count == 0)
             return;
 

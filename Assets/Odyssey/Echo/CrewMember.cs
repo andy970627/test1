@@ -25,6 +25,7 @@ public class CrewMember : MonoBehaviour
     {
         rng = new System.Random(seed);
         BuildBody();
+        Arrow.AddHitBox(gameObject, Vector3.up * 0.6f, 1.2f, 0.35f);
         voice = gameObject.AddComponent<AudioSource>();
         voice.clip = ProceduralAudio.Gasp();
         voice.spatialBlend = 1f;

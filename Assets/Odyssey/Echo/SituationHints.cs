@@ -74,7 +74,7 @@ public class SituationHints : MonoBehaviour
             var brain = cyclops.Brain;
             switch (brain.State)
             {
-                case CyclopsState.Investigate when player.Stones > 0
+                case CyclopsState.Investigate when player.Arrows > 0
                     && (new System.Numerics.Vector2(me.x, me.z) - brain.Target).Length() <= DecoyReach:
                     hints.Trigger(HintKind.Decoy);
                     break;
@@ -83,6 +83,9 @@ public class SituationHints : MonoBehaviour
                     break;
                 case CyclopsState.Throw:
                     hints.Trigger(HintKind.RockWindup);
+                    break;
+                case CyclopsState.Pray:
+                    hints.Trigger(HintKind.Prayer);
                     break;
             }
         }

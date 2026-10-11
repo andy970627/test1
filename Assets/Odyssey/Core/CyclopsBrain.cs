@@ -6,9 +6,9 @@ namespace Odyssey.Core
 {
     /// <summary>
     /// Listen＝原地聆聽；Investigate＝走向聲音（或遊走、走回巨石）；Search＝雙手掃摸；Guard＝聽到巨石，跑回洞口；
-    /// Throw＝蓄力朝遠處的聲音丟岩石；Eat＝吃掉摸到的同伴。
+    /// Throw＝蓄力朝遠處的聲音丟岩石；Eat＝吃掉摸到的同伴；Pray＝向父親波塞頓禱告（聽不到、不動）。
     /// </summary>
-    public enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat }
+    public enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat, Pray }
 
     /// <summary>巨人這一幀的結果。</summary>
     public readonly struct CyclopsTick
@@ -62,6 +62,7 @@ namespace Odyssey.Core
         public const float ImpactRadius = 1.5f;
         public const float Scatter = 1f;
         public const float EatSeconds = 5f;
+        public const float PraySeconds = 8f;
 
         readonly DecoyMemory memory;
         readonly Func<double> roll;
@@ -96,7 +97,20 @@ namespace Odyssey.Core
 
         /// <summary>這種聲音的聽覺半徑倍率：難度 × 石子學習（回聲畫聽覺邊也用這個）。</summary>
         public float HearingMultiplierFor(SoundKind kind) =>
-            (kind == SoundKind.Stone ? memory.StoneRadiusMultiplier : 1f) * Difficulty.HearingMultiplier(Level);
+            (kind == SoundKind.Arrow ? memory.ArrowRadiusMultiplier : 1f) * Difficulty.HearingMultiplier(Level);
+
+        /// <summary>
+        /// 開始向父親波塞頓禱告（規格第 20 節 B）：停下、什麼都聽不到，8 秒後回到聆聽。
+        /// 守石、蓄力、吃人、已在禱告時不行（回傳 false，等一下再試）。
+        /// </summary>
+        public bool TryPray()
+        {
+            if (State is CyclopsState.Guard or CyclopsState.Throw or CyclopsState.Eat or CyclopsState.Pray || OnGuard)
+                return false;
+            wandering = false;
+            Enter(CyclopsState.Pray);
+            return true;
+        }
 
         public CyclopsBrain(Vector2 start, DecoyMemory memory, Func<double> roll)
         {
@@ -119,6 +133,9 @@ namespace Odyssey.Core
 
         public void Hear(SoundEvent e)
         {
+            // 禱告中什麼都聽不到（禱告聲蓋過一切）。
+            if (State == CyclopsState.Pray)
+                return;
             if (!SoundRules.CanHear(e, Position, HearingMultiplierFor(e.Kind)))
                 return;
 
@@ -146,7 +163,7 @@ namespace Odyssey.Core
             if (State == CyclopsState.Throw || State == CyclopsState.Eat)
                 return;
 
-            bool lure = e.Kind == SoundKind.Stone || e.Kind == SoundKind.Bleat;
+            bool lure = e.Kind == SoundKind.Arrow || e.Kind == SoundKind.Stone || e.Kind == SoundKind.Bleat;
             if (OnGuard)
             {
                 if (lure)
@@ -214,6 +231,10 @@ namespace Odyssey.Core
                 case CyclopsState.Eat:
                     if (StateElapsed >= EatSeconds)
                         ResumeAfterPause();
+                    break;
+                case CyclopsState.Pray:
+                    if (StateElapsed >= PraySeconds)
+                        Enter(CyclopsState.Listen);
                     break;
                 case CyclopsState.Listen:
                     if (!OnGuard && StateElapsed >= WanderAfter)
@@ -291,7 +312,7 @@ namespace Odyssey.Core
                 Enter(CyclopsState.Listen);
                 return true;
             }
-            if (targetKind == SoundKind.Stone)
+            if (targetKind == SoundKind.Arrow)
                 memory.RecordFooled();
             if (chasingNearBoulder)
             {

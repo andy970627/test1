@@ -20,7 +20,9 @@ public class SoundPlayer : MonoBehaviour
     AudioSource giantVoice, local;
     Func<float> openingFraction;
     AudioClip giantStep, giantSweep, chew, footStep, heavyStep, pant, rockImpact;
-    AudioClip clap, stone, grind, heavy, slip, wedge, pail, soft, hay, scrape, wedgePulled;
+    AudioClip clap, stone, grind, heavy, slip, wedge, pail, soft, hay, scrape, wedgePulled, twang, arrowHit;
+
+    public AudioClip Twang => twang;
 
     public AudioClip PebbleClick { get; private set; }
     public AudioClip CrewReply { get; private set; }
@@ -50,6 +52,8 @@ public class SoundPlayer : MonoBehaviour
         hay = ProceduralAudio.WoolRustle();
         scrape = ProceduralAudio.WoodScrape();
         wedgePulled = ProceduralAudio.WedgePulled();
+        twang = ProceduralAudio.Twang();
+        arrowHit = ProceduralAudio.ArrowHit();
         PebbleClick = ProceduralAudio.PebbleClick();
         CrewReply = ProceduralAudio.CrewReply();
         WoodTap = ProceduralAudio.WoodTap();
@@ -133,6 +137,8 @@ public class SoundPlayer : MonoBehaviour
             case SoundKind.Cheese: Play(soft, at, v, 1f, 1f, 10f); break;
             case SoundKind.Wicker: Play(hay, at, v, 1.2f, 1f, 8f); break;
             case SoundKind.Drag: Play(scrape, at, v, Random.Range(0.9f, 1.1f), 1f, 8f); break;
+            case SoundKind.Twang: Play(twang, at, 0.5f, Random.Range(0.97f, 1.03f), 1f, 6f); break;
+            case SoundKind.Arrow: Play(arrowHit, at, v, Random.Range(0.9f, 1.1f), 2f, 20f); break;
         }
     }
 

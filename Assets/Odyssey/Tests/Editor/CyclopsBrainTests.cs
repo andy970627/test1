@@ -100,20 +100,20 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void StoneSearchMiss_RecordsFooled_ThirdTimeHalvesRange()
+        public void ArrowSearchMiss_RecordsFooled_ThirdTimeHalvesRange()
         {
             for (int i = 0; i < 3; i++)
             {
-                brain.Hear(Snd(SoundKind.Stone, brain.Position + new Vector2(2f, 0f)));
+                brain.Hear(Snd(SoundKind.Arrow, brain.Position + new Vector2(2f, 0f)));
                 T(1f, Far);
                 T(2.1f, Far);
                 Assert.AreEqual(CyclopsState.Listen, brain.State);
             }
             Assert.AreEqual(3, memory.Fooled);
 
-            brain.Hear(Snd(SoundKind.Stone, brain.Position + new Vector2(7f, 0f)));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position + new Vector2(7f, 0f)));
             Assert.AreEqual(CyclopsState.Listen, brain.State);
-            brain.Hear(Snd(SoundKind.Stone, brain.Position + new Vector2(5f, 0f)));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position + new Vector2(4.5f, 0f)));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
         }
 
@@ -205,7 +205,7 @@ namespace Odyssey.Core.Tests
         public void Holding_StoneLuresHimAway()
         {
             GuardUntilHolding();
-            brain.Hear(Snd(SoundKind.Stone, 0f, 1f));
+            brain.Hear(Snd(SoundKind.Arrow, 0f, 1f));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
             Assert.IsFalse(brain.HoldingBoulder);
         }
@@ -317,11 +317,11 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void GuardRun_Stone_Lures()
+        public void GuardRun_Arrow_Lures()
         {
             brain.Hear(Snd(SoundKind.Boulder, Gate));
             T(0.5f, Far);
-            brain.Hear(Snd(SoundKind.Stone, 0f, 8f));
+            brain.Hear(Snd(SoundKind.Arrow, 0f, 8f));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
             Assert.AreEqual(new Vector2(0f, 8f), brain.Target);
             Assert.AreEqual(0, RunFor(8f, Far));

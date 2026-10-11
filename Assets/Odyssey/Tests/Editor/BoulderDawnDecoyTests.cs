@@ -31,11 +31,11 @@ namespace Odyssey.Core.Tests
             var m = new DecoyMemory();
             m.RecordFooled();
             m.RecordFooled();
-            Assert.AreEqual(1f, m.StoneRadiusMultiplier);
+            Assert.AreEqual(1f, m.ArrowRadiusMultiplier);
             m.RecordFooled();
-            Assert.AreEqual(0.5f, m.StoneRadiusMultiplier);
+            Assert.AreEqual(0.5f, m.ArrowRadiusMultiplier);
             m.Reset();
-            Assert.AreEqual(1f, m.StoneRadiusMultiplier);
+            Assert.AreEqual(1f, m.ArrowRadiusMultiplier);
             Assert.AreEqual(0, m.Fooled);
         }
     }

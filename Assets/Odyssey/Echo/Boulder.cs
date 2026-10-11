@@ -26,6 +26,9 @@ public class Boulder : MonoBehaviour
     Transform body;
     Transform gapLight;
     Material rimMaterial;
+
+    /// <summary>巨石外側擋人的隱形牆；箭會穿過它（Arrow.IgnoreAlways）。</summary>
+    public Collider GapBlocker { get; private set; }
     float dawn;
     Material gapMaterial;
     Vector3 center;
@@ -60,6 +63,7 @@ public class Boulder : MonoBehaviour
         AddMoonRim(body, rimMaterial);
 
         var blocker = new GameObject("GapBlocker").AddComponent<BoxCollider>();
+        GapBlocker = blocker;
         blocker.transform.SetParent(transform, false);
         blocker.transform.localPosition = new Vector3(0f, 0f, Depth / 2f + 0.3f);
         blocker.size = new Vector3(Width + 4f, Height + 2f, 0.4f);

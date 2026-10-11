@@ -33,6 +33,8 @@ namespace Odyssey.Core
             SoundKind.Grind => 0.3f,
             SoundKind.Slip => 0.15f,
             SoundKind.Wedge => 0.25f,
+            SoundKind.Arrow => 0.5f,
+            SoundKind.Twang => 0.1f,
             _ => 0f,
         };
 
@@ -52,7 +54,7 @@ namespace Odyssey.Core
         /// <summary>會照亮四周的聲音（規格第 19 節 A）：只有玩家主動弄出來的；其他聲音巨人照樣聽得到，但只有聲音。</summary>
         public static bool Lights(SoundKind kind) => kind switch
         {
-            SoundKind.Clap or SoundKind.Stone or SoundKind.Boulder or SoundKind.Grind or SoundKind.Wedge or SoundKind.Clatter => true,
+            SoundKind.Clap or SoundKind.Stone or SoundKind.Boulder or SoundKind.Grind or SoundKind.Wedge or SoundKind.Clatter or SoundKind.Arrow => true,
             _ => false,
         };
 

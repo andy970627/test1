@@ -27,6 +27,27 @@ public class BlindGameLoop : MonoBehaviour
     float settleFlash;
     readonly BoulderMilestones milestones = new();
     const float SettleFlashSeconds = 0.3f;
+
+    // 波塞頓禱告（規格第 20 節 B）
+    readonly PrayerClock prayer = new();
+    readonly System.Random prayRoll = new();
+    AudioSource prayVoice;
+    float prayTimer = -1f;
+    int prayJolts;
+    const float PrayTremor = 0.02f;
+    const float PrayJoltEvery = 3f;
+
+    // 岸邊的抉擇（規格第 20 節 C）
+    readonly System.Random shoreRoll = new();
+    AudioSource shoreWaves;
+    AudioClip shout;
+    bool onShore;
+    float shoreTimer;
+    ShoreAction? shoreChoice;
+    float shoreSinceChoice;
+    bool shoreRoared;
+    bool shoreWasLocked;
+    const float ShoreRoarDelay = 0.9f;
     MissionHud hud;
     float nightStart;
     bool waitingRestart;
@@ -127,6 +148,23 @@ public class BlindGameLoop : MonoBehaviour
         Cyclops.AteCrew += OnAteCrew;
         Cyclops.RockLanded += OnRockLanded;
         Cyclops.PulledWedge += OnPulledWedge;
+        prayVoice = Cyclops.gameObject.AddComponent<AudioSource>();
+        prayVoice.clip = ProceduralAudio.Prayer();
+        prayVoice.spatialBlend = 1f;
+        prayVoice.rolloffMode = AudioRolloffMode.Logarithmic;
+        prayVoice.minDistance = 4f;
+        prayVoice.maxDistance = 60f;
+        prayVoice.playOnAwake = false;
+        shout = ProceduralAudio.Shout();
+        shoreWaves = gameObject.AddComponent<AudioSource>();
+        shoreWaves.clip = ProceduralAudio.SeaWind();
+        shoreWaves.loop = true;
+        shoreWaves.spatialBlend = 0f;
+        shoreWaves.volume = 0.5f;
+        shoreWaves.playOnAwake = false;
+        Arrow.InPen = p => PenIndexAt(p) >= 0;
+        Arrow.IgnoreAlways.Clear();
+        Arrow.IgnoreAlways.Add(Layout.Boulder.GapBlocker);
         sounds = gameObject.AddComponent<SoundPlayer>();
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
 
@@ -176,7 +214,10 @@ public class BlindGameLoop : MonoBehaviour
     {
         player.InputEnabled = false;
         // 第一夜（含按 R 重來）先看任務簡報，3 秒後按空白鍵才開始。
-        Show($"第 {Roster.Night} 夜", "巨人瞎了，洞口被巨石封住", $"剩下 {Roster.Remaining} 名同伴", ResetNight, () =>
+        // 第一夜照電影的開場：跟著羊群走進洞裡（規格第 20 節 A）。
+        string title = Roster.Night == 1 ? "你們跟著羊群走進洞裡，才發現這是巨人的家" : "巨人瞎了，洞口被巨石封住";
+        string subtitle = Roster.Night == 1 ? $"他瞎了，洞口被巨石封住・剩下 {Roster.Remaining} 名同伴" : $"剩下 {Roster.Remaining} 名同伴";
+        Show($"第 {Roster.Night} 夜", title, subtitle, ResetNight, () =>
         {
             if (Roster.Night == 1)
                 hud.ShowBriefing(Difficulty, level =>
@@ -218,6 +259,12 @@ public class BlindGameLoop : MonoBehaviour
         Layout.Boulder.ShowWedges(Slide.StoneWedges);
         Stake.PlaceAt(Layout.StakeSpot);
         LooseStone.ClearAll();
+        Arrow.ClearAll();
+        prayer.NewNight(prayRoll.NextDouble);
+        StopPrayer();
+        onShore = false;
+        shoreWaves.Stop();
+        Crew.gameObject.SetActive(true);
         Layout.Rack.ClearWheels();
         foreach (var pail in Layout.Pails)
             pail.Stand();
@@ -273,6 +320,11 @@ public class BlindGameLoop : MonoBehaviour
             return;
         }
 
+        if (onShore)
+        {
+            UpdateShore();
+            return;
+        }
         if (State.Phase != LoopPhase.Night)
             return;
         UpdateBoulder();
@@ -281,9 +333,46 @@ public class BlindGameLoop : MonoBehaviour
         if (player.MovedTonight >= MovePromptMeters)
             MarkUsed(PromptKind.Move);
         Dawn.Tick(Time.deltaTime);
+        UpdatePrayer();
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
             Fail(FailReason.Dawn);
+    }
+
+    /// <summary>
+    /// 波塞頓禱告：時間到且巨人能停下來時開始；8 秒內他什麼都聽不到，洞在震、第 3、6 秒巨石往回滑一點。
+    /// </summary>
+    void UpdatePrayer()
+    {
+        if (prayTimer < 0f)
+        {
+            if (prayer.Ready(Dawn.Elapsed) && Cyclops.Active && Cyclops.Brain.TryPray())
+            {
+                prayer.Done(Dawn.Elapsed);
+                prayTimer = 0f;
+                prayJolts = 0;
+                prayVoice.Play();
+            }
+            return;
+        }
+        prayTimer += Time.deltaTime;
+        feel.Tremor = PrayTremor;
+        if (prayJolts < 2 && prayTimer >= PrayJoltEvery * (prayJolts + 1))
+        {
+            prayJolts++;
+            Slide.Jolt(SheepRush.JoltMeters);
+        }
+        if (prayTimer >= CyclopsBrain.PraySeconds || Cyclops.Brain.State != CyclopsState.Pray)
+            StopPrayer();
+    }
+
+    void StopPrayer()
+    {
+        prayTimer = -1f;
+        if (feel != null)
+            feel.Tremor = 0f;
+        if (prayVoice != null)
+            prayVoice.Stop();
     }
 
     /// <summary>推進巨石的滑動，依結果發出輕推、猛推、回滑的聲音。</summary>
@@ -464,6 +553,7 @@ public class BlindGameLoop : MonoBehaviour
 
         player.InputEnabled = false;
         feel.ResetForNight();
+        StopPrayer();
         Cyclops.Active = false;
         Cyclops.Roar();
         if (reason != FailReason.Dawn)
@@ -494,10 +584,108 @@ public class BlindGameLoop : MonoBehaviour
         State.Escape();
         player.InputEnabled = false;
         feel.ResetForNight();
+        StopPrayer();
         Cyclops.Active = false;
-        Nights.End(Roster.Night, NightOutcome.Escaped, RescuedLastEscape);
-        Show("", "你逃出去了。", $"帶出 {RescuedLastEscape} 名同伴。但你對著巨人喊出了自己的名字。", null, () => waitingRestart = true);
-        Log("Escaped", Roster.Night, Roster.Remaining);
+        // 先到岸邊做抉擇，再出結局字幕。
+        QuickFade(SetupShore, () =>
+        {
+            shoreWasLocked = false;
+            onShore = true;
+            shoreTimer = 0f;
+            shoreChoice = null;
+        });
+    }
+
+    /// <summary>黑畫面時：玩家站到縫外看回洞裡，巨人睡在巨石內側、靠月光看得到輪廓；海浪聲。</summary>
+    void SetupShore()
+    {
+        Vector3 gap = Layout.Boulder.GapPoint;
+        var ground = new Vector3(gap.x, gap.y - 1f, gap.z);
+        Vector3 outside = ground + Vector3.forward * (Boulder.Depth + 2f);
+        Cyclops.PlaceSleeping(ground + Vector3.back * 3.5f, outside);
+        body.Teleport(outside + Vector3.up * 0.05f, 180f);
+        body.FaceTowards(Cyclops.HeadPosition);
+        echo.Clear();
+        // 帶出的同伴已經在岸上，不用在畫面裡穿過巨石走出來。
+        Crew.gameObject.SetActive(false);
+        shoreWaves.Play();
+    }
+
+    /// <summary>岸邊 8 秒三選一：左鍵射箭、空白鍵喊名字、不動就默默離開（規格第 20 節 C）。</summary>
+    void UpdateShore()
+    {
+        float dt = Time.deltaTime;
+        if (shoreChoice == null)
+        {
+            shoreTimer += dt;
+            var mouse = Mouse.current;
+            var keyboard = Keyboard.current;
+            // 重新鎖住游標的那一下點擊不算射箭。
+            bool locked = Cursor.lockState == CursorLockMode.Locked;
+            bool click = shoreWasLocked && mouse != null && mouse.leftButton.wasPressedThisFrame;
+            shoreWasLocked = locked;
+            if (click)
+                ChooseShore(ShoreAction.Shoot);
+            else if (keyboard != null && keyboard.spaceKey.wasPressedThisFrame)
+                ChooseShore(ShoreAction.Name);
+            else if (shoreTimer >= ShoreChoice.TimeLimit)
+                ChooseShore(ShoreAction.Leave);
+            return;
+        }
+
+        shoreSinceChoice += dt;
+        if (!shoreRoared && shoreChoice != ShoreAction.Leave && shoreSinceChoice >= ShoreRoarDelay)
+        {
+            shoreRoared = true;
+            Cyclops.Roar();
+        }
+        if (shoreSinceChoice >= (shoreChoice == ShoreAction.Leave ? 0.5f : 2.5f))
+            FinishShore();
+    }
+
+    void ChooseShore(ShoreAction action)
+    {
+        shoreChoice = action;
+        shoreSinceChoice = 0f;
+        shoreRoared = false;
+        Transform cam = body.CameraTransform;
+        if (action == ShoreAction.Shoot)
+        {
+            sounds.PlayLocal(sounds.Twang, 0.8f);
+            Arrow.Shoot(cam.position + cam.forward * 0.5f, (Cyclops.HeadPosition - cam.position).normalized * BowDraw.MaxSpeed, null);
+        }
+        else if (action == ShoreAction.Name)
+            sounds.PlayLocal(shout, 0.9f);
+    }
+
+    /// <summary>報復的代價：帶出的同伴每人 1/3 機率在路上被砸死；寫進每夜紀錄與 CSV，出結局字幕。</summary>
+    void FinishShore()
+    {
+        onShore = false;
+        shoreWaves.Stop();
+        ShoreAction action = shoreChoice ?? ShoreAction.Leave;
+        int lost = ShoreChoice.Resolve(action, RescuedLastEscape, shoreRoll.NextDouble);
+        int rescued = RescuedLastEscape - lost;
+        for (int i = 0; i < lost; i++)
+            Roster.Lose();
+        LostTonight += lost;
+        RescuedLastEscape = rescued;
+        string how = action == ShoreAction.Shoot ? "射箭" : "喊名字";
+        Nights.End(Roster.Night, NightOutcome.Escaped, rescued, note: lost > 0 ? $"（{how} −{lost}）" : null);
+        Show("", ShoreChoice.Title(action), ShoreChoice.Subtitle(action, rescued, lost), null, () => waitingRestart = true);
+        Log($"Escaped_{action}", Roster.Night, Roster.Remaining);
+    }
+
+    /// <summary>沒有字幕的快速黑畫面轉場。</summary>
+    void QuickFade(Action onBlackout, Action onComplete)
+    {
+        if (LoopFailScreen.Instance != null)
+        {
+            LoopFailScreen.Instance.QuickFade(onBlackout, onComplete);
+            return;
+        }
+        onBlackout?.Invoke();
+        onComplete?.Invoke();
     }
 
     void Show(string year, string title, string subtitle, Action onBlackout, Action onComplete)
@@ -535,6 +723,8 @@ public class BlindGameLoop : MonoBehaviour
         }
         if (State.Phase == LoopPhase.Night && player.AtBoulder && !Slide.IsOpen)
             DrawPushBar(fontSize);
+        if (onShore && shoreChoice == null)
+            DrawShoreChoice(style, fontSize);
 
         // 操作提示都在遊戲裡（WorldPrompts）；底部只留重新開始。
         string bottom = null;
@@ -549,6 +739,30 @@ public class BlindGameLoop : MonoBehaviour
         }
     }
 
+    /// <summary>岸邊三選一與剩下的時間（文字加陰影、不加背景）。</summary>
+    void DrawShoreChoice(GUIStyle style, int fontSize)
+    {
+        var center = new GUIStyle(style) { alignment = TextAnchor.MiddleCenter, wordWrap = false };
+        float lineH = fontSize * 1.5f;
+        float y = Screen.height * 0.72f;
+        string[] options = { "左鍵 拉弓射他", "空白鍵 喊出你的名字", "不動 默默離開" };
+        for (int i = 0; i < options.Length; i++)
+        {
+            var r = new Rect(0, y + i * lineH, Screen.width, lineH);
+            var shadow = r;
+            shadow.position += new Vector2(2f, 2f);
+            center.normal.textColor = new Color(0f, 0f, 0f, 0.85f);
+            GUI.Label(shadow, options[i], center);
+            center.normal.textColor = new Color(0.97f, 0.95f, 0.88f);
+            GUI.Label(r, options[i], center);
+        }
+        float w = Screen.width * 0.25f, h = fontSize * 0.25f;
+        float left = 1f - shoreTimer / ShoreChoice.TimeLimit;
+        var bar = new Rect((Screen.width - w) / 2f, y + options.Length * lineH + h, w, h);
+        Fill(bar, new Color(1f, 1f, 1f, 0.15f));
+        Fill(new Rect(bar.x, bar.y, w * Mathf.Clamp01(left), h), new Color(0.85f, 0.92f, 1f, 0.9f));
+    }
+
     /// <summary>右下角三顆石子：有的亮、沒有的暗。</summary>
     void DrawStones(int fontSize)
     {
@@ -559,6 +773,20 @@ public class BlindGameLoop : MonoBehaviour
         {
             var r = new Rect(Screen.width - (EchoPlayer.MaxStones - i) * (size + gap) - 10, Screen.height - bottomPad - size, size, size);
             Fill(r, i < player.Stones ? new Color(0.85f, 0.85f, 0.8f, 0.9f) : new Color(1f, 1f, 1f, 0.12f));
+        }
+
+        // 石子左邊一列細長條＝箭；拉弓時最右那支隨拉弓程度變亮。
+        float stonesLeft = Screen.width - EchoPlayer.MaxStones * (size + gap) - 10;
+        float arrowW = size * 0.18f, arrowGap = size * 0.3f;
+        for (int i = 0; i < EchoPlayer.MaxArrows; i++)
+        {
+            float x = stonesLeft - gap - (EchoPlayer.MaxArrows - i) * (arrowW + arrowGap);
+            var r = new Rect(x, Screen.height - bottomPad - size * 1.3f, arrowW, size * 1.3f);
+            bool have = i < player.Arrows;
+            Color c = have ? new Color(0.75f, 0.6f, 0.4f, 0.9f) : new Color(1f, 1f, 1f, 0.12f);
+            if (have && i == player.Arrows - 1 && player.Bow.Drawing)
+                c = Color.Lerp(c, Color.white, player.Bow.Fraction);
+            Fill(r, c);
         }
     }
 

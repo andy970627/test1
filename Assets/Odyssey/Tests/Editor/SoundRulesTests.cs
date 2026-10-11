@@ -11,10 +11,10 @@ namespace Odyssey.Core.Tests
         [Test]
         public void Lights_OnlyActiveSounds()
         {
-            foreach (var k in new[] { SoundKind.Clap, SoundKind.Stone, SoundKind.Boulder, SoundKind.Grind, SoundKind.Wedge, SoundKind.Clatter })
+            foreach (var k in new[] { SoundKind.Clap, SoundKind.Stone, SoundKind.Boulder, SoundKind.Grind, SoundKind.Wedge, SoundKind.Clatter, SoundKind.Arrow })
                 Assert.IsTrue(SoundRules.Lights(k), k.ToString());
             foreach (var k in new[] { SoundKind.Step, SoundKind.Run, SoundKind.Pant, SoundKind.Drag, SoundKind.Cheese, SoundKind.Wicker,
-                         SoundKind.Bleat, SoundKind.Whimper, SoundKind.Slip, SoundKind.Cyclops, SoundKind.RockImpact })
+                         SoundKind.Bleat, SoundKind.Whimper, SoundKind.Slip, SoundKind.Cyclops, SoundKind.RockImpact, SoundKind.Twang })
                 Assert.IsFalse(SoundRules.Lights(k), k.ToString());
         }
 

@@ -24,6 +24,7 @@ public class WanderingSheep : MonoBehaviour
         IsRam = isRam;
         rng = new System.Random(seed);
         BuildBody();
+        Arrow.AddHitBox(gameObject, Vector3.up * 0.6f, 1.1f, 0.45f);
 
         voice = gameObject.AddComponent<AudioSource>();
         voice.clip = ProceduralAudio.Bleat();

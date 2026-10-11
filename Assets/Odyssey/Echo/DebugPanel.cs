@@ -45,6 +45,7 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Guard => new Color(0.65f, 0.35f, 0.9f),
         CyclopsState.Throw => new Color(1f, 0.45f, 0.1f),
         CyclopsState.Eat => new Color(0.6f, 0.05f, 0.05f),
+        CyclopsState.Pray => new Color(0.3f, 0.45f, 0.9f),
         _ => new Color(0.6f, 0.6f, 0.6f),
     };
 
@@ -74,6 +75,7 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Guard => "守石",
         CyclopsState.Throw => "丟岩石",
         CyclopsState.Eat => "吃同伴",
+        CyclopsState.Pray => "禱告",
         _ => "聆聽",
     };
 
@@ -107,7 +109,7 @@ public class DebugPanel : MonoBehaviour
         DrawBoulderMarks(boulderRow, line, barW, style);
         Bar("天亮", loop.Dawn.Fraction, 0, new Color(0.7f, 0.75f, 0.95f), ref y, line, barW, style);
         Bar("岩石", 1f - loop.Cyclops.Brain.ThrowCooldownLeft / CyclopsBrain.ThrowCooldown, 0, new Color(1f, 0.45f, 0.1f), ref y, line, barW, style);
-        Bar("石子", loop.Decoys.StoneRadiusMultiplier, 0, new Color(0.85f, 0.85f, 0.8f), ref y, line, barW, style);
+        Bar("箭", loop.Decoys.ArrowRadiusMultiplier, 0, new Color(0.85f, 0.85f, 0.8f), ref y, line, barW, style);
         for (int i = 0; i < DecoyMemory.FooledLimit; i++)
             Fill(new Rect(20 + fontSize * 4f + i * line * 0.7f, y + line * 0.25f, line * 0.5f, line * 0.5f),
                 i < loop.Decoys.Fooled ? new Color(0.9f, 0.25f, 0.2f) : Track);

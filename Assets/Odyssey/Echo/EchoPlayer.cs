@@ -49,6 +49,13 @@ public class EchoPlayer : MonoBehaviour
     float wedgeBusy = -1f;
 
     public int Stones { get; private set; } = StartStones;
+
+    /// <summary>身上的箭（規格第 21 節 C）：每夜補回 3 支，射出去的要撿回來。</summary>
+    public int Arrows { get; private set; } = MaxArrows;
+    public const int MaxArrows = 3;
+
+    /// <summary>拉弓（按住左鍵）；拉弓中走速減半、不能跑。</summary>
+    public BowDraw Bow { get; } = new();
     public Stamina Stamina { get; } = new();
 
     /// <summary>這一幀對巨石的推法，由 BlindGameLoop 傳給 BoulderSlide.Tick。</summary>
@@ -110,6 +117,7 @@ public class EchoPlayer : MonoBehaviour
     public void ResetForNight()
     {
         Stones = StartStones;
+        Arrows = MaxArrows;
         Stamina.Reset();
         stepTimer = 0f;
         MovedTonight = 0f;
@@ -123,6 +131,7 @@ public class EchoPlayer : MonoBehaviour
         rightHeld = -1f;
         rightPulled = false;
         wedgeBusy = -1f;
+        Bow.Cancel();
     }
 
     void Update()
@@ -172,12 +181,12 @@ public class EchoPlayer : MonoBehaviour
         else
         {
             PushMode = PushMode.None;
-            bool wantRun = shift && !CarryingStake && Flat(controller.velocity).sqrMagnitude > 0.01f;
+            bool wantRun = shift && !CarryingStake && !Bow.Drawing && Flat(controller.velocity).sqrMagnitude > 0.01f;
             running = Stamina.Tick(dt, wantRun);
         }
         if (Stamina.PantDue(dt))
             SoundBus.Emit(SoundKind.Pant, body.CameraTransform.position);
-        body.walkSpeed = running ? RunSpeed : CrouchSpeed;
+        body.walkSpeed = (running ? RunSpeed : CrouchSpeed) * Bow.WalkMultiplier;
         crew.Running = running;
         UpdateSteps(running);
 
@@ -188,9 +197,7 @@ public class EchoPlayer : MonoBehaviour
             Used?.Invoke(PromptKind.Clap);
         }
 
-        // 這一幀才重新鎖住游標的那一下點擊不算丟石子；拿著木樁不能丟。
-        if (wasLocked && mouse.leftButton.wasPressedThisFrame && Stones > 0 && !CarryingStake)
-            Throw();
+        UpdateBow(mouse, dt);
 
         if (keyboard.fKey.wasPressedThisFrame)
         {
@@ -328,38 +335,66 @@ public class EchoPlayer : MonoBehaviour
         SoundBus.Emit(kind, transform.position, stepScale(transform.position));
     }
 
-    void Throw()
+    /// <summary>
+    /// 按住左鍵拉弓、放開射出（規格第 21 節 A）。這一幀才重新鎖住游標的那一下點擊不算；
+    /// 拿著木樁不能拉弓（拉到一半拿起木樁就取消）。
+    /// </summary>
+    void UpdateBow(Mouse mouse, float dt)
     {
-        Stones--;
-        Used?.Invoke(PromptKind.Throw);
+        if (CarryingStake || Arrows <= 0 || Cursor.lockState != CursorLockMode.Locked)
+        {
+            Bow.Cancel();
+            return;
+        }
+        if (wasLocked && mouse.leftButton.wasPressedThisFrame)
+            Bow.Begin();
+        Bow.Tick(dt);
+        if (!Bow.Drawing || mouse.leftButton.isPressed)
+            return;
+        float? speed = Bow.Release();
+        if (speed == null)
+            return;
+        Arrows--;
         Transform cam = body.CameraTransform;
-        LooseStone.Spawn(cam.position + cam.forward * 0.5f, cam.forward * 9f + Vector3.up * 2f, controller);
+        SoundBus.Emit(SoundKind.Twang, cam.position);
+        // 從鏡頭前 0.1 m（還在自己的身體裡、已忽略碰撞）射出，貼著牆也不會從牆裡面生出來。
+        Arrow.Shoot(cam.position + cam.forward * 0.1f, cam.forward * speed.Value, controller);
+        Used?.Invoke(PromptKind.Shoot);
     }
 
     void UpdatePickups()
     {
-        if (Stones >= MaxStones)
-            return;
+        // 射出去的箭：停下來、搆得到就撿回來。
+        for (int i = Arrow.All.Count - 1; i >= 0 && Arrows < MaxArrows; i--)
+        {
+            var a = Arrow.All[i];
+            if (a == null || !a.CanTake(transform.position, PickupReach))
+                continue;
+            a.Take();
+            Arrows++;
+            PickedUpStone?.Invoke();
+        }
+
         foreach (var p in pickups)
         {
+            if (Stones >= MaxStones)
+                return;
             if (p.Taken || Flat(p.transform.position - transform.position).magnitude > PickupReach)
                 continue;
             p.Take();
             Stones++;
             PickedUpStone?.Invoke();
-            if (Stones >= MaxStones)
-                return;
         }
-        // 丟出去、停在地上的石子也撿得回來。
+        // 被拔掉、彈出來停在地上的石子也撿得回來。
         foreach (var s in new List<LooseStone>(LooseStone.All))
         {
+            if (Stones >= MaxStones)
+                return;
             if (s == null || !s.Settled || Flat(s.transform.position - transform.position).magnitude > PickupReach)
                 continue;
             s.Take();
             Stones++;
             PickedUpStone?.Invoke();
-            if (Stones >= MaxStones)
-                return;
         }
     }
 

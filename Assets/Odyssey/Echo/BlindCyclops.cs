@@ -49,6 +49,8 @@ public class BlindCyclops : MonoBehaviour
         var rng = new System.Random();
         Brain = new CyclopsBrain(Flat(seat), memory, rng.NextDouble);
         BuildBody();
+        // 只給箭判斷「射中巨人」用的觸發範圍；巨人碰撞仍由 CyclopsBrain 的距離規則決定。
+        Arrow.AddHitBox(gameObject, Vector3.up * 2.1f, 4.2f, 0.9f);
 
         var breath = new GameObject("Breath").AddComponent<AudioSource>();
         breath.transform.SetParent(transform, false);
@@ -83,10 +85,52 @@ public class BlindCyclops : MonoBehaviour
         if (rock != null)
             Destroy(rock.gameObject);
         rock = null;
+        transform.rotation = Quaternion.identity;
         SyncTransform();
+        SetMoonlit(false);
     }
 
     public void Roar() => roar.Play();
+
+    static readonly Color MoonSilhouette = new(0.10f, 0.11f, 0.15f);
+    Material moonMaterial;
+    readonly System.Collections.Generic.Dictionary<Renderer, Material> darkMaterials = new();
+
+    /// <summary>
+    /// 岸邊（規格第 20 節 C）：巨人睡在巨石內側，靠縫裡透進的月光看得到輪廓。
+    /// moonlit 為 true 時身體改用暗淡的自發光材質，false 時換回回聲材質。
+    /// </summary>
+    public void SetMoonlit(bool moonlit)
+    {
+        if (moonMaterial == null)
+            moonMaterial = OdysseyMaterials.Create(Color.black, MoonSilhouette);
+        foreach (var r in GetComponentsInChildren<Renderer>())
+        {
+            if (moonlit)
+            {
+                if (!darkMaterials.ContainsKey(r))
+                    darkMaterials[r] = r.sharedMaterial;
+                r.sharedMaterial = moonMaterial;
+            }
+            else if (darkMaterials.TryGetValue(r, out var original))
+                r.sharedMaterial = original;
+        }
+    }
+
+    /// <summary>岸邊：把巨人放在 ground 處坐著睡，面向 face。</summary>
+    public void PlaceSleeping(Vector3 ground, Vector3 face)
+    {
+        Active = false;
+        if (rock != null)
+            Destroy(rock.gameObject);
+        rock = null;
+        transform.position = ground;
+        Vector3 dir = face - ground;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 1e-4f)
+            transform.rotation = Quaternion.LookRotation(dir);
+        SetMoonlit(true);
+    }
 
     void OnSound(SoundEvent e, Vector3 worldPos)
     {

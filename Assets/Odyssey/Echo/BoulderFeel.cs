@@ -47,6 +47,9 @@ public class BoulderFeel : MonoBehaviour
         ResetForNight();
     }
 
+    /// <summary>整個洞的震動幅度（公尺，例如巨人禱告時 0.02）；疊加在鏡頭上。</summary>
+    public float Tremor { get; set; }
+
     /// <summary>每幀在 Boulder.SetOpening 之後呼叫。</summary>
     public void Tick(PushMode mode, bool catching, bool sliding, float maxOpening)
     {
@@ -73,6 +76,7 @@ public class BoulderFeel : MonoBehaviour
         bool pushing = mode != PushMode.None;
         player.FeelPitch = Mathf.MoveTowards(player.FeelPitch, pushing ? LeanDegrees : 0f, LeanDegrees / LeanSeconds * dt);
         Vector3 shake = mode == PushMode.Heavy ? Random.insideUnitSphere * HeavyShake : Vector3.zero;
+        shake += Random.insideUnitSphere * Tremor;
         player.FeelOffset = shake + Vector3.back * (CameraKick * (kickLeft / CameraKickSeconds));
 
         UpdateMark(maxOpening);
@@ -86,6 +90,7 @@ public class BoulderFeel : MonoBehaviour
         joltLeft = 0f;
         kickLeft = 0f;
         gritTimer = 0f;
+        Tremor = 0f;
         if (boulder != null)
             boulder.Body.localRotation = Quaternion.identity;
         if (player != null)
