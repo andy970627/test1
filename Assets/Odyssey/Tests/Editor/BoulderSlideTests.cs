@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 
 namespace Odyssey.Core.Tests
@@ -264,6 +265,118 @@ namespace Odyssey.Core.Tests
             s.Jolt(0.05f);
             Assert.AreEqual(BoulderSlide.FullOpen - 0.05f, s.Opening, 1e-5f);
             Assert.IsFalse(s.IsOpen);
+        }
+
+        // ---------- 輕推會卡一下（規格第 15 節 A） ----------
+
+        static Func<double> Always(double v) => () => v;
+
+        /// <summary>每 0.1 秒輕推一次，回傳第一次卡住時的累計秒數；沒卡回傳 −1。</summary>
+        static float FirstCatch(BoulderSlide s, float seconds)
+        {
+            for (int i = 1; i <= Steps(seconds); i++)
+                if (s.Tick(0.1f, PushMode.Light, false).Catch)
+                    return i * 0.1f;
+            return -1f;
+        }
+
+        static int Steps(float seconds) => (int)Math.Round(seconds / 0.1f);
+
+        [Test]
+        public void Catch_DefaultNeverCatches()
+        {
+            Assert.AreEqual(-1f, FirstCatch(new BoulderSlide(), 30f));
+        }
+
+        [Test]
+        public void Catch_ChanceGrowsWithPushTime()
+        {
+            Assert.AreEqual(3.0f, FirstCatch(new BoulderSlide(Always(0.055)), 10f), 1e-4f);
+        }
+
+        [Test]
+        public void Catch_CapsAtPointFour()
+        {
+            Assert.AreEqual(20.0f, FirstCatch(new BoulderSlide(Always(0.395)), 23f), 1e-4f);
+            Assert.AreEqual(-1f, FirstCatch(new BoulderSlide(Always(0.41)), 23f));
+        }
+
+        [Test]
+        public void Catch_StallsThreeTenths()
+        {
+            var s = new BoulderSlide(Always(0.0));
+            Assert.Greater(FirstCatch(s, 2f), 0f);
+            float atCatch = s.Opening;
+            Assert.IsTrue(s.Stalled);
+            for (int i = 0; i < 3; i++)
+                s.Tick(0.1f, PushMode.Light, false);
+            Assert.AreEqual(atCatch, s.Opening, 1e-6f);
+            s.Tick(0.1f, PushMode.Light, false);
+            s.Tick(0.1f, PushMode.Light, false);
+            Assert.Greater(s.Opening, atCatch);
+        }
+
+        [Test]
+        public void Catch_ResetsCounter()
+        {
+            var s = new BoulderSlide(Always(0.0));
+            FirstCatch(s, 2f);
+            Assert.AreEqual(0f, s.LightPushSeconds, 1e-6f);
+        }
+
+        [Test]
+        public void Release_TwoSecondsResetsCounter()
+        {
+            var a = new BoulderSlide();
+            a.Tick(4f, PushMode.Light, false);
+            a.Tick(1.9f, PushMode.None, false);
+            a.Tick(0.1f, PushMode.Light, false);
+            Assert.AreEqual(4.1f, a.LightPushSeconds, 1e-4f);
+
+            var b = new BoulderSlide();
+            b.Tick(4f, PushMode.Light, false);
+            b.Tick(2f, PushMode.None, false);
+            b.Tick(0.1f, PushMode.Light, false);
+            Assert.AreEqual(0.1f, b.LightPushSeconds, 1e-4f);
+        }
+
+        [Test]
+        public void Heavy_NeverCatches_AndResetsCounter()
+        {
+            var s = new BoulderSlide(Always(0.0));
+            s.Tick(0.3f, PushMode.Light, false);
+            for (int i = 0; i < 50; i++)
+                Assert.IsFalse(s.Tick(0.1f, PushMode.Heavy, false).Catch);
+            Assert.AreEqual(0f, s.LightPushSeconds, 1e-6f);
+        }
+
+        [Test]
+        public void PullingBack_NoCatchRoll()
+        {
+            var s = new BoulderSlide(Always(0.0));
+            PushTo(s, 0.3f);
+            s.AddStoneWedge();
+            PushTo(s, 0.6f);
+            s.AddStoneWedge();
+            Assert.IsTrue(s.GiantPull());
+            for (int i = 0; i < 9; i++)
+            {
+                Assert.IsTrue(s.PullingBack);
+                Assert.IsFalse(s.Tick(0.1f, PushMode.Light, false).Catch);
+            }
+            Assert.AreEqual(0f, s.LightPushSeconds, 1e-6f);
+        }
+
+        [Test]
+        public void Stall_KeepsGrindCadence()
+        {
+            bool first = true;
+            var s = new BoulderSlide(() => { bool f = first; first = false; return f ? 0.0 : 0.99; });
+            int grinds = 0;
+            for (int i = 0; i < 20; i++)
+                if (s.Tick(0.1f, PushMode.Light, false).Grind)
+                    grinds++;
+            Assert.AreEqual(4, grinds);
         }
 
         [Test]

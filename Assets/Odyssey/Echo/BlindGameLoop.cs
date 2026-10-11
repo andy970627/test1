@@ -41,7 +41,7 @@ public class BlindGameLoop : MonoBehaviour
 
     public CaveLoopState State { get; private set; }
     public CrewRoster Roster { get; } = new();
-    public BoulderSlide Slide { get; } = new();
+    public BoulderSlide Slide { get; } = new(new System.Random().NextDouble);
     public CrewLine Crew { get; private set; }
     public OliveStake Stake { get; private set; }
     public EchoPlayer Player => player;
@@ -219,7 +219,7 @@ public class BlindGameLoop : MonoBehaviour
         Vector3 face = Layout.Boulder.PushPoint;
         if (noise.Grind)
             SoundBus.Emit(SoundKind.Grind, face);
-        if (noise.Heavy)
+        if (noise.Heavy || noise.Catch)
             SoundBus.Emit(SoundKind.Boulder, face);
         if (noise.Slip)
             SoundBus.Emit(SoundKind.Slip, face);

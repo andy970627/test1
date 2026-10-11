@@ -6,18 +6,20 @@ namespace Odyssey.Core
     /// <summary>None＝沒推；Light＝按住 E 輕推；Heavy＝Shift＋E 猛推。</summary>
     public enum PushMode { None, Light, Heavy }
 
-    /// <summary>這一幀巨石該發的聲音：Grind＝輕推磨擦；Heavy＝猛推巨響；Slip＝放手後回滑。</summary>
+    /// <summary>這一幀巨石該發的聲音：Grind＝輕推磨擦；Heavy＝猛推巨響；Slip＝放手後回滑；Catch＝輕推時卡一下（巨響）。</summary>
     public readonly struct BoulderNoise
     {
         public readonly bool Grind;
         public readonly bool Heavy;
         public readonly bool Slip;
+        public readonly bool Catch;
 
-        public BoulderNoise(bool grind, bool heavy, bool slip)
+        public BoulderNoise(bool grind, bool heavy, bool slip, bool catching = false)
         {
             Grind = grind;
             Heavy = heavy;
             Slip = slip;
+            Catch = catching;
         }
     }
 
@@ -39,9 +41,17 @@ namespace Odyssey.Core
         public const float PushNoiseSeconds = 0.5f;
         public const float SlipNoiseSeconds = 1f;
 
+        /// <summary>輕推每次磨擦聲擲骰卡住的機率 = 0.02 × 連續輕推秒數，上限 0.4。</summary>
+        public const float CatchPerSecond = 0.02f;
+        public const float CatchMax = 0.4f;
+        public const float CatchStallSeconds = 0.3f;
+        public const float CatchResetSeconds = 2f;
+
         const float TimerEps = 1e-5f;
 
+        readonly Func<double> roll;
         readonly List<float> stoneWedges = new();
+        float stallLeft;
         float pushSeconds;
         float releaseSeconds;
         float pushNoiseTimer;
@@ -53,6 +63,15 @@ namespace Odyssey.Core
         public IReadOnlyList<float> StoneWedges => stoneWedges;
         public float? StakeWedge { get; private set; }
         public bool PullingBack { get; private set; }
+
+        /// <summary>連續輕推的秒數；越久越容易卡住。猛推時歸零，放手滿 2 秒歸零。</summary>
+        public float LightPushSeconds { get; private set; }
+
+        /// <summary>卡住後 0.3 秒推不動。</summary>
+        public bool Stalled => stallLeft > 0f;
+
+        /// <param name="roll">卡住的骰子；null 時永遠不卡。</param>
+        public BoulderSlide(Func<double> roll = null) => this.roll = roll;
 
         /// <summary>巨石最多滑回到這裡：所有楔子的最大值，沒有楔子為 0。</summary>
         public float Floor
@@ -89,8 +108,11 @@ namespace Odyssey.Core
 
             pushSeconds = 0f;
             pushNoiseTimer = 0f;
+            stallLeft = 0f;
             float before = releaseSeconds;
             releaseSeconds += dt;
+            if (releaseSeconds >= CatchResetSeconds)
+                LightPushSeconds = 0f;
             float sliding = Math.Max(0f, releaseSeconds - Math.Max(before, SlipDelay));
             if (sliding <= 0f || Opening <= Floor)
             {
@@ -114,9 +136,24 @@ namespace Odyssey.Core
             slipNoiseTimer = 0f;
             bool wasOpen = IsOpen;
 
+            if (mode == PushMode.Heavy)
+                LightPushSeconds = 0f;
+            else
+                LightPushSeconds += dt;
+
+            // 卡住的 0.3 秒推不動，之後從靜止重新起步。
+            float moveDt = dt;
+            if (stallLeft > 0f)
+            {
+                float stall = Math.Min(stallLeft, dt);
+                stallLeft -= stall;
+                moveDt -= stall;
+                pushSeconds = 0f;
+            }
+
             float speed = (mode == PushMode.Heavy ? HeavySpeed : LightSpeed) * (withStake ? StakeMultiplier : 1f);
             float t0 = pushSeconds;
-            pushSeconds += dt;
+            pushSeconds += moveDt;
             Opening = Math.Min(FullOpen, Opening + speed * (RampedSeconds(pushSeconds) - RampedSeconds(t0)));
             MaxOpening = Math.Max(MaxOpening, Opening);
 
@@ -126,7 +163,23 @@ namespace Odyssey.Core
             if (pushNoiseTimer + TimerEps < PushNoiseSeconds)
                 return default;
             pushNoiseTimer -= PushNoiseSeconds;
-            return mode == PushMode.Heavy ? new BoulderNoise(false, true, false) : new BoulderNoise(true, false, false);
+            if (mode == PushMode.Heavy)
+                return new BoulderNoise(false, true, false);
+            return new BoulderNoise(true, false, false, RollCatch());
+        }
+
+        /// <summary>輕推的每一聲磨擦擲一次骰；卡住時連續輕推秒數歸零，並頓 0.3 秒。</summary>
+        bool RollCatch()
+        {
+            if (roll == null)
+                return false;
+            float chance = Math.Min(CatchMax, CatchPerSecond * LightPushSeconds);
+            if (roll() >= chance)
+                return false;
+            LightPushSeconds = 0f;
+            stallLeft = CatchStallSeconds;
+            pushSeconds = 0f;
+            return true;
         }
 
         /// <summary>從開始推到 t 秒，換算成「全速推了幾秒」：前 0.5 秒速度線性起步。</summary>
@@ -178,6 +231,8 @@ namespace Odyssey.Core
         {
             Opening = 0f;
             MaxOpening = 0f;
+            LightPushSeconds = 0f;
+            stallLeft = 0f;
             stoneWedges.Clear();
             StakeWedge = null;
             PullingBack = false;
