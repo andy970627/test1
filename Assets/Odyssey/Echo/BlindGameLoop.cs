@@ -96,7 +96,7 @@ public class BlindGameLoop : MonoBehaviour
         player.EscapeRequested += Escape;
         feel = gameObject.AddComponent<BoulderFeel>();
         feel.Init(Layout.Boulder, body);
-        player.Used += Prompts.Used;
+        player.Used += kind => Prompts.Used(kind, Time.time);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
 
         Cyclops = new GameObject("Cyclops").AddComponent<BlindCyclops>();
@@ -214,7 +214,7 @@ public class BlindGameLoop : MonoBehaviour
         UpdateSheepRush();
         UpdateClutter();
         if (player.MovedTonight >= MovePromptMeters)
-            Prompts.Used(PromptKind.Move);
+            Prompts.Used(PromptKind.Move, Time.time);
         Dawn.Tick(Time.deltaTime);
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)

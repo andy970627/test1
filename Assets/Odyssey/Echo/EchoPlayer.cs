@@ -40,6 +40,11 @@ public class EchoPlayer : MonoBehaviour
 
     // 右鍵：按下開始計時；按住滿 1 秒拔回楔子，沒按滿就塞一顆（從按下起共花 0.6 秒）。
     float rightHeld = -1f;
+
+    // 「推」的提示：這次推從哪個開口開始、是否已經算過。
+    const float PushLearnMeters = 0.05f;
+    float pushStartOpening;
+    bool pushCounted;
     bool rightPulled;
     float wedgeBusy = -1f;
 
@@ -145,8 +150,17 @@ public class EchoPlayer : MonoBehaviour
         if (pushing)
         {
             PushMode = Stamina.Tick(dt, shift) ? PushMode.Heavy : PushMode.Light;
+            // 一次連續推的過程中巨石真的前進 5 cm 才算學會「推」（每次推最多算一次）。
             if (wasPushing == PushMode.None)
+            {
+                pushStartOpening = slide.Opening;
+                pushCounted = false;
+            }
+            if (!pushCounted && slide.Opening - pushStartOpening >= PushLearnMeters)
+            {
+                pushCounted = true;
                 Used?.Invoke(PromptKind.Push);
+            }
         }
         else
         {
@@ -173,7 +187,8 @@ public class EchoPlayer : MonoBehaviour
         if (keyboard.fKey.wasPressedThisFrame)
         {
             crew.ToggleCrouch();
-            Used?.Invoke(PromptKind.Crouch);
+            if (crew.Followers.Count > 0)
+                Used?.Invoke(PromptKind.Crouch);
         }
         if (keyboard.gKey.wasPressedThisFrame && CarryingStake)
             DropOrPlantStake();

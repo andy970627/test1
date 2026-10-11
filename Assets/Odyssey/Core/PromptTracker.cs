@@ -4,15 +4,25 @@ namespace Odyssey.Core
     public enum PromptKind { Push, Wedge, PlantStake, Escape, TakeStake, DropStake, Recruit, Crouch, Throw, Move, Clap }
 
     /// <summary>
-    /// 決定提示還要不要出現：同一種提示用過 3 次就不再出現（整場遊戲）；「鑽出去」永遠出現；
+    /// 決定提示還要不要出現：同一種提示「看到後 2 秒內真的做到」3 次就不再出現（整場遊戲）；「鑽出去」永遠出現；
     /// 「走路」與「拍手」只在每夜開始時提示，用過一次這一夜就收起來，用滿 3 夜後不再出現。
     /// </summary>
     public sealed class PromptTracker
     {
         public const int UsesToRetire = 3;
+        public const float ShownGrace = 2f;
 
         readonly int[] uses = new int[System.Enum.GetValues(typeof(PromptKind)).Length];
         readonly bool[] usedTonight = new bool[System.Enum.GetValues(typeof(PromptKind)).Length];
+        readonly float[] lastShown = NeverShown();
+
+        static float[] NeverShown()
+        {
+            var times = new float[System.Enum.GetValues(typeof(PromptKind)).Length];
+            for (int i = 0; i < times.Length; i++)
+                times[i] = float.NegativeInfinity;
+            return times;
+        }
 
         public bool ShouldShow(PromptKind kind)
         {
@@ -23,9 +33,15 @@ namespace Odyssey.Core
             return uses[(int)kind] < UsesToRetire;
         }
 
-        public void Used(PromptKind kind)
+        /// <summary>這種提示在 time 時畫在畫面上。</summary>
+        public void MarkShown(PromptKind kind, float time) => lastShown[(int)kind] = time;
+
+        /// <summary>玩家做了這個操作；提示 2 秒內出現過才算學會一次（沒看到提示就亂按到的不算）。</summary>
+        public void Used(PromptKind kind, float time)
         {
             int i = (int)kind;
+            if (time - lastShown[i] > ShownGrace)
+                return;
             if (PerNight(kind))
             {
                 if (usedTonight[i])

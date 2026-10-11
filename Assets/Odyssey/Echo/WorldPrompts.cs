@@ -18,7 +18,8 @@ public class WorldPrompts : MonoBehaviour
     static readonly Color Text = new(0.97f, 0.95f, 0.88f);
     static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
 
-    readonly List<string> lines = new();
+    // 每行文字與它的提示種類（固定顯示的行沒有種類）；畫出來的種類記為「出現過」。
+    readonly List<(string Text, PromptKind? Kind)> lines = new();
     BlindGameLoop loop;
     PromptTracker tracker;
     GUIStyle style;
@@ -47,7 +48,7 @@ public class WorldPrompts : MonoBehaviour
         {
             Add(PromptKind.Push, "E 推・Shift＋E 猛推");
             if (player.Stones > 0 || loop.Slide.StoneWedges.Count > 0)
-                Add(PromptKind.Wedge, "右鍵 塞楔子（按住 拔回）");
+                Add(PromptKind.Wedge, "右鍵 塞石子當楔子（按住 拔回）");
             if (player.CarryingStake)
                 Add(PromptKind.PlantStake, "G 插木樁");
         }
@@ -57,11 +58,11 @@ public class WorldPrompts : MonoBehaviour
         lines.Clear();
         bool nearGap = Flat(boulder.GapPoint - me).magnitude <= StuckNoticeReach;
         if (loop.Rush.Stuck && nearGap)
-            lines.Add("有羊卡在縫裡：把巨石推開");
+            lines.Add(("有羊卡在縫裡：把巨石推開", null));
         else if (player.AtGap && !loop.Rush.GapClear)
-            lines.Add("有羊擠在縫裡");
+            lines.Add(("有羊擠在縫裡", null));
         else if (player.AtGap)
-            lines.Add("E 鑽出去");
+            lines.Add(("E 鑽出去", PromptKind.Escape));
         DrawAt(boulder.GapPoint + Vector3.up * GapLift);
 
         // 木樁
@@ -87,21 +88,48 @@ public class WorldPrompts : MonoBehaviour
             DrawAt(followers[followers.Count - 1].transform.position + Vector3.up * CrewLift);
         }
 
+        DrawStoneLegend();
+
         // 準星下方：沒有特定物體的操作
         lines.Clear();
         Add(PromptKind.Move, "WASD 走・Shift 跑");
-        Add(PromptKind.Clap, "Q 拍手 照亮四周");
+        Add(PromptKind.Clap, "Q 拍手：照亮四周（巨人也聽得到）");
         if (player.Stones > 0 && !player.CarryingStake)
-            Add(PromptKind.Throw, "左鍵 丟石子");
+            Add(PromptKind.Throw, "左鍵 丟石子：落地聲會把巨人引過去");
         if (player.CarryingStake && !player.AtBoulder)
             Add(PromptKind.DropStake, "G 放下木樁");
         DrawLines(new Vector2(Screen.width / 2f, Screen.height * CenterHeight));
     }
 
+    /// <summary>
+    /// 右下角石子圖示上方說明石子的兩種用途；丟和塞楔子都學會後收起。
+    /// 位置對齊 BlindGameLoop.DrawStones（同一個字級公式）。
+    /// </summary>
+    void DrawStoneLegend()
+    {
+        if (!tracker.ShouldShow(PromptKind.Throw) && !tracker.ShouldShow(PromptKind.Wedge))
+            return;
+        int hudFont = Mathf.Max(22, Screen.height / 28);
+        float iconTop = Screen.height - hudFont * 3f - hudFont * 0.9f;
+        float lineHeight = style.fontSize * 1.35f;
+        var rect = new Rect(Screen.width - 810f, iconTop - lineHeight - 4f, 800f, lineHeight);
+        var old = style.alignment;
+        style.alignment = TextAnchor.MiddleRight;
+        var shadowRect = rect;
+        shadowRect.position += new Vector2(2f, 2f);
+        style.normal.textColor = Shadow;
+        GUI.Label(shadowRect, StoneLegend, style);
+        style.normal.textColor = Text;
+        GUI.Label(rect, StoneLegend, style);
+        style.alignment = old;
+    }
+
+    const string StoneLegend = "石子：丟出去引開巨人，或塞進縫當楔子";
+
     void Add(PromptKind kind, string text)
     {
         if (tracker.ShouldShow(kind))
-            lines.Add(text);
+            lines.Add((text, kind));
     }
 
     void DrawAt(Vector3 world)
@@ -130,9 +158,11 @@ public class WorldPrompts : MonoBehaviour
             var shadowRect = rect;
             shadowRect.position += new Vector2(2f, 2f);
             style.normal.textColor = Shadow;
-            GUI.Label(shadowRect, lines[i], style);
+            GUI.Label(shadowRect, lines[i].Text, style);
             style.normal.textColor = Text;
-            GUI.Label(rect, lines[i], style);
+            GUI.Label(rect, lines[i].Text, style);
+            if (lines[i].Kind is PromptKind kind)
+                tracker.MarkShown(kind, Time.time);
         }
     }
 
