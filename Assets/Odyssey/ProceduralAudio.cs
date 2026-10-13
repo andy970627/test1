@@ -411,6 +411,52 @@ public static class ProceduralAudio
         return Make("ArrowHit", data);
     }
 
+    /// <summary>死亡畫面：一聲低沉的鐘鳴（110Hz 加不和諧泛音）加地底低頻，3 秒。</summary>
+    public static AudioClip DeathBell()
+    {
+        var data = new float[SampleRate * 3];
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float bell = Mathf.Sin(2f * Mathf.PI * 110f * t) + 0.6f * Mathf.Sin(2f * Mathf.PI * 263f * t) + 0.35f * Mathf.Sin(2f * Mathf.PI * 417f * t);
+            data[i] = 0.22f * bell * Mathf.Exp(-1.2f * t) * Mathf.Clamp01(t / 0.01f);
+        }
+        AddRumble(data, 3f, 0.02f, 0.5f, 181);
+        return Make("DeathBell", data);
+    }
+
+    /// <summary>同伴被抓時的慘叫：0.9 秒、音高往上撕裂的人聲。</summary>
+    public static AudioClip Scream()
+    {
+        const float seconds = 0.9f;
+        var data = new float[(int)(SampleRate * seconds)];
+        var rng = new System.Random(191);
+        float phase = 0f;
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float pitch = Mathf.Lerp(380f, 620f, Mathf.Clamp01(t / 0.3f)) * (1f + 0.03f * Mathf.Sin(2f * Mathf.PI * 9f * t));
+            phase += 2f * Mathf.PI * pitch / SampleRate;
+            float rasp = ((float)rng.NextDouble() * 2f - 1f) * 0.25f;
+            float env = Mathf.Clamp01(t / 0.03f) * Mathf.Clamp01((seconds - t) / 0.35f);
+            data[i] = 0.3f * env * (Mathf.Sin(phase) + 0.5f * Mathf.Sin(2f * phase) + 0.3f * Mathf.Sin(3f * phase) + rasp);
+        }
+        return Make("Scream", data);
+    }
+
+    /// <summary>耳鳴：1.5 秒的 4kHz 高頻嗡聲，慢慢淡出。</summary>
+    public static AudioClip Tinnitus()
+    {
+        const float seconds = 1.5f;
+        var data = new float[(int)(SampleRate * seconds)];
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            data[i] = 0.12f * Mathf.Sin(2f * Mathf.PI * 4000f * t) * Mathf.Clamp01(t / 0.05f) * Mathf.Clamp01((seconds - t) / 1f);
+        }
+        return Make("Tinnitus", data);
+    }
+
     static AudioClip Burst(string name, float seconds, float gain, float smoothing, int seed)
     {
         var data = new float[(int)(SampleRate * seconds)];

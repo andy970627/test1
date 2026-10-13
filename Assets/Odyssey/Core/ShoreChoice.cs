@@ -26,15 +26,15 @@ namespace Odyssey.Core
 
         public static string Title(ShoreAction action) => action switch
         {
-            ShoreAction.Shoot => "你射中了沉睡的巨人。他追了出來。",
-            ShoreAction.Name => "你對著巨人喊出了自己的名字。",
-            _ => "你沒有回頭。",
+            ShoreAction.Shoot => "奧德修斯射中了沉睡的波塞頓之子。巨人追了出來。",
+            ShoreAction.Name => "奧德修斯對著波呂斐摩斯，喊出了自己的名字。",
+            _ => "奧德修斯沒有回頭。",
         };
 
         public static string Subtitle(ShoreAction action, int rescued, int lost) => action switch
         {
             ShoreAction.Shoot => $"帶出 {rescued} 名同伴，路上又失去 {lost} 名。波塞頓聽見了兒子的禱告。",
-            ShoreAction.Name => $"帶出 {rescued} 名同伴，路上又失去 {lost} 名。波塞頓記住了你的名字。",
+            ShoreAction.Name => $"帶出 {rescued} 名同伴，路上又失去 {lost} 名。波塞頓記住了這個名字。",
             _ => $"帶出 {rescued} 名同伴。",
         };
     }

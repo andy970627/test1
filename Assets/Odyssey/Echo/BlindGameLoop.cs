@@ -50,7 +50,7 @@ public class BlindGameLoop : MonoBehaviour
     const float ShoreRoarDelay = 0.9f;
     MissionHud hud;
     float nightStart;
-    bool waitingRestart;
+
     string logPath;
     int seed = 1;
     Vector3 lastPlayerPos;
@@ -62,6 +62,10 @@ public class BlindGameLoop : MonoBehaviour
     const float PullNoiseSeconds = 0.5f;
     const float PailReach = 0.6f;
     const float RackReach = 0.8f;
+    const float SheepBumpReach = 0.7f;
+    bool wasTouching;
+    const float BraceHintOpening = 0.05f;
+    const float DeathVolume = 0.5f;
     const float MovePromptMeters = 3f;
 
     public CaveLoopState State { get; private set; }
@@ -89,6 +93,12 @@ public class BlindGameLoop : MonoBehaviour
     public DifficultyLevel Difficulty { get; private set; } = DifficultyLevel.Normal;
     /// <summary>情境提示：每種整場只講一次，重新開始也保留。</summary>
     public HintQueue Hints { get; } = new();
+    /// <summary>洞中紀事：遇到才解鎖，整場保留。</summary>
+    public GuideBook Guide { get; } = new();
+
+    GameMenus menus;
+    DeathScreen deathScreen;
+    ScreenFeedback feedback;
 
     void Awake()
     {
@@ -138,6 +148,10 @@ public class BlindGameLoop : MonoBehaviour
         player.PickedUpStone += () => sounds?.PlayLocal(sounds.PebbleClick, 0.5f);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
         gameObject.AddComponent<SituationHints>().Init(this, Hints);
+        menus = gameObject.AddComponent<GameMenus>();
+        menus.Init(this);
+        deathScreen = gameObject.AddComponent<DeathScreen>();
+        feedback = gameObject.AddComponent<ScreenFeedback>();
         hud = gameObject.AddComponent<MissionHud>();
         hud.Init(this);
 
@@ -208,33 +222,119 @@ public class BlindGameLoop : MonoBehaviour
         return source;
     }
 
-    void Start() => BeginIntro();
+    void OnDisable()
+    {
+        Time.timeScale = 1f;
+        AudioListener.pause = false;
+        AudioListener.volume = 1f;
+    }
+
+    void Start()
+    {
+        feedback.Init(this, body);
+        body.gameObject.AddComponent<BumpSensor>().Init(feedback);
+        menus.ShowMain(Difficulty);
+    }
 
     void BeginIntro()
     {
         player.InputEnabled = false;
-        // 第一夜（含按 R 重來）先看任務簡報，3 秒後按空白鍵才開始。
-        // 第一夜照電影的開場：跟著羊群走進洞裡（規格第 20 節 A）。
-        string title = Roster.Night == 1 ? "你們跟著羊群走進洞裡，才發現這是巨人的家" : "巨人瞎了，洞口被巨石封住";
-        string subtitle = Roster.Night == 1 ? $"他瞎了，洞口被巨石封住・剩下 {Roster.Remaining} 名同伴" : $"剩下 {Roster.Remaining} 名同伴";
+        // 第一夜先看任務簡報，3 秒後按空白鍵才開始。
+        // 第一夜照電影的開場（規格第 20 節 A），副標是整個遊戲的核心法則：聲音就是光（規格第 25 節 A）。
+        string title = Roster.Night == 1 ? "他們跟著羊群走進洞中，不知這是波呂斐摩斯的居所" : "巨人已被刺瞎，洞口被巨石封住";
+        string subtitle = Roster.Night == 1 ? $"在他的洞裡，聲音就是光；照亮了哪裡，他就聽得到哪裡\n剩下 {Roster.Remaining} 名同伴" : $"剩下 {Roster.Remaining} 名同伴";
         Show($"第 {Roster.Night} 夜", title, subtitle, ResetNight, () =>
         {
             if (Roster.Night == 1)
-                hud.ShowBriefing(Difficulty, level =>
-                {
-                    Difficulty = level;
-                    ApplyDifficulty();
-                    StartNight();
-                });
+                hud.ShowBriefing(StartNight);
             else
                 StartNight();
         });
+    }
+
+    // ---------- 主選單、暫停、回主選單（規格第 25 節 B） ----------
+
+    public bool InNight => State.Phase == LoopPhase.Night;
+
+    /// <summary>夜晚中、不在岸邊、沒有過場或死亡畫面時才能暫停。</summary>
+    public bool CanPause => InNight && !onShore && !deathScreen.Showing
+        && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying);
+
+    /// <summary>主選單按「開始」：套用難度，從第一夜開始。</summary>
+    public void StartGame(DifficultyLevel level)
+    {
+        Difficulty = level;
+        ApplyDifficulty();
+        State.Restart();
+        Nights.Clear();
+        BeginIntro();
+    }
+
+    public void Pause()
+    {
+        player.InputEnabled = false;
+        Time.timeScale = 0f;
+        AudioListener.pause = true;
+        menus.ShowPause();
+    }
+
+    public void Resume()
+    {
+        Time.timeScale = 1f;
+        AudioListener.pause = false;
+        if (InNight)
+        {
+            player.InputEnabled = true;
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+    }
+
+    /// <summary>結局之後或暫停中選「回主選單」：完整重置這一局，回到主選單。</summary>
+    public void ReturnToMenu()
+    {
+        Time.timeScale = 1f;
+        AudioListener.pause = false;
+        StopPrayer();
+        onShore = false;
+        shoreWaves.Stop();
+        deathScreen.Hide();
+        feedback.ResetAll();
+        AudioListener.volume = 1f;
+        player.InputEnabled = false;
+        Cyclops.Active = false;
+        State.Restart();
+        Nights.Clear();
+        ResetNight();
+        menus.ShowMain(Difficulty);
+    }
+
+    /// <summary>情境提示與洞中紀事同一個觸發點：提示排隊，紀事解鎖（第一次解鎖時通知）。</summary>
+    public void Hint(HintKind kind)
+    {
+        Hints.Trigger(kind);
+        Unlock(HintGuide.EntryFor(kind));
+    }
+
+    /// <summary>核心法則的示範：整場第一個會照亮的聲音，回聲邊緣浮現「他聽得到這麼遠」。</summary>
+    public void ShowLaw(Vector3 at, float radius)
+    {
+        feedback.ShowLaw(at, radius);
+        Unlock("law");
+    }
+
+    public void Unlock(string entry)
+    {
+        if (entry != null && Guide.Unlock(entry))
+            menus.NotifyNewEntry();
     }
 
     void StartNight()
     {
         State.IntroDone();
         player.InputEnabled = true;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
         Cyclops.Active = true;
         nightStart = Time.time;
     }
@@ -292,7 +392,7 @@ public class BlindGameLoop : MonoBehaviour
         Crew.Spawn(Roster.Remaining, ShuffledCrewSpots(), seed * 1000 + Roster.Night);
         lastPlayerPos = body.transform.position;
         insidePen = PenIndexAt(lastPlayerPos);
-        waitingRestart = false;
+
     }
 
     /// <summary>同伴躲藏點每夜換一個順序，人數少於點數時每夜躲在不同地方。</summary>
@@ -310,16 +410,6 @@ public class BlindGameLoop : MonoBehaviour
 
     void Update()
     {
-        var keyboard = Keyboard.current;
-        if (waitingRestart && keyboard != null && keyboard.rKey.wasPressedThisFrame)
-        {
-            waitingRestart = false;
-            State.Restart();
-            Nights.Clear();
-            BeginIntro();
-            return;
-        }
-
         if (onShore)
         {
             UpdateShore();
@@ -381,12 +471,15 @@ public class BlindGameLoop : MonoBehaviour
         float before = Slide.Opening;
         // 站在巨石前、面向它但沒在推：用身體頂住，巨石不會滑回（規格第 24 節）。
         bool braced = player.AtBoulder && player.PushMode == PushMode.None;
+        if (braced && Slide.Opening > BraceHintOpening)
+            Hint(HintKind.Brace);
         BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake, braced);
         Layout.Boulder.SetOpening(Slide.Opening);
         gapWhistle.position = Layout.Boulder.GapPoint + Vector3.up;
         // 每推開 25%（這一夜第一次）巨石沉一聲、進度條閃一下（規格第 22 節 C）。
         if (milestones.Update(Slide.Opening) > 0)
         {
+            Hint(HintKind.Notch);
             sounds.PlayLocal(sounds.BoulderSettle, 0.7f);
             settleFlash = SettleFlashSeconds;
         }
@@ -400,11 +493,11 @@ public class BlindGameLoop : MonoBehaviour
         if (noise.Heavy || noise.Catch)
             SoundBus.Emit(SoundKind.Boulder, face);
         if (noise.Catch)
-            Hints.Trigger(HintKind.Catch);
+            Hint(HintKind.Catch);
         if (noise.Slip)
         {
             SoundBus.Emit(SoundKind.Slip, face);
-            Hints.Trigger(HintKind.Slip);
+            Hint(HintKind.Slip);
         }
 
         // 巨人拔掉楔子後巨石往回滑：那是巨人弄出來的聲音，他自己聽不到。
@@ -490,11 +583,21 @@ public class BlindGameLoop : MonoBehaviour
         if (Flat(nearest - pos).magnitude <= RackReach)
             Layout.Rack.Brush();
 
+        // 撞到雜物或羊：剛碰到的那一下鏡頭輕震＋只有玩家聽得到的撞擊聲（一直貼著不會重複）。
+        bool touching = Flat(nearest - pos).magnitude <= RackReach;
+        foreach (var pail in Layout.Pails)
+            touching |= !pail.Fallen && Flat(pail.transform.position - pos).magnitude <= PailReach;
+        foreach (var s in sheep)
+            touching |= Flat(s.transform.position - pos).magnitude <= SheepBumpReach;
+        if (touching && !wasTouching)
+            feedback.Bump();
+        wasTouching = touching;
+
         int pen = PenIndexAt(pos);
         if (pen != insidePen)
             SoundBus.Emit(SoundKind.Wicker, pos);
         if (pen >= 0 && insidePen < 0)
-            Hints.Trigger(HintKind.Pen);
+            Hint(HintKind.Pen);
         insidePen = pen;
     }
 
@@ -510,8 +613,11 @@ public class BlindGameLoop : MonoBehaviour
     {
         if (State.Phase != LoopPhase.Night || index < 0 || index >= Crew.Members.Count)
             return;
-        LoseCrew(Crew.Members[index]);
-        Hints.Trigger(HintKind.CrewEaten);
+        var eaten = Crew.Members[index];
+        feedback.CrewEaten(eaten.transform.position);
+        hud.FlashCrew();
+        LoseCrew(eaten);
+        Hint(HintKind.CrewEaten);
     }
 
     void OnRockLanded(Vector3 landing)
@@ -525,6 +631,8 @@ public class BlindGameLoop : MonoBehaviour
         Vector3 p = body.transform.position;
         if (CyclopsBrain.RockHits(at, new System.Numerics.Vector2(p.x, p.z)))
             Fail(FailReason.Crushed);
+        else if (Flat(landing - p).magnitude <= ScreenFeedback.RockNear)
+            feedback.RockNearMiss();
     }
 
     void LoseCrew(CrewMember m)
@@ -544,7 +652,7 @@ public class BlindGameLoop : MonoBehaviour
         LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null, knockedLoose: true);
         SoundBus.Emit(SoundKind.Cyclops, gap);
         sounds.WedgePulled(gap);
-        Hints.Trigger(HintKind.PulledWedge);
+        Hint(HintKind.PulledWedge);
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
@@ -566,16 +674,24 @@ public class BlindGameLoop : MonoBehaviour
 
         string cause = FailReasonText.Describe(reason);
         Nights.End(night, NightLog.From(reason), eaten: record.Crew > 0);
+        feedback.ResetAll();
+        AudioListener.volume = DeathVolume;
+        bool wiped = State.Phase == LoopPhase.Wiped;
+        int nextNight = Roster.Night, left = Roster.Remaining;
 
-        // 死亡原因與下一夜合成同一個過場，緊接在被抓之後，不再另外播開場。
-        if (State.Phase == LoopPhase.Wiped)
-            Show($"第 {night} 夜", "洞裡只剩下你。", cause, null, () => waitingRestart = true);
-        else
-            Show($"第 {night} 夜・{cause}", "巨人吃掉了一名同伴", $"第 {Roster.Night} 夜・剩下 {Roster.Remaining} 名同伴", ResetNight, () =>
-            {
-                State.CaughtDone();
-                StartNight();
-            });
+        // 先是魂系的「葬身洞中」，接著死亡原因與下一夜合成同一個快速過場（規格第 25 節 D）。
+        deathScreen.Play(cause, reason == FailReason.Dawn, () =>
+        {
+            AudioListener.volume = 1f;
+            if (wiped)
+                Show($"第 {night} 夜", "洞裡只剩下奧德修斯。", cause, ReturnToMenu, null);
+            else
+                Show($"第 {night} 夜", "巨人吃掉了一名同伴", $"第 {nextNight} 夜・剩下 {left} 名同伴", ResetNight, () =>
+                {
+                    State.CaughtDone();
+                    StartNight();
+                });
+        });
         Log(reason.ToString(), record.Night, record.Crew);
     }
 
@@ -608,6 +724,7 @@ public class BlindGameLoop : MonoBehaviour
         var ground = new Vector3(gap.x, gap.y - 1f, gap.z);
         Vector3 outside = ground + Vector3.forward * (Boulder.Depth + 2f);
         Cyclops.PlaceSleeping(ground + Vector3.back * 3.5f, outside);
+        Unlock("shore");
         body.Teleport(outside + Vector3.up * 0.05f, 180f);
         body.FaceTowards(Cyclops.HeadPosition);
         echo.Clear();
@@ -677,7 +794,7 @@ public class BlindGameLoop : MonoBehaviour
         RescuedLastEscape = rescued;
         string how = action == ShoreAction.Shoot ? "射箭" : "喊名字";
         Nights.End(Roster.Night, NightOutcome.Escaped, rescued, note: lost > 0 ? $"（{how} −{lost}）" : null);
-        Show("", ShoreChoice.Title(action), ShoreChoice.Subtitle(action, rescued, lost), null, () => waitingRestart = true);
+        Show("", ShoreChoice.Title(action), ShoreChoice.Subtitle(action, rescued, lost), ReturnToMenu, null);
         Log($"Escaped_{action}", Roster.Night, Roster.Remaining);
     }
 
@@ -695,7 +812,8 @@ public class BlindGameLoop : MonoBehaviour
 
     void Show(string year, string title, string subtitle, Action onBlackout, Action onComplete)
     {
-        if (LoopFailScreen.Instance != null)
+        // 過場正在播時 ShowMessage 會被忽略：直接執行回呼，避免回主選單之類的流程卡住。
+        if (LoopFailScreen.Instance != null && !LoopFailScreen.Instance.IsPlaying)
         {
             LoopFailScreen.Instance.ShowMessage(year, title, subtitle, onBlackout, onComplete, transitionSpeed);
             return;
@@ -730,18 +848,6 @@ public class BlindGameLoop : MonoBehaviour
             DrawPushBar(fontSize);
         if (onShore && shoreChoice == null)
             DrawShoreChoice(style, fontSize);
-
-        // 操作提示都在遊戲裡（WorldPrompts）；底部只留重新開始。
-        string bottom = null;
-        if (waitingRestart && (LoopFailScreen.Instance == null || !LoopFailScreen.Instance.IsPlaying))
-            bottom = "按 R 重新開始";
-        if (bottom != null)
-        {
-            // 依實際換行算高度，窄的 Game 視窗也不會把第二行切掉。
-            float h = style.CalcHeight(new GUIContent(bottom), Screen.width - 48) + line * 0.4f;
-            GUI.Box(new Rect(10, Screen.height - h - 10, Screen.width - 20, h), GUIContent.none);
-            GUI.Label(new Rect(24, Screen.height - h - 4, Screen.width - 48, h), bottom, style);
-        }
     }
 
     /// <summary>岸邊三選一與剩下的時間（文字加陰影、不加背景）。</summary>
@@ -750,7 +856,12 @@ public class BlindGameLoop : MonoBehaviour
         var center = new GUIStyle(style) { alignment = TextAnchor.MiddleCenter, wordWrap = false };
         float lineH = fontSize * 1.5f;
         float y = Screen.height * 0.72f;
-        string[] options = { "左鍵 拉弓射他", "空白鍵 喊出你的名字", "不動 默默離開" };
+        string[] options = { "左鍵 拉弓射他", "空白鍵 喊出自己的名字", "不動 默默離開" };
+        {
+            var note = new GUIStyle(center) { fontSize = Mathf.Max(16, fontSize * 2 / 3) };
+            note.normal.textColor = new Color(0.97f, 0.95f, 0.88f, 0.6f);
+            GUI.Label(new Rect(0, y - lineH, Screen.width, lineH), "洞裡的巨人睡著了", note);
+        }
         for (int i = 0; i < options.Length; i++)
         {
             var r = new Rect(0, y + i * lineH, Screen.width, lineH);

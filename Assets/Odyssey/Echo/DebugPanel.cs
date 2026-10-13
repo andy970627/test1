@@ -96,7 +96,17 @@ public class DebugPanel : MonoBehaviour
         var map = new Rect(20, 20, mapW, mapH);
         DrawMap(map);
 
-        float y = map.yMax + 10f;
+        // 小地圖圖例：只放最重要的四種。
+        float y = map.yMax + 6f;
+        var legend = new GUIStyle(style) { fontSize = Mathf.Max(16, fontSize * 2 / 3) };
+        float lx = 20f, lh = legend.fontSize * 1.4f;
+        foreach (var (name, color) in new[] { ("你", PlayerColor), ("巨人", StateColor(CyclopsState.Listen)), ("同伴", CrewColor), ("木樁", StakeColor) })
+        {
+            Fill(new Rect(lx, y + lh * 0.3f, lh * 0.4f, lh * 0.4f), color);
+            GUI.Label(new Rect(lx + lh * 0.55f, y, legend.fontSize * 3f, lh), name, legend);
+            lx += lh * 0.55f + legend.fontSize * (name.Length + 1.2f);
+        }
+        y += lh + 4f;
         CyclopsState state = loop.Cyclops.Brain.State;
         Fill(new Rect(20, y + line * 0.2f, line * 0.6f, line * 0.6f), StateColor(state));
         string hold = loop.Cyclops.Brain.HoldingBoulder ? "・守著巨石" : "";
@@ -108,12 +118,7 @@ public class DebugPanel : MonoBehaviour
         Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, new Color(0.75f, 0.6f, 0.4f), ref y, line, barW, style);
         DrawBoulderMarks(boulderRow, line, barW, style);
         Bar("天亮", loop.Dawn.Fraction, 0, new Color(0.7f, 0.75f, 0.95f), ref y, line, barW, style);
-        Bar("岩石", 1f - loop.Cyclops.Brain.ThrowCooldownLeft / CyclopsBrain.ThrowCooldown, 0, new Color(1f, 0.45f, 0.1f), ref y, line, barW, style);
-        Bar("箭", loop.Decoys.ArrowRadiusMultiplier, 0, new Color(0.85f, 0.85f, 0.8f), ref y, line, barW, style);
-        for (int i = 0; i < DecoyMemory.FooledLimit; i++)
-            Fill(new Rect(20 + fontSize * 4f + i * line * 0.7f, y + line * 0.25f, line * 0.5f, line * 0.5f),
-                i < loop.Decoys.Fooled ? new Color(0.9f, 0.25f, 0.2f) : Track);
-        y += line;
+        // 「丟岩石冷卻」「箭的引誘力」暫放在洞中紀事的巨人頁（使用者指定，規格第 25 節 F）。
 
         int following = loop.Crew.Followers.Count;
         GUI.Label(new Rect(20, y, panelW, line), $"同伴：跟隨 {following}／躲著 {loop.Crew.Members.Count - following}", style);

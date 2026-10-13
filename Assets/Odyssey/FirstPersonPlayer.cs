@@ -69,7 +69,8 @@ public class FirstPersonPlayer : MonoBehaviour
 
         if (keyboard.escapeKey.wasPressedThisFrame)
             LockCursor(false);
-        else if (mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
+        // 輸入關閉時（選單、過場）點擊不鎖游標，選單才點得到。
+        else if (InputEnabled && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
             LockCursor(true);
 
         if (!InputEnabled || !bodyActive)

@@ -5,10 +5,10 @@ namespace Odyssey.Core
     {
         public static string Describe(FailReason reason) => reason switch
         {
-            FailReason.Touched => "巨人循著聲音摸到了你",
-            FailReason.Bumped => "你撞上了巨人",
-            FailReason.Dawn => "天亮了，巨人把石頭推了回去",
-            FailReason.Crushed => "巨人朝聲音扔來的岩石砸中了你",
+            FailReason.Touched => "巨人循聲而來，摸到了奧德修斯",
+            FailReason.Bumped => "奧德修斯撞上了巨人",
+            FailReason.Dawn => "天亮了，巨人把巨石推回原處",
+            FailReason.Crushed => "巨人朝聲音擲出的岩石，砸中了奧德修斯",
             _ => "",
         };
     }

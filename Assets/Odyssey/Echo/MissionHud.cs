@@ -21,20 +21,24 @@ public class MissionHud : MonoBehaviour
     static readonly Color DawnBar = new(0.7f, 0.7f, 0.65f);
 
     BlindGameLoop loop;
-    Action<DifficultyLevel> onStart;
-    DifficultyLevel selected;
+    Action onStart;
     float briefingSince;
     GUIStyle titleStyle, bodyStyle, listStyle, choiceStyle;
 
     public bool BriefingOpen { get; private set; }
 
+    float crewFlashUntil = -1f;
+    static readonly Color FlashRed = new(0.9f, 0.2f, 0.15f);
+
+    /// <summary>同伴被吃：「帶同伴」那行閃紅 1 秒。</summary>
+    public void FlashCrew() => crewFlashUntil = Time.time + 1f;
+
     public void Init(BlindGameLoop loop) => this.loop = loop;
 
-    /// <summary>開場簡報：一句目標＋選難度（預設上次選的）；3 秒後按空白鍵開始，回傳選的難度。</summary>
-    public void ShowBriefing(DifficultyLevel current, Action<DifficultyLevel> onStart)
+    /// <summary>開場簡報：一句目標（難度在主選單選）；3 秒後按空白鍵開始。</summary>
+    public void ShowBriefing(Action onStart)
     {
         this.onStart = onStart;
-        selected = current;
         briefingSince = Time.time;
         BriefingOpen = true;
     }
@@ -46,22 +50,12 @@ public class MissionHud : MonoBehaviour
         var keyboard = Keyboard.current;
         if (!BriefingOpen || keyboard == null)
             return;
-        if ((keyboard.aKey.wasPressedThisFrame || keyboard.leftArrowKey.wasPressedThisFrame) && selected > DifficultyLevel.Familiar)
-            selected--;
-        if ((keyboard.dKey.wasPressedThisFrame || keyboard.rightArrowKey.wasPressedThisFrame) && selected < DifficultyLevel.Hard)
-            selected++;
-        if (keyboard.digit1Key.wasPressedThisFrame)
-            selected = DifficultyLevel.Familiar;
-        if (keyboard.digit2Key.wasPressedThisFrame)
-            selected = DifficultyLevel.Normal;
-        if (keyboard.digit3Key.wasPressedThisFrame)
-            selected = DifficultyLevel.Hard;
         if (!CanStart || !keyboard.spaceKey.wasPressedThisFrame)
             return;
         BriefingOpen = false;
         var start = onStart;
         onStart = null;
-        start?.Invoke(selected);
+        start?.Invoke();
     }
 
     void OnGUI()
@@ -100,28 +94,15 @@ public class MissionHud : MonoBehaviour
         Label(new Rect(0, y, Screen.width, titleStyle.fontSize * 1.5f), $"第 {loop.Roster.Night} 夜", titleStyle, Text);
         y += titleStyle.fontSize * 2f;
 
-        // 只講目標；其他規則由物體提示與情境提示在用得到時講（規格第 17、18 節）。
-        const string goal = "目標：天亮前把封住洞口的巨石推開，從縫裡鑽出去。";
+        // 只講目標；難度在主選單選，其他規則由提示與洞中紀事講（規格第 25 節）。
+        const string goal = "目標：天亮前推開封住洞口的巨石，從縫裡鑽出去";
         float goalH = bodyStyle.CalcHeight(new GUIContent(goal), width);
         Label(new Rect(x, y, width, goalH), goal, bodyStyle, Text);
         y += goalH + bodyStyle.fontSize * 2f;
-
-        // 難度：三選一，選中的亮、其他暗；底下一句說明。
-        float slot = width / 3f;
-        float rowH = choiceStyle.fontSize * 1.6f;
-        for (int i = 0; i < 3; i++)
-        {
-            var level = (DifficultyLevel)i;
-            string name = level == selected ? $"［ {Difficulty.Name(level)} ］" : Difficulty.Name(level);
-            Label(new Rect(x + slot * i, y, slot, rowH), name, choiceStyle, level == selected ? Text : Dim);
-        }
-        y += rowH;
-        Label(new Rect(x, y, width, rowH), Difficulty.Blurb(selected), choiceStyle, Text);
-        y += rowH;
-        Label(new Rect(x, y, width, rowH), "A／D 選難度", choiceStyle, Dim);
+        Label(new Rect(x, y, width, choiceStyle.fontSize * 1.6f), $"難度：{Difficulty.Name(loop.Difficulty)}", choiceStyle, Dim);
 
         if (CanStart)
-            Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "按空白鍵開始", titleStyle, Dim);
+            Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "空白鍵 開始", titleStyle, Dim);
     }
 
     /// <summary>右上角任務清單：推開巨石、帶同伴、天亮前。</summary>
@@ -136,14 +117,15 @@ public class MissionHud : MonoBehaviour
 
         var slide = loop.Slide;
         bool open = slide.IsOpen;
-        Label(new Rect(x, y, width, line), open ? "已推開：到縫前按 E 鑽出去" : "推開巨石", listStyle, open ? DoneColor : Text);
+        Label(new Rect(x, y, width, line), open ? "已推開：到縫前 E 鑽出去" : "推開巨石", listStyle, open ? DoneColor : Text);
         y += line;
         Bar(new Rect(x, y, width, barH), slide.Opening / BoulderSlide.FullOpen, open ? DoneColor : BoulderBar);
         y += barH + font * 0.6f;
 
         int following = loop.Crew.Followers.Count;
         int hiding = loop.Crew.Members.Count - following;
-        Label(new Rect(x, y, width, line), $"帶同伴：跟隨 {following}／洞裡還有 {hiding}", listStyle, Text);
+        Label(new Rect(x, y, width, line), $"帶同伴：跟隨 {following}／洞裡還有 {hiding}", listStyle,
+            Time.time < crewFlashUntil && Mathf.Repeat(Time.time * 6f, 1f) < 0.6f ? FlashRed : Text);
         y += line;
 
         Label(new Rect(x, y, width, line), "天亮前", listStyle, Text);

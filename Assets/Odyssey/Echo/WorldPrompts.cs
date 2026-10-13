@@ -63,13 +63,13 @@ public class WorldPrompts : MonoBehaviour
         lines.Clear();
         bool nearGap = Flat(boulder.GapPoint - me).magnitude <= StuckNoticeReach;
         if (loop.Rush.Stuck && nearGap)
-            lines.Add(("有羊卡在縫裡：把巨石推開", null));
+            lines.Add(("有羊卡在縫裡", null));
         else if (player.AtGap && !loop.Rush.GapClear)
             lines.Add(("有羊擠在縫裡", null));
         else if (player.AtGap)
         {
             if (loop.Crew.Crouching && loop.Crew.Followers.Count > 0)
-                lines.Add(("隊伍還蹲著，不會跟你走：F 讓他們跟上", null));
+                lines.Add(("F 讓蹲著的隊伍跟上", null));
             lines.Add(("E 鑽出去", PromptKind.Escape));
         }
         DrawAt(boulder.GapPoint + Vector3.up * GapLift);
@@ -110,13 +110,13 @@ public class WorldPrompts : MonoBehaviour
         // 走路只在每夜開頭提示。
         if (loop.Dawn.Elapsed < PerNightPromptSeconds)
             Add(PromptKind.Move, "WASD 走・Shift 跑");
-        Add(PromptKind.Clap, "空白鍵 拍手：照亮四周（巨人也聽得到）");
+        Add(PromptKind.Clap, "空白鍵 拍手（照亮四周，巨人也聽得到）");
         if (player.Arrows > 0 && !player.CarryingStake)
             Add(PromptKind.Shoot, "按住左鍵 拉弓・放開 射箭");
         if (player.CarryingStake && !player.AtBoulder)
             Add(PromptKind.DropStake, "G 放下木樁");
         if (player.Arrows > 0 && tracker.ShouldShow(PromptKind.Shoot))
-            lines.Add(("箭：落點會照亮遠處、引開巨人（要撿回來）", null));
+            lines.Add(("箭：落點照亮遠處、引開巨人，要撿回來", null));
         if (player.Stones > 0 && tracker.ShouldShow(PromptKind.Wedge))
             lines.Add(("石子：塞進縫當楔子", null));
         if (lines.Count == 0)
