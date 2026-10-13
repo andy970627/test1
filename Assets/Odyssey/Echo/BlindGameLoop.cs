@@ -379,7 +379,9 @@ public class BlindGameLoop : MonoBehaviour
     void UpdateBoulder()
     {
         float before = Slide.Opening;
-        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake);
+        // 站在巨石前、面向它但沒在推：用身體頂住，巨石不會滑回（規格第 24 節）。
+        bool braced = player.AtBoulder && player.PushMode == PushMode.None;
+        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake, braced);
         Layout.Boulder.SetOpening(Slide.Opening);
         gapWhistle.position = Layout.Boulder.GapPoint + Vector3.up;
         // 每推開 25%（這一夜第一次）巨石沉一聲、進度條閃一下（規格第 22 節 C）。
@@ -400,7 +402,10 @@ public class BlindGameLoop : MonoBehaviour
         if (noise.Catch)
             Hints.Trigger(HintKind.Catch);
         if (noise.Slip)
+        {
             SoundBus.Emit(SoundKind.Slip, face);
+            Hints.Trigger(HintKind.Slip);
+        }
 
         // 巨人拔掉楔子後巨石往回滑：那是巨人弄出來的聲音，他自己聽不到。
         if (Slide.PullingBack)
@@ -811,6 +816,9 @@ public class BlindGameLoop : MonoBehaviour
         Fill(r, new Color(1f, 1f, 1f, 0.15f));
         Color fill = settleFlash > 0f ? Color.white : new Color(0.85f, 0.92f, 1f, 0.9f);
         Fill(new Rect(r.x, r.y, w * Slide.Opening / BoulderSlide.FullOpen, h), fill);
+        // 地上的凹槽：每 25% 一道刻度，巨石放手最多滑回到下面那一道。
+        for (int i = 1; i < 4; i++)
+            Fill(new Rect(r.x + w * i / 4f - 1f, r.y - h * 0.5f, 2f, h * 2f), new Color(1f, 1f, 1f, 0.5f));
     }
 
     static void Fill(Rect r, Color c)

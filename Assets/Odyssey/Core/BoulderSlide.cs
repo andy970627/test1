@@ -25,7 +25,8 @@ namespace Odyssey.Core
 
     /// <summary>
     /// 封住洞口的巨石，開口是連續的距離（公尺，全開 1.44）。推它要從靜止慢慢起步，
-    /// 放手 1 秒後它會往回滑，滑到最外面的楔子（石子或木樁）為止。
+    /// 放手 3 秒後它會往回滑（規格第 24 節）：洞口是斜坡，開口越大滑得越快（0.02 × 開口 ÷ 全開 m/s）；
+    /// 地上每 25% 有一道凹槽，最多滑回下面那道槽或最外面的楔子（石子或木樁）為止。站在巨石前用身體頂住就不滑。
     /// 巨人能拔掉石子楔子，巨石就快速滑回下一個楔子；木樁拔不掉。
     /// </summary>
     public sealed class BoulderSlide
@@ -34,8 +35,11 @@ namespace Odyssey.Core
         public const float LightSpeed = 0.06f;
         public const float HeavySpeed = 0.18f;
         public const float RampSeconds = 0.5f;
-        public const float SlipDelay = 1f;
-        public const float SlipSpeed = 0.03f;
+        public const float SlipDelay = 3f;
+        public const float SlipMaxSpeed = 0.02f;
+        /// <summary>斜坡：速度與開口成正比，等於開口以每秒 SlipRate 的比例指數遞減。</summary>
+        public const float SlipRate = SlipMaxSpeed / FullOpen;
+        public const float NotchMeters = FullOpen / 4f;
         public const float PullBackSpeed = 0.3f;
         public const float StakeMultiplier = 1.5f;
         public const float PushNoiseSeconds = 0.5f;
@@ -73,6 +77,16 @@ namespace Odyssey.Core
         /// <param name="roll">卡住的骰子；null 時永遠不卡。</param>
         public BoulderSlide(Func<double> roll = null) => this.roll = roll;
 
+        /// <summary>斜坡：開口為 opening 時放手後的滑回速度（m/s）。</summary>
+        public static float SlipSpeedAt(float opening) => SlipRate * opening;
+
+        /// <summary>opening 下面（含剛好在上面）那一道凹槽。</summary>
+        public static float NotchBelow(float opening) =>
+            (float)Math.Floor(opening / NotchMeters + 1e-4f) * NotchMeters;
+
+        /// <summary>放手後最多滑回到這裡：楔子與下面那道凹槽較高的一個。</summary>
+        public float SlipFloor => Math.Max(Floor, NotchBelow(Opening));
+
         /// <summary>巨石最多滑回到這裡：所有楔子的最大值，沒有楔子為 0。</summary>
         public float Floor
         {
@@ -85,7 +99,8 @@ namespace Odyssey.Core
             }
         }
 
-        public BoulderNoise Tick(float dt, PushMode mode, bool withStake)
+        /// <param name="braced">玩家站在巨石前、面向它但沒在推：用身體頂住，不滑，放手的計時重來。</param>
+        public BoulderNoise Tick(float dt, PushMode mode, bool withStake, bool braced = false)
         {
             if (PullingBack)
             {
@@ -109,17 +124,24 @@ namespace Odyssey.Core
             pushSeconds = 0f;
             pushNoiseTimer = 0f;
             stallLeft = 0f;
+            if (braced)
+            {
+                releaseSeconds = 0f;
+                slipNoiseTimer = 0f;
+                return default;
+            }
             float before = releaseSeconds;
             releaseSeconds += dt;
             if (releaseSeconds >= CatchResetSeconds)
                 LightPushSeconds = 0f;
             float sliding = Math.Max(0f, releaseSeconds - Math.Max(before, SlipDelay));
-            if (sliding <= 0f || Opening <= Floor)
+            float floor = SlipFloor;
+            if (sliding <= 0f || Opening <= floor + 1e-6f)
             {
                 slipNoiseTimer = 0f;
                 return default;
             }
-            Opening = Math.Max(Floor, Opening - SlipSpeed * sliding);
+            Opening = Math.Max(floor, Opening * (float)Math.Exp(-SlipRate * sliding));
             slipNoiseTimer += sliding;
             bool slip = false;
             if (slipNoiseTimer + TimerEps >= SlipNoiseSeconds)

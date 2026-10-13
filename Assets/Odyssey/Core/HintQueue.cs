@@ -6,7 +6,7 @@ namespace Odyssey.Core
     public enum HintKind
     {
         Decoy, Guard, PulledWedge, Catch, Heavy, RockWindup, Whimper, CrewEaten,
-        Stake, Pail, Pen, Pant, Dawn, Rush, SheepStuck, Prayer,
+        Stake, Pail, Pen, Pant, Dawn, Rush, SheepStuck, Prayer, Slip,
     }
 
     /// <summary>
@@ -104,6 +104,7 @@ namespace Odyssey.Core
             HintKind.Dawn => "天快亮了",
             HintKind.Rush => "羊群聞到外面的氣味——小心牠們撞鬆楔子",
             HintKind.SheepStuck => "有羊卡住了：把巨石推開讓牠出去",
+            HintKind.Slip => "巨石在往回滑：站在它前面頂住，或塞石子當楔子",
             HintKind.Prayer => "他在向父親波塞頓禱告——這時他什麼都聽不到",
             _ => null,
         };
