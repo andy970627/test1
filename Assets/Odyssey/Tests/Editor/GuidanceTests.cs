@@ -73,12 +73,19 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void SkipAfterOneSecond_DoneAfterThree()
+        public void SkipAfterOneSecond_ThenFadeToBlackAndReveal()
         {
             Assert.IsFalse(DeathCard.CanSkip(0.99f));
             Assert.IsTrue(DeathCard.CanSkip(1f));
-            Assert.IsFalse(DeathCard.Done(2.99f));
-            Assert.IsTrue(DeathCard.Done(3f));
+            // 3 秒後字與黑帶淡出、畫面全黑（這時重置下一夜），接著直接淡入下一夜，不再有過場。
+            Assert.AreEqual(1f, DeathCard.TextAlpha(2.9f), 1e-4f);
+            Assert.AreEqual(0f, DeathCard.TextAlpha(DeathCard.BlackoutAt), 1e-4f);
+            Assert.AreEqual(1f, DeathCard.DimAlpha(DeathCard.BlackoutAt), 1e-4f);
+            Assert.Less(DeathCard.DimAlpha(DeathCard.BlackoutAt + 0.3f), 1f);
+            Assert.AreEqual(0f, DeathCard.DimAlpha(DeathCard.End), 1e-4f);
+            Assert.IsFalse(DeathCard.Done(DeathCard.End - 0.01f));
+            Assert.IsTrue(DeathCard.Done(DeathCard.End));
+            Assert.AreEqual(DeathCard.Duration, DeathCard.SkipTo, 1e-4f);
         }
     }
 

@@ -679,18 +679,23 @@ public class BlindGameLoop : MonoBehaviour
         bool wiped = State.Phase == LoopPhase.Wiped;
         int nextNight = Roster.Night, left = Roster.Remaining;
 
-        // 先是魂系的「葬身洞中」，接著死亡原因與下一夜合成同一個快速過場（規格第 25 節 D）。
-        deathScreen.Play(cause, reason == FailReason.Dawn, () =>
+        // 魂系的「葬身洞中」：死因與代價寫在卡片上；淡成全黑時重置，直接淡入下一夜，不再接過場（規格第 25 節 D）。
+        string detail = wiped ? "洞裡只剩下奧德修斯。"
+            : record.Crew > 0 ? $"巨人吃掉了一名同伴・第 {nextNight} 夜・剩下 {left} 名同伴" : $"第 {nextNight} 夜・剩下 {left} 名同伴";
+        deathScreen.Play(cause, detail, reason == FailReason.Dawn, () =>
         {
             AudioListener.volume = 1f;
             if (wiped)
-                Show($"第 {night} 夜", "洞裡只剩下奧德修斯。", cause, ReturnToMenu, null);
-            else
-                Show($"第 {night} 夜", "巨人吃掉了一名同伴", $"第 {nextNight} 夜・剩下 {left} 名同伴", ResetNight, () =>
-                {
-                    State.CaughtDone();
-                    StartNight();
-                });
+            {
+                ReturnToMenu();
+                return;
+            }
+            ResetNight();
+            State.CaughtDone();
+        }, () =>
+        {
+            if (!wiped)
+                StartNight();
         });
         Log(reason.ToString(), record.Night, record.Crew);
     }

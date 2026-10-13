@@ -5,7 +5,8 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// 魂系死亡畫面「葬身洞中」（規格第 25 節 D）：畫面暗下、中央黑帶（上下希臘回紋線）、暗紅大字放大淡入、
-/// 下方說書人死因；低沉鐘鳴。約 3 秒，1 秒後可按任一鍵跳過；結束後呼叫 onDone（接原本的過場）。
+/// 下方說書人死因與這一夜的代價；低沉鐘鳴。3 秒後淡成全黑（onBlackout：重置下一夜），再直接淡入下一夜（onDone），
+/// 不再接其他過場。1 秒後可按任一鍵跳到淡出。
 /// </summary>
 public class DeathScreen : MonoBehaviour
 {
@@ -16,7 +17,10 @@ public class DeathScreen : MonoBehaviour
     const float BandHeight = 0.22f;
     const string Title = "葬 身 洞 中";
 
+    Action onBlackout;
     Action onDone;
+    bool blackedOut;
+    string detail;
     float startedAt;
     string cause;
     bool dawn;
@@ -27,7 +31,7 @@ public class DeathScreen : MonoBehaviour
 
     float T => Time.unscaledTime - startedAt;
 
-    public void Play(string cause, bool dawn, Action onDone)
+    public void Play(string cause, string detail, bool dawn, Action onBlackout, Action onDone)
     {
         if (bell == null)
         {
@@ -37,8 +41,11 @@ public class DeathScreen : MonoBehaviour
             bell.playOnAwake = false;
         }
         this.cause = cause;
+        this.detail = detail;
         this.dawn = dawn;
+        this.onBlackout = onBlackout;
         this.onDone = onDone;
+        blackedOut = false;
         startedAt = Time.unscaledTime;
         Showing = true;
         bell.Play();
@@ -48,6 +55,7 @@ public class DeathScreen : MonoBehaviour
     {
         Showing = false;
         onDone = null;
+        onBlackout = null;
         if (bell != null)
             bell.Stop();
     }
@@ -57,8 +65,19 @@ public class DeathScreen : MonoBehaviour
         if (!Showing)
             return;
         var k = Keyboard.current;
-        bool skip = DeathCard.CanSkip(T) && k != null && k.anyKey.wasPressedThisFrame;
-        if (!skip && !DeathCard.Done(T))
+        if (DeathCard.CanSkip(T) && T < DeathCard.SkipTo && k != null && k.anyKey.wasPressedThisFrame)
+            startedAt = Time.unscaledTime - DeathCard.SkipTo;
+        if (!blackedOut && T >= DeathCard.BlackoutAt)
+        {
+            blackedOut = true;
+            var blackout = onBlackout;
+            onBlackout = null;
+            blackout?.Invoke();
+            // 回主選單會在這裡把畫面收掉。
+            if (!Showing)
+                return;
+        }
+        if (!DeathCard.Done(T))
             return;
         Showing = false;
         var done = onDone;
@@ -103,6 +122,12 @@ public class DeathScreen : MonoBehaviour
         c.a = a;
         causeStyle.normal.textColor = c;
         GUI.Label(new Rect(0, center.y + size * 0.75f, Screen.width, causeStyle.fontSize * 1.6f), cause, causeStyle);
+        if (!string.IsNullOrEmpty(detail))
+        {
+            var d = new Color(c.r, c.g, c.b, a * 0.7f);
+            causeStyle.normal.textColor = d;
+            GUI.Label(new Rect(0, center.y + size * 0.75f + causeStyle.fontSize * 1.6f, Screen.width, causeStyle.fontSize * 1.6f), detail, causeStyle);
+        }
     }
 
     const float MeanderHeight = 10f;
