@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class GameMenus : MonoBehaviour
 {
-    enum View { None, Main, Pause, Confirm, Chronicle, End }
+    enum View { None, Main, Pause, Confirm, Chronicle, End, Lab }
 
     const float ToastSeconds = 3f;
 
@@ -18,7 +18,8 @@ public class GameMenus : MonoBehaviour
     static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
     static readonly Color Veil = new(0f, 0f, 0f, 0.88f);
 
-    static readonly string[] MainItems = { "開始", "難度", "紀事", "離開" };
+    static readonly string[] MainItems = { "開始", "難度", "紀事", "實驗", "離開" };
+    static readonly string[] LabItems = { "被動聲音照亮", "必要引導", "返回" };
     static readonly string[] PauseItems = { "繼續", "紀事", "回主選單" };
     static readonly string[] ConfirmItems = { "確定", "取消" };
 
@@ -129,6 +130,22 @@ public class GameMenus : MonoBehaviour
                         ShowPause();
                 }
                 break;
+            case View.Lab:
+                bool left = k.aKey.wasPressedThisFrame || k.leftArrowKey.wasPressedThisFrame;
+                bool right = k.dKey.wasPressedThisFrame || k.rightArrowKey.wasPressedThisFrame;
+                var flags = loop.Flags;
+                if (cursor == 0 && left && flags.Passive > PassiveLight.Off)
+                    flags.Passive--;
+                if (cursor == 0 && right && flags.Passive < PassiveLight.Full)
+                    flags.Passive++;
+                if (cursor == 1 && (left || right))
+                    flags.EssentialGuide = !flags.EssentialGuide;
+                if (k.escapeKey.wasPressedThisFrame || k.tabKey.wasPressedThisFrame || (cursor == 2 && Confirmed(k)))
+                {
+                    view = View.Main;
+                    cursor = 3;
+                }
+                break;
             case View.End:
                 if (k.rKey.wasPressedThisFrame)
                 {
@@ -161,6 +178,7 @@ public class GameMenus : MonoBehaviour
         View.Main => MainItems,
         View.Pause => PauseItems,
         View.Confirm => ConfirmItems,
+        View.Lab => LabItems,
         _ => null,
     };
 
@@ -176,6 +194,10 @@ public class GameMenus : MonoBehaviour
                 OpenChronicle(View.Main);
                 break;
             case 3:
+                view = View.Lab;
+                cursor = 0;
+                break;
+            case 4:
 #if UNITY_EDITOR
                 UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -255,6 +277,17 @@ public class GameMenus : MonoBehaviour
                 break;
             case View.Chronicle:
                 DrawChronicle();
+                break;
+            case View.Lab:
+                Label(new Rect(0, Screen.height * 0.16f, Screen.width, titleStyle.fontSize * 1.6f), "實驗", titleStyle, Gold);
+                DrawItems(LabItems, Screen.height * 0.4f, i => i switch
+                {
+                    0 => $"被動聲音照亮：{DesignFlags.Name(loop.Flags.Passive)}（A／D）",
+                    1 => $"必要引導：{(loop.Flags.EssentialGuide ? "開" : "關")}（A／D）",
+                    _ => "返回",
+                });
+                Label(new Rect(0, Screen.height * 0.4f + itemStyle.fontSize * 1.8f * LabItems.Length + 10f, Screen.width, bodyStyle.fontSize * 1.6f),
+                    cursor == 0 ? "巨人腳步、羊叫、同伴嗚咽、腳步聲要不要照亮四周" : cursor == 1 ? "製造聲音 → 推 → 塞楔子 → 鑽出去 的一步一步提示" : "開關會記在實測紀錄裡", bodyStyle, Dim);
                 break;
             case View.End:
                 Label(new Rect(0, Screen.height * 0.3f, Screen.width, titleStyle.fontSize * 1.6f), endTitle, titleStyle, Gold);

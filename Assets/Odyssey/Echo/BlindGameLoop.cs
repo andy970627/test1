@@ -97,6 +97,8 @@ public class BlindGameLoop : MonoBehaviour
     public GuideBook Guide { get; } = new();
     /// <summary>必要引導鏈：製造聲音 → 推 → 塞楔子 → 鑽出去（整場只走一次）。</summary>
     public EssentialGuide Essential { get; } = new();
+    /// <summary>主選單「實驗」頁的設計開關（規格第 28 節）。</summary>
+    public DesignFlags Flags { get; } = new();
 
     GameMenus menus;
     DeathScreen deathScreen;
@@ -109,6 +111,7 @@ public class BlindGameLoop : MonoBehaviour
         var caveRoot = new GameObject("Cave").transform;
         Layout = BlindCaveBuilder.Build(caveRoot, seed);
         echo = gameObject.AddComponent<EchoField>();
+        echo.LightFor = Flags.LightFor;
         gameObject.AddComponent<DebugPanel>().Init(this);
 
         foreach (var spot in Layout.StoneSpots)
@@ -855,7 +858,7 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>night／crew 是這一夜當時的夜數與同伴數（被吃之前）。寫不進去只警告，不影響遊戲。</summary>
     void Log(string outcome, int night, int crew)
     {
-        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), RescuedLastEscape, LostTonight, LoopPhase.Night, outcome, Time.time - nightStart, Difficulty);
+        string line = PlaytestCsv.Line(DateTime.Now, night, crew, Mathf.RoundToInt(Slide.MaxOpening * 100f), RescuedLastEscape, LostTonight, LoopPhase.Night, outcome, Time.time - nightStart, Difficulty, Flags.Summary);
         Debug.Log("[BlindCave] " + line);
         if (!PlaytestCsv.TryAppend(logPath, line, out string error))
             Debug.LogWarning($"BlindGameLoop: 無法寫入實測紀錄（檔案可能正被其他程式開著）：{error}");

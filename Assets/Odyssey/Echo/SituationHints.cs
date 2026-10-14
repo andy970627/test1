@@ -66,8 +66,8 @@ public class SituationHints : MonoBehaviour
             case SoundKind.Clatter:
                 loop.Hint(HintKind.Pail);
                 break;
-            case SoundKind.Step:
-            case SoundKind.Run:
+            case SoundKind.Step when loop.Flags.Passive == PassiveLight.Off:
+            case SoundKind.Run when loop.Flags.Passive == PassiveLight.Off:
                 loop.Hint(HintKind.Footstep);
                 break;
             case SoundKind.Arrow:

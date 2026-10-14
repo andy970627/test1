@@ -88,6 +88,8 @@ public class WorldPrompts : MonoBehaviour
     /// <summary>必要引導（規格第 26 節 A）：畫面下方中央一次只有一行，做到才換下一步。</summary>
     void DrawEssential()
     {
+        if (!loop.Flags.EssentialGuide)
+            return;
         string text = loop.Essential.Text;
         if (text == null)
             return;
