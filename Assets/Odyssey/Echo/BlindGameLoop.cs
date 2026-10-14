@@ -95,6 +95,8 @@ public class BlindGameLoop : MonoBehaviour
     public HintQueue Hints { get; } = new();
     /// <summary>洞中紀事：遇到才解鎖，整場保留。</summary>
     public GuideBook Guide { get; } = new();
+    /// <summary>必要引導鏈：製造聲音 → 推 → 塞楔子 → 鑽出去（整場只走一次）。</summary>
+    public EssentialGuide Essential { get; } = new();
 
     GameMenus menus;
     DeathScreen deathScreen;
@@ -140,6 +142,10 @@ public class BlindGameLoop : MonoBehaviour
         {
             // 只有玩家聽得到的小回饋（規格第 22 節 B）：學會提示、拿起木樁、帶到同伴。
             MarkUsed(kind);
+            if (kind == PromptKind.Push)
+                Essential.OnPushed();
+            else if (kind == PromptKind.Wedge)
+                Essential.OnWedged();
             if (kind == PromptKind.TakeStake)
                 sounds?.PlayLocal(sounds.WoodTap);
             else if (kind == PromptKind.Recruit)
@@ -239,17 +245,9 @@ public class BlindGameLoop : MonoBehaviour
     void BeginIntro()
     {
         player.InputEnabled = false;
-        // 第一夜先看任務簡報，3 秒後按空白鍵才開始。
-        // 第一夜照電影的開場（規格第 20 節 A），副標是整個遊戲的核心法則：聲音就是光（規格第 25 節 A）。
-        string title = Roster.Night == 1 ? "他們跟著羊群走進洞中，不知這是波呂斐摩斯的居所" : "巨人已被刺瞎，洞口被巨石封住";
-        string subtitle = Roster.Night == 1 ? $"在他的洞裡，聲音就是光；照亮了哪裡，他就聽得到哪裡\n剩下 {Roster.Remaining} 名同伴" : $"剩下 {Roster.Remaining} 名同伴";
-        Show($"第 {Roster.Night} 夜", title, subtitle, ResetNight, () =>
-        {
-            if (Roster.Night == 1)
-                hud.ShowBriefing(StartNight);
-            else
-                StartNight();
-        });
+        // 開場過場與任務簡報合成一張卡片（規格第 26 節 B）：卡片後面先重置好，按空白鍵卡片淡出就直接進入夜晚。
+        ResetNight();
+        hud.ShowBriefing(StartNight);
     }
 
     // ---------- 主選單、暫停、回主選單（規格第 25 節 B） ----------
@@ -422,6 +420,10 @@ public class BlindGameLoop : MonoBehaviour
         UpdateClutter();
         if (player.MovedTonight >= MovePromptMeters)
             MarkUsed(PromptKind.Move);
+        if (player.AtBoulder)
+            Essential.OnAtBoulder();
+        if (player.AtGap)
+            Essential.OnAtOpenGap();
         Dawn.Tick(Time.deltaTime);
         UpdatePrayer();
         Layout.Boulder.SetDawn(Dawn.Fraction);
@@ -498,6 +500,7 @@ public class BlindGameLoop : MonoBehaviour
         {
             SoundBus.Emit(SoundKind.Slip, face);
             Hint(HintKind.Slip);
+            Essential.OnSlip();
         }
 
         // 巨人拔掉楔子後巨石往回滑：那是巨人弄出來的聲音，他自己聽不到。
@@ -707,6 +710,7 @@ public class BlindGameLoop : MonoBehaviour
             return;
         // 正在跟隨的同伴全部一起鑽出去；蹲著待命的隊伍留在原地（縫前會提示「F 隊伍跟上」）。
         RescuedLastEscape = Crew.Crouching ? 0 : Crew.Followers.Count;
+        Essential.OnEscaped();
         State.Escape();
         player.InputEnabled = false;
         feel.ResetForNight();

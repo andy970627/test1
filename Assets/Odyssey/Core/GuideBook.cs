@@ -29,7 +29,7 @@ namespace Odyssey.Core
         static readonly GuideEntry[] All =
         {
             new("move", GuidePage.Controls, "走與跑", "WASD 走・Shift 跑。跑太久會喘，喘氣聲巨人也聽得到。"),
-            new("clap", GuidePage.Controls, "拍手", "空白鍵 拍手，照亮四周。"),
+            new("clap", GuidePage.Controls, "製造聲音", "空白鍵 製造聲音，照亮四周。"),
             new("bow", GuidePage.Controls, "弓", "按住左鍵 拉弓・放開 射箭。拿著木樁時不能拉弓。"),
             new("push", GuidePage.Controls, "推巨石", "E 推・Shift＋E 猛推。"),
             new("wedge", GuidePage.Controls, "楔子", "右鍵 塞石子當楔子（按住 拔回）。"),
@@ -38,7 +38,7 @@ namespace Odyssey.Core
             new("pause", GuidePage.Controls, "暫停", "Tab 暫停，翻閱這本紀事。"),
 
             new("law", GuidePage.SoundLight, "聲音就是光", "在波呂斐摩斯的洞裡，聲音就是光。照亮了哪裡，他就聽得到哪裡。"),
-            new("footstep", GuidePage.SoundLight, "會發光的聲音", "腳步、喘氣、羊叫、同伴的嗚咽都只有聲音，照不亮四周。只有拍手、射箭、推巨石、塞楔子、撞倒奶桶這些刻意的聲音會發光。"),
+            new("footstep", GuidePage.SoundLight, "會發光的聲音", "腳步、喘氣、羊叫、同伴的嗚咽都只有聲音，照不亮四周。只有製造聲音、射箭、推巨石、塞楔子、撞倒奶桶這些刻意的聲音會發光。"),
             new("ring", GuidePage.SoundLight, "聽覺的邊", "回聲裡那道淡淡的邊，是巨人真正聽得到的範圍。在邊外發出的聲音，他聽不到。"),
             new("pen", GuidePage.SoundLight, "乾草", "羊圈裡的乾草讓腳步聲變輕。"),
             new("pail", GuidePage.SoundLight, "奶桶", "奶桶倒下很吵，整個洞都聽得到；也能拿來把巨人引到別處。"),

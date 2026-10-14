@@ -48,6 +48,8 @@ public class SituationHints : MonoBehaviour
         {
             // 示範只給玩家自己發出的聲音（不含羊撞倒的奶桶等）。
             bool mine = e.Kind is SoundKind.Clap or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge;
+            if (mine)
+                loop.Essential.OnLit();
             if (!lawShown && mine)
             {
                 lawShown = true;

@@ -3,19 +3,17 @@ using Odyssey.Core;
 using UnityEngine;
 
 /// <summary>
-/// 遊戲內的操作提示：靠近能互動的東西時，它能做的事全部浮在它上方（不排順序）；離開就消失。
-/// 沒有特定物體的操作（走、拍手、射箭、放下木樁）是右下角石子圖示上方的小字按鍵說明，不擋畫面中央。
+/// 遊戲內的操作提示（規格第 26 節 A）：必要的「製造聲音 → 推 → 塞楔子 → 鑽出去」一次一行畫在下方中央；
+/// 非必要的只在靠近同伴、木樁時浮在它們上方，其他讓玩家自己探索。
 /// 同一種提示看到後做到 3 次就不再出現（PromptTracker）。文字加陰影、不加背景（規格第 19 節 D）。
 /// </summary>
 public class WorldPrompts : MonoBehaviour
 {
-    const float BoulderLift = 0.2f;
     const float GapLift = 0.1f;
     const float StakeLift = 0.6f;
     const float CrewLift = 1.45f;
     const float StuckNoticeReach = 3f;
-    const float PerNightPromptSeconds = 20f;
-    const float LegendScale = 0.75f;
+    const float EssentialHeight = 0.7f;
 
     static readonly Color Text = new(0.97f, 0.95f, 0.88f);
     static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
@@ -24,7 +22,7 @@ public class WorldPrompts : MonoBehaviour
     readonly List<(string Text, PromptKind? Kind)> lines = new();
     BlindGameLoop loop;
     PromptTracker tracker;
-    GUIStyle style, legendStyle;
+    GUIStyle style;
 
     public void Init(BlindGameLoop loop, PromptTracker tracker)
     {
@@ -40,25 +38,13 @@ public class WorldPrompts : MonoBehaviour
         if (style == null || style.fontSize != fontSize)
         {
             style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter, wordWrap = false };
-            legendStyle = new GUIStyle(style) { fontSize = Mathf.RoundToInt(fontSize * LegendScale), alignment = TextAnchor.MiddleRight };
         }
 
         var player = loop.Player;
         Vector3 me = loop.PlayerPosition;
         Boulder boulder = loop.Layout.Boulder;
 
-        // 巨石：能做的事全部列出。
-        lines.Clear();
-        if (player.AtBoulder && !loop.Slide.IsOpen)
-        {
-            Add(PromptKind.Push, "E 推・Shift＋E 猛推");
-            if (player.Stones > 0 || loop.Slide.StoneWedges.Count > 0)
-                Add(PromptKind.Wedge, "右鍵 塞石子當楔子（按住 拔回）");
-            if (player.CarryingStake)
-                Add(PromptKind.PlantStake, "G 插木樁");
-        }
-        DrawAt(boulder.PushPoint + Vector3.up * BoulderLift);
-
+        // 巨石前不再列操作：推、塞楔子、鑽出去由必要引導那一行帶；猛推、拔楔子、插木樁讓玩家自己探索（規格第 26 節 A）。
         // 縫
         lines.Clear();
         bool nearGap = Flat(boulder.GapPoint - me).magnitude <= StuckNoticeReach;
@@ -70,7 +56,6 @@ public class WorldPrompts : MonoBehaviour
         {
             if (loop.Crew.Crouching && loop.Crew.Followers.Count > 0)
                 lines.Add(("F 讓蹲著的隊伍跟上", null));
-            lines.Add(("E 鑽出去", PromptKind.Escape));
         }
         DrawAt(boulder.GapPoint + Vector3.up * GapLift);
 
@@ -97,42 +82,17 @@ public class WorldPrompts : MonoBehaviour
             DrawAt(followers[followers.Count - 1].transform.position + Vector3.up * CrewLift);
         }
 
-        DrawCornerLegend(player);
+        DrawEssential();
     }
 
-    /// <summary>
-    /// 右下角石子圖示上方的小字按鍵說明，從圖示往上堆；符合條件且還沒學會的才畫。
-    /// 位置對齊 BlindGameLoop.DrawStones（同一個字級公式）。
-    /// </summary>
-    void DrawCornerLegend(EchoPlayer player)
+    /// <summary>必要引導（規格第 26 節 A）：畫面下方中央一次只有一行，做到才換下一步。</summary>
+    void DrawEssential()
     {
-        lines.Clear();
-        // 走路只在每夜開頭提示。
-        if (loop.Dawn.Elapsed < PerNightPromptSeconds)
-            Add(PromptKind.Move, "WASD 走・Shift 跑");
-        Add(PromptKind.Clap, "空白鍵 拍手（照亮四周，巨人也聽得到）");
-        if (player.Arrows > 0 && !player.CarryingStake)
-            Add(PromptKind.Shoot, "按住左鍵 拉弓・放開 射箭");
-        if (player.CarryingStake && !player.AtBoulder)
-            Add(PromptKind.DropStake, "G 放下木樁");
-        if (player.Arrows > 0 && tracker.ShouldShow(PromptKind.Shoot))
-            lines.Add(("箭：落點照亮遠處、引開巨人，要撿回來", null));
-        if (player.Stones > 0 && tracker.ShouldShow(PromptKind.Wedge))
-            lines.Add(("石子：塞進縫當楔子", null));
-        if (lines.Count == 0)
+        string text = loop.Essential.Text;
+        if (text == null)
             return;
-
-        int hudFont = Mathf.Max(22, Screen.height / 28);
-        float iconTop = Screen.height - hudFont * 3f - hudFont * 0.9f;
-        float lineHeight = legendStyle.fontSize * 1.35f;
-        for (int i = 0; i < lines.Count; i++)
-        {
-            float y = iconTop - 4f - (lines.Count - i) * lineHeight;
-            var rect = new Rect(Screen.width - 810f, y, 800f, lineHeight);
-            Label(rect, lines[i].Text, legendStyle);
-            if (lines[i].Kind is PromptKind kind)
-                tracker.MarkShown(kind, Time.time);
-        }
+        float lineHeight = style.fontSize * 1.35f;
+        Label(new Rect(0f, Screen.height * EssentialHeight, Screen.width, lineHeight), text, style);
     }
 
     void Add(PromptKind kind, string text)

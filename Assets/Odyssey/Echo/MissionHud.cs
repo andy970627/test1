@@ -9,7 +9,8 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class MissionHud : MonoBehaviour
 {
-    const float BriefingLockSeconds = 3f;
+    const float BriefingLockSeconds = 2f;
+    const float FadeSeconds = 0.6f;
 
     static readonly Color Text = new(0.97f, 0.95f, 0.88f);
     static readonly Color Dim = new(0.97f, 0.95f, 0.88f, 0.55f);
@@ -23,6 +24,7 @@ public class MissionHud : MonoBehaviour
     BlindGameLoop loop;
     Action onStart;
     float briefingSince;
+    float fadingSince = -1f;
     GUIStyle titleStyle, bodyStyle, listStyle, choiceStyle;
 
     public bool BriefingOpen { get; private set; }
@@ -35,7 +37,7 @@ public class MissionHud : MonoBehaviour
 
     public void Init(BlindGameLoop loop) => this.loop = loop;
 
-    /// <summary>開場簡報：一句目標（難度在主選單選）；3 秒後按空白鍵開始。</summary>
+    /// <summary>開場卡片（開場過場與任務簡報合一，規格第 26 節 B）：2 秒後按空白鍵開始，卡片淡出時夜晚已經開始。</summary>
     public void ShowBriefing(Action onStart)
     {
         this.onStart = onStart;
@@ -53,6 +55,7 @@ public class MissionHud : MonoBehaviour
         if (!CanStart || !keyboard.spaceKey.wasPressedThisFrame)
             return;
         BriefingOpen = false;
+        fadingSince = Time.time;
         var start = onStart;
         onStart = null;
         start?.Invoke();
@@ -66,7 +69,9 @@ public class MissionHud : MonoBehaviour
         GUI.depth = -10;
         EnsureStyles();
         if (BriefingOpen)
-            DrawBriefing();
+            DrawBriefing(1f);
+        else if (fadingSince >= 0f && Time.time - fadingSince < FadeSeconds)
+            DrawBriefing(1f - (Time.time - fadingSince) / FadeSeconds);
         else if (loop.State.Phase == LoopPhase.Night)
             DrawObjectives();
     }
@@ -79,31 +84,43 @@ public class MissionHud : MonoBehaviour
         if (titleStyle != null && titleStyle.fontSize == title && bodyStyle.fontSize == body && listStyle.fontSize == list)
             return;
         titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
-        choiceStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleCenter, wordWrap = false };
+        choiceStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleCenter, wordWrap = true };
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleLeft, wordWrap = true };
         listStyle = new GUIStyle(GUI.skin.label) { fontSize = list, alignment = TextAnchor.MiddleLeft, wordWrap = false };
     }
 
-    void DrawBriefing()
+    void DrawBriefing(float alpha)
     {
-        Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.8f));
-        float width = Mathf.Min(Screen.width * 0.7f, bodyStyle.fontSize * 30f);
+        Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.85f * alpha));
+        float width = Mathf.Min(Screen.width * 0.75f, bodyStyle.fontSize * 32f);
         float x = (Screen.width - width) / 2f;
-        float y = Screen.height * 0.18f;
+        float y = Screen.height * 0.16f;
 
-        Label(new Rect(0, y, Screen.width, titleStyle.fontSize * 1.5f), $"第 {loop.Roster.Night} 夜", titleStyle, Text);
+        Label(new Rect(0, y, Screen.width, titleStyle.fontSize * 1.5f), $"第 {loop.Roster.Night} 夜", titleStyle, Fade(Text, alpha));
         y += titleStyle.fontSize * 2f;
 
-        // 只講目標；難度在主選單選，其他規則由提示與洞中紀事講（規格第 25 節）。
-        const string goal = "目標：天亮前推開封住洞口的巨石，從縫裡鑽出去";
-        float goalH = bodyStyle.CalcHeight(new GUIContent(goal), width);
-        Label(new Rect(x, y, width, goalH), goal, bodyStyle, Text);
-        y += goalH + bodyStyle.fontSize * 2f;
-        Label(new Rect(x, y, width, choiceStyle.fontSize * 1.6f), $"難度：{Difficulty.Name(loop.Difficulty)}", choiceStyle, Dim);
+        // 說書人的開場、核心法則、目標，依序一行一行（規格第 25 節 A、第 26 節 B）。
+        string[] lines =
+        {
+            "他們跟著羊群走進洞中，不知這是波呂斐摩斯的居所",
+            "在他的洞裡，聲音就是光；照亮了哪裡，他就聽得到哪裡",
+            "目標：天亮前推開封住洞口的巨石，從縫裡鑽出去",
+        };
+        foreach (string line in lines)
+        {
+            float h = choiceStyle.CalcHeight(new GUIContent(line), width);
+            Label(new Rect(x, y, width, h), line, choiceStyle, Fade(Text, alpha));
+            y += h + bodyStyle.fontSize * 0.9f;
+        }
+        y += bodyStyle.fontSize * 0.6f;
+        Label(new Rect(x, y, width, choiceStyle.fontSize * 1.6f),
+            $"難度：{Difficulty.Name(loop.Difficulty)}・剩下 {loop.Roster.Remaining} 名同伴", choiceStyle, Fade(Dim, alpha));
 
-        if (CanStart)
+        if (BriefingOpen && CanStart)
             Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "空白鍵 開始", titleStyle, Dim);
     }
+
+    static Color Fade(Color c, float alpha) => new(c.r, c.g, c.b, c.a * alpha);
 
     /// <summary>右上角任務清單：推開巨石、帶同伴、天亮前。</summary>
     void DrawObjectives()
@@ -138,7 +155,7 @@ public class MissionHud : MonoBehaviour
     {
         var shadow = r;
         shadow.position += new Vector2(2f, 2f);
-        style.normal.textColor = Shadow;
+        style.normal.textColor = new Color(Shadow.r, Shadow.g, Shadow.b, Shadow.a * color.a);
         GUI.Label(shadow, text, style);
         style.normal.textColor = color;
         GUI.Label(r, text, style);
