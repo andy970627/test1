@@ -3,13 +3,15 @@ using System;
 namespace Odyssey.Core
 {
     /// <summary>
-    /// 魂系死亡畫面「葬身洞中」的時間軸（規格第 25 節 D）：0～0.8 秒畫面暗下；0.5 秒起黑帶淡入；
+    /// 魂系死亡畫面「葬身洞中」的時間軸（規格第 25 節 D）：卡片期間不加暗幕、不加黑帶，玩家仍看得到當下的畫面；
+    /// 0.5 秒起回紋線淡入；
     /// 大字 0.5～1.5 秒從 0.9 倍放大到 1 倍並淡入；1 秒後可跳過（跳到 3 秒）；3 秒起字與黑帶淡出、畫面全黑，
     /// 3.4 秒全黑時重置下一夜，接著 0.6 秒直接淡入下一夜（不再接過場，規格第 25 節 D）。
     /// </summary>
     public static class DeathCard
     {
-        public const float MaxDim = 0.6f;
+        /// <summary>卡片期間的暗幕：0＝不加（使用者回饋「讓玩家在死亡畫面跳出來時還是看得到目前畫面」）。</summary>
+        public const float MaxDim = 0f;
         public const float DimSeconds = 0.8f;
         public const float BandStart = 0.5f;
         public const float BandFade = 0.5f;

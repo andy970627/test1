@@ -100,10 +100,10 @@ public class DeathScreen : MonoBehaviour
 
         Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, DeathCard.DimAlpha(t)));
 
+        // 不加黑帶：只留上下兩條回紋線框住文字，畫面照樣看得到。
         float bandA = DeathCard.BandAlpha(t);
         float bandH = Screen.height * BandHeight;
         float bandY = (Screen.height - bandH) / 2f;
-        Fill(new Rect(0, bandY, Screen.width, bandH), new Color(0f, 0f, 0f, bandA));
         var gold = new Color(MeanderGold.r, MeanderGold.g, MeanderGold.b, bandA / DeathCard.BandMax);
         Meander(bandY + 4f, gold);
         Meander(bandY + bandH - 4f - MeanderHeight, gold);
@@ -114,19 +114,37 @@ public class DeathScreen : MonoBehaviour
         var center = new Vector2(Screen.width / 2f, Screen.height / 2f - bandH * 0.12f);
         var oldMatrix = GUI.matrix;
         GUIUtility.ScaleAroundPivot(Vector2.one * DeathCard.TextScale(t), center);
+        var titleRect = new Rect(0, center.y - size * 0.75f, Screen.width, size * 1.5f);
+        Outline(titleRect, Title, titleStyle, a, 3f);
         titleStyle.normal.textColor = titleColor;
-        GUI.Label(new Rect(0, center.y - size * 0.75f, Screen.width, size * 1.5f), Title, titleStyle);
+        GUI.Label(titleRect, Title, titleStyle);
         GUI.matrix = oldMatrix;
 
         var c = CauseColor;
         c.a = a;
+        var causeRect = new Rect(0, center.y + size * 0.75f, Screen.width, causeStyle.fontSize * 1.6f);
+        Outline(causeRect, cause, causeStyle, a, 2f);
         causeStyle.normal.textColor = c;
-        GUI.Label(new Rect(0, center.y + size * 0.75f, Screen.width, causeStyle.fontSize * 1.6f), cause, causeStyle);
+        GUI.Label(causeRect, cause, causeStyle);
         if (!string.IsNullOrEmpty(detail))
         {
             var d = new Color(c.r, c.g, c.b, a * 0.7f);
+            var detailRect = new Rect(0, center.y + size * 0.75f + causeStyle.fontSize * 1.6f, Screen.width, causeStyle.fontSize * 1.6f);
+            Outline(detailRect, detail, causeStyle, a, 2f);
             causeStyle.normal.textColor = d;
-            GUI.Label(new Rect(0, center.y + size * 0.75f + causeStyle.fontSize * 1.6f, Screen.width, causeStyle.fontSize * 1.6f), detail, causeStyle);
+            GUI.Label(detailRect, detail, causeStyle);
+        }
+    }
+
+    /// <summary>沒有黑底時字要讀得到：四周各畫一層黑色描邊。</summary>
+    static void Outline(Rect r, string text, GUIStyle style, float alpha, float width)
+    {
+        style.normal.textColor = new Color(0f, 0f, 0f, 0.9f * alpha);
+        foreach (var o in new[] { new Vector2(-width, 0f), new Vector2(width, 0f), new Vector2(0f, -width), new Vector2(0f, width), new Vector2(width, width) })
+        {
+            var shifted = r;
+            shifted.position += o;
+            GUI.Label(shifted, text, style);
         }
     }
 
