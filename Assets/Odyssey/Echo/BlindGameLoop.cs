@@ -291,6 +291,27 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>結局之後或暫停中選「回主選單」：完整重置這一局，回到主選單。</summary>
     public void ReturnToMenu()
     {
+        ResetRun();
+        menus.ShowMain(Difficulty);
+    }
+
+    /// <summary>全滅或逃出之後：重置這一局，停在結局畫面（R 直接重新開始、Esc 回主選單）。</summary>
+    /// <summary>結局畫面按 R：不看開場卡片，直接用同一個難度開始新的一局（結局時已經重置好）。</summary>
+    public void RestartNow(DifficultyLevel level)
+    {
+        Difficulty = level;
+        ApplyDifficulty();
+        StartNight();
+    }
+
+    void EndRun(string title, string subtitle)
+    {
+        ResetRun();
+        menus.ShowEnd(title, subtitle, Difficulty);
+    }
+
+    void ResetRun()
+    {
         Time.timeScale = 1f;
         AudioListener.pause = false;
         StopPrayer();
@@ -304,7 +325,6 @@ public class BlindGameLoop : MonoBehaviour
         State.Restart();
         Nights.Clear();
         ResetNight();
-        menus.ShowMain(Difficulty);
     }
 
     /// <summary>情境提示與洞中紀事同一個觸發點：提示排隊，紀事解鎖（第一次解鎖時通知）。</summary>
@@ -690,7 +710,7 @@ public class BlindGameLoop : MonoBehaviour
             AudioListener.volume = 1f;
             if (wiped)
             {
-                ReturnToMenu();
+                EndRun("洞裡只剩下奧德修斯。", cause);
                 return;
             }
             ResetNight();
@@ -803,7 +823,8 @@ public class BlindGameLoop : MonoBehaviour
         RescuedLastEscape = rescued;
         string how = action == ShoreAction.Shoot ? "射箭" : "喊名字";
         Nights.End(Roster.Night, NightOutcome.Escaped, rescued, note: lost > 0 ? $"（{how} −{lost}）" : null);
-        Show("", ShoreChoice.Title(action), ShoreChoice.Subtitle(action, rescued, lost), ReturnToMenu, null);
+        string endTitle = ShoreChoice.Title(action), endSubtitle = ShoreChoice.Subtitle(action, rescued, lost);
+        QuickFade(() => EndRun(endTitle, endSubtitle), null);
         Log($"Escaped_{action}", Roster.Night, Roster.Remaining);
     }
 

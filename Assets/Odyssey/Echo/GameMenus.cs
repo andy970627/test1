@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class GameMenus : MonoBehaviour
 {
-    enum View { None, Main, Pause, Confirm, Chronicle }
+    enum View { None, Main, Pause, Confirm, Chronicle, End }
 
     const float ToastSeconds = 3f;
 
@@ -42,6 +42,18 @@ public class GameMenus : MonoBehaviour
         cursor = 0;
         FreeCursor();
     }
+
+    /// <summary>結局畫面：標題與副標，R 直接用同一個難度重新開始，Esc 回主選單。</summary>
+    public void ShowEnd(string title, string subtitle, DifficultyLevel current)
+    {
+        endTitle = title;
+        endSubtitle = subtitle;
+        difficulty = current;
+        view = View.End;
+        FreeCursor();
+    }
+
+    string endTitle, endSubtitle;
 
     public void ShowPause()
     {
@@ -116,6 +128,15 @@ public class GameMenus : MonoBehaviour
                     else
                         ShowPause();
                 }
+                break;
+            case View.End:
+                if (k.rKey.wasPressedThisFrame)
+                {
+                    view = View.None;
+                    loop.RestartNow(difficulty);
+                }
+                else if (k.escapeKey.wasPressedThisFrame)
+                    ShowMain(difficulty);
                 break;
             case View.Chronicle:
                 int pages = System.Enum.GetValues(typeof(GuidePage)).Length;
@@ -234,6 +255,11 @@ public class GameMenus : MonoBehaviour
                 break;
             case View.Chronicle:
                 DrawChronicle();
+                break;
+            case View.End:
+                Label(new Rect(0, Screen.height * 0.3f, Screen.width, titleStyle.fontSize * 1.6f), endTitle, titleStyle, Gold);
+                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.3f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 3f), endSubtitle, bodyStyle, Text);
+                Label(new Rect(0, Screen.height * 0.72f, Screen.width, itemStyle.fontSize * 1.6f), "R 重新開始・Esc 回主選單", itemStyle, Dim);
                 break;
         }
     }
