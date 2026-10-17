@@ -299,6 +299,13 @@ public class BlindGameLoop : MonoBehaviour
     }
 
     /// <summary>全滅或逃出之後：重置這一局，停在結局畫面（R 直接重新開始、Esc 回主選單）。</summary>
+    /// <summary>暫停選單裡改難度：立刻套用到這一夜（巨人速度、聽覺、聽覺邊）。</summary>
+    public void SetDifficulty(DifficultyLevel level)
+    {
+        Difficulty = level;
+        ApplyDifficulty();
+    }
+
     /// <summary>結局畫面按 R：不看開場卡片，直接用同一個難度開始新的一局（結局時已經重置好）。</summary>
     public void RestartNow(DifficultyLevel level)
     {

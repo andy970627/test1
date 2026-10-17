@@ -3,14 +3,18 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 主選單、暫停選單與洞中紀事（規格第 25 節 B）。主選單一開場就出現（開始／難度／紀事／離開）；
-/// 夜晚中按 Tab 暫停（繼續／紀事／回主選單）；紀事分頁、遇到才解鎖。選單用不受暫停影響的時間。
+/// 主選單、暫停選單、結局畫面、實驗頁與洞中紀事（規格第 25 節 B、第 27～29 節）。
+/// 每個選單畫面都有同一組功能（使用者回饋「把主選單功能加到所有選單畫面」）：難度、紀事、實驗、回主選單、離開；
+/// 主選單另有「開始」、暫停另有「繼續」、結局另有「重新開始」（R）。選單用不受暫停影響的時間。
 /// </summary>
 public class GameMenus : MonoBehaviour
 {
     enum View { None, Main, Pause, Confirm, Chronicle, End, Lab }
 
     const float ToastSeconds = 3f;
+    const string Start = "開始", Continue = "繼續", Restart = "重新開始", DifficultyItem = "難度",
+        Chronicle = "紀事", Lab = "實驗", ToMenu = "回主選單", Quit = "離開", Back = "返回",
+        Yes = "確定", No = "取消", PassiveItem = "被動聲音照亮", GuideItem = "必要引導";
 
     static readonly Color Text = new(0.97f, 0.95f, 0.88f);
     static readonly Color Dim = new(0.97f, 0.95f, 0.88f, 0.45f);
@@ -18,18 +22,20 @@ public class GameMenus : MonoBehaviour
     static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
     static readonly Color Veil = new(0f, 0f, 0f, 0.88f);
 
-    static readonly string[] MainItems = { "開始", "難度", "紀事", "實驗", "離開" };
-    static readonly string[] LabItems = { "被動聲音照亮", "必要引導", "返回" };
-    static readonly string[] PauseItems = { "繼續", "紀事", "回主選單" };
-    static readonly string[] ConfirmItems = { "確定", "取消" };
+    static readonly string[] MainItems = { Start, DifficultyItem, Chronicle, Lab, Quit };
+    static readonly string[] PauseItems = { Continue, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
+    static readonly string[] EndItems = { Restart, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
+    static readonly string[] LabItems = { PassiveItem, GuideItem, Back };
+    static readonly string[] ConfirmItems = { Yes, No };
 
     BlindGameLoop loop;
     View view;
-    View chronicleReturn;
+    View chronicleReturn, labReturn;
     int cursor;
     int page;
     DifficultyLevel difficulty = DifficultyLevel.Normal;
     float toastUntil = -1f;
+    string endTitle, endSubtitle;
     GUIStyle titleStyle, itemStyle, bodyStyle, smallStyle;
 
     public bool Open => view != View.None;
@@ -39,32 +45,33 @@ public class GameMenus : MonoBehaviour
     public void ShowMain(DifficultyLevel current)
     {
         difficulty = current;
-        view = View.Main;
-        cursor = 0;
-        FreeCursor();
+        Go(View.Main);
     }
 
-    /// <summary>結局畫面：標題與副標，R 直接用同一個難度重新開始，Esc 回主選單。</summary>
+    /// <summary>結局畫面：標題與副標；R 或「重新開始」直接用同一個難度重新開始（不看開場卡片）。</summary>
     public void ShowEnd(string title, string subtitle, DifficultyLevel current)
     {
         endTitle = title;
         endSubtitle = subtitle;
         difficulty = current;
-        view = View.End;
-        FreeCursor();
+        Go(View.End);
     }
-
-    string endTitle, endSubtitle;
 
     public void ShowPause()
     {
-        view = View.Pause;
-        cursor = 0;
-        FreeCursor();
+        difficulty = loop.Difficulty;
+        Go(View.Pause);
     }
 
-    /// <summary>紀事第一次多了一則：右上角小字 3 秒。</summary>
+    /// <summary>紀事第一次多了一則：小字 3 秒。</summary>
     public void NotifyNewEntry() => toastUntil = Time.unscaledTime + ToastSeconds;
+
+    void Go(View next, int at = 0)
+    {
+        view = next;
+        cursor = at;
+        FreeCursor();
+    }
 
     static void FreeCursor()
     {
@@ -89,115 +96,124 @@ public class GameMenus : MonoBehaviour
             return;
         }
 
+        if (view == View.Chronicle)
+        {
+            UpdateChronicle(k);
+            return;
+        }
+
         if (itemStyle != null)
             HoverByMouse();
         string[] items = Items();
-        if (items != null)
-        {
-            if (k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame)
-                cursor = (cursor + items.Length - 1) % items.Length;
-            if (k.sKey.wasPressedThisFrame || k.downArrowKey.wasPressedThisFrame)
-                cursor = (cursor + 1) % items.Length;
-        }
+        if (k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame)
+            cursor = (cursor + items.Length - 1) % items.Length;
+        if (k.sKey.wasPressedThisFrame || k.downArrowKey.wasPressedThisFrame)
+            cursor = (cursor + 1) % items.Length;
 
-        switch (view)
-        {
-            case View.Main:
-                if (cursor == 1 && (k.aKey.wasPressedThisFrame || k.leftArrowKey.wasPressedThisFrame) && difficulty > DifficultyLevel.Familiar)
-                    difficulty--;
-                if (cursor == 1 && (k.dKey.wasPressedThisFrame || k.rightArrowKey.wasPressedThisFrame) && difficulty < DifficultyLevel.Hard)
-                    difficulty++;
-                if (Confirmed(k))
-                    ChooseMain(cursor);
-                break;
-            case View.Pause:
-                if (k.tabKey.wasPressedThisFrame || k.escapeKey.wasPressedThisFrame)
-                    Resume();
-                else if (Confirmed(k))
-                    ChoosePause(cursor);
-                break;
-            case View.Confirm:
-                if (k.escapeKey.wasPressedThisFrame)
-                    ShowPause();
-                else if (Confirmed(k))
-                {
-                    if (cursor == 0)
-                    {
-                        view = View.None;
-                        loop.ReturnToMenu();
-                    }
-                    else
-                        ShowPause();
-                }
-                break;
-            case View.Lab:
-                bool left = k.aKey.wasPressedThisFrame || k.leftArrowKey.wasPressedThisFrame;
-                bool right = k.dKey.wasPressedThisFrame || k.rightArrowKey.wasPressedThisFrame;
-                var flags = loop.Flags;
-                if (cursor == 0 && left && flags.Passive > PassiveLight.Off)
-                    flags.Passive--;
-                if (cursor == 0 && right && flags.Passive < PassiveLight.Full)
-                    flags.Passive++;
-                if (cursor == 1 && (left || right))
-                    flags.EssentialGuide = !flags.EssentialGuide;
-                if (k.escapeKey.wasPressedThisFrame || k.tabKey.wasPressedThisFrame || (cursor == 2 && Confirmed(k)))
-                {
-                    view = View.Main;
-                    cursor = 3;
-                }
-                break;
-            case View.End:
-                if (k.rKey.wasPressedThisFrame)
-                {
-                    view = View.None;
-                    loop.RestartNow(difficulty);
-                }
-                else if (k.escapeKey.wasPressedThisFrame)
-                    ShowMain(difficulty);
-                break;
-            case View.Chronicle:
-                int pages = System.Enum.GetValues(typeof(GuidePage)).Length;
-                if (k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame || k.aKey.wasPressedThisFrame)
-                    page = (page + pages - 1) % pages;
-                if (k.sKey.wasPressedThisFrame || k.downArrowKey.wasPressedThisFrame || k.dKey.wasPressedThisFrame)
-                    page = (page + 1) % pages;
-                if (k.tabKey.wasPressedThisFrame || k.escapeKey.wasPressedThisFrame || k.backspaceKey.wasPressedThisFrame)
-                {
-                    view = chronicleReturn;
-                    cursor = 0;
-                }
-                break;
-        }
+        bool left = k.aKey.wasPressedThisFrame || k.leftArrowKey.wasPressedThisFrame;
+        bool right = k.dKey.wasPressedThisFrame || k.rightArrowKey.wasPressedThisFrame;
+        if (left || right)
+            Adjust(items[cursor], left ? -1 : 1);
+
+        if (view == View.End && k.rKey.wasPressedThisFrame)
+            Choose(Restart);
+        else if (k.escapeKey.wasPressedThisFrame || (k.tabKey.wasPressedThisFrame && view != View.Main))
+            GoBack();
+        else if (Confirmed(k))
+            Choose(items[cursor]);
+    }
+
+    void UpdateChronicle(Keyboard k)
+    {
+        int pages = System.Enum.GetValues(typeof(GuidePage)).Length;
+        if (k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame || k.aKey.wasPressedThisFrame)
+            page = (page + pages - 1) % pages;
+        if (k.sKey.wasPressedThisFrame || k.downArrowKey.wasPressedThisFrame || k.dKey.wasPressedThisFrame)
+            page = (page + 1) % pages;
+        if (k.tabKey.wasPressedThisFrame || k.escapeKey.wasPressedThisFrame || k.backspaceKey.wasPressedThisFrame)
+            Go(chronicleReturn, IndexOf(chronicleReturn, Chronicle));
     }
 
     static bool Confirmed(Keyboard k) =>
         k.spaceKey.wasPressedThisFrame || k.enterKey.wasPressedThisFrame || k.numpadEnterKey.wasPressedThisFrame;
 
-    string[] Items() => view switch
+    string[] Items() => ItemsOf(view);
+
+    static string[] ItemsOf(View v) => v switch
     {
         View.Main => MainItems,
         View.Pause => PauseItems,
-        View.Confirm => ConfirmItems,
+        View.End => EndItems,
         View.Lab => LabItems,
+        View.Confirm => ConfirmItems,
         _ => null,
     };
 
-    void ChooseMain(int item)
+    static int IndexOf(View v, string item) => Mathf.Max(0, System.Array.IndexOf(ItemsOf(v) ?? new string[0], item));
+
+    /// <summary>A／D 切換：難度、實驗頁的開關。暫停中改難度立刻套用到這一夜。</summary>
+    void Adjust(string item, int dir)
     {
         switch (item)
         {
-            case 0:
+            case DifficultyItem:
+                var next = (DifficultyLevel)Mathf.Clamp((int)difficulty + dir, (int)DifficultyLevel.Familiar, (int)DifficultyLevel.Hard);
+                if (next == difficulty)
+                    return;
+                difficulty = next;
+                if (view == View.Pause)
+                    loop.SetDifficulty(difficulty);
+                break;
+            case PassiveItem:
+                loop.Flags.Passive = (PassiveLight)Mathf.Clamp((int)loop.Flags.Passive + dir, (int)PassiveLight.Off, (int)PassiveLight.Full);
+                break;
+            case GuideItem:
+                loop.Flags.EssentialGuide = !loop.Flags.EssentialGuide;
+                break;
+        }
+    }
+
+    void Choose(string item)
+    {
+        switch (item)
+        {
+            case Start:
                 view = View.None;
                 loop.StartGame(difficulty);
                 break;
-            case 2:
-                OpenChronicle(View.Main);
+            case Continue:
+                view = View.None;
+                loop.Resume();
                 break;
-            case 3:
-                view = View.Lab;
-                cursor = 0;
+            case Restart:
+                view = View.None;
+                loop.RestartNow(difficulty);
                 break;
-            case 4:
+            case Chronicle:
+                chronicleReturn = view;
+                Go(View.Chronicle);
+                break;
+            case Lab:
+                labReturn = view;
+                Go(View.Lab);
+                break;
+            case ToMenu:
+                if (view == View.Pause)
+                    Go(View.Confirm, 1);
+                else
+                    ShowMain(difficulty);
+                break;
+            case Yes:
+                view = View.None;
+                loop.ReturnToMenu();
+                break;
+            case No:
+                Go(View.Pause, IndexOf(View.Pause, ToMenu));
+                break;
+            case Back:
+                Go(labReturn, IndexOf(labReturn, Lab));
+                break;
+            case Quit:
 #if UNITY_EDITOR
                 UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -207,34 +223,50 @@ public class GameMenus : MonoBehaviour
         }
     }
 
-    void ChoosePause(int item)
+    /// <summary>Esc（暫停中也可 Tab）：回上一層；主選單與結局畫面沒有上一層。</summary>
+    void GoBack()
     {
-        switch (item)
+        switch (view)
         {
-            case 0:
-                Resume();
+            case View.Pause:
+                Choose(Continue);
                 break;
-            case 1:
-                OpenChronicle(View.Pause);
+            case View.Confirm:
+                Choose(No);
                 break;
-            case 2:
-                view = View.Confirm;
-                cursor = 1;
+            case View.Lab:
+                Choose(Back);
+                break;
+            case View.End:
+                ShowMain(difficulty);
                 break;
         }
     }
 
-    void OpenChronicle(View from)
+    float MenuTop() => view switch
     {
-        chronicleReturn = from;
-        view = View.Chronicle;
-    }
+        View.Confirm => Screen.height * 0.42f,
+        View.End => Screen.height * 0.46f,
+        _ => Screen.height * 0.36f,
+    };
 
-    void Resume()
+    string ItemLabel(string item) => item switch
     {
-        view = View.None;
-        loop.Resume();
-    }
+        DifficultyItem => $"難度：{Difficulty.Name(difficulty)}（A／D）",
+        PassiveItem => $"被動聲音照亮：{DesignFlags.Name(loop.Flags.Passive)}（A／D）",
+        GuideItem => $"必要引導：{(loop.Flags.EssentialGuide ? "開" : "關")}（A／D）",
+        Restart => "重新開始（R）",
+        _ => item,
+    };
+
+    string ItemNote(string item) => item switch
+    {
+        DifficultyItem => Difficulty.Blurb(difficulty) + (view == View.Pause ? "（立刻套用）" : ""),
+        PassiveItem => "巨人腳步、羊叫、同伴嗚咽、腳步聲要不要照亮四周",
+        GuideItem => "製造聲音 → 推 → 塞楔子 → 鑽出去 的一步一步提示",
+        Lab => "切換設計來比較，開關會記在實測紀錄裡",
+        _ => null,
+    };
 
     void OnGUI()
     {
@@ -258,48 +290,45 @@ public class GameMenus : MonoBehaviour
         }
 
         Fill(new Rect(0, 0, Screen.width, Screen.height), Veil);
+        if (view == View.Chronicle)
+        {
+            DrawChronicle();
+            return;
+        }
+
         switch (view)
         {
             case View.Main:
-                Label(new Rect(0, Screen.height * 0.16f, Screen.width, titleStyle.fontSize * 1.6f), "獨眼巨人的洞穴", titleStyle, Gold);
-                DrawItems(MainItems, Screen.height * 0.4f, i => i == 1 ? $"難度：{Difficulty.Name(difficulty)}（A／D）" : MainItems[i]);
-                if (cursor == 1)
-                    Label(new Rect(0, Screen.height * 0.4f + itemStyle.fontSize * 1.8f * MainItems.Length + 10f, Screen.width, bodyStyle.fontSize * 1.6f),
-                        Difficulty.Blurb(difficulty), bodyStyle, Dim);
+                Label(new Rect(0, Screen.height * 0.14f, Screen.width, titleStyle.fontSize * 1.6f), "獨眼巨人的洞穴", titleStyle, Gold);
                 break;
             case View.Pause:
-                Label(new Rect(0, Screen.height * 0.2f, Screen.width, titleStyle.fontSize * 1.6f), "暫停", titleStyle, Text);
-                DrawItems(PauseItems, Screen.height * 0.4f, i => PauseItems[i]);
+                Label(new Rect(0, Screen.height * 0.14f, Screen.width, titleStyle.fontSize * 1.6f), "暫停", titleStyle, Text);
+                Label(new Rect(0, Screen.height * 0.14f + titleStyle.fontSize * 1.6f, Screen.width, bodyStyle.fontSize * 1.6f),
+                    $"第 {loop.Roster.Night} 夜・跟隨 {loop.Crew.Followers.Count}／洞裡還有 {loop.Crew.Members.Count - loop.Crew.Followers.Count}", bodyStyle, Dim);
                 break;
             case View.Confirm:
                 Label(new Rect(0, Screen.height * 0.28f, Screen.width, bodyStyle.fontSize * 1.6f), "這一夜的進度會消失，確定回主選單？", bodyStyle, Text);
-                DrawItems(ConfirmItems, Screen.height * 0.42f, i => ConfirmItems[i]);
-                break;
-            case View.Chronicle:
-                DrawChronicle();
                 break;
             case View.Lab:
-                Label(new Rect(0, Screen.height * 0.16f, Screen.width, titleStyle.fontSize * 1.6f), "實驗", titleStyle, Gold);
-                DrawItems(LabItems, Screen.height * 0.4f, i => i switch
-                {
-                    0 => $"被動聲音照亮：{DesignFlags.Name(loop.Flags.Passive)}（A／D）",
-                    1 => $"必要引導：{(loop.Flags.EssentialGuide ? "開" : "關")}（A／D）",
-                    _ => "返回",
-                });
-                Label(new Rect(0, Screen.height * 0.4f + itemStyle.fontSize * 1.8f * LabItems.Length + 10f, Screen.width, bodyStyle.fontSize * 1.6f),
-                    cursor == 0 ? "巨人腳步、羊叫、同伴嗚咽、腳步聲要不要照亮四周" : cursor == 1 ? "製造聲音 → 推 → 塞楔子 → 鑽出去 的一步一步提示" : "開關會記在實測紀錄裡", bodyStyle, Dim);
+                Label(new Rect(0, Screen.height * 0.14f, Screen.width, titleStyle.fontSize * 1.6f), "實驗", titleStyle, Gold);
                 break;
             case View.End:
-                Label(new Rect(0, Screen.height * 0.3f, Screen.width, titleStyle.fontSize * 1.6f), endTitle, titleStyle, Gold);
-                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.3f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 3f), endSubtitle, bodyStyle, Text);
-                Label(new Rect(0, Screen.height * 0.72f, Screen.width, itemStyle.fontSize * 1.6f), "R 重新開始・Esc 回主選單", itemStyle, Dim);
+                Label(new Rect(0, Screen.height * 0.16f, Screen.width, titleStyle.fontSize * 1.6f), endTitle, titleStyle, Gold);
+                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.16f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 3f), endSubtitle, bodyStyle, Text);
                 break;
         }
+
+        string[] items = Items();
+        float top = MenuTop();
+        DrawItems(items, top);
+        string note = ItemNote(items[cursor]);
+        if (note != null)
+            Label(new Rect(0, ItemTop(top, items.Length) + 6f, Screen.width, bodyStyle.fontSize * 1.6f), note, bodyStyle, Dim);
     }
 
-    delegate string ItemText(int i);
+    float ItemTop(float top, int i) => top + i * itemStyle.fontSize * 1.6f;
 
-    float ItemTop(float top, int i) => top + i * itemStyle.fontSize * 1.8f;
+    Rect ItemRect(float top, int i) => new(Screen.width * 0.3f, ItemTop(top, i), Screen.width * 0.4f, itemStyle.fontSize * 1.5f);
 
     /// <summary>滑鼠停在哪個選項上就選中（遊戲視窗不一定送 MouseMove 事件，改用滑鼠位置）。</summary>
     void HoverByMouse()
@@ -310,50 +339,42 @@ public class GameMenus : MonoBehaviour
             return;
         Vector2 p = m.position.ReadValue();
         p.y = Screen.height - p.y;
-        float top = view == View.Confirm ? Screen.height * 0.42f : Screen.height * 0.4f;
+        float top = MenuTop();
         for (int i = 0; i < items.Length; i++)
-            if (new Rect(Screen.width * 0.3f, ItemTop(top, i), Screen.width * 0.4f, itemStyle.fontSize * 1.6f).Contains(p))
+            if (ItemRect(top, i).Contains(p))
                 cursor = i;
     }
 
-    void DrawItems(string[] items, float top, ItemText text)
+    void DrawItems(string[] items, float top)
     {
         for (int i = 0; i < items.Length; i++)
         {
-            string s = text(i);
+            string s = ItemLabel(items[i]);
             if (i == cursor)
                 s = $"〔 {s} 〕";
-            Label(new Rect(0, ItemTop(top, i), Screen.width, itemStyle.fontSize * 1.6f), s, itemStyle, i == cursor ? Text : Dim);
+            Label(new Rect(0, ItemTop(top, i), Screen.width, itemStyle.fontSize * 1.5f), s, itemStyle, i == cursor ? Text : Dim);
         }
     }
 
-    /// <summary>滑鼠移到選項上就選中，點一下就確認。</summary>
+    /// <summary>滑鼠點選項就確認；點有 A／D 的選項（難度、開關）就往右切一格。</summary>
     void HandleMouse()
     {
         var e = Event.current;
         string[] items = Items();
-        if (items == null || e == null)
+        if (items == null || e == null || e.type != EventType.MouseDown || e.button != 0)
             return;
-        float top = view == View.Confirm ? Screen.height * 0.42f : Screen.height * 0.4f;
+        float top = MenuTop();
         for (int i = 0; i < items.Length; i++)
         {
-            var r = new Rect(Screen.width * 0.3f, ItemTop(top, i), Screen.width * 0.4f, itemStyle.fontSize * 1.6f);
-            if (!r.Contains(e.mousePosition))
+            if (!ItemRect(top, i).Contains(e.mousePosition))
                 continue;
-            if (e.type == EventType.MouseMove || e.type == EventType.MouseDrag)
-                cursor = i;
-            if (e.type == EventType.MouseDown && e.button == 0)
-            {
-                cursor = i;
-                e.Use();
-                if (view == View.Main) ChooseMain(i);
-                else if (view == View.Pause) ChoosePause(i);
-                else if (view == View.Confirm)
-                {
-                    if (i == 0) { view = View.None; loop.ReturnToMenu(); }
-                    else ShowPause();
-                }
-            }
+            cursor = i;
+            e.Use();
+            if (items[i] is DifficultyItem or PassiveItem or GuideItem)
+                Adjust(items[i], 1);
+            else
+                Choose(items[i]);
+            return;
         }
     }
 
