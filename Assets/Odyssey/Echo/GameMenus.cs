@@ -270,6 +270,7 @@ public class GameMenus : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null)
             return;
         GUI.depth = -20;

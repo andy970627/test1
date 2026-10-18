@@ -87,6 +87,7 @@ public class DeathScreen : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (!Showing)
             return;
         GUI.depth = -15;

@@ -149,6 +149,7 @@ public class SituationHints : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null || hints.Current is not HintKind kind)
             return;
         int fontSize = Mathf.Max(20, Screen.height / 34);

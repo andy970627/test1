@@ -855,3 +855,22 @@ v2 第 4 節的「撬 1.5 秒＝2 格」與 `Lever` 聲音取消。逃出條件�
 - 難度、實驗開關都用 A／D 切換，滑鼠點一下往右切一格；暫停中改難度**立刻套用**到這一夜。
 - 選中的項目下方一行說明（難度說明、開關說明）。
 - Esc 回上一層（暫停中 Tab 也可以）；結局畫面 Esc 回主選單。
+
+## 30. 雲端自動測試與網頁試玩版（第十七輪：串接測試平台）
+
+使用者選：①「GitHub Actions＋game-ci：每次推上 PR 自動跑測試，並產出可試玩的 WebGL 版」；②「WebGL 上傳 itch.io：用不公開連結試玩」。字型選「內建思源黑體」。
+
+| 項目 | 做法 |
+|---|---|
+| 規則測試 | 每次 push／PR 用 `dotnet test tools/CoreTests`（不需要 Unity 授權，約 1 分鐘） |
+| WebGL 建置 | `game-ci/unity-builder@v4`，Unity `6000.3.14f1`，`buildMethod: OdysseyCiBuild.BuildWebGL`；在推到 `main`、對 `main` 開的 PR、手動執行時跑；同一分支新推的會取消舊的；快取 `Library` |
+| 場景 | 建置腳本先用跟 `Odyssey → Create Playtest Scene` 同一套程式產生 `BlindCave.unity`，只打包這一個場景（場景檔不進版控） |
+| 網頁設定 | 只在建置時設：Gzip 壓縮＋解壓縮備援（itch.io 不必另設標頭）；不改 `ProjectSettings` |
+| 下載 | 每次建置都上傳成 GitHub Actions 的成品 `BlindCave-WebGL`（保留 14 天） |
+| itch.io | 有 `BUTLER_API_KEY` 密鑰與 `ITCH_GAME` 變數（例 `andy970627/blind-cave`）時，用 butler 推到 `web` 頻道；最新一次建置覆蓋前一次 |
+| 缺密鑰 | 沒設 Unity 授權時 WebGL 工作略過（顯示提示，不算失敗）；沒設 itch 時只略過上傳 |
+| 字型 | `Assets/Odyssey/Resources/Fonts/NotoSansTC-Regular.otf`（思源黑體 TC，SIL OFL 1.1，授權檔同資料夾）；TMP 與 OnGUI 都優先用它，載不到才退回系統字型 |
+
+使用者要自己做：GitHub 設 `UNITY_LICENSE`、`UNITY_EMAIL`、`UNITY_PASSWORD`；itch.io 建不公開專案、設 `BUTLER_API_KEY` 密鑰與 `ITCH_GAME` 變數；第一次上傳後在 itch.io 把 `web` 檔案勾成「在瀏覽器中執行」。步驟寫在 `docs/ci-setup.md`。
+
+網頁版已知限制：Esc 會先讓瀏覽器放開滑鼠鎖定（再點一下畫面即可）；「離開」在網頁版沒作用；實測 CSV 存在瀏覽器裡拿不出來。

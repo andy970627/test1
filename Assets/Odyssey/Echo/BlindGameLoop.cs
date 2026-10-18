@@ -873,6 +873,7 @@ public class BlindGameLoop : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         // 字級跟著螢幕高度放大，Game 視窗縮小時也讀得到。
         int fontSize = Mathf.Max(22, Screen.height / 28);
         var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = true };

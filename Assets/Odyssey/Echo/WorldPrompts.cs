@@ -32,6 +32,7 @@ public class WorldPrompts : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null || loop.State.Phase != LoopPhase.Night)
             return;
         int fontSize = Mathf.Max(20, Screen.height / 34);

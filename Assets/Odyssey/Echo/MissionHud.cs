@@ -63,6 +63,7 @@ public class MissionHud : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null)
             return;
         // 簡報要蓋在 F1 除錯面板上面（depth 越小越上層）。

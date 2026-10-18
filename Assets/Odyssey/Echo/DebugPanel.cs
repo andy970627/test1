@@ -81,6 +81,7 @@ public class DebugPanel : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (!showDebug || loop == null || loop.Cyclops == null)
             return;
 
