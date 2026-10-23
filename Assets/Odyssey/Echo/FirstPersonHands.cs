@@ -2,18 +2,22 @@ using Odyssey.Core;
 using UnityEngine;
 
 /// <summary>
-/// 第一人稱動作畫面（規格第 26 節 D）：
-/// 拿弓、拉弓／放箭、推巨石（雙臂按在石面上、輕推小抖、猛推大抖、頂住收近）、
-/// 拿木樁時弓收起、塞楔子時右手伸向石縫。
-/// 採用低多邊形自發光材質，在黑洞中可見微光輪廓。
+/// 第一人稱動作畫面與古希臘英雄裝備美術（規格第 26 節 D）：
+/// 奧德修斯曬黑結實的手臂、皮質護腕（含青銅釘飾）、希臘反曲複合木弓（含暗金飾邊）、
+/// 青銅倒鉤箭頭、鷹羽箭翎、後背皮質箭筒，以及推巨石與塞楔子時的手部動態。
+/// 材質帶微光自發光，在全黑洞穴中呈現輪廓與質感。
 /// </summary>
 public class FirstPersonHands : MonoBehaviour
 {
-    static readonly Color SkinColor = new(0.28f, 0.24f, 0.20f);
-    static readonly Color BowWood = new(0.32f, 0.22f, 0.12f);
-    static readonly Color StringColor = new(0.45f, 0.42f, 0.38f);
-    static readonly Color ArrowColor = new(0.35f, 0.30f, 0.22f);
-    static readonly Color StoneColor = new(0.30f, 0.30f, 0.32f);
+    static readonly Color SkinColor = new(0.38f, 0.30f, 0.24f);
+    static readonly Color BracerLeather = new(0.20f, 0.14f, 0.09f);
+    static readonly Color BronzeMetal = new(0.58f, 0.44f, 0.22f);
+    static readonly Color GoldAccent = new(0.70f, 0.58f, 0.28f);
+    static readonly Color BowWood = new(0.28f, 0.18f, 0.10f);
+    static readonly Color StringColor = new(0.48f, 0.45f, 0.40f);
+    static readonly Color ArrowWood = new(0.35f, 0.30f, 0.22f);
+    static readonly Color FeatherWhite = new(0.65f, 0.63f, 0.58f);
+    static readonly Color StoneColor = new(0.32f, 0.32f, 0.35f);
 
     EchoPlayer player;
     BoulderSlide slide;
@@ -43,12 +47,11 @@ public class FirstPersonHands : MonoBehaviour
 
     void BuildArms()
     {
-        var mat = EchoMaterials.Create(SkinColor);
+        var skinMat = EchoMaterials.Create(SkinColor);
+        leftArm = CreateArm("LeftArm", skinMat);
+        rightArm = CreateArm("RightArm", skinMat);
 
-        leftArm = CreateArm("LeftArm", mat);
-        rightArm = CreateArm("RightArm", mat);
-
-        // 塞楔子時右手握著的石子
+        // 塞楔子時右手握著的花崗岩石子
         var stone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         stone.name = "WedgeStone";
         Destroy(stone.GetComponent<Collider>());
@@ -60,15 +63,37 @@ public class FirstPersonHands : MonoBehaviour
         wedgeStone.gameObject.SetActive(false);
     }
 
-    static Transform CreateArm(string name, Material mat)
+    static Transform CreateArm(string name, Material skinMat)
     {
         var arm = new GameObject(name).transform;
+
+        // 手臂主體
         var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         Destroy(capsule.GetComponent<Collider>());
         capsule.transform.SetParent(arm, false);
-        capsule.transform.localScale = new Vector3(0.09f, 0.25f, 0.09f);
+        capsule.transform.localScale = new Vector3(0.095f, 0.25f, 0.095f);
         capsule.transform.localRotation = Quaternion.Euler(70f, 0f, 0f);
-        capsule.GetComponent<Renderer>().sharedMaterial = mat;
+        capsule.GetComponent<Renderer>().sharedMaterial = skinMat;
+
+        // 希臘戰士皮質護腕（Leather Bracer）
+        var bracer = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(bracer.GetComponent<Collider>());
+        bracer.name = "Bracer";
+        bracer.transform.SetParent(arm, false);
+        bracer.transform.localScale = new Vector3(0.108f, 0.09f, 0.108f);
+        bracer.transform.localRotation = Quaternion.Euler(70f, 0f, 0f);
+        bracer.transform.localPosition = new Vector3(0f, 0.04f, 0f);
+        bracer.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(BracerLeather);
+
+        // 護腕上的青銅鉚釘
+        var stud = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        Destroy(stud.GetComponent<Collider>());
+        stud.name = "BronzeStud";
+        stud.transform.SetParent(bracer.transform, false);
+        stud.transform.localScale = new Vector3(0.24f, 0.15f, 0.24f);
+        stud.transform.localPosition = new Vector3(0f, 0f, 0.52f);
+        stud.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(BronzeMetal);
+
         return arm;
     }
 
@@ -79,8 +104,9 @@ public class FirstPersonHands : MonoBehaviour
 
         var woodMat = EchoMaterials.Create(BowWood);
         var stringMat = EchoMaterials.Create(StringColor);
+        var goldMat = EchoMaterials.Create(GoldAccent);
 
-        // 用 5 段方塊組合微彎的弓身
+        // 5 段微彎木質弓身
         for (int i = -2; i <= 2; i++)
         {
             var seg = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -91,6 +117,17 @@ public class FirstPersonHands : MonoBehaviour
             seg.transform.localRotation = Quaternion.Euler(i * -12f, 0f, 0f);
             seg.transform.localScale = new Vector3(0.025f, 0.13f, 0.025f);
             seg.GetComponent<Renderer>().sharedMaterial = woodMat;
+
+            // 上下弓稍（Siyahs）帶有古希臘暗金雕飾
+            if (Mathf.Abs(i) == 2)
+            {
+                var tip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Destroy(tip.GetComponent<Collider>());
+                tip.transform.SetParent(seg.transform, false);
+                tip.transform.localScale = new Vector3(1.1f, 0.3f, 1.1f);
+                tip.transform.localPosition = new Vector3(0f, (i > 0 ? 0.45f : -0.45f), 0f);
+                tip.GetComponent<Renderer>().sharedMaterial = goldMat;
+            }
         }
 
         // 弓弦
@@ -102,14 +139,42 @@ public class FirstPersonHands : MonoBehaviour
         str.GetComponent<Renderer>().sharedMaterial = stringMat;
         bowString = str.transform;
 
-        // 搭在弓上的箭
-        var arrow = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        Destroy(arrow.GetComponent<Collider>());
-        arrow.transform.SetParent(bowRoot, false);
-        arrow.transform.localScale = new Vector3(0.012f, 0.35f, 0.012f);
-        arrow.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-        arrow.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(ArrowColor);
-        nockedArrow = arrow.transform;
+        // 搭在弓上的箭（含青銅倒鉤箭頭與鷹羽箭翎）
+        nockedArrow = CreateArrowModel(bowRoot, true);
+    }
+
+    static Transform CreateArrowModel(Transform parent, bool fullLength)
+    {
+        var root = new GameObject("ArrowModel").transform;
+        root.SetParent(parent, false);
+
+        // 木桿
+        var shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(shaft.GetComponent<Collider>());
+        shaft.transform.SetParent(root, false);
+        float len = fullLength ? 0.35f : 0.18f;
+        shaft.transform.localScale = new Vector3(0.012f, len, 0.012f);
+        shaft.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        shaft.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(ArrowWood);
+
+        // 青銅箭頭
+        var tip = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(tip.GetComponent<Collider>());
+        tip.transform.SetParent(root, false);
+        tip.transform.localScale = new Vector3(0.02f, 0.05f, 0.02f);
+        tip.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        tip.transform.localPosition = new Vector3(0f, 0f, len + 0.02f);
+        tip.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(BronzeMetal);
+
+        // 鷹羽箭翎（Fletching）
+        var fletch = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        Destroy(fletch.GetComponent<Collider>());
+        fletch.transform.SetParent(root, false);
+        fletch.transform.localScale = new Vector3(0.04f, 0.06f, 0.04f);
+        fletch.transform.localPosition = new Vector3(0f, 0f, -len + 0.04f);
+        fletch.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(FeatherWhite);
+
+        return root;
     }
 
     void BuildQuiver()
@@ -118,18 +183,31 @@ public class FirstPersonHands : MonoBehaviour
         quiverRoot.SetParent(transform, false);
         quiverRoot.localPosition = new Vector3(0.38f, -0.32f, 0.45f);
 
+        // 箭筒筒身（Leather Quiver Body）
+        var tube = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(tube.GetComponent<Collider>());
+        tube.name = "QuiverTube";
+        tube.transform.SetParent(quiverRoot, false);
+        tube.transform.localScale = new Vector3(0.09f, 0.16f, 0.09f);
+        tube.transform.localRotation = Quaternion.Euler(20f, -15f, 0f);
+        tube.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(BracerLeather);
+
+        // 箭筒青銅鑲邊
+        var band = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(band.GetComponent<Collider>());
+        band.name = "BronzeBand";
+        band.transform.SetParent(tube.transform, false);
+        band.transform.localScale = new Vector3(1.08f, 0.12f, 1.08f);
+        band.transform.localPosition = new Vector3(0f, 0.85f, 0f);
+        band.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(BronzeMetal);
+
         quiverArrows = new Transform[3];
-        var mat = EchoMaterials.Create(ArrowColor);
         for (int i = 0; i < 3; i++)
         {
-            var arrow = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            Destroy(arrow.GetComponent<Collider>());
-            arrow.transform.SetParent(quiverRoot, false);
-            arrow.transform.localPosition = new Vector3(i * 0.025f, 0f, 0f);
-            arrow.transform.localRotation = Quaternion.Euler(20f, -15f, 0f);
-            arrow.transform.localScale = new Vector3(0.01f, 0.18f, 0.01f);
-            arrow.GetComponent<Renderer>().sharedMaterial = mat;
-            quiverArrows[i] = arrow.transform;
+            var arrow = CreateArrowModel(quiverRoot, false);
+            arrow.localPosition = new Vector3((i - 1) * 0.022f, 0.08f, 0f);
+            arrow.localRotation = Quaternion.Euler(20f, -15f + (i - 1) * 5f, 0f);
+            quiverArrows[i] = arrow;
         }
     }
 

@@ -88,15 +88,27 @@ public class CrewMember : MonoBehaviour
 
     float Range(float min, float max) => min + (float)rng.NextDouble() * (max - min);
 
-    /// <summary>蹲著的人形：身體、頭、抱膝的手臂。</summary>
+    /// <summary>蹲著的人形：亞麻短袍、束帶、深色髮絲與抱膝手臂。</summary>
     void BuildBody()
     {
-        Part(PrimitiveType.Capsule, "Body", new Vector3(0f, 0.45f, 0f), new Vector3(0.45f, 0.4f, 0.4f));
-        Part(PrimitiveType.Sphere, "Head", new Vector3(0f, 0.95f, 0.08f), new Vector3(0.25f, 0.27f, 0.25f));
-        Part(PrimitiveType.Capsule, "Knees", new Vector3(0f, 0.3f, 0.22f), new Vector3(0.4f, 0.15f, 0.2f));
+        var skin = Skin;
+        var tunic = new Color(0.68f, 0.65f, 0.58f);
+        var hair = new Color(0.12f, 0.10f, 0.08f);
+        var leather = new Color(0.24f, 0.16f, 0.10f);
+
+        // 希臘水手亞麻短袍軀幹（Linen Tunic Chiton）
+        Part(PrimitiveType.Capsule, "TunicBody", new Vector3(0f, 0.45f, 0f), new Vector3(0.46f, 0.42f, 0.42f), tunic);
+        // 皮革腰帶
+        Part(PrimitiveType.Cylinder, "Belt", new Vector3(0f, 0.42f, 0f), new Vector3(0.48f, 0.05f, 0.44f), leather);
+        // 頭部與髮絲
+        Part(PrimitiveType.Sphere, "Head", new Vector3(0f, 0.95f, 0.08f), new Vector3(0.25f, 0.27f, 0.25f), skin);
+        Part(PrimitiveType.Sphere, "Hair", new Vector3(0f, 1.02f, 0.04f), new Vector3(0.26f, 0.15f, 0.26f), hair);
+        // 抱膝的雙臂與雙膝
+        Part(PrimitiveType.Capsule, "Knees", new Vector3(0f, 0.3f, 0.22f), new Vector3(0.4f, 0.15f, 0.2f), tunic);
+        Part(PrimitiveType.Capsule, "Arms", new Vector3(0f, 0.45f, 0.18f), new Vector3(0.38f, 0.12f, 0.18f), skin);
     }
 
-    void Part(PrimitiveType type, string name, Vector3 localPos, Vector3 scale)
+    void Part(PrimitiveType type, string name, Vector3 localPos, Vector3 scale, Color color)
     {
         var go = GameObject.CreatePrimitive(type);
         go.name = name;
@@ -104,6 +116,6 @@ public class CrewMember : MonoBehaviour
         go.transform.SetParent(transform, false);
         go.transform.localPosition = localPos;
         go.transform.localScale = scale;
-        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(Skin);
+        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(color);
     }
 }
