@@ -72,8 +72,7 @@ public class MissionHud : MonoBehaviour
             DrawBriefing(1f);
         else if (fadingSince >= 0f && Time.time - fadingSince < FadeSeconds)
             DrawBriefing(1f - (Time.time - fadingSince) / FadeSeconds);
-        else if (loop.State.Phase == LoopPhase.Night)
-            DrawObjectives();
+        // 右上任務清單在規格第 26 節 C 拿掉，改由世界內縫光、巨石進度條與暫停選單呈現。
     }
 
     void EnsureStyles()

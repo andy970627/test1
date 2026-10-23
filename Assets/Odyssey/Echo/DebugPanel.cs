@@ -28,6 +28,8 @@ public class DebugPanel : MonoBehaviour
     static readonly Color RockColor = new(0.95f, 0.15f, 0.1f);
 
     BlindGameLoop loop;
+    GUIStyle cachedStyle, cachedLegend;
+    int cachedFontSize = -1;
 
     public void Init(BlindGameLoop loop) => this.loop = loop;
 
@@ -84,21 +86,28 @@ public class DebugPanel : MonoBehaviour
         if (!showDebug || loop == null || loop.Cyclops == null)
             return;
 
-        int fontSize = Mathf.Max(22, Screen.height / 28);
-        var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = false };
-        style.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
-        float line = fontSize * 1.4f;
+        int fontSize = Mathf.Max(14, Screen.height / 45);
+        if (cachedStyle == null || cachedFontSize != fontSize)
+        {
+            cachedFontSize = fontSize;
+            cachedStyle = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = false };
+            cachedStyle.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
+            cachedLegend = new GUIStyle(cachedStyle) { fontSize = Mathf.Max(12, fontSize * 3 / 4) };
+        }
+        var style = cachedStyle;
+        float line = fontSize * 1.35f;
 
-        float mapH = Screen.height * 0.3f;
+        // 縮小版俯視小地圖（寬度不超過螢幕 28%、整體高度不超過 55%）
+        float mapH = Screen.height * 0.18f;
         float mapW = mapH * (MapMaxX - MapMinX) / (MapMaxZ - MapMinZ);
-        float panelW = Mathf.Max(mapW, fontSize * 14f) + 20f;
+        float panelW = Mathf.Min(Screen.width * 0.28f, Mathf.Max(mapW, fontSize * 14f) + 20f);
 
         var map = new Rect(20, 20, mapW, mapH);
         DrawMap(map);
 
         // 小地圖圖例：只放最重要的四種。
-        float y = map.yMax + 6f;
-        var legend = new GUIStyle(style) { fontSize = Mathf.Max(16, fontSize * 2 / 3) };
+        float y = map.yMax + 4f;
+        var legend = cachedLegend;
         float lx = 20f, lh = legend.fontSize * 1.4f;
         foreach (var (name, color) in new[] { ("你", PlayerColor), ("巨人", StateColor(CyclopsState.Listen)), ("同伴", CrewColor), ("木樁", StakeColor) })
         {

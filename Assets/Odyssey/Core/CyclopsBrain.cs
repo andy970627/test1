@@ -261,6 +261,8 @@ namespace Odyssey.Core
                     float d = Vector2.Distance(crew[i], Position);
                     if (d <= BumpDistance || (State == CyclopsState.Search && d <= SearchRadius))
                     {
+                        if (State == CyclopsState.Throw)
+                            ThrowCooldownLeft = 0f;
                         eaten = i;
                         Enter(CyclopsState.Eat);
                         break;

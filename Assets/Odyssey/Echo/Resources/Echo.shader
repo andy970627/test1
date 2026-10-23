@@ -93,5 +93,23 @@ Shader "Odyssey/Echo"
             half fragDepth(Varyings i) : SV_Target { return 0; }
             ENDHLSL
         }
+
+        Pass
+        {
+            Name "DepthNormals"
+            Tags { "LightMode" = "DepthNormals" }
+            ZWrite On
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment fragDepthNormals
+
+            half4 fragDepthNormals(Varyings i) : SV_Target
+            {
+                return half4(0, 0, 1, 0);
+            }
+            ENDHLSL
+        }
     }
 }
