@@ -1,4 +1,4 @@
-# 規格第 30 節：每次 push／PR 跑規則測試；對 main 的 PR、推到 main、手動執行時建 WebGL 並（設好的話）上傳 itch.io。
+# 規格第 30 節：每次 push／PR 跑規則測試；對 main 的 PR、推到 main、手動執行時跑 Unity 測試、建 WebGL 並（設好的話）上傳 itch.io。
 # 密鑰與 itch.io 設定步驟：docs/ci-setup.md
 name: CI
 
@@ -24,9 +24,52 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet test tools/CoreTests --logger "console;verbosity=normal"
 
+  # 同一批測試改在真的 Unity 裡跑：多抓 Unity 編譯器（C# 版本較舊）才會報的錯，以及整個專案（含 MonoBehaviour、Editor 腳本）的編譯錯誤。
+  unity-tests:
+    name: Unity 測試（EditMode）
+    needs: core-tests
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_UNITY: ${{ secrets.UNITY_LICENSE != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '' }}
+    steps:
+      - name: 檢查 Unity 授權
+        if: env.HAS_UNITY != 'true'
+        run: echo "::notice::還沒設定 UNITY_LICENSE／UNITY_EMAIL／UNITY_PASSWORD，略過 Unity 測試（見 docs/ci-setup.md）。"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_UNITY == 'true'
+
+      - uses: actions/cache@v4
+        if: env.HAS_UNITY == 'true'
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      - uses: game-ci/unity-test-runner@v4
+        id: unity-tests
+        if: env.HAS_UNITY == 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.14f1
+          testMode: editmode
+
+      - uses: actions/upload-artifact@v4
+        if: always() && env.HAS_UNITY == 'true'
+        with:
+          name: Unity-TestResults
+          path: ${{ steps.unity-tests.outputs.artifactsPath }}
+          retention-days: 14
+
   webgl:
     name: 網頁版建置
-    needs: core-tests
+    needs: unity-tests
     if: github.event_name != 'push' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
