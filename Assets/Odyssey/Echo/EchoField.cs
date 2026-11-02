@@ -79,6 +79,17 @@ public class EchoField : MonoBehaviour
             Instance = null;
     }
 
+    /// <summary>
+    /// 宙斯的雷光（規格第 31 節 B1）：從 center 一下子照亮整個洞（已經擴散完成），之後照一般回聲的速度淡出。
+    /// 不是聲音，巨人不會因此聽到什麼。
+    /// </summary>
+    public void FlashAll(Vector3 center, Color color, float radius = 40f)
+    {
+        if (pulses.Count >= MaxPulses)
+            pulses.RemoveAt(0);
+        pulses.Add(new Pulse(center, radius, Time.time - SpreadSeconds, color));
+    }
+
     public void Clear()
     {
         pulses.Clear();

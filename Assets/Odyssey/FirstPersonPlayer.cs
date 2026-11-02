@@ -53,10 +53,14 @@ public class FirstPersonPlayer : MonoBehaviour
 
     static readonly Vector3 CameraHeight = new(0f, 0.85f, 0f);
 
+    /// <summary>過場用的鏡頭低頭角度（度，正＝往下看）與晃動，疊在一般視角上、不改存下的視角（規格第 31 節 B2）。</summary>
+    public float ScenePitch { get; set; }
+    public Vector3 SceneShake { get; set; }
+
     void LateUpdate()
     {
-        cameraTransform.localEulerAngles = new Vector3(pitch + FeelPitch, 0f, 0f);
-        cameraTransform.localPosition = CameraHeight + FeelOffset;
+        cameraTransform.localEulerAngles = new Vector3(Mathf.Clamp(pitch + FeelPitch + ScenePitch, -85f, 85f), 0f, 0f);
+        cameraTransform.localPosition = CameraHeight + FeelOffset + SceneShake;
     }
 
     void Update()

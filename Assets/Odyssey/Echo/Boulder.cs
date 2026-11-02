@@ -31,6 +31,10 @@ public class Boulder : MonoBehaviour
     public Collider GapBlocker { get; private set; }
     float dawn;
     Material gapMaterial;
+
+    // 雅典娜的眷顧（規格第 31 節 B3）：失去時縫光與月光邊在 2 秒內熄滅，重新得到時亮回來。
+    const float FavorFadeSeconds = 2f;
+    float favor = 1f, favorTarget = 1f;
     Vector3 center;
     float slide;
 
@@ -166,7 +170,7 @@ public class Boulder : MonoBehaviour
         if (gapMaterial == null)
             return;
         float open = Mathf.Clamp01(slide / Odyssey.Core.BoulderSlide.FullOpen);
-        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open));
+        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open) * favor);
     }
 
     /// <summary>fraction：0 = 入夜，1 = 天亮；縫裡的光從深藍漸變到灰白。</summary>
@@ -174,6 +178,24 @@ public class Boulder : MonoBehaviour
     {
         dawn = Mathf.Clamp01(fraction);
         UpdateGapGlow();
-        OdysseyMaterials.SetEmission(rimMaterial, Color.Lerp(MoonGlow, DawnGlow, Mathf.Clamp01(fraction)));
+        OdysseyMaterials.SetEmission(rimMaterial, Color.Lerp(MoonGlow, DawnGlow, Mathf.Clamp01(fraction)) * favor);
+    }
+
+    /// <summary>有沒有雅典娜的眷顧：縫光與巨石邊的月光 2 秒內淡出或淡入。</summary>
+    public void SetFavor(bool has) => favorTarget = has ? 1f : 0f;
+
+    /// <summary>立刻套用（新的一場遊戲）。</summary>
+    public void SetFavorNow(bool has)
+    {
+        favorTarget = favor = has ? 1f : 0f;
+        SetDawn(dawn);
+    }
+
+    void Update()
+    {
+        if (Mathf.Approximately(favor, favorTarget))
+            return;
+        favor = Mathf.MoveTowards(favor, favorTarget, Time.deltaTime / FavorFadeSeconds);
+        SetDawn(dawn);
     }
 }
