@@ -596,6 +596,46 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void Charge_NotCancelledByArrowAtHisFeet()
+        {
+            // 審查發現：偷襲打中後落點聲就在他腳邊，不能把雷鳴後的衝刺取消掉。
+            brain.Charge(new Vector2(10f, 0f));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position));
+            Assert.IsTrue(brain.Charging);
+            Assert.AreEqual(new Vector2(10f, 0f), brain.Target);
+        }
+
+        [Test]
+        public void SecondsSinceHeardPlayer_NotResetBySnapShotOrLures()
+        {
+            // 彈弓出手的「啪」與誘餌的落點不算「聽見你」（規格第 31 節 C1：先彈一下，再出手）。
+            brain.Hear(Snd(SoundKind.Clap, 2f, 0f));
+            T(2f, Far);
+            brain.Hear(Snd(SoundKind.SnapShot, brain.Position));
+            brain.Hear(Snd(SoundKind.Stone, brain.Position));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position));
+            brain.Hear(Snd(SoundKind.Clatter, brain.Position));
+            Assert.AreEqual(2f, brain.SecondsSinceHeardPlayer, 1e-4f);
+        }
+
+        [Test]
+        public void TargetIsPlayerSound_FalseForLures()
+        {
+            brain.Hear(Snd(SoundKind.Stone, 3f, 0f));
+            Assert.IsFalse(brain.TargetIsPlayerSound);
+            brain.Hear(Snd(SoundKind.Boulder, 3f, 0f));
+            Assert.IsTrue(brain.TargetIsPlayerSound);
+        }
+
+        [Test]
+        public void StaggerEnd_CountsAsHearingYou()
+        {
+            brain.Stagger(new Vector2(3f, 0f));
+            T(CyclopsBrain.StaggerSeconds + 0.01f, Far);
+            Assert.Less(brain.SecondsSinceHeardPlayer, 0.1f);
+        }
+
+        [Test]
         public void SecondsSinceHeardPlayer_ResetsEvenWhenIgnored()
         {
             brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
@@ -648,8 +688,11 @@ namespace Odyssey.Core.Tests
             brain.Charge(new Vector2(0f, 9f));
             Assert.IsFalse(brain.HoldingBoulder);
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
-            brain.Hear(Snd(SoundKind.Clap, 0f, 2f)); // 衝鋒目標聲量為 0，任何聲音都能換掉它
-            Assert.AreEqual(new Vector2(0f, 2f), brain.Target);
+            brain.Hear(Snd(SoundKind.Clap, 0f, 2f)); // 衝刺中，比巨石小聲的聲音換不掉目標
+            Assert.AreEqual(new Vector2(0f, 9f), brain.Target);
+            Assert.IsTrue(brain.Charging);
+            brain.Hear(Snd(SoundKind.Boulder, 0f, 3f)); // 巨石的聲音讓他跑回去守
+            Assert.AreEqual(CyclopsState.Guard, brain.State);
             Assert.IsFalse(brain.Charging);
         }
     }

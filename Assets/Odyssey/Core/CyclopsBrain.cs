@@ -68,6 +68,8 @@ namespace Odyssey.Core
         public const float StaggerSeconds = 2.5f;
         /// <summary>宙斯雷鳴後衝鋒的速度倍率（只用在走向目標時）。</summary>
         public const float ChargeMultiplier = 1.3f;
+        /// <summary>衝刺目標的「聲量」：比箭、石子、腳步都大，只有巨石的聲音會改變他。</summary>
+        const float ChargeHoldLoudness = 1f;
 
         readonly DecoyMemory memory;
         readonly Func<double> roll;
@@ -143,7 +145,8 @@ namespace Odyssey.Core
             EndGuard();
             wandering = false;
             Target = at;
-            targetLoudness = 0f;
+            // 衝刺中只有比一切都響的聲音（巨石，走守石那條路）能改變目標；打中時落在他腳邊的箭與石子不會取消衝刺。
+            targetLoudness = ChargeHoldLoudness;
             targetKind = SoundKind.Step;
             TargetIsPlayerSound = true;
             Charging = true;
@@ -180,8 +183,7 @@ namespace Odyssey.Core
                 return;
             if (!SoundRules.CanHear(e, Position, HearingMultiplierFor(e.Kind)))
                 return;
-            // 巨石自己往回滑（Slip）不是玩家弄出來的，不算「聽到你」（宙斯法則）。
-            if (SoundRules.Source(e.Kind) == SoundSource.Player && e.Kind != SoundKind.Slip)
+            if (RevealsPlayer(e.Kind))
                 SecondsSinceHeardPlayer = 0f;
 
             // 巨石自己往回滑（Slip）時，已經守在旁邊的巨人不必重新摸一次：只記下巨石現在的位置。
@@ -289,6 +291,8 @@ namespace Odyssey.Core
                         targetLoudness = 0f;
                         targetKind = SoundKind.Step;
                         TargetIsPlayerSound = true;
+                        // 被打中的那一下他已經知道你在哪：之後追過來時再打他，仍算正面出手。
+                        SecondsSinceHeardPlayer = 0f;
                         Enter(CyclopsState.Investigate);
                     }
                     break;
@@ -467,9 +471,20 @@ namespace Odyssey.Core
             Target = target;
             targetLoudness = e.Loudness;
             targetKind = e.Kind;
-            TargetIsPlayerSound = SoundRules.Source(e.Kind) == SoundSource.Player;
+            TargetIsPlayerSound = SoundRules.Source(e.Kind) == SoundSource.Player && !IsLure(e.Kind);
             Charging = false;
         }
+
+        /// <summary>石子、箭、奶桶、乳酪：落點在別處的誘餌，不是你所在的位置。</summary>
+        static bool IsLure(SoundKind kind) =>
+            kind is SoundKind.Stone or SoundKind.Arrow or SoundKind.Clatter or SoundKind.Cheese;
+
+        /// <summary>
+        /// 這個聲音算不算「聽見你」（宙斯法則的 3 秒）：玩家這邊的聲音，但不含誘餌的落點、
+        /// 巨石自己往回滑（Slip），以及彈弓出手的「啪」（規格第 31 節 C1：要先彈一下讓他聽見，再出手）。
+        /// </summary>
+        public static bool RevealsPlayer(SoundKind kind) =>
+            SoundRules.Source(kind) == SoundSource.Player && !IsLure(kind) && kind != SoundKind.Slip && kind != SoundKind.SnapShot;
 
         void Enter(CyclopsState state)
         {
