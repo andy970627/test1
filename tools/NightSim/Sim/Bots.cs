@@ -46,22 +46,28 @@ namespace Odyssey.Sim
     /// </summary>
     public sealed class CarefulBot : IBot
     {
-        readonly bool decoy, rescue;
+        readonly bool decoy, rescue, slingDecoy, slingGiant;
         readonly int rescueGoal;
         float lastClap = -999f, lastArrow = -999f;
         float lastWedgeOpening;
         int wedgingFrom = -1;
 
-        public CarefulBot(bool decoy, bool rescue, int rescueGoal = 4)
+        public CarefulBot(bool decoy, bool rescue, int rescueGoal = 4, bool slingDecoy = false, bool slingGiant = false)
         {
             this.decoy = decoy;
             this.rescue = rescue;
+            this.slingDecoy = slingDecoy;
+            this.slingGiant = slingGiant;
             this.rescueGoal = rescueGoal;
         }
 
-        public string Name => rescue ? "帶人" : decoy ? "引開" : "謹慎";
+        public string Name => slingGiant ? "正面出手" : slingDecoy ? "彈弓引開" : rescue ? "帶人" : decoy ? "引開" : "謹慎";
 
-        public string Blurb => rescue
+        public string Blurb => slingGiant
+            ? "「謹慎」再加上：巨人朝你逼近到 6 m 內時，用彈弓直接打他（宙斯法則判定）"
+            : slingDecoy
+            ? "「謹慎」再加上：巨人靠近巨石時，用彈弓把石子射到他另一邊引開（不用箭）"
+            : rescue
             ? "「引開」再加上：先找最多 4 名同伴再去巨石（前 120 秒）"
             : decoy
                 ? "「謹慎」再加上：巨人靠近巨石時射箭到他另一邊引開"
@@ -109,6 +115,23 @@ namespace Odyssey.Sim
                 lastArrow = now;
             }
 
+            // 彈弓引開：同箭的時機，但用石子（石子也是楔子，留一顆）。
+            Vector2? sling = null;
+            if (slingDecoy && fresh && n.StonesCarried > 1 && now - lastArrow >= 6f && (cyclopsToBoulder < 6f || dist < 6f))
+            {
+                Vector2 away = k.CyclopsPos - n.Player;
+                if (away.LengthSquared() < 1e-4f)
+                    away = new Vector2(1f, 0f);
+                sling = CaveMap.Clamp(k.CyclopsPos + Vector2.Normalize(away) * 6f + new Vector2(0f, -3f));
+                lastArrow = now;
+            }
+            // 正面出手：他朝你逼近時直接打他。
+            bool slingGiantNow = slingGiant && fresh && approaching && dist < 6f && n.StonesCarried > 0 && now - lastArrow >= 3f;
+            if (slingGiantNow)
+                lastArrow = now;
+            if (sling.HasValue || slingGiantNow)
+                return new Intent { SlingAt = sling, SlingAtGiant = slingGiantNow, Brace = n.AtBoulder };
+
             // 太近了：退開（離他遠一點的方向）。
             if (fresh && dist < 3f && approaching)
                 return new Intent { MoveTo = Away(n.Player, k.CyclopsPos, 3f), Clap = false, ShootAt = shoot };
@@ -137,7 +160,7 @@ namespace Odyssey.Sim
 
             // 順路撿石子。
             int stone = NearestStone(n, 5f);
-            if (stone >= 0 && n.StonesCarried < 4)
+            if (stone >= 0 && n.StonesCarried < Night.MaxStones)
                 return new Intent { MoveTo = n.Stones[stone], Clap = clap, ShootAt = shoot };
 
             if (!n.AtBoulder)

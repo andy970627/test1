@@ -56,10 +56,21 @@ namespace Odyssey.Sim
                 sb.AppendLine();
                 sb.AppendLine("每夜平均：");
                 sb.AppendLine();
-                sb.AppendLine("| 策略 | 巨人 5 m 內（秒） | 知道巨人在哪的時間 | 製造聲音 | 射箭 | 楔子 | 巨人跑回守石 | 失去同伴 |");
-                sb.AppendLine("|---|---|---|---|---|---|---|---|");
+                sb.AppendLine("| 策略 | 巨人 5 m 內（秒） | 知道巨人在哪的時間 | 製造聲音 | 射箭 | 彈弓射石 | 楔子 | 巨人跑回守石 | 失去同伴 |");
+                sb.AppendLine("|---|---|---|---|---|---|---|---|---|");
                 foreach (var s in rows)
-                    sb.AppendLine($"| {s.Bot} | {F(s.Near5mPerNight)} | {P(s.KnownShare)} | {F(s.ClapsPerNight)} | {F(s.ArrowsPerNight)} | {F(s.WedgesPerNight)} | {F(s.GuardsPerNight)} | {F(s.CrewLostPerNight, "0.00")} |");
+                    sb.AppendLine($"| {s.Bot} | {F(s.Near5mPerNight)} | {P(s.KnownShare)} | {F(s.ClapsPerNight)} | {F(s.ArrowsPerNight)} | {F(s.SlingsPerNight)} | {F(s.WedgesPerNight)} | {F(s.GuardsPerNight)} | {F(s.CrewLostPerNight, "0.00")} |");
+                var zeus = rows.Where(s => s.FairHits + s.Ambushes > 0).ToList();
+                if (zeus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("宙斯法則（打中巨人的次數，整批加總）：");
+                    sb.AppendLine();
+                    sb.AppendLine("| 策略 | 正面出手 | 偷襲 | 雷殛死的同伴 |");
+                    sb.AppendLine("|---|---|---|---|");
+                    foreach (var s in zeus)
+                        sb.AppendLine($"| {s.Bot} | {s.FairHits} | {s.Ambushes} | {s.ThunderDeaths} |");
+                }
                 sb.AppendLine();
             }
 
@@ -77,7 +88,7 @@ namespace Odyssey.Sim
             sb.AppendLine();
             sb.AppendLine("- 沒有模擬：羊與羊叫遮聲、羊圈、奶桶、乳酪架、木樁、地形高低、岩壁擋路；箭射出就不撿回。");
             sb.AppendLine("- 機器人是寫死的策略，比真人笨也比真人準（反應零延遲、不會手滑）。看的是**趨勢和相對差距**，不是真人的確切勝率。");
-            sb.AppendLine("- 還沒有第 31 節的新玩法（彈弓、宙斯法則）；那些規則做好後加進模擬器再比。");
+            sb.AppendLine("- 彈弓打中巨人的機率假設為 8 m 內 70%；雅典娜的眷顧（縫光）與手抖不影響機器人。");
             return sb.ToString();
         }
     }

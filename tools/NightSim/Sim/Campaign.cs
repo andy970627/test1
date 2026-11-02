@@ -57,6 +57,8 @@ namespace Odyssey.Sim
         public double CrewLostPerNight;
         public double Near5mPerNight;
         public double KnownShare;
+        public double SlingsPerNight;
+        public int FairHits, Ambushes, ThunderDeaths;
         public double ClapsPerNight, ArrowsPerNight, GuardsPerNight, WedgesPerNight;
         public double FailedMaxOpening;
         public readonly Dictionary<FailReason, int> Fails = new();
@@ -82,6 +84,10 @@ namespace Odyssey.Sim
             s.KnownShare = all.Sum(n => n.SecondsKnown) / Math.Max(1e-6, all.Sum(n => n.Seconds));
             s.ClapsPerNight = all.Average(n => n.Claps);
             s.ArrowsPerNight = all.Average(n => n.Arrows);
+            s.SlingsPerNight = all.Average(n => n.Slings);
+            s.FairHits = all.Sum(n => n.FairHits);
+            s.Ambushes = all.Sum(n => n.Ambushes);
+            s.ThunderDeaths = all.Sum(n => n.ThunderDeaths);
             s.GuardsPerNight = all.Average(n => n.Guards);
             s.WedgesPerNight = all.Average(n => n.Wedges);
             var failed = all.Where(n => !n.Escaped).ToList();

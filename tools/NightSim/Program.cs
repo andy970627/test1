@@ -35,6 +35,8 @@ static class Program
             ("careful", () => new CarefulBot(decoy: false, rescue: false)),
             ("decoy", () => new CarefulBot(decoy: true, rescue: false)),
             ("rescue", () => new CarefulBot(decoy: true, rescue: true)),
+            ("slingdecoy", () => new CarefulBot(decoy: false, rescue: false, slingDecoy: true)),
+            ("slinggiant", () => new CarefulBot(decoy: false, rescue: false, slingGiant: true)),
         };
         var levels = new[] { DifficultyLevel.Familiar, DifficultyLevel.Normal, DifficultyLevel.Hard };
 
@@ -45,7 +47,7 @@ static class Program
 
         // 規格第 31 節 H：恐懼半徑 16 m（玩家更早知道巨人在哪）對比現在的 8 m，只看普通難度。
         var awareness = new List<Stats>();
-        foreach (var bot in bots.Where(b => b.Key is "careful" or "decoy" or "rescue"))
+        foreach (var bot in bots.Where(b => b.Key is "careful" or "decoy" or "rescue" or "slinggiant"))
             foreach (float a in new[] { 8f, 16f })
                 awareness.Add(RunMany(bot.Make, new SimConfig { Difficulty = DifficultyLevel.Normal, Awareness = a }, runs, seed));
 

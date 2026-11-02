@@ -37,6 +37,10 @@ namespace Odyssey.Sim
         public bool Clap;
         public bool Wedge;
         public Vector2? ShootAt;
+        /// <summary>彈弓射出一顆石子到這裡（規格第 31 節 A）。</summary>
+        public Vector2? SlingAt;
+        /// <summary>彈弓瞄準巨人本人（宙斯法則判定）。</summary>
+        public bool SlingAtGiant;
     }
 
     /// <summary>機器人知道的事：只來自回聲照亮、聽得到的距離、嗚咽與禱告聲。</summary>
@@ -66,6 +70,7 @@ namespace Odyssey.Sim
         public float SecondsNear5m;
         public float SecondsKnown;
         public int Claps, Arrows, Wedges, StonesPicked;
+        public int Slings, FairHits, Ambushes, ThunderDeaths;
         public float MaxOpening;
         public int Guards;
     }
@@ -86,7 +91,12 @@ namespace Odyssey.Sim
         public readonly List<bool> StoneOnFloor = new();
 
         public Vector2 Player;
-        public int StonesCarried;
+        /// <summary>同 EchoPlayer：每夜帶 1 顆，最多 3 顆。</summary>
+        public const int MaxStones = 3;
+        public int StonesCarried = 1;
+        public readonly ZeusThunder Thunder = new();
+        /// <summary>彈弓打中巨人的機率（瞄準誤差、他在動），8 m 內。</summary>
+        public const float SlingHitChance = 0.7f, SlingHitRange = 8f;
         public int ArrowsLeft = 3;
         public float Time;
         public bool Running;
@@ -234,6 +244,8 @@ namespace Odyssey.Sim
                 Emit(SoundKind.Clap, Player);
                 result.Claps++;
             }
+            if ((it.SlingAt.HasValue || it.SlingAtGiant) && StonesCarried > 0)
+                Sling(it);
             if (it.ShootAt is Vector2 aim && ArrowsLeft > 0)
             {
                 ArrowsLeft--;
@@ -306,10 +318,61 @@ namespace Odyssey.Sim
         /// <summary>站在巨石前沒推、bot 選擇頂住。</summary>
         bool braceThisFrame;
 
+        /// <summary>
+        /// 彈弓：出手的「啪」先發（巨人聽得到、照亮你身邊），再看石子打到哪裡。
+        /// 瞄準巨人且打中時，用真正的 ZeusLaw 判定：正面出手他踉蹌；偷襲則雷鳴（他衝過來、死一名跟隨者或巨石滑回）。
+        /// </summary>
+        void Sling(Intent it)
+        {
+            StonesCarried--;
+            result.Slings++;
+            Emit(SoundKind.SnapShot, Player);
+            if (it.SlingAtGiant)
+            {
+                if (Vector2.Distance(Player, Brain.Position) > SlingHitRange || Rng.NextDouble() >= SlingHitChance)
+                {
+                    AddFloorStone(CaveMap.Clamp(Brain.Position + new Vector2(1.5f, 0f)));
+                    Emit(SoundKind.Stone, CaveMap.Clamp(Brain.Position + new Vector2(1.5f, 0f)));
+                    return;
+                }
+                ZeusVerdict v = ZeusLaw.Judge(Brain.State, Brain.HoldingBoulder, Brain.SecondsSinceHeardPlayer, Brain.TargetIsPlayerSound, true);
+                if (v == ZeusVerdict.Fair)
+                {
+                    Brain.Stagger(Player);
+                    result.FairHits++;
+                }
+                else
+                {
+                    result.Ambushes++;
+                    int followers = 0;
+                    SimCrew last = null;
+                    foreach (var f in Followers())
+                    {
+                        followers++;
+                        last = f;
+                    }
+                    ThunderStrike strike = Thunder.Strike(followers);
+                    Brain.Charge(Player);
+                    if (strike.Penalty == ThunderPenalty.KillFollower && last != null)
+                    {
+                        LoseCrew(last);
+                        result.ThunderDeaths++;
+                    }
+                    else
+                        Slide.Jolt(BoulderSlide.FullOpen);
+                }
+                AddFloorStone(Brain.Position);
+                return;
+            }
+            Vector2 at = CaveMap.Clamp(it.SlingAt.Value);
+            AddFloorStone(at);
+            Emit(SoundKind.Stone, at);
+        }
+
         void PickUpStones()
         {
             for (int i = 0; i < Stones.Count; i++)
-                if (StoneOnFloor[i] && Vector2.Distance(Player, Stones[i]) <= CaveMap.PickupReach)
+                if (StonesCarried < MaxStones && StoneOnFloor[i] && Vector2.Distance(Player, Stones[i]) <= CaveMap.PickupReach)
                 {
                     StoneOnFloor[i] = false;
                     Know.KnownStones.Remove(i);
