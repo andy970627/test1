@@ -9,7 +9,7 @@ using UnityEngine.InputSystem;
 /// 雙盲洞穴的一夜：火熄了，巨人瞎了，玩家要在天亮前把巨石推出縫鑽出去。
 /// 被抓或天亮就吃掉一名同伴，巨石回到原位，下一夜重來。負責過場、操作提示與 CSV 紀錄。
 /// </summary>
-public class BlindGameLoop : MonoBehaviour
+public partial class BlindGameLoop : MonoBehaviour
 {
     public const int SheepCount = 9;
 
@@ -205,6 +205,7 @@ public class BlindGameLoop : MonoBehaviour
         Arrow.IgnoreAlways.Add(Layout.Boulder.GapBlocker);
         sounds = gameObject.AddComponent<SoundPlayer>();
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
+        InitZeus();
 
         // 洞外的海風從巨石後面傳來：整個洞都聽得到，越接近洞口越大聲、左右聲道分得清；
         // 縫旁再加一道從縫鑽進來的細呼嘯聲。
@@ -283,6 +284,7 @@ public class BlindGameLoop : MonoBehaviour
         ApplyDifficulty();
         State.Restart();
         Nights.Clear();
+        Favor.Reset();
         BeginIntro();
     }
 
@@ -349,6 +351,7 @@ public class BlindGameLoop : MonoBehaviour
         Cyclops.Active = false;
         State.Restart();
         Nights.Clear();
+        Favor.Reset();
         ResetNight();
     }
 
@@ -395,6 +398,7 @@ public class BlindGameLoop : MonoBehaviour
     /// </summary>
     void ResetNight()
     {
+        ZeusNewNight();
         Slide.Reset();
         milestones.Reset();
         settleFlash = 0f;
@@ -471,6 +475,7 @@ public class BlindGameLoop : MonoBehaviour
             Essential.OnAtOpenGap();
         Dawn.Tick(Time.deltaTime);
         UpdatePrayer();
+        UpdateZeus();
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
             Fail(FailReason.Dawn);
