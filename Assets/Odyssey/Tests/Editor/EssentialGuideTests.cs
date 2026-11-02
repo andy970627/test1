@@ -9,7 +9,7 @@ namespace Odyssey.Core.Tests
         {
             var g = new EssentialGuide();
             Assert.AreEqual(EssentialStep.Sound, g.Step);
-            Assert.AreEqual("空白鍵 製造聲音", g.Text);
+            Assert.AreEqual("空白鍵 彈・按住 拉弓射石", g.Text);
             g.OnLit();
             Assert.AreEqual(EssentialStep.Push, g.Step);
             Assert.IsNull(g.Text, "還沒站到巨石前，不顯示");
@@ -35,7 +35,7 @@ namespace Odyssey.Core.Tests
         {
             var g = new EssentialGuide();
             g.OnAtBoulder();
-            Assert.AreEqual("空白鍵 製造聲音", g.Text);
+            Assert.AreEqual("空白鍵 彈・按住 拉弓射石", g.Text);
             g.OnLit();
             Assert.AreEqual("E 推", g.Text);
         }
@@ -50,6 +50,18 @@ namespace Odyssey.Core.Tests
             g.OnLit();
             Assert.AreEqual(EssentialStep.Wedge, g.Step);
             Assert.AreEqual("右鍵 塞石子當楔子", g.Text);
+        }
+
+        [Test]
+        public void Verse_FollowsTextAndIsNullWhenTextIsNull()
+        {
+            var g = new EssentialGuide();
+            Assert.AreEqual(("拉響你的彈弓，讓它替你出聲", "聲音到過的地方，黑暗便退開"), g.Verse);
+            g.OnLit();
+            Assert.IsNull(g.Text);
+            Assert.IsNull(g.Verse);
+            g.OnAtBoulder();
+            Assert.AreEqual("用你的肩，向黎明推去", g.Verse.Value.Item2);
         }
 
         [Test]
