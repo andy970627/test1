@@ -33,6 +33,13 @@ public class ScreenFeedback : MonoBehaviour
     float lawAt = -1f;
     Vector3 lawPoint;
     float heartIntensity;
+    float terrorVignette;
+
+    /// <summary>舊版 8 m 單層心跳（實驗開關「恐懼半徑：舊版」）；分層模式由 TerrorMusic 播心跳。</summary>
+    public bool LegacyHeartbeat { get; set; } = true;
+
+    /// <summary>恐懼半徑第 3 層與追殺時的四角變暗（0～1），由遊戲迴圈每幀設定。</summary>
+    public void SetTerrorVignette(float amount) => terrorVignette = Mathf.Clamp01(amount);
     GUIStyle lawStyle;
 
     public static float RockNear => RockNearMeters;
@@ -133,6 +140,8 @@ public class ScreenFeedback : MonoBehaviour
             g.y = 0f;
             d = g.magnitude;
         }
+        if (!LegacyHeartbeat)
+            d = float.MaxValue;
         heartIntensity = Heartbeat.Active(d) ? Heartbeat.Intensity(d) : 0f;
         if (Heartbeat.Active(d))
         {
@@ -153,8 +162,9 @@ public class ScreenFeedback : MonoBehaviour
         GUI.depth = -5;
 
         // 暗角：巨人越近越收緊。
-        if (heartIntensity > 0f)
-            Vignette(new Color(0f, 0f, 0f, 0.5f * heartIntensity), 0.18f);
+        float dark = Mathf.Max(heartIntensity, terrorVignette);
+        if (dark > 0f)
+            Vignette(new Color(0f, 0f, 0f, 0.5f * dark), 0.18f);
 
         // 同伴被吃：四周暗紅脈動。
         if (pulseLeft > 0f)

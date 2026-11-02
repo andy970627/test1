@@ -20,7 +20,7 @@ public class SoundPlayer : MonoBehaviour
     AudioSource giantVoice, local;
     Func<float> openingFraction;
     AudioClip giantStep, giantSweep, chew, footStep, heavyStep, pant, rockImpact;
-    AudioClip slingSnap, slingStretch, thunder, owl, wings, fire, cries, crewScream, lowChord, gust;
+    AudioClip slingSnap, slingStretch, thunder, owl, wings, fire, cries, lowChord, gust;
     AudioSource seabirds;
     AudioClip clap, stone, grind, heavy, slip, wedge, pail, soft, hay, scrape, wedgePulled, twang, arrowHit;
 
@@ -51,7 +51,6 @@ public class SoundPlayer : MonoBehaviour
         wings = ProceduralAudio.WingFlap();
         fire = ProceduralAudio.FireCrackle();
         cries = ProceduralAudio.DistantCries();
-        crewScream = ProceduralAudio.Scream();
         lowChord = ProceduralAudio.LowChord();
         gust = ProceduralAudio.SeaGust();
         stone = ProceduralAudio.StoneKnock();
@@ -203,12 +202,8 @@ public class SoundPlayer : MonoBehaviour
         }
     }
 
-    /// <summary>同伴遇害（DbD 掛鉤慘叫的做法）：全洞聽得到的慘叫，加一聲只有玩家聽得到的低沉和弦。</summary>
-    public void PlayCrewScream(Vector3 at)
-    {
-        Play(crewScream, at, 0.5f, 1.15f, 6f, 60f);
-        local.PlayOneShot(lowChord, 0.5f);
-    }
+    /// <summary>同伴遇害（DbD 掛鉤慘叫的做法）：慘叫由 ScreenFeedback 在現場播，這裡補一聲只有玩家聽得到的低沉和弦。</summary>
+    public void PlayLossChord() => local.PlayOneShot(lowChord, 0.5f);
 
     /// <summary>巨石全開（DbD 大門通電的做法）：海風灌進來，加上行琶音。</summary>
     public void PlayGust(Vector3 gap)
