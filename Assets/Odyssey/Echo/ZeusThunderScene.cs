@@ -33,6 +33,9 @@ public class ZeusThunderScene : MonoBehaviour
     /// <summary>木馬開始燃燒（播劈啪聲與遠處哭喊）。</summary>
     public event Action<Vector3> HorseBurns;
 
+    /// <summary>整段播完（接著唸木馬的詩句）。</summary>
+    public event Action Finished;
+
     public void Init(FirstPersonPlayer body, FirstPersonHands hands)
     {
         this.body = body;
@@ -160,6 +163,7 @@ public class ZeusThunderScene : MonoBehaviour
             body.ScenePitch = 0f;
         if (hands != null)
             hands.Lower = 0f;
+        Finished?.Invoke();
     }
 
     void Hide()

@@ -8,7 +8,7 @@ namespace Odyssey.Core
         Decoy, Guard, PulledWedge, Catch, Heavy, RockWindup, Whimper, CrewEaten,
         Stake, Pail, Pen, Pant, Dawn, Rush, SheepStuck, Prayer, Slip,
         Notch, Footstep, HearingRing, ArrowClutter, FindExit, Brace,
-        FirstStone, FairHit, Ambush, FavorRegained,
+        FirstStone, FairHit, Ambush, FavorRegained, Horse,
     }
 
     /// <summary>
@@ -119,6 +119,7 @@ namespace Odyssey.Core
             HintKind.FairHit => "他聽見了你，你才出手",
             HintKind.Ambush => "他沒聽見你，雷聲卻響了",
             HintKind.FavorRegained => "月光又照在巨石邊上",
+            HintKind.Horse => "岩壁上，木馬燒成了灰",
             _ => null,
         };
     }

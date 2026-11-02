@@ -186,6 +186,9 @@ public class SituationHints : MonoBehaviour
     /// <summary>有詩句的提示（宙斯法則、雅典娜、巨人吃人、禱告），在「詩句」風格且有眷顧時改用詩句。</summary>
     (string, string)? VerseFor(HintKind kind)
     {
+        // 偷襲與燃燒的木馬是失去眷顧的那一刻，照樣用詩句（只看引導風格）。
+        if (kind is HintKind.Ambush or HintKind.Horse && loop.Flags.Guide == GuideStyle.Verse)
+            return kind == HintKind.Ambush ? VerseBook.Ambush : VerseBook.Horse;
         if (!loop.VersesShown)
             return null;
         return kind switch

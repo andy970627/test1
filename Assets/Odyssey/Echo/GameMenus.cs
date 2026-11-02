@@ -331,7 +331,7 @@ public class GameMenus : MonoBehaviour
                 break;
             case View.End:
                 Label(new Rect(0, Screen.height * 0.16f, Screen.width, titleStyle.fontSize * 1.6f), endTitle, titleStyle, Gold);
-                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.16f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 3f), endSubtitle, bodyStyle, Text);
+                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.16f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 4.5f), endSubtitle, bodyStyle, Text);
                 break;
         }
 

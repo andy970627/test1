@@ -857,6 +857,8 @@ public partial class BlindGameLoop : MonoBehaviour
         string how = action == ShoreAction.Shoot ? "射箭" : "喊名字";
         Nights.End(Roster.Night, NightOutcome.Escaped, rescued, note: lost > 0 ? $"（{how} −{lost}）" : null);
         string endTitle = ShoreChoice.Title(action), endSubtitle = ShoreChoice.Subtitle(action, rescued, lost);
+        if (action == ShoreAction.Shoot && Flags.ZeusLaw)
+            endSubtitle += "\n" + VerseBook.ShoreShoot.Item1;
         QuickFade(() => EndRun(endTitle, endSubtitle), null);
         Log($"Escaped_{action}", Roster.Night, Roster.Remaining);
     }

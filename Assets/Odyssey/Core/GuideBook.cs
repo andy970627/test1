@@ -153,6 +153,7 @@ namespace Odyssey.Core
             HintKind.FairHit => "fairhit",
             HintKind.Ambush => "ambush",
             HintKind.FavorRegained => "athena",
+            HintKind.Horse => "ambush",
             _ => null,
         };
     }

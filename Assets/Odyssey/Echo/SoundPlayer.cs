@@ -103,7 +103,16 @@ public class SoundPlayer : MonoBehaviour
         source.rolloffMode = AudioRolloffMode.Logarithmic;
         source.minDistance = min;
         source.maxDistance = max;
+        go.AddComponent<AudioLowPassFilter>().cutoffFrequency = 22000f;
         return source;
+    }
+
+    /// <summary>躲起來時外界的 3D 聲音變悶（借《異形：孤立》）；只作用在世界裡的聲音，不影響詩句、琴聲與配樂。</summary>
+    public void SetMuffle(float cutoff)
+    {
+        for (int i = 0; i < Voices; i++)
+            voices[i].GetComponent<AudioLowPassFilter>().cutoffFrequency = cutoff;
+        giantVoice.GetComponent<AudioLowPassFilter>().cutoffFrequency = cutoff;
     }
 
     /// <summary>巨人的聲音依狀態：走＝腳步、守石（跑）＝較快較重的腳步、掃摸、嚼食；聆聽時只有呼吸（已在他身上循環）。</summary>

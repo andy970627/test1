@@ -22,7 +22,7 @@ public partial class BlindGameLoop
     TerrorMusic music;
     FirstPersonHands hands;
     ZeusThunderScene thunderScene;
-    AudioLowPassFilter muffle;
+    float muffleCutoff = OpenCutoff;
     bool gustPlayed;
 
     void InitZeus()
@@ -36,8 +36,7 @@ public partial class BlindGameLoop
         thunderScene.Init(body, hands);
         thunderScene.OwlFlies += sounds.PlayOwl;
         thunderScene.HorseBurns += sounds.PlayFire;
-        muffle = body.Camera.gameObject.AddComponent<AudioLowPassFilter>();
-        muffle.cutoffFrequency = OpenCutoff;
+        thunderScene.Finished += () => Hint(HintKind.Horse);
     }
 
     /// <summary>夜晚以外（選單、過場、岸邊）：配樂淡出、鏡頭不晃、聲音不悶。</summary>
@@ -47,7 +46,12 @@ public partial class BlindGameLoop
             return;
         music.Tick(default, TerrorMode.Off, true, Time.deltaTime);
         body.SceneShake = Vector3.zero;
-        muffle.cutoffFrequency = OpenCutoff;
+        feedback.SetTerrorVignette(0f);
+        if (muffleCutoff < OpenCutoff)
+        {
+            muffleCutoff = OpenCutoff;
+            sounds.SetMuffle(OpenCutoff);
+        }
     }
 
     void OnDestroy() => CyclopsHits.Hit -= OnCyclopsHit;
@@ -97,7 +101,12 @@ public partial class BlindGameLoop
 
         // 躲在羊圈裡：外面的聲音變悶。
         float cutoff = insidePen >= 0 ? HiddenCutoff : OpenCutoff;
-        muffle.cutoffFrequency = Mathf.Lerp(muffle.cutoffFrequency, cutoff, 1f - Mathf.Exp(-6f * dt));
+        float next = Mathf.Lerp(muffleCutoff, cutoff, 1f - Mathf.Exp(-6f * dt));
+        if (Mathf.Abs(next - muffleCutoff) > 1f)
+        {
+            muffleCutoff = next;
+            sounds.SetMuffle(muffleCutoff);
+        }
 
         // 巨石第一次全開：海風灌進來（DbD 大門通電的做法）。
         if (!gustPlayed && Slide.IsOpen)
@@ -150,9 +159,9 @@ public partial class BlindGameLoop
         }
         else
             Slide.Jolt(BoulderSlide.FullOpen);
+        Hint(HintKind.Ambush);
         if (Favor.OnAmbush())
             OnFavorLost();
-        Hint(HintKind.Ambush);
         OnAmbushPresentation(strike);
     }
 
@@ -179,16 +188,17 @@ public partial class BlindGameLoop
         thunderScene.Play(body.transform.position, strike.LightsCave);
     }
 
-    /// <summary>岸邊射向睡著的巨人＝偷襲（規格第 31 節 B3 #4）：雅典娜在巨人後方轉身、木馬燒成灰；不扣同伴（照第 20 節的代價）。</summary>
+    /// <summary>岸邊射向睡著的巨人＝偷襲（規格第 31 節 B3 #4）：雅典娜在洞口旁轉身、木馬燒成灰；不扣同伴（照第 20 節的代價）。</summary>
     void ShoreAmbush()
     {
         if (!Flags.ZeusLaw)
             return;
         Favor.OnAmbush();
         sounds.PlayThunder();
-        Vector3 behind = Cyclops.transform.position + Vector3.back * 4f;
-        behind.y = CaveBuilder.GroundHeight(behind);
-        thunderScene.PlayShore(behind, body.transform.position);
+        // 站在洞口外、巨石旁邊（玩家在縫外往洞裡看，這裡在視野右側），不會被巨石擋住。
+        Vector3 gap = Layout.Boulder.GapPoint;
+        Vector3 beside = new Vector3(gap.x + 3.5f, gap.y - 1f, gap.z + 1.5f);
+        thunderScene.PlayShore(beside, body.transform.position);
     }
 
     /// <summary>結局多一句（規格第 31 節 B3 #5）：整場守住法則，或偷襲過而沒贖回。</summary>

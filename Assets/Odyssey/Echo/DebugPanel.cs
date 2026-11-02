@@ -46,6 +46,7 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Throw => new Color(1f, 0.45f, 0.1f),
         CyclopsState.Eat => new Color(0.6f, 0.05f, 0.05f),
         CyclopsState.Pray => new Color(0.3f, 0.45f, 0.9f),
+        CyclopsState.Stagger => new Color(0.4f, 0.9f, 0.9f),
         _ => new Color(0.6f, 0.6f, 0.6f),
     };
 
@@ -76,6 +77,7 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Throw => "丟岩石",
         CyclopsState.Eat => "吃同伴",
         CyclopsState.Pray => "禱告",
+        CyclopsState.Stagger => "踉蹌",
         _ => "聆聽",
     };
 
