@@ -130,3 +130,56 @@
 - 投石索（規格第 31 節 I）。
 - 第 26 節 C 的畫面分區、第 26 節 D 其他動作的雙手。
 - 後期美術（雅典娜、木馬、雙手的正式模型）。
+
+## 6. 代理分工（第二十輪回饋：「利用代理分工規劃給我確認」，待確認）
+
+### 6.1 原則
+
+- **一個檔案同一時間只給一個代理改**：並行的代理各自在獨立的 git worktree 工作，檔案不重疊，合併時就不會衝突。
+- **熱點檔案只由主代理（我）改**：`BlindGameLoop.cs`（983 行，幾乎每個功能都要接在這裡）、`EchoPlayer.cs`、`SoundEvent.cs`。其他代理需要接進去時，只寫自己的元件，並在回報裡附「要在 `BlindGameLoop` 哪裡呼叫什麼」，由我統一接。
+- **規則先、畫面後**：規則代理先做完並合併，Unity 端代理才開工，大家用同一套已測試的規則。
+- 每個代理的提示都附上：規格第 31 節、本計畫對應任務、交接檔第 3～4 節（繁體中文、只 `git add` 明確路徑、TDD、不碰使用者未提交的檔案）。
+- 每個代理完成時要回報：改了哪些檔、測試結果、替使用者做的決定、延後的小問題。
+
+### 6.2 分工表
+
+| 階段 | 代理 | 任務 | 只改這些檔案 | 並行 |
+|---|---|---|---|---|
+| 0 | 主代理 | 裝 .NET 10、跑一次 `dotnet test` 確認基準；先在 `SoundEvent.cs` 加 `SnapShot`、`Stretch` 兩個聲音種類 | `SoundEvent.cs` | — |
+| A | 規則 1「彈弓」 | 任務 1、2 | `Core/SlingshotDraw.cs`、`Core/SoundRules.cs`、`Tests/SlingshotTests.cs`、`Tests/SoundRulesTests.cs` | A 的四個同時跑 |
+| A | 規則 2「巨人」 | 任務 3、4 | `Core/ZeusLaw.cs`、`Core/CyclopsBrain.cs`、`Tests/ZeusLawTests.cs`、`Tests/CyclopsBrainTests.cs` | 同上 |
+| A | 規則 3「神祇」 | 任務 5＋任務 11 的規則 | `Core/ZeusThunder.cs`、`Core/AthenaFavor.cs`、`Core/BardVerse.cs`、`Core/VerseBook.cs`、`Core/EssentialGuide.cs`、對應測試 | 同上 |
+| A | 規則 4「恐懼半徑」 | 任務 9＋任務 12 的規則 | `Core/TerrorRadius.cs`、`Core/ChaseState.cs`、`Core/DeathCard.cs`（拿掉舊 `Heartbeat`）、`Core/DesignFlags.cs`、`Tests/GuidanceTests.cs`、`Tests/DesignFlagsTests.cs`、新測試 | 同上 |
+| A 合併 | 主代理 | 依序合併四條分支、跑全部規則測試、推上去 | — | — |
+| B | 音效 | 任務 8＋第 2、3 批所有新音效（`SlingSnap`、`Thunder`、`OwlHoot`、`FireCrackle`、`Lyre`、五條配樂循環、慘叫、海鳥等） | `ProceduralAudio.cs`、`Echo/SoundPlayer.cs` | B 的三個同時跑 |
+| B | 畫面「雅典娜與木馬」 | 任務 7 的畫面部分 | `Echo/ZeusThunderScene.cs`（新）、`Echo/FirstPersonHands.cs`（新：彈弓、拉弓、發抖、低頻）、`Echo/Boulder.cs`（縫光 `SetFavor`）、`Echo/EchoField.cs`（全洞照亮） | 同上 |
+| B | 介面與配樂 | 任務 10、11 的畫面、12 的選單 | `Echo/TerrorMusic.cs`（新）、`Echo/ScreenFeedback.cs`、`Echo/MissionHud.cs`、`Echo/SituationHints.cs`、`Echo/GameMenus.cs` | 同上 |
+| B 同時 | 主代理 | 任務 6：彈弓操作、`SlingStone`、打中巨人的判定流程 | `EchoPlayer.cs`、`Echo/SlingStone.cs`（新）、`Echo/Arrow.cs` | 和 B 同時 |
+| B 合併 | 主代理 | 合併三條分支；把雷鳴、眷顧、配樂、詩句全部接進 `BlindGameLoop.cs` | `BlindGameLoop.cs` | — |
+| 審查 1 | 審查代理 | 看第 1、2 批整段：規則和規格是否一致、Unity 端有沒有空引用或每幀配置、文字是否符合 `docs/game-text.md` | 只讀，不改檔 | — |
+| 修正 | 主代理 | 一次修完重大與重要問題，推上去 | — | — |
+| C | 第 3 批代理 | 任務 13～15：其他參考遊戲的音效、岸邊與結局、紀事 | `Core/ShoreChoice.cs`、`Core/GuideBook.cs`、對應測試、`docs/game-text.md`；接 `BlindGameLoop` 的地方照樣交給主代理 | — |
+| 審查 2 | 審查代理 | 看第 3 批 | 只讀 | — |
+
+一共 10 個子代理：規則 4、Unity 端 3、第 3 批 1、審查 2。
+
+### 6.3 依賴關係
+
+```
+階段 0 ──► A（4 個並行）──► A 合併 ──► B（3 個代理＋主代理並行）──► B 合併 ──► 審查 1 ──► 修正
+                                                                                          │
+                                                                    第 1、2 批可交使用者實測 ◄┘
+                                                                                          │
+                                                                          C ──► 審查 2 ──► 修正
+```
+
+報告時間緊的話，做完「B 合併」就可以先推給你測，審查和第 3 批之後補。
+
+### 6.4 風險
+
+| 風險 | 處理 |
+|---|---|
+| Unity 端的程式在這裡沒辦法編譯 | 每次合併都推上去讓 CI 編譯（需要你先照 `docs/ci-setup.md` 設好 Unity 授權）；沒設的話只能等你在 Unity 開專案時看 Console 錯誤 |
+| 代理之間理解不一致 | 規則階段先合併，B 階段的代理拿到的是同一份已測試的規則與介面 |
+| 子代理比主代理自己做更花用量 | 規則代理的任務都寫得很具體，可以用較快的模型；審查用最強的模型 |
+| 合併衝突 | 6.1 的檔案歸屬；若仍衝突由主代理手動解，不讓代理互相覆寫 |
