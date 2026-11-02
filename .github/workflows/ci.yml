@@ -23,6 +23,8 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet test tools/CoreTests --logger "console;verbosity=normal"
+      - name: 模擬器測試（tools/NightSim）
+        run: dotnet test tools/NightSimTests --logger "console;verbosity=normal"
 
   # 同一批測試改在真的 Unity 裡跑：多抓 Unity 編譯器（C# 版本較舊）才會報的錯，以及整個專案（含 MonoBehaviour、Editor 腳本）的編譯錯誤。
   unity-tests:
