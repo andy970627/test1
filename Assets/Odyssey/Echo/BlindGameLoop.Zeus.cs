@@ -11,10 +11,43 @@ public partial class BlindGameLoop
     /// <summary>木馬的重量：偷襲之後這一夜準頭晃動的角度（規格第 31 節 B3）。</summary>
     const float TrembleDegrees = 1.5f;
 
+    /// <summary>天亮前多久開始從縫外傳來海鳥與浪聲（DbD 終局崩塌的做法，規格第 31 節 H5）。</summary>
+    const float SeabirdsBeforeDawn = 30f;
+    /// <summary>巨人在這麼近時，他的腳步讓鏡頭輕震（借《惡靈古堡 2》暴君的沉重腳步）。</summary>
+    const float StepShakeReach = 6f;
+    const float StepShakeMeters = 0.012f;
+    /// <summary>躲在羊圈裡時外界聲音變悶（借《異形：孤立》）。</summary>
+    const float HiddenCutoff = 1400f, OpenCutoff = 22000f;
+
+    TerrorMusic music;
+    FirstPersonHands hands;
+    ZeusThunderScene thunderScene;
+    AudioLowPassFilter muffle;
+    bool gustPlayed;
+
     void InitZeus()
     {
         CyclopsHits.Hit += OnCyclopsHit;
         player.PickedUpStone += () => Hint(HintKind.FirstStone);
+        music = gameObject.AddComponent<TerrorMusic>();
+        hands = body.gameObject.AddComponent<FirstPersonHands>();
+        hands.Init(body.CameraTransform);
+        thunderScene = new GameObject("ZeusThunder").AddComponent<ZeusThunderScene>();
+        thunderScene.Init(body, hands);
+        thunderScene.OwlFlies += sounds.PlayOwl;
+        thunderScene.HorseBurns += sounds.PlayFire;
+        muffle = body.Camera.gameObject.AddComponent<AudioLowPassFilter>();
+        muffle.cutoffFrequency = OpenCutoff;
+    }
+
+    /// <summary>夜晚以外（選單、過場、岸邊）：配樂淡出、鏡頭不晃、聲音不悶。</summary>
+    void LateUpdate()
+    {
+        if (State == null || State.Phase == LoopPhase.Night || music == null)
+            return;
+        music.Tick(default, TerrorMode.Off, true, Time.deltaTime);
+        body.SceneShake = Vector3.zero;
+        muffle.cutoffFrequency = OpenCutoff;
     }
 
     void OnDestroy() => CyclopsHits.Hit -= OnCyclopsHit;
@@ -24,8 +57,15 @@ public partial class BlindGameLoop
         Favor.NewNight();
         Thunder.NewNight();
         Chase.Reset();
+        gustPlayed = false;
         if (player != null)
             player.AimTremble = 0f;
+        if (thunderScene != null)
+            thunderScene.Stop();
+        if (sounds != null)
+            sounds.StopSeabirds();
+        if (Layout.Boulder != null)
+            Layout.Boulder.SetFavorNow(Favor.Has);
     }
 
     /// <summary>每一幀（夜晚中）：追殺狀態與恐懼半徑的讀數、手抖。</summary>
@@ -39,6 +79,40 @@ public partial class BlindGameLoop
         bool praying = brain.State == CyclopsState.Pray;
         Terror = TerrorRadius.Evaluate(distance, Chase.Chasing, listening, praying, Difficulty);
         player.AimTremble = Favor.Tremble ? TrembleDegrees : 0f;
+
+        float dt = Time.deltaTime;
+        bool hush = listening && distance <= TerrorRadius.ListenSilence;
+        music.Tick(Terror, Flags.Terror, hush, dt);
+        feedback.LegacyHeartbeat = Flags.Terror == TerrorMode.Legacy;
+        bool close = Flags.Terror == TerrorMode.Layered && Terror.Layer is TerrorLayer.Three or TerrorLayer.Chase;
+        feedback.SetTerrorVignette(close ? (Terror.Layer == TerrorLayer.Chase ? 0.8f : 0.55f) : 0f);
+
+        hands.Visible = !player.CarryingStake;
+        hands.Draw = player.Slingshot.Fraction;
+        hands.Tremble = Favor.Tremble ? 0.6f : 0f;
+
+        // 巨人走動時，越近腳步越讓鏡頭震。
+        float shake = brain.IsMoving && distance < StepShakeReach ? (1f - distance / StepShakeReach) * StepShakeMeters : 0f;
+        body.SceneShake = shake > 0f ? new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), 0f) * shake : Vector3.zero;
+
+        // 躲在羊圈裡：外面的聲音變悶。
+        float cutoff = insidePen >= 0 ? HiddenCutoff : OpenCutoff;
+        muffle.cutoffFrequency = Mathf.Lerp(muffle.cutoffFrequency, cutoff, 1f - Mathf.Exp(-6f * dt));
+
+        // 巨石第一次全開：海風灌進來（DbD 大門通電的做法）。
+        if (!gustPlayed && Slide.IsOpen)
+        {
+            gustPlayed = true;
+            sounds.PlayGust(Layout.Boulder.GapPoint);
+        }
+
+        // 天亮前 30 秒：縫外的海鳥與浪聲越來越大。
+        float left = (1f - Dawn.Fraction) * DawnClock.DefaultNightSeconds;
+        if (left <= SeabirdsBeforeDawn)
+        {
+            sounds.StartSeabirds(Layout.Boulder.GapPoint);
+            sounds.SetSeabirdsVolume(0.9f * (1f - left / SeabirdsBeforeDawn));
+        }
     }
 
     /// <summary>石子或箭直接打中巨人：依宙斯法則判定（打中前他有沒有聽見你、是不是正循著你的聲音而來）。</summary>
@@ -72,6 +146,7 @@ public partial class BlindGameLoop
             feedback.CrewEaten(struck.transform.position);
             hud.FlashCrew();
             LoseCrew(struck);
+            sounds.PlayLossChord();
         }
         else
             Slide.Jolt(BoulderSlide.FullOpen);
@@ -89,7 +164,42 @@ public partial class BlindGameLoop
         OnFavorChanged(true);
     }
 
-    // 下面三個由畫面／音效接上（第 1、2 批合併後補齊）。
-    partial void OnFavorChanged(bool has);
-    partial void OnAmbushPresentation(ThunderStrike strike);
+    void OnFavorChanged(bool has)
+    {
+        Layout.Boulder.SetFavor(has);
+        // 重新得到眷顧：貓頭鷹從巨石那邊叫一聲。
+        if (has)
+            sounds.PlayOwl(Layout.Boulder.GapPoint + Vector3.up * 2f);
+    }
+
+    void OnAmbushPresentation(ThunderStrike strike)
+    {
+        sounds.PlayThunder();
+        music.PauseDrone(3f);
+        thunderScene.Play(body.transform.position, strike.LightsCave);
+    }
+
+    /// <summary>岸邊射向睡著的巨人＝偷襲（規格第 31 節 B3 #4）：雅典娜在巨人後方轉身、木馬燒成灰；不扣同伴（照第 20 節的代價）。</summary>
+    void ShoreAmbush()
+    {
+        if (!Flags.ZeusLaw)
+            return;
+        Favor.OnAmbush();
+        sounds.PlayThunder();
+        Vector3 behind = Cyclops.transform.position + Vector3.back * 4f;
+        behind.y = CaveBuilder.GroundHeight(behind);
+        thunderScene.PlayShore(behind, body.transform.position);
+    }
+
+    /// <summary>結局多一句（規格第 31 節 B3 #5）：整場守住法則，或偷襲過而沒贖回。</summary>
+    string ZeusEpilogue()
+    {
+        if (!Flags.ZeusLaw)
+            return "";
+        if (!Favor.EverAmbushed)
+            return "\n" + VerseBook.EndingKept.Item1;
+        if (!Favor.Has)
+            return "\n" + VerseBook.EndingTurned.Item1;
+        return "";
+    }
 }

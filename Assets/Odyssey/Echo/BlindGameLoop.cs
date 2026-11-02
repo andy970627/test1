@@ -333,6 +333,7 @@ public partial class BlindGameLoop : MonoBehaviour
 
     void EndRun(string title, string subtitle)
     {
+        subtitle += ZeusEpilogue();
         ResetRun();
         menus.ShowEnd(title, subtitle, Difficulty);
     }
@@ -670,6 +671,7 @@ public partial class BlindGameLoop : MonoBehaviour
         feedback.CrewEaten(eaten.transform.position);
         hud.FlashCrew();
         LoseCrew(eaten);
+        sounds.PlayLossChord();
         Hint(HintKind.CrewEaten);
     }
 
@@ -832,6 +834,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Transform cam = body.CameraTransform;
         if (action == ShoreAction.Shoot)
         {
+            ShoreAmbush();
             sounds.PlayLocal(sounds.Twang, 0.8f);
             Arrow.Shoot(cam.position + cam.forward * 0.5f, (Cyclops.HeadPosition - cam.position).normalized * BowDraw.MaxSpeed, null);
         }
