@@ -100,6 +100,21 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>主選單「實驗」頁的設計開關（規格第 28 節）。</summary>
     public DesignFlags Flags { get; } = new();
 
+    /// <summary>雅典娜的眷顧（規格第 31 節 B3）：整場保留；失去時縫光熄滅、詩句只剩按鍵。</summary>
+    public AthenaFavor Favor { get; } = new();
+
+    /// <summary>宙斯的雷鳴（規格第 31 節 B1）：每夜第一次偷襲才照亮全洞。</summary>
+    public ZeusThunder Thunder { get; } = new();
+
+    /// <summary>巨人是否正在追殺你（規格第 31 節 H2），給配樂用。</summary>
+    public ChaseState Chase { get; } = new();
+
+    /// <summary>這一幀的恐懼半徑讀數（規格第 31 節 H1），給配樂與畫面四角變暗用。</summary>
+    public TerrorReading Terror { get; private set; }
+
+    /// <summary>引導用詩句（規格第 31 節 D）且還有雅典娜的眷顧時為 true；否則只顯示按鍵。</summary>
+    public bool VersesShown => Flags.Guide == GuideStyle.Verse && Favor.Has;
+
     GameMenus menus;
     DeathScreen deathScreen;
     ScreenFeedback feedback;

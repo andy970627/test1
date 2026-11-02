@@ -29,7 +29,7 @@ namespace Odyssey.Core
         static readonly GuideEntry[] All =
         {
             new("move", GuidePage.Controls, "走與跑", "WASD 走・Shift 跑。跑太久會喘，喘氣聲巨人也聽得到。"),
-            new("clap", GuidePage.Controls, "製造聲音", "空白鍵 製造聲音，照亮四周。"),
+            new("clap", GuidePage.Controls, "彈弓", "空白鍵 點一下空彈製造聲音，照亮身邊・按住 拉弓、放開 把石子射出去（石子也是楔子，射一顆少一顆）。"),
             new("bow", GuidePage.Controls, "弓", "按住左鍵 拉弓・放開 射箭。拿著木樁時不能拉弓。"),
             new("push", GuidePage.Controls, "推巨石", "E 推・Shift＋E 猛推。"),
             new("wedge", GuidePage.Controls, "楔子", "右鍵 塞石子當楔子（按住 拔回）。"),
@@ -56,6 +56,10 @@ namespace Odyssey.Core
             new("guard", GuidePage.Giant, "守石", "他一聽到巨石的聲音，就跑回去守著。"),
             new("pull", GuidePage.Giant, "拔楔子", "他摸完巨石，會拔掉最外面的石子楔子，巨石跟著滑回。先把他引開再推。"),
             new("rock", GuidePage.Giant, "丟岩石冷卻", "聲音太遠摸不到時，他會舉起岩石朝聲音丟過去。丟完要等一陣子才能再丟；趕快離開剛才出聲的地方。"),
+            new("zeuslaw", GuidePage.Giant, "宙斯的法則", "宙斯守護主人與客人，不容人從暗處出手。石子或箭打中巨人時，若他三秒內聽見了你、正循著你的聲音而來，就是正面出手；否則就是偷襲。"),
+            new("fairhit", GuidePage.Giant, "正面出手", "先出聲，再出手。被正面打中的他會踉蹌兩秒半，聽不見也不動，之後走向你出手的地方。"),
+            new("ambush", GuidePage.Giant, "偷襲", "打中正在禱告、吃人、守著巨石，或根本沒聽見你的他，宙斯就降下雷鳴：雷光照亮整個洞一瞬，他衝向你，雷殛落在一名跟著你的同伴身上；沒人跟著時，巨石滑回。那一夜，你的手會一直發抖。"),
+            new("athena", GuidePage.Giant, "雅典娜的眷顧", "灰眼的女神看顧守法的人：巨石邊的月光、詩人的吟唱，都是她的眷顧。偷襲就會失去；之後一次正面出手，她會回過頭來。"),
             new("prayer", GuidePage.Giant, "禱告", "波呂斐摩斯偶爾停下，向父親波塞頓禱告。禱告時他什麼都聽不見，正是猛推巨石的時候；但整個洞會跟著震動。"),
 
             new("whimper", GuidePage.Crew, "嗚咽", "同伴躲在洞裡各處，偶爾嗚咽。找到他，E 帶他走。"),
@@ -145,6 +149,10 @@ namespace Odyssey.Core
             HintKind.ArrowClutter => "arrows",
             HintKind.FindExit => "exit",
             HintKind.Brace => "brace",
+            HintKind.FirstStone => "zeuslaw",
+            HintKind.FairHit => "fairhit",
+            HintKind.Ambush => "ambush",
+            HintKind.FavorRegained => "athena",
             _ => null,
         };
     }
