@@ -180,7 +180,8 @@ namespace Odyssey.Core
                 return;
             if (!SoundRules.CanHear(e, Position, HearingMultiplierFor(e.Kind)))
                 return;
-            if (SoundRules.Source(e.Kind) == SoundSource.Player)
+            // 巨石自己往回滑（Slip）不是玩家弄出來的，不算「聽到你」（宙斯法則）。
+            if (SoundRules.Source(e.Kind) == SoundSource.Player && e.Kind != SoundKind.Slip)
                 SecondsSinceHeardPlayer = 0f;
 
             // 巨石自己往回滑（Slip）時，已經守在旁邊的巨人不必重新摸一次：只記下巨石現在的位置。

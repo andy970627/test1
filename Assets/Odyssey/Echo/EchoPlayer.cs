@@ -56,6 +56,18 @@ public class EchoPlayer : MonoBehaviour
 
     /// <summary>拉弓（按住左鍵）；拉弓中走速減半、不能跑。</summary>
     public BowDraw Bow { get; } = new();
+
+    /// <summary>彈弓（空白鍵，規格第 31 節 A）：點一下空彈照亮身邊；按住拉、放開把石子射出去。</summary>
+    public SlingshotDraw Slingshot { get; } = new();
+
+    /// <summary>木馬的重量（規格第 31 節 B3）：偷襲之後這一夜手會抖，彈弓和弓的準頭左右上下晃這麼多度。</summary>
+    public float AimTremble { get; set; }
+
+    /// <summary>彈弓射出一顆石子。</summary>
+    public event Action ShotStone;
+
+    const float StretchNoiseSeconds = 0.4f;
+    float stretchTimer;
     public Stamina Stamina { get; } = new();
 
     /// <summary>這一幀對巨石的推法，由 BlindGameLoop 傳給 BoulderSlide.Tick。</summary>
@@ -132,6 +144,7 @@ public class EchoPlayer : MonoBehaviour
         rightPulled = false;
         wedgeBusy = -1f;
         Bow.Cancel();
+        Slingshot.Cancel();
     }
 
     void Update()
@@ -181,21 +194,16 @@ public class EchoPlayer : MonoBehaviour
         else
         {
             PushMode = PushMode.None;
-            bool wantRun = shift && !CarryingStake && !Bow.Drawing && Flat(controller.velocity).sqrMagnitude > 0.01f;
+            bool wantRun = shift && !CarryingStake && !Bow.Drawing && !Slingshot.Drawing && Flat(controller.velocity).sqrMagnitude > 0.01f;
             running = Stamina.Tick(dt, wantRun);
         }
         if (Stamina.PantDue(dt))
             SoundBus.Emit(SoundKind.Pant, body.CameraTransform.position);
-        body.walkSpeed = (running ? RunSpeed : CrouchSpeed) * Bow.WalkMultiplier;
+        body.walkSpeed = (running ? RunSpeed : CrouchSpeed) * Bow.WalkMultiplier * Slingshot.WalkMultiplier;
         crew.Running = running;
         UpdateSteps(running);
 
-        // 空白鍵拍手；簡報也是按空白鍵開始，開始那一幀的空白鍵不算拍手。
-        if (keyboard.spaceKey.wasPressedThisFrame && Time.frameCount != enabledFrame)
-        {
-            SoundBus.Emit(SoundKind.Clap, body.CameraTransform.position);
-            Used?.Invoke(PromptKind.Clap);
-        }
+        UpdateSlingshot(keyboard, dt);
 
         UpdateBow(mouse, dt);
 
@@ -358,8 +366,67 @@ public class EchoPlayer : MonoBehaviour
         Transform cam = body.CameraTransform;
         SoundBus.Emit(SoundKind.Twang, cam.position);
         // 從鏡頭前 0.1 m（還在自己的身體裡、已忽略碰撞）射出，貼著牆也不會從牆裡面生出來。
-        Arrow.Shoot(cam.position + cam.forward * 0.1f, cam.forward * speed.Value, controller);
+        Vector3 dir = Aim(cam);
+        Arrow.Shoot(cam.position + dir * 0.1f, dir * speed.Value, controller);
         Used?.Invoke(PromptKind.Shoot);
+    }
+
+    /// <summary>
+    /// 空白鍵的彈弓（規格第 31 節 A）。點一下（不到 0.3 秒）空彈「啪」＝製造聲音；按住拉皮筋（細細的吱聲、不照亮），
+    /// 拉超過 0.3 秒放開、身上有石子就射出去（出手的「啪」會照亮你身邊）。拿著木樁時只能空彈。
+    /// 選單按空白鍵開始的那一幀不算。
+    /// </summary>
+    void UpdateSlingshot(Keyboard keyboard, float dt)
+    {
+        if (keyboard.spaceKey.wasPressedThisFrame && Time.frameCount != enabledFrame)
+        {
+            Slingshot.Begin();
+            stretchTimer = 0f;
+        }
+        if (!Slingshot.Drawing)
+            return;
+        Slingshot.Tick(dt);
+        Transform cam = body.CameraTransform;
+        if (keyboard.spaceKey.isPressed)
+        {
+            if (Slingshot.Fraction * SlingshotDraw.FullDraw >= SlingshotDraw.TapSeconds)
+            {
+                stretchTimer += dt;
+                if (stretchTimer >= StretchNoiseSeconds)
+                {
+                    stretchTimer = 0f;
+                    SoundBus.Emit(SoundKind.Stretch, cam.position);
+                }
+            }
+            return;
+        }
+
+        SlingshotShot shot = Slingshot.Release(Stones > 0 && !CarryingStake);
+        if (shot.Kind == SlingshotShotKind.SnapOnly)
+        {
+            SoundBus.Emit(SoundKind.Clap, cam.position);
+            Used?.Invoke(PromptKind.Clap);
+        }
+        else if (shot.Kind == SlingshotShotKind.Stone)
+        {
+            Stones--;
+            SoundBus.Emit(SoundKind.SnapShot, cam.position);
+            Vector3 dir = Aim(cam);
+            LooseStone.Spawn(cam.position + dir * 0.15f, dir * shot.Speed, controller, fromSlingshot: true);
+            Used?.Invoke(PromptKind.Clap);
+            ShotStone?.Invoke();
+        }
+    }
+
+    /// <summary>瞄準方向：鏡頭正前方，手抖時（AimTremble）用平滑的雜訊左右上下晃。</summary>
+    Vector3 Aim(Transform cam)
+    {
+        if (AimTremble <= 0f)
+            return cam.forward;
+        float t = Time.time * 1.7f;
+        float yaw = (Mathf.PerlinNoise(t, 0.3f) - 0.5f) * 2f * AimTremble;
+        float pitch = (Mathf.PerlinNoise(0.7f, t) - 0.5f) * 2f * AimTremble;
+        return Quaternion.AngleAxis(yaw, cam.up) * Quaternion.AngleAxis(pitch, cam.right) * cam.forward;
     }
 
     void UpdatePickups()

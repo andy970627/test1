@@ -586,6 +586,16 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
+        public void SecondsSinceHeardPlayer_NotResetBySlip()
+        {
+            // 巨石自己往回滑不是玩家弄出來的聲音：不能讓之後的偷襲被算成「先出聲」。
+            brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
+            T(2f, Far);
+            brain.Hear(Snd(SoundKind.Slip, brain.Position));
+            Assert.AreEqual(2f, brain.SecondsSinceHeardPlayer, 1e-4f);
+        }
+
+        [Test]
         public void SecondsSinceHeardPlayer_ResetsEvenWhenIgnored()
         {
             brain.Hear(Snd(SoundKind.Clap, 8f, 0f));

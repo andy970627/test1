@@ -171,6 +171,9 @@ public class Arrow : MonoBehaviour
             return;
         if (sheep != null)
             sheep.Bleat();
+        // 打中巨人：先回報（宙斯法則看的是打中前他有沒有聽到你），再發落點聲。
+        if (other.GetComponentInParent<BlindCyclops>() != null)
+            CyclopsHits.Report(transform.position);
         Drop(other);
         SoundBus.Emit(SoundKind.Arrow, transform.position);
     }
