@@ -116,7 +116,7 @@ namespace Odyssey.Core
             HintKind.FindExit => "海風從巨石那邊吹來，邊緣透著月光",
             HintKind.Brace => "你頂著巨石，它沒有往回滑",
             HintKind.FirstStone => "你撿起了一顆石子",
-            HintKind.FairHit => "他聽見了你，石子才飛出去",
+            HintKind.FairHit => "他聽見了你，你才出手",
             HintKind.Ambush => "他沒聽見你，雷聲卻響了",
             HintKind.FavorRegained => "月光又照在巨石邊上",
             _ => null,
