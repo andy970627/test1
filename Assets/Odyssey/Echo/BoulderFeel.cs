@@ -52,6 +52,17 @@ public class BoulderFeel : MonoBehaviour
 
     float kickAmp, kickLeftShake, kickDuration;
 
+    // 被撞（羊、禱告震動、巨人拔楔子）時晃一下：衰減的左右搖擺（規格第 32 節 C、D）。
+    const float BumpSeconds = 0.9f, BumpHz = 2.2f;
+    float bumpDegrees, bumpLeft;
+
+    /// <summary>巨石被撞了一下：晃 degrees 度，0.9 秒內停下。</summary>
+    public void Bump(float degrees)
+    {
+        bumpDegrees = Mathf.Max(bumpDegrees * (bumpLeft / BumpSeconds), degrees);
+        bumpLeft = BumpSeconds;
+    }
+
     /// <summary>一次性的鏡頭震動（撞到東西、岩石落在附近）：幅度 amplitude 公尺，seconds 秒內衰減。</summary>
     public void Kick(float amplitude, float seconds)
     {
@@ -79,7 +90,9 @@ public class BoulderFeel : MonoBehaviour
         float wave = Mathf.Sin(time * SwayHz * 2f * Mathf.PI);
         float bob = mode == PushMode.Heavy ? HeavyBob : mode == PushMode.Light ? LightBob : 0f;
         Transform body = boulder.Body;
-        body.localRotation = Quaternion.Euler(wave * sway, 0f, 0f);
+        bumpLeft = Mathf.Max(0f, bumpLeft - dt);
+        float bump = bumpLeft > 0f ? bumpDegrees * (bumpLeft / BumpSeconds) * Mathf.Sin((BumpSeconds - bumpLeft) * BumpHz * 2f * Mathf.PI) : 0f;
+        body.localRotation = boulder.Roll * Quaternion.Euler(wave * sway, 0f, bump);
         body.localPosition += new Vector3(0f, Mathf.Abs(wave) * bob, -CatchJolt * (joltLeft / CatchJoltSeconds));
 
         // 鏡頭：推的時候前傾，猛推時抖，卡住時往後震。
@@ -107,6 +120,7 @@ public class BoulderFeel : MonoBehaviour
         gritTimer = 0f;
         Tremor = 0f;
         kickLeftShake = 0f;
+        bumpLeft = 0f;
         if (boulder != null)
             boulder.Body.localRotation = Quaternion.identity;
         if (player != null)

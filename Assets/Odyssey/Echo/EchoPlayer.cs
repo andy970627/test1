@@ -77,6 +77,10 @@ public class EchoPlayer : MonoBehaviour
     /// <summary>站在巨石前、面向巨石（推的範圍內）。</summary>
     public bool AtBoulder { get; private set; }
 
+    /// <summary>手貼在石面的哪裡（−1 左緣～+1 右緣）與身體正不正（cos），給 PushContact 用。</summary>
+    public float PushLateral { get; private set; }
+    public float PushFacing { get; private set; }
+
     /// <summary>正在塞楔子（0.6 秒內不能推）。</summary>
     public bool Wedging => wedgeBusy >= 0f;
 
@@ -165,8 +169,11 @@ public class EchoPlayer : MonoBehaviour
         float dt = Time.deltaTime;
         bool shift = keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed;
         Vector3 forward = Flat(body.CameraTransform.forward).normalized;
-        Vector3 toPush = Flat(boulder.PushPoint - transform.position);
-        AtBoulder = toPush.magnitude <= PushReach && Vector3.Dot(forward, toPush.normalized) > PushFacingDot;
+        // 沿著整面石面都推得到（規格第 32 節 A），要面向它。
+        bool touching = boulder.FaceContact(transform.position, forward, out float lateral, out float facing);
+        PushLateral = lateral;
+        PushFacing = facing;
+        AtBoulder = touching && facing > PushFacingDot;
         AtGap = slide.IsOpen && Flat(boulder.GapPoint - transform.position).magnitude <= PushReach;
         PushMode wasPushing = PushMode;
 

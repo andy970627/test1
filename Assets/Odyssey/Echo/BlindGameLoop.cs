@@ -504,6 +504,7 @@ public partial class BlindGameLoop : MonoBehaviour
         {
             prayJolts++;
             Slide.Jolt(SheepRush.JoltMeters);
+            feel.Bump(1.2f);
         }
         if (prayTimer >= CyclopsBrain.PraySeconds || Cyclops.Brain.State != CyclopsState.Pray)
             StopPrayer();
@@ -526,7 +527,14 @@ public partial class BlindGameLoop : MonoBehaviour
         bool braced = player.AtBoulder && player.PushMode == PushMode.None;
         if (braced && Slide.Opening > BraceHintOpening)
             Hint(HintKind.Brace);
-        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake, braced);
+        // 怎麼推（規格第 32 節 A、B）：手的位置、身體正不正、幾個同伴一起推。
+        Crew.SetPushHelp(player.PushMode != PushMode.None);
+        PushContact contact = player.PushMode != PushMode.None
+            ? PushContact.Evaluate(player.PushLateral, player.PushFacing, Crew.Helpers)
+            : PushContact.Neutral;
+        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake, braced, contact);
+        if (noise.HandsSlipped)
+            feel.Kick(0.03f, 0.25f);
         Layout.Boulder.SetOpening(Slide.Opening);
         gapWhistle.position = Layout.Boulder.GapPoint + Vector3.up;
         // 每推開 25%（這一夜第一次）巨石沉一聲、進度條閃一下（規格第 22 節 C）。
@@ -542,7 +550,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Vector3 face = Layout.Boulder.PushPoint;
         // 卡住時只發 Boulder（巨響），不再同時發 Grind，避免兩聲疊在一起。
         if (noise.Grind && !noise.Catch)
-            SoundBus.Emit(SoundKind.Grind, face);
+            SoundBus.Emit(SoundKind.Grind, face, contact.NoiseMultiplier);
         if (noise.Heavy || noise.Catch)
             SoundBus.Emit(SoundKind.Boulder, face);
         if (noise.Catch)
@@ -594,6 +602,7 @@ public partial class BlindGameLoop : MonoBehaviour
         {
             sheep[i].Bleat();
             Slide.Jolt(SheepRush.JoltMeters);
+            feel.Bump(2f);
         }
         if (t.Knock && Slide.GiantPull())
         {
@@ -703,6 +712,7 @@ public partial class BlindGameLoop : MonoBehaviour
     {
         if (State.Phase != LoopPhase.Night || !Slide.GiantPull())
             return;
+        feel.Bump(1.5f);
         Vector3 gap = Layout.Boulder.GapPoint + new Vector3(0f, 0f, -0.3f);
         LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null, knockedLoose: true);
         SoundBus.Emit(SoundKind.Cyclops, gap);
@@ -711,6 +721,33 @@ public partial class BlindGameLoop : MonoBehaviour
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
+
+    /// <summary>
+    /// 天亮（規格第 32 節 D）：巨人站到巨石前，1.5 秒把它推回原位，聽得到沉重的磨擦；死亡畫面的字照常疊在上面。
+    /// </summary>
+    System.Collections.IEnumerator GiantClosesBoulder()
+    {
+        Boulder boulder = Layout.Boulder;
+        Vector3 face = boulder.PushPoint;
+        var ground = new Vector3(face.x, boulder.BaseCenter.y, face.z - 1.2f);
+        Cyclops.PlaceSleeping(ground, face + Vector3.forward);
+        body.FaceTowards(face + Vector3.up);
+        float from = Slide.Opening;
+        float noiseTimer = 0f;
+        const float seconds = 1.5f;
+        for (float t = 0f; t < seconds; t += Time.deltaTime)
+        {
+            boulder.SetOpening(Mathf.Lerp(from, 0f, Mathf.SmoothStep(0f, 1f, t / seconds)));
+            noiseTimer += Time.deltaTime;
+            if (from > 0.01f && noiseTimer >= 0.4f)
+            {
+                noiseTimer = 0f;
+                sounds.PulledBack(boulder.PushPoint);
+            }
+            yield return null;
+        }
+        boulder.SetOpening(0f);
+    }
 
     void Fail(FailReason reason)
     {
@@ -726,6 +763,8 @@ public partial class BlindGameLoop : MonoBehaviour
         Cyclops.Roar();
         if (reason != FailReason.Dawn)
             body.FaceTowards(Cyclops.HeadPosition);
+        else
+            StartCoroutine(GiantClosesBoulder());
 
         string cause = FailReasonText.Describe(reason);
         Nights.End(night, NightLog.From(reason), eaten: record.Crew > 0);
