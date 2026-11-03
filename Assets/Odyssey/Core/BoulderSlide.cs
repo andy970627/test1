@@ -13,13 +13,16 @@ namespace Odyssey.Core
         public readonly bool Heavy;
         public readonly bool Slip;
         public readonly bool Catch;
+        /// <summary>歪著推手滑了（規格第 32 節 A）：停 0.5 秒，不出巨響。</summary>
+        public readonly bool HandsSlipped;
 
-        public BoulderNoise(bool grind, bool heavy, bool slip, bool catching = false)
+        public BoulderNoise(bool grind, bool heavy, bool slip, bool catching = false, bool handsSlipped = false)
         {
             Grind = grind;
             Heavy = heavy;
             Slip = slip;
             Catch = catching;
+            HandsSlipped = handsSlipped;
         }
     }
 
@@ -50,10 +53,12 @@ namespace Odyssey.Core
         public const float CatchMax = 0.4f;
         public const float CatchStallSeconds = 0.3f;
         public const float CatchResetSeconds = 2f;
+        public const float HandSlipStallSeconds = 0.5f;
 
         const float TimerEps = 1e-5f;
 
         readonly Func<double> roll;
+        PushContact contact = PushContact.Neutral;
         readonly List<float> stoneWedges = new();
         float stallLeft;
         float pushSeconds;
@@ -100,8 +105,13 @@ namespace Odyssey.Core
         }
 
         /// <param name="braced">玩家站在巨石前、面向它但沒在推：用身體頂住，不滑，放手的計時重來。</param>
-        public BoulderNoise Tick(float dt, PushMode mode, bool withStake, bool braced = false)
+        public BoulderNoise Tick(float dt, PushMode mode, bool withStake, bool braced = false) =>
+            Tick(dt, mode, withStake, braced, PushContact.Neutral);
+
+        /// <param name="contact">怎麼推（位置、角度、幫手）；只影響推的時候。</param>
+        public BoulderNoise Tick(float dt, PushMode mode, bool withStake, bool braced, PushContact contact)
         {
+            this.contact = contact;
             if (PullingBack)
             {
                 // 巨人拔楔子後的滑回：推力無效，也不發 Slip（Unity 端改發巨人的聲音）。
@@ -173,7 +183,7 @@ namespace Odyssey.Core
                 pushSeconds = 0f;
             }
 
-            float speed = (mode == PushMode.Heavy ? HeavySpeed : LightSpeed) * (withStake ? StakeMultiplier : 1f);
+            float speed = (mode == PushMode.Heavy ? HeavySpeed : LightSpeed) * (withStake ? StakeMultiplier : 1f) * contact.SpeedMultiplier;
             float t0 = pushSeconds;
             pushSeconds += moveDt;
             Opening = Math.Min(FullOpen, Opening + speed * (RampedSeconds(pushSeconds) - RampedSeconds(t0)));
@@ -185,9 +195,23 @@ namespace Odyssey.Core
             if (pushNoiseTimer + TimerEps < PushNoiseSeconds)
                 return default;
             pushNoiseTimer -= PushNoiseSeconds;
+            if (RollHandSlip())
+                return new BoulderNoise(false, false, false, false, true);
             if (mode == PushMode.Heavy)
                 return new BoulderNoise(false, true, false);
             return new BoulderNoise(true, false, false, RollCatch());
+        }
+
+        /// <summary>歪著推時每一聲磨擦擲一次骰：手滑就停 0.5 秒（正對時不擲，不改變原本的骰子順序）。</summary>
+        bool RollHandSlip()
+        {
+            if (roll == null || contact.SlipChance <= 0f)
+                return false;
+            if (roll() >= contact.SlipChance)
+                return false;
+            stallLeft = HandSlipStallSeconds;
+            pushSeconds = 0f;
+            return true;
         }
 
         /// <summary>輕推的每一聲磨擦擲一次骰；卡住時連續輕推秒數歸零，並頓 0.3 秒。</summary>
@@ -195,7 +219,7 @@ namespace Odyssey.Core
         {
             if (roll == null)
                 return false;
-            float chance = Math.Min(CatchMax, CatchPerSecond * LightPushSeconds);
+            float chance = Math.Min(CatchMax, CatchPerSecond * LightPushSeconds) * contact.CatchMultiplier;
             if (roll() >= chance)
                 return false;
             LightPushSeconds = 0f;
