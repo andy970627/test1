@@ -104,7 +104,7 @@ namespace Odyssey.Sim
 
         readonly List<(Vector2 At, float Left)> arrows = new();
         readonly List<(Vector2 At, float Left)> rocks = new();
-        float stepTimer, wedgeTimer;
+        float stepTimer, wedgeTimer, helperPant;
         bool prayJolt3, prayJolt6;
         CyclopsState lastState;
         readonly NightResult result = new();
@@ -465,9 +465,24 @@ namespace Odyssey.Sim
         void UpdateBoulder(float dt)
         {
             bool braced = AtBoulder && Pushing == PushMode.None && braceThisFrame;
-            BoulderNoise n = Slide.Tick(dt, Pushing, false, braced);
+            // 規格第 32 節：機器人從石面中間正對著推；3 m 內的跟隨者（最多 4 人）一起推，每 2 秒喘一口氣。
+            int helpers = 0;
+            if (Pushing != PushMode.None)
+                foreach (var f in Followers())
+                    if (helpers < PushContact.MaxHelpers && Vector2.Distance(f.Pos, Player) <= 3f)
+                    {
+                        helpers++;
+                        helperPant += dt / helpers;
+                    }
+            if (helperPant >= 2f)
+            {
+                helperPant = 0f;
+                Emit(SoundKind.Pant, Player + new Vector2(1.2f, 0f));
+            }
+            PushContact contact = Pushing != PushMode.None ? PushContact.Evaluate(0f, 1f, helpers) : PushContact.Neutral;
+            BoulderNoise n = Slide.Tick(dt, Pushing, false, braced, contact);
             if (n.Grind && !n.Catch)
-                Emit(SoundKind.Grind, CaveMap.PushPoint);
+                Emit(SoundKind.Grind, CaveMap.PushPoint, contact.NoiseMultiplier);
             if (n.Heavy || n.Catch)
                 Emit(SoundKind.Boulder, CaveMap.PushPoint);
             if (n.Slip)
