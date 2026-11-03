@@ -6,6 +6,8 @@ using UnityEngine;
 public class BumpSensor : MonoBehaviour
 {
     const float MinSpeed = 1f;
+    const float StalagmiteGap = 0.5f;
+    float lastStalagmite = -10f;
 
     ScreenFeedback feedback;
     CharacterController controller;
@@ -23,6 +25,14 @@ public class BumpSensor : MonoBehaviour
         Vector3 v = controller.velocity;
         v.y = 0f;
         if (v.magnitude > MinSpeed)
+        {
             feedback.Bump();
+            // 撞上石筍：巨人聽得到的一聲碰撞（蹲走腳步的兩倍，不照亮；規格第 33 節 A）。
+            if (hit.collider.GetComponent<Stalagmite>() != null && Time.time - lastStalagmite >= StalagmiteGap)
+            {
+                lastStalagmite = Time.time;
+                SoundBus.Emit(Odyssey.Core.SoundKind.Step, hit.point, 2f);
+            }
+        }
     }
 }

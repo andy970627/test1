@@ -25,7 +25,10 @@ public class BlindCyclops : MonoBehaviour
 
     public CyclopsBrain Brain { get; private set; }
     public bool Active { get; set; }
-    public Vector3 HeadPosition => transform.position + Vector3.up * 3.8f;
+    /// <summary>參考電影的巨人比例（規格第 33 節 D）：放大 1.4 倍，約 6 m，頭快碰到洞頂。只是外觀與箭的判定範圍，大腦的距離規則不變。</summary>
+    public const float Scale = 1.4f;
+
+    public Vector3 HeadPosition => transform.position + Vector3.up * 3.8f * Scale;
 
     public event Action<FailReason> CaughtPlayer;
     public event Action<int> AteCrew;
@@ -49,8 +52,9 @@ public class BlindCyclops : MonoBehaviour
         var rng = new System.Random();
         Brain = new CyclopsBrain(Flat(seat), memory, rng.NextDouble);
         BuildBody();
-        // 只給箭判斷「射中巨人」用的觸發範圍；巨人碰撞仍由 CyclopsBrain 的距離規則決定。
+        // 只給箭判斷「射中巨人」用的觸發範圍；巨人碰撞仍由 CyclopsBrain 的距離規則決定。跟著整體一起放大。
         Arrow.AddHitBox(gameObject, Vector3.up * 2.1f, 4.2f, 0.9f);
+        transform.localScale = Vector3.one * Scale;
 
         var breath = new GameObject("Breath").AddComponent<AudioSource>();
         breath.transform.SetParent(transform, false);

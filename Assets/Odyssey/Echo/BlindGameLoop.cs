@@ -11,7 +11,8 @@ using UnityEngine.InputSystem;
 /// </summary>
 public partial class BlindGameLoop : MonoBehaviour
 {
-    public const int SheepCount = 9;
+    /// <summary>羊群（規格第 33 節 C：參考電影的 40 隻真羊，從 9 隻增加到 18 隻）。</summary>
+    public const int SheepCount = 18;
 
     [Tooltip("過場播放速度倍率；2 = 所有淡入淡出與停留時間減半。")]
     public float transitionSpeed = 2f;
@@ -206,6 +207,7 @@ public partial class BlindGameLoop : MonoBehaviour
         sounds = gameObject.AddComponent<SoundPlayer>();
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
         InitZeus();
+        gameObject.AddComponent<CaveAtmosphere>().Init(Layout, Cyclops, body, () => Slide.Opening / BoulderSlide.FullOpen, seed);
 
         // 洞外的海風從巨石後面傳來：整個洞都聽得到，越接近洞口越大聲、左右聲道分得清；
         // 縫旁再加一道從縫鑽進來的細呼嘯聲。
