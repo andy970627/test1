@@ -1,0 +1,377 @@
+<title>伊薩卡比箭</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 版面：一張大畫布當舞台，上面一行標題，下面一排實驗開關；單一夜色主題（宮廷大廳的油燈） */
+:root {
+  --night: #15110d;      /* 大廳深處 */
+  --wood: #2a2018;       /* 木地板、面板 */
+  --bronze: #b98a4b;     /* 斧頭青銅、強調色 */
+  --lamp: #f0c27a;       /* 油燈光、成功 */
+  --ash: #cdbfa9;        /* 主要文字 */
+  --dim: #8a7c68;        /* 次要文字 */
+  --blood: #c8644a;      /* 失敗 */
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: auto; }
+body {
+  background: var(--night); color: var(--ash); font-family: var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 32px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; }
+h1 { font-family: var(--display); font-weight: 900; font-size: clamp(26px, 4vw, 38px); margin: 0; color: var(--lamp); letter-spacing: .04em; text-wrap: balance; }
+.sub { color: var(--dim); font-size: 14px; margin: 0; min-width: 0; }
+.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 2 / 1; background: var(--wood); border: 1px solid #3a2d22; touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.keys { color: var(--dim); font-size: 13px; line-height: 1.7; margin: 0; }
+.keys b { color: var(--ash); font-weight: 500; }
+fieldset { border: 1px solid #3a2d22; padding: 10px 14px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 10px 22px; }
+legend { font-family: var(--display); color: var(--bronze); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
+label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+select, input { accent-color: var(--bronze); font: inherit; }
+select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; padding: 2px 6px; }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.note { color: var(--dim); font-size: 12px; margin: 0; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>伊薩卡比箭</h1>
+    <p class="sub">原型・第 21 卷：先為奧德修斯的弓上弦，再一箭穿過十二把斧頭的孔。</p>
+  </header>
+
+  <div class="stage" id="stage"><canvas id="cv" aria-label="比箭場地"></canvas></div>
+
+  <p class="keys"><b>上弦</b>：按住滑鼠（或手指），左右移動，讓指針待在亮區裡，直到弓彎滿。<br>
+  <b>射箭</b>：移動滑鼠瞄準，按住拉弓，放開射出。拉滿後有一小段手最穩，撐太久手會抖。<br>
+  <b>R</b> 或點擊結果畫面：再來一次。</p>
+
+  <fieldset>
+    <legend>實驗開關</legend>
+    <label><input type="checkbox" id="optString" checked> 上弦階段</label>
+    <label><input type="checkbox" id="optFatigue" checked> 撐久手會抖</label>
+    <label><input type="checkbox" id="optGuide"> 彈道輔助線</label>
+    <label>斧孔 <select id="optHole"><option value="9">普通</option><option value="14">寬鬆</option><option value="8">嚴格</option></select></label>
+  </fieldset>
+  <p class="note">試玩用原型，確定好玩再用 Unity 正式做。改開關會從頭開始。</p>
+</div>
+
+<script>
+(() => {
+  const W = 1000, H = 500;                 // 邏輯座標
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const stage = document.getElementById('stage');
+  const opt = {
+    string: document.getElementById('optString'),
+    fatigue: document.getElementById('optFatigue'),
+    guide: document.getElementById('optGuide'),
+    hole: document.getElementById('optHole'),
+  };
+  const C = { night:'#15110d', wood:'#2a2018', bronze:'#b98a4b', lamp:'#f0c27a', ash:'#cdbfa9', dim:'#8a7c68', blood:'#c8644a' };
+
+  // 場地
+  const BOW = { x: 90, y: 300 };
+  const FLOOR = 410;
+  const AXES = Array.from({ length: 12 }, (_, i) => ({ x: 330 + i * 52 }));
+  const HOLE_Y = 300;
+  const G = 320;                           // 重力 px/s²
+
+  let scale = 1;
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    scale = cv.width / W;
+  }
+  new ResizeObserver(resize).observe(stage); resize();
+
+  // ---- 聲音（第一次互動後才建立） ----
+  let ac = null;
+  function audio() { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return ac; }
+  function tone(freq, dur, type = 'triangle', vol = .15, slide = 0) {
+    const a = audio(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, a.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), a.currentTime + dur);
+    g.gain.setValueAtTime(vol, a.currentTime); g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + dur);
+    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+  }
+  const sfx = {
+    twang: () => tone(180, .35, 'sawtooth', .12, .5),
+    ring: (i) => tone(660 + i * 40, .25, 'sine', .08),
+    thunk: () => tone(110, .2, 'square', .12, .4),
+    slip: () => tone(240, .4, 'sawtooth', .12, .3),
+  };
+
+  // ---- 狀態 ----
+  let state, attempts = 0, best = 0;
+  function reset() {
+    state = {
+      phase: opt.string.checked ? 'string' : 'aim',
+      // 上弦
+      tension: 0, needle: 0, needleV: 0, outTime: 0,
+      // 瞄準
+      aimAngle: 0, drawing: false, power: 0, fullTime: 0, sway: 0, swayT: Math.random() * 10,
+      arrow: null, passed: 0, result: null, msg: '',
+    };
+  }
+  reset();
+  for (const k in opt) opt[k].addEventListener('change', () => { attempts = 0; best = 0; reset(); });
+
+  // ---- 輸入 ----
+  const pointer = { x: W * .6, y: HOLE_Y, down: false };
+  function toLogical(e) {
+    const r = cv.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+  }
+  cv.addEventListener('pointermove', e => { Object.assign(pointer, toLogical(e)); });
+  cv.addEventListener('pointerdown', e => {
+    audio(); Object.assign(pointer, toLogical(e)); pointer.down = true;
+    try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    if (state.result) { reset(); return; }
+    if (state.phase === 'string') { state.stringStartX = pointer.x; state.stringBase = state.needle; }
+    if (state.phase === 'aim' && !state.arrow) { state.drawing = true; state.power = 0; state.fullTime = 0; }
+  });
+  function release() {
+    if (!pointer.down) return; pointer.down = false;
+    if (state.phase === 'aim' && state.drawing) {
+      state.drawing = false;
+      if (state.power < .15) { state.power = 0; return; }   // 太短＝取消
+      fire();
+    }
+  }
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', release);
+  window.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') { reset(); } });
+
+  function currentAngle() {
+    const base = Math.atan2(-(pointer.y - BOW.y), Math.max(40, pointer.x - BOW.x));
+    return Math.max(-.35, Math.min(.35, base)) + state.sway;
+  }
+
+  function fire() {
+    const v = 620 + 940 * state.power;
+    const a = currentAngle();
+    state.arrow = { x: BOW.x + 30, y: BOW.y, vx: v * Math.cos(a), vy: -v * Math.sin(a), next: 0, trail: [], stuck: false, t: 0 };
+    attempts++;
+    sfx.twang();
+  }
+
+  // ---- 更新 ----
+  function update(dt) {
+    const s = state;
+    if (s.result) return;
+
+    if (s.phase === 'string') {
+      // 指針會自己漂；玩家左右移動抵銷。放手時張力慢慢退回。
+      const drift = (Math.sin(performance.now() / 430) * .9 + (Math.random() - .5) * 2.4) * (0.6 + s.tension * 1.4);
+      s.needleV += drift * dt * 1.2;
+      s.needleV *= Math.pow(.97, dt * 60);
+      if (pointer.down) {
+        const push = (pointer.x - s.stringStartX) / 220;       // 手往右，指針往左
+        s.needle = s.stringBase + s.needleV - push;
+        s.tension = Math.min(1, s.tension + dt / 3.2);
+      } else {
+        s.needle += s.needleV * dt;
+        s.tension = Math.max(0, s.tension - dt * .6);
+      }
+      s.needle = Math.max(-1.2, Math.min(1.2, s.needle));
+      const zone = .32;
+      if (pointer.down && Math.abs(s.needle) > zone) {
+        s.outTime += dt;
+        if (s.outTime > .6) { sfx.slip(); return end(false, '弓弦滑掉了：指針離開亮區太久。弓又彈直了。'); }
+      } else s.outTime = Math.max(0, s.outTime - dt * 2);
+      if (s.tension >= 1) { s.phase = 'aim'; s.msg = '弓弦上好了。求婚者們安靜下來。'; tone(392, .5, 'sine', .1); pointer.down = false; }
+      return;
+    }
+
+    // 瞄準：拉弓中的晃動
+    s.swayT += dt;
+    if (s.drawing) {
+      s.power = Math.min(1, s.power + dt / 1.0);
+      if (s.power >= 1) s.fullTime += dt;
+      let amp;
+      if (s.power < 1) amp = .010;
+      else if (s.fullTime < 1.0) amp = .010 - .008 * s.fullTime;      // 拉滿後漸穩
+      else if (s.fullTime < 2.0) amp = .002;                           // 最穩的一秒
+      else amp = opt.fatigue.checked ? .002 + .014 * (s.fullTime - 2.0) : .002;
+      amp = Math.min(amp, .05);
+      s.sway = amp * (Math.sin(s.swayT * 7.3) * .7 + Math.sin(s.swayT * 3.1 + 1) * .3);
+    } else s.sway *= .9;
+
+    const ar = s.arrow;
+    if (ar && !ar.stuck) {
+      const steps = 4;
+      for (let i = 0; i < steps; i++) {
+        const h = dt / steps;
+        const px = ar.x, py = ar.y;
+        ar.vy += G * h; ar.x += ar.vx * h; ar.y += ar.vy * h; ar.t += h;
+        // 經過下一把斧頭
+        const axe = AXES[ar.next];
+        if (axe && px < axe.x && ar.x >= axe.x) {
+          const k = (axe.x - px) / (ar.x - px);
+          const y = py + (ar.y - py) * k;
+          const r = +opt.hole.value;
+          if (Math.abs(y - HOLE_Y) <= r) { axe.lit = 1; ar.next++; s.passed = ar.next; sfx.ring(ar.next); }
+          else {
+            ar.x = axe.x - 4; ar.y = y; ar.stuck = true; sfx.thunk();
+            const where = y < HOLE_Y ? '偏高' : '偏低';
+            const n = ar.next + 1;
+            return end(false, n === 1 ? `箭打在第一把斧頭上（${where}）。` : `穿過 ${ar.next} 個孔，卡在第 ${n} 把斧頭（${where}）。`);
+          }
+        }
+        if (ar.y > FLOOR) { ar.y = FLOOR; ar.stuck = true; sfx.thunk(); return end(false, `箭力不夠，掉在地上：穿過 ${ar.next} 個孔。`); }
+        if (ar.next >= AXES.length && ar.x > W - 30) { ar.stuck = true; return end(true, '十二把斧頭，一箭穿過。大廳裡的笑聲停了。'); }
+      }
+      ar.trail.push([ar.x, ar.y]); if (ar.trail.length > 18) ar.trail.shift();
+    }
+  }
+
+  function end(win, msg) {
+    const passed = state.arrow ? state.arrow.next : 0;
+    best = Math.max(best, passed);
+    state.result = { win, msg: win ? msg : msg + (state.phase === 'string' ? '' : '　求婚者哄堂大笑。') };
+    if (win) { tone(392, .6, 'sine', .12); setTimeout(() => tone(523, .8, 'sine', .12), 180); }
+  }
+
+  // ---- 繪製 ----
+  function draw() {
+    const s = state;
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    // 大廳
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0e0b08'); bg.addColorStop(1, C.wood);
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // 油燈光暈
+    const glow = ctx.createRadialGradient(560, 150, 10, 560, 150, 420);
+    glow.addColorStop(0, 'rgba(240,194,122,.16)'); glow.addColorStop(1, 'rgba(240,194,122,0)');
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+    // 柱子
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    for (const x of [230, 520, 810]) ctx.fillRect(x, 40, 26, FLOOR - 40);
+    // 地板與溝
+    ctx.fillStyle = '#1d160f'; ctx.fillRect(0, FLOOR, W, H - FLOOR);
+    ctx.strokeStyle = '#3a2d22'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(W, FLOOR); ctx.stroke();
+    ctx.fillStyle = '#100c08'; ctx.fillRect(AXES[0].x - 20, FLOOR, AXES[11].x - AXES[0].x + 40, 10);
+
+    // 斧頭
+    const r = +opt.hole.value;
+    AXES.forEach((a, i) => {
+      a.lit = Math.max(0, (a.lit || 0) - .01);
+      ctx.strokeStyle = '#5b4632'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(a.x, FLOOR + 6); ctx.lineTo(a.x, HOLE_Y + r + 10); ctx.stroke();
+      // 斧刃
+      ctx.fillStyle = C.bronze;
+      ctx.beginPath(); ctx.moveTo(a.x + 3, HOLE_Y - r - 6); ctx.quadraticCurveTo(a.x + 26, HOLE_Y, a.x + 3, HOLE_Y + r + 10); ctx.closePath(); ctx.fill();
+      // 孔（套環）
+      ctx.strokeStyle = s.passed > i || a.lit > .02 ? C.lamp : C.bronze;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.ellipse(a.x, HOLE_Y, 4, r + 4, 0, 0, Math.PI * 2); ctx.stroke();
+    });
+
+    // 奧德修斯（剪影）
+    ctx.fillStyle = '#0b0806';
+    ctx.beginPath(); ctx.arc(BOW.x - 30, BOW.y - 62, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(BOW.x - 46, BOW.y - 48); ctx.lineTo(BOW.x - 14, BOW.y - 48); ctx.lineTo(BOW.x - 8, FLOOR); ctx.lineTo(BOW.x - 56, FLOOR); ctx.closePath(); ctx.fill();
+
+    // 弓
+    const ang = s.phase === 'aim' ? currentAngle() : -Math.PI / 2 + .2;
+    const bend = s.phase === 'string' ? s.tension : 1;
+    const pull = s.phase === 'aim' && s.drawing ? s.power : 0;
+    ctx.save(); ctx.translate(BOW.x, BOW.y); ctx.rotate(-ang);
+    const L = 70, depth = 8 + 22 * bend;
+    ctx.strokeStyle = '#7a5a36'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -L); ctx.quadraticCurveTo(depth, 0, 0, L); ctx.stroke();
+    if (bend > .02) {
+      const sx = -pull * 38;
+      ctx.strokeStyle = C.ash; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, -L); ctx.lineTo(sx, 0); ctx.lineTo(0, L); ctx.stroke();
+      if (s.phase === 'aim' && !s.arrow) {
+        ctx.strokeStyle = C.ash; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx + 70, 0); ctx.stroke();
+      }
+    }
+    ctx.restore();
+
+    // 瞄準線／輔助線
+    if (s.phase === 'aim' && !s.arrow) {
+      ctx.strokeStyle = 'rgba(240,194,122,.35)'; ctx.setLineDash([4, 8]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(BOW.x + 30, BOW.y); ctx.lineTo(BOW.x + 30 + Math.cos(ang) * 140, BOW.y - Math.sin(ang) * 140); ctx.stroke();
+      ctx.setLineDash([]);
+      if (opt.guide.checked) {
+        const v = 620 + 940 * (s.drawing ? s.power : 1);
+        let x = BOW.x + 30, y = BOW.y, vx = v * Math.cos(ang), vy = -v * Math.sin(ang);
+        ctx.strokeStyle = 'rgba(205,191,169,.25)'; ctx.beginPath(); ctx.moveTo(x, y);
+        for (let i = 0; i < 80 && x < W && y < FLOOR; i++) { vy += G * .01; x += vx * .01; y += vy * .01; ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+    }
+
+    // 箭
+    const ar = s.arrow;
+    if (ar) {
+      ctx.strokeStyle = 'rgba(240,194,122,.25)'; ctx.lineWidth = 2; ctx.beginPath();
+      ar.trail.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+      const a = Math.atan2(ar.vy, ar.vx);
+      ctx.save(); ctx.translate(ar.x, ar.y); ctx.rotate(ar.stuck ? a : a);
+      ctx.strokeStyle = C.ash; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-46, 0); ctx.lineTo(0, 0); ctx.stroke();
+      ctx.fillStyle = C.bronze; ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(-6, -4); ctx.lineTo(-6, 4); ctx.fill();
+      ctx.restore();
+    }
+
+    // 介面：上弦量表
+    ctx.font = `500 18px ${getComputedStyle(document.body).fontFamily}`;
+    if (s.phase === 'string') {
+      const cx = 560, cy = 90, w = 360;
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(cx - w / 2 - 14, cy - 50, w + 28, 112);
+      ctx.fillStyle = C.ash; ctx.textAlign = 'center';
+      ctx.fillText('上弦：按住，左右移動讓指針留在亮區', cx, cy - 24);
+      ctx.fillStyle = '#3a2d22'; ctx.fillRect(cx - w / 2, cy, w, 14);
+      ctx.fillStyle = 'rgba(240,194,122,.35)'; ctx.fillRect(cx - w / 2 * .32, cy, w * .32, 14);
+      const nx = cx + Math.max(-1, Math.min(1, s.needle)) * w / 2;
+      ctx.fillStyle = s.outTime > 0 ? C.blood : C.lamp; ctx.fillRect(nx - 2, cy - 6, 4, 26);
+      ctx.fillStyle = '#3a2d22'; ctx.fillRect(cx - w / 2, cy + 32, w, 6);
+      ctx.fillStyle = C.bronze; ctx.fillRect(cx - w / 2, cy + 32, w * s.tension, 6);
+    } else if (!s.result) {
+      // 拉弓力道
+      const x0 = 40, y0 = 452, w = 180;
+      ctx.fillStyle = '#3a2d22'; ctx.fillRect(x0, y0, w, 8);
+      const steady = s.drawing && s.power >= 1 && s.fullTime >= .8 && s.fullTime < 2.0;
+      ctx.fillStyle = steady ? C.lamp : (s.drawing && s.fullTime > 2 && opt.fatigue.checked ? C.blood : C.bronze);
+      ctx.fillRect(x0, y0, w * s.power, 8);
+      ctx.fillStyle = C.dim; ctx.textAlign = 'left';
+      ctx.fillText(steady ? '最穩的時候' : (s.drawing && s.fullTime > 2 && opt.fatigue.checked ? '手在抖' : '拉弓'), x0, y0 - 10);
+      if (s.msg) { ctx.fillStyle = C.ash; ctx.textAlign = 'center'; ctx.fillText(s.msg, 560, 60); }
+    }
+
+    // 角落：次數
+    ctx.textAlign = 'right'; ctx.fillStyle = C.dim;
+    ctx.fillText(`第 ${Math.max(1, attempts + (s.arrow ? 0 : 1))} 次　最好：${best} / 12`, W - 24, 34);
+
+    // 結果
+    if (s.result) {
+      ctx.fillStyle = 'rgba(10,8,6,.72)'; ctx.fillRect(0, 150, W, 170);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = s.result.win ? C.lamp : C.blood;
+      ctx.font = `900 40px ${getComputedStyle(document.querySelector('h1')).fontFamily}`;
+      ctx.fillText(s.result.win ? '弓弦響了' : '沒有成功', W / 2, 215);
+      ctx.font = `500 19px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.fillStyle = C.ash; ctx.fillText(s.result.msg, W / 2, 258);
+      ctx.fillStyle = C.dim; ctx.fillText('點一下或按 R 再來一次', W / 2, 294);
+    }
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    update(dt); draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
