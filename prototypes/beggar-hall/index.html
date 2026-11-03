@@ -19,6 +19,8 @@
   color-scheme: dark;
 }
 html, body { height: 100%; }
+[hidden] { display: none !important; }
+body:not(.playing) .hud { visibility: hidden; }
 body { background: var(--night); color: var(--ash); font-family: var(--text); overflow: hidden; }
 #stage { position: fixed; inset: 0; }
 canvas#cv { display: block; width: 100%; height: 100%; }
@@ -66,7 +68,7 @@ button:hover { filter: brightness(1.12); }
 :focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
 .fail h2 { color: var(--rage); }
 .win h2 { color: var(--fire); }
-@media (max-width: 640px) { #bars { width: 170px; } #knowers { width: 160px; } #hint { display: none; } #prompt { font-size: 15px; white-space: normal; width: 90vw; } }
+@media (max-width: 640px) { #bars { width: 170px; } #knowers { width: 150px; top: auto; bottom: calc(110px + env(safe-area-inset-bottom, 0px)); } #msgs { width: calc(100vw - 32px); } #hint { display: none; } #prompt { font-size: 15px; white-space: normal; width: 90vw; bottom: calc(118px + env(safe-area-inset-bottom, 0px)); } }
 @media (prefers-reduced-motion: reduce) { #msgs div { animation: none; } }
 </style>
 
@@ -91,7 +93,7 @@ button:hover { filter: brightness(1.12); }
   <div class="card">
     <h1>門檻上的乞丐</h1>
     <p>二十年後，你扮成乞丐回到伊薩卡。宮裡擠滿了想娶你妻子的求婚者。你一定會被看見，只是不能被看穿：讓他們瞧不起你，但別被打死，也別忍不住動手。</p>
-    <p class="dim">原型・第 17～21 卷與 Nolan 電影版。兩段：宮門、大廳。試玩用，之後會丟掉重做。</p>
+    <p class="dim">原型・取材自《奧德賽》第 17～21 卷。兩段：宮門、大廳。試玩用，好玩的話再正式製作。需要鍵盤和滑鼠（電腦）。</p>
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠）。彎腰時只看得到腳和桌腳</dd>
       <dt>按住 Shift</dt><dd>站直：看得見整個廳，但被人看到就會起疑</dd>
@@ -235,6 +237,7 @@ function freshCarry() {
   return { tele: 'unknown', eum: 'unknown', pen: 'unknown', ledger: 0 };
 }
 
+function later(fn, ms) { const g = G; setTimeout(() => { if (running && G === g) fn(); }, ms); }
 function msg(text, cls) {
   const d = document.createElement('div'); d.textContent = text; if (cls) d.style.color = cls;
   $('msgs').appendChild(d); setTimeout(() => d.remove(), 4600);
@@ -322,7 +325,7 @@ function buildGate() {
   P.x = 0; P.z = -13.5; P.yaw = Math.PI; P.pitch = -.6;   // 面向 +z（宮門）
   G.goalText = '走進宮門（或找別的路）';
   msg('你和老豬倌歐邁俄斯來到宮門外。他看不見，只當你是個乞丐。');
-  setTimeout(() => running && G.seg === 'gate' && msg('門口的牧羊人墨蘭提俄斯專門找乞丐麻煩。'), 4200);
+  later(() => msg('門口的牧羊人墨蘭提俄斯專門找乞丐麻煩。'), 4200);
 }
 
 // ---------- 場景：大廳 ----------
@@ -376,7 +379,7 @@ function buildHall() {
   P.x = 0; P.z = -8.2; P.yaw = Math.PI; P.pitch = -.6;
   G.goalText = '坐到爐火邊（按住 E）';
   msg('大廳裡全是求婚者。走到爐火邊坐下，但別被看穿。');
-  setTimeout(() => running && G.seg === 'hall' && msg('向求婚者乞討是乞丐該做的事；在廳裡無端走動、站直張望，都會引人注意。'), 4200);
+  later(() => msg('向求婚者乞討是乞丐該做的事；在廳裡無端走動、站直張望，都會引人注意。'), 4200);
 }
 
 // ---------- 開始一段 ----------
@@ -386,7 +389,7 @@ function startSeg(seg) {
   G.snapshot = JSON.parse(JSON.stringify(carry));
   for (const k of Object.keys(G.knowers)) { const n = G.knowers[k]; n.tell = 0; n.kstate = carry[k]; }
   if (G.knowers.pen && carry.pen === 'knows') G.permission = true;
-  $('result').hidden = true; $('menu').hidden = true; $('dialog').hidden = true;
+  $('result').hidden = true; $('menu').hidden = true; $('dialog').hidden = true; $('msgs').innerHTML = '';
   running = true; paused = false; lockPointer();
   startMurmur(); if (murmurGain) murmurGain.gain.value = seg === 'hall' ? .25 : .05;
   sfx.lyre();
@@ -507,6 +510,7 @@ function resolveEvent(e) {
   }
   if (rel != null && rel <= w1) {
     G.body = clamp(G.body - .1, 0, 1); shake = .25; sfx.thud();
+    if (G.body <= 0) return fail('beaten');
     humiliate(n, `你笨拙地一縮，被${e.kind === 'kick' ? '踢' : '砸'}到肩膀，摔倒在地。求婚者哄堂大笑。`, false);
     if (!running) return;
     checkStatueDrop(); return;
@@ -514,7 +518,7 @@ function resolveEvent(e) {
   // 直接挨中
   let dmg = e.kind === 'kick' ? .22 : .32;
   const t = G.knowers.tele;
-  if (opt.knowers.checked && t && t.kstate === 'knows' && distP(t) < 14 && G.seg === 'hall') {
+  if (opt.knowers.checked && t && t.kstate === 'knows' && distP(t) < 14) {
     dmg *= .5; msg('忒勒馬科斯：「夠了！他是我家的客人。」');
   }
   G.body = clamp(G.body - dmg, 0, 1); shake = .5; sfx.thud();
@@ -569,8 +573,8 @@ function beg(n) {
     msg(`${n.name}：「又是你？滾開。」`); return;
   }
   n.begged = true;
-  setTimeout(() => {
-    if (!running || G.npcs.indexOf(n) < 0) return;
+  G.begT = G.t;
+  later(() => {
     if (n.kind === 'giver') {
       G.body = clamp(G.body + .12, 0, 1); n.susp = clamp(n.susp - .25, 0, 1);
       for (const h of seers()) h.susp = clamp(h.susp - .05, 0, 1);
@@ -603,7 +607,7 @@ function chooseEumaeus(i) {
   if (EUM_LINES[i][1]) {
     reveal(n, 'eum');
     msg('歐邁俄斯的手開始發抖：「主人……你回來了。」');
-    if (G.seg === 'gate') setTimeout(() => running && msg('歐邁俄斯低聲說：「別走正門。右邊有一道側門，我帶你。」'), 1800);
+    if (G.seg === 'gate') later(() => msg('歐邁俄斯低聲說：「別走正門。右邊有一道側門，我帶你。墨蘭提俄斯看到乞丐靠近就會抬腳。」'), 1800);
   } else { n.retryAt = G.t + 20; msg('歐邁俄斯皺起眉頭：「你怎麼會這樣說？」'); }
 }
 
@@ -664,7 +668,7 @@ function update(dt) {
     else {
       G.hold.t += dt;
       if (G.hold.it.type === 'sit' && !G.permission) for (const h of seers()) { addSusp(h, dt * .16); if (!running) return; }
-      if (G.hold.it.type === 'pet') { G.argos.pet = 1; for (const h of seers()) { addSusp(h, dt * .2); if (!running) return; } }
+      if (G.hold.it.type === 'pet') { G.argos.petT = (G.argos.petT || 0) + dt; if (G.argos.petT >= 1.5) G.argos.pet = 1; for (const h of seers()) { addSusp(h, dt * .2); if (!running) return; } }
       else if (G.hold.t >= G.hold.it.hold) { const it = G.hold.it; G.hold = null; finishHold(it); if (!running) return; }
     }
   }
@@ -689,6 +693,7 @@ function update(dt) {
     const s = sees(n);
     if (s) {
       if (P.standing) addSusp(n, dt * .12);
+      if (G.seg === 'hall' && len && G.t - (G.begT ?? -99) > 6) addSusp(n, dt * .05);   // 沒在乞討卻在廳裡走動
       if (G.seg === 'hall' && Math.hypot(P.x - G.weapons.x, P.z - G.weapons.z) < 2.2) {
         addSusp(n, dt * .22);
         if (!G.weaponSeen) { G.weaponSeen = true; msg('牆上掛著你的兵器。乞丐不該在這裡逗留。', 'var(--susp)'); }
@@ -707,6 +712,7 @@ function update(dt) {
     if (n.role === 'mel' && n.kick === 'ready' && distP(n) < 2.0) { n.kick = 'kicking'; msg('墨蘭提俄斯：「豬倌，你把什麼髒東西帶來了？」'); startThrow(n, 'kick'); }
     if (n.role === 'mel' && n.kick === 'done') { n.x += (3.4 - n.x) * Math.min(1, dt * 2); n.g.position.x = n.x; }
     // 歐邁俄斯知情時，標出會丟東西的人
+    if (n.role === 'mel') setMark(n, opt.knowers.checked && G.knowers.eum && G.knowers.eum.kstate === 'knows' && n.kick === 'ready' ? '靠近會踢人' : '', '#c9573f');
     if (n.kind === 'thrower') setMark(n, opt.knowers.checked && G.knowers.eum && G.knowers.eum.kstate === 'knows' ? '會丟東西' : '', '#c9573f');
   }
   G.top = top;
@@ -718,9 +724,8 @@ function update(dt) {
   // 神像
   if (G.statue === 'dropped') {
     G.statueT -= dt;
-    if (G.statueT <= 0 && !G.statueChecked) {
-      G.statueChecked = true;
-      const s = G.npcs.find(h => h.hostile && sees(h, 8));
+    if (G.statueT <= 0) {
+      const s = G.npcs.find(h => h.hostile && sees(h, 8) && Math.hypot(h.x - G.statuePos.x, h.z - G.statuePos.z) < 8);
       if (s) return fail('statue', s);
     }
   }
@@ -759,14 +764,16 @@ function updateArgos(dt) {
   if (a.state === 'asleep' && d < 3.6) { a.state = 'recognize'; a.t = 0; msg('糞堆上的老狗抬起頭，豎起耳朵，搖起了尾巴。牠認得你。'); sfx.whimper(); }
   if (a.state === 'recognize') {
     a.t += dt; a.tail.rotation.y = Math.sin(a.t * 14) * .6; a.head.position.y = .28;
+    const tl = G.knowers.tele; if (tl && dist(tl, a) < 16 && a.t > 1) { tl.lookYaw = Math.atan2(a.x - tl.x, a.z - tl.z); tl.lookT = 3; }
     if (a.t > 4.5) {
       a.state = 'dead'; a.g.rotation.z = .3; a.head.position.y = .1; sfx.whimper();
       if (a.pet) msg('你蹲下摸了摸牠。牠在你的手底下斷了氣。');
       else { G.anger = clamp(G.anger + .25, 0, 1); msg('阿爾戈斯搖了搖尾巴，然後不動了。你沒有停下來。'); if (G.anger >= 1) return fail('rage'); }
       const t = G.knowers.tele;
-      if (opt.knowers.checked && t && t.kstate === 'unknown' && dist(t, a) < 16) {
+      const tSees = t && dist(t, a) < 16 && ((a.x - t.x) * Math.sin(t.yaw) + (a.z - t.z) * Math.cos(t.yaw)) / dist(t, a) > Math.cos(1.0);
+      if (opt.knowers.checked && t && t.kstate === 'unknown' && tSees) {
         t.kstate = 'suspects'; carry.tele = 'suspects';
-        setTimeout(() => running && msg('忒勒馬科斯一直盯著那隻狗……然後看向你。（避開旁人，走到他身邊按住 E）', 'var(--tell)'), 1400);
+        later(() => msg('忒勒馬科斯一直盯著那隻狗……然後看向你。（避開旁人，走到他身邊按住 E）', 'var(--tell)'), 1400);
       }
     }
   }
@@ -792,7 +799,7 @@ function move(dx, dz) {
   const r = .32;
   const blocked = (x, z) => {
     for (const o of G.obst) if (x > o.x0 - r && x < o.x1 + r && z > o.z0 - r && z < o.z1 + r) return true;
-    for (const n of G.npcs) if (n !== G.knowers.eum && Math.hypot(x - n.x, z - n.z) < n.r + r) return true;
+    for (const n of G.npcs) if (!(n.follow && G.seg === 'gate') && Math.hypot(x - n.x, z - n.z) < n.r + r) return true;
     return false;
   };
   if (!blocked(P.x + dx, P.z)) P.x += dx;
@@ -843,7 +850,8 @@ function render() {
 
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  document.body.classList.toggle('playing', !!(G && running && !paused));
   if (G && running && !paused) { update(dt); if (G && running) hud(); }
   if (G) render();
   requestAnimationFrame(loop);
@@ -861,7 +869,7 @@ document.addEventListener('pointerlockchange', () => {
 canvas.addEventListener('mousedown', e => { audio(); if (!locked && running) { lockPointer(); drag = { x: e.clientX, y: e.clientY }; } });
 window.addEventListener('mouseup', () => { drag = null; });
 window.addEventListener('mousemove', e => {
-  if (!running || paused) return;
+  if (!running || paused || keys.KeyF) return;
   let dx = 0, dy = 0;
   if (locked) { dx = e.movementX; dy = e.movementY; }
   else if (drag) { dx = e.clientX - drag.x; dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY }; }
@@ -895,7 +903,12 @@ $('btnHall').onclick = () => {
   if ($('pTele').checked) carry.tele = 'knows'; if ($('pEum').checked) carry.eum = 'knows'; if ($('pPen').checked) carry.pen = 'knows';
   startSeg('hall');
 };
-function retry() { carry = JSON.parse(JSON.stringify(G.snapshot)); startSeg(G.seg); }
+function retry() {
+  const gained = carry.ledger - G.snapshot.ledger;
+  carry = JSON.parse(JSON.stringify(G.snapshot));
+  carry.ledger += Math.floor(gained / 2);              // 失敗：這段記下的帳保留一半
+  startSeg(G.seg);
+}
 $('btnRetry').onclick = retry;
 $('btnNext').onclick = () => startSeg('hall');
 $('btnMenu').onclick = () => { running = false; $('result').hidden = true; $('btnResume').hidden = true; $('menu').hidden = false; };

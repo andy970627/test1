@@ -58,7 +58,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
     <label><input type="checkbox" id="optGuide"> 彈道輔助線</label>
     <label>斧孔 <select id="optHole"><option value="9">普通</option><option value="14">寬鬆</option><option value="8">嚴格</option></select></label>
   </fieldset>
-  <p class="note">試玩用原型，確定好玩再用 Unity 正式做。改開關會從頭開始。</p>
+  <p class="note">試玩用原型，好玩的話再正式製作。改開關會從頭開始。手機上：手指按下決定大致方向，按住後上下拖曳微調。</p>
 </div>
 
 <script>
@@ -118,13 +118,16 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
       // 瞄準
       aimAngle: 0, drawing: false, power: 0, fullTime: 0, sway: 0, swayT: Math.random() * 10,
       arrow: null, passed: 0, result: null, msg: '',
+      stringStartX: pointer ? pointer.x : 0, stringBase: 0,
     };
+    if (pointer) pointer.down = false;
   }
+  let pointer = null;
   reset();
   for (const k in opt) opt[k].addEventListener('change', () => { attempts = 0; best = 0; reset(); });
 
   // ---- 輸入 ----
-  const pointer = { x: W * .6, y: HOLE_Y, down: false };
+  pointer = { x: W * .6, y: HOLE_Y, down: false, touch: false };
   function toLogical(e) {
     const r = cv.getBoundingClientRect();
     return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
@@ -134,8 +137,9 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
     audio(); Object.assign(pointer, toLogical(e)); pointer.down = true;
     try { cv.setPointerCapture(e.pointerId); } catch (_) {}
     if (state.result) { reset(); return; }
-    if (state.phase === 'string') { state.stringStartX = pointer.x; state.stringBase = state.needle; }
-    if (state.phase === 'aim' && !state.arrow) { state.drawing = true; state.power = 0; state.fullTime = 0; }
+    pointer.touch = e.pointerType !== 'mouse';
+    if (state.phase === 'string') { state.stringStartX = pointer.x; state.stringBase = state.needle - state.needleV; }
+    if (state.phase === 'aim' && !state.arrow) { state.drawing = true; state.power = 0; state.fullTime = 0; state.aimBase = baseAngle(); state.aimY0 = pointer.y; }
   });
   function release() {
     if (!pointer.down) return; pointer.down = false;
@@ -149,9 +153,14 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
   cv.addEventListener('pointercancel', release);
   window.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') { reset(); } });
 
-  function currentAngle() {
+  function baseAngle() {
     const base = Math.atan2(-(pointer.y - BOW.y), Math.max(40, pointer.x - BOW.x));
-    return Math.max(-.35, Math.min(.35, base)) + state.sway;
+    return Math.max(-.35, Math.min(.35, base));
+  }
+  function currentAngle() {
+    // 觸控：按下時定大致方向，拉弓中上下拖曳只做很小的微調
+    if (pointer.touch && state.drawing) return Math.max(-.35, Math.min(.35, state.aimBase - (pointer.y - state.aimY0) * .0005)) + state.sway;
+    return baseAngle() + state.sway;
   }
 
   function fire() {
@@ -181,10 +190,10 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
         s.tension = Math.max(0, s.tension - dt * .6);
       }
       s.needle = Math.max(-1.2, Math.min(1.2, s.needle));
-      const zone = .32;
+      const zone = .4;
       if (pointer.down && Math.abs(s.needle) > zone) {
         s.outTime += dt;
-        if (s.outTime > .6) { sfx.slip(); return end(false, '弓弦滑掉了：指針離開亮區太久。弓又彈直了。'); }
+        if (s.outTime > .9) { sfx.slip(); return end(false, '弓弦滑掉了：指針離開亮區太久。弓又彈直了。'); }
       } else s.outTime = Math.max(0, s.outTime - dt * 2);
       if (s.tension >= 1) { s.phase = 'aim'; s.msg = '弓弦上好了。求婚者們安靜下來。'; tone(392, .5, 'sine', .1); pointer.down = false; }
       return;
@@ -325,14 +334,16 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
     }
 
     // 介面：上弦量表
-    ctx.font = `500 18px ${getComputedStyle(document.body).fontFamily}`;
+    // 手機上畫布縮小，字跟著放大，至少約 13 px
+    const fk = Math.max(1, 13 * W / (cv.getBoundingClientRect().width || W) / 18);
+    ctx.font = `500 ${18 * fk}px ${getComputedStyle(document.body).fontFamily}`;
     if (s.phase === 'string') {
       const cx = 560, cy = 90, w = 360;
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(cx - w / 2 - 14, cy - 50, w + 28, 112);
       ctx.fillStyle = C.ash; ctx.textAlign = 'center';
       ctx.fillText('上弦：按住，左右移動讓指針留在亮區', cx, cy - 24);
       ctx.fillStyle = '#3a2d22'; ctx.fillRect(cx - w / 2, cy, w, 14);
-      ctx.fillStyle = 'rgba(240,194,122,.35)'; ctx.fillRect(cx - w / 2 * .32, cy, w * .32, 14);
+      ctx.fillStyle = 'rgba(240,194,122,.35)'; ctx.fillRect(cx - w / 2 * .4, cy, w * .4, 14);
       const nx = cx + Math.max(-1, Math.min(1, s.needle)) * w / 2;
       ctx.fillStyle = s.outTime > 0 ? C.blood : C.lamp; ctx.fillRect(nx - 2, cy - 6, 4, 26);
       ctx.fillStyle = '#3a2d22'; ctx.fillRect(cx - w / 2, cy + 32, w, 6);
@@ -358,9 +369,9 @@ select { background: var(--wood); color: var(--ash); border: 1px solid #3a2d22; 
       ctx.fillStyle = 'rgba(10,8,6,.72)'; ctx.fillRect(0, 150, W, 170);
       ctx.textAlign = 'center';
       ctx.fillStyle = s.result.win ? C.lamp : C.blood;
-      ctx.font = `900 40px ${getComputedStyle(document.querySelector('h1')).fontFamily}`;
+      ctx.font = `900 ${Math.min(40 * fk, 60)}px ${getComputedStyle(document.querySelector('h1')).fontFamily}`;
       ctx.fillText(s.result.win ? '弓弦響了' : '沒有成功', W / 2, 215);
-      ctx.font = `500 19px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.font = `500 ${Math.min(19 * fk, 30)}px ${getComputedStyle(document.body).fontFamily}`;
       ctx.fillStyle = C.ash; ctx.fillText(s.result.msg, W / 2, 258);
       ctx.fillStyle = C.dim; ctx.fillText('點一下或按 R 再來一次', W / 2, 294);
     }
