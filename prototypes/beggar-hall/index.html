@@ -1,0 +1,916 @@
+<title>門檻上的乞丐</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 版面：整個畫面是第一人稱 3D；文字只貼在四個角與下方中央，不擋視線中心。單一夜色主題（油燈與爐火） */
+:root {
+  --night: #120f0c;
+  --panel: rgba(18, 14, 11, .86);
+  --line: #3b2f24;
+  --fire: #f2b866;     /* 爐火、強調 */
+  --ash: #d8cbb6;      /* 主要文字 */
+  --dim: #8f8270;      /* 次要文字 */
+  --susp: #d9a441;     /* 疑心 */
+  --rage: #c9573f;     /* 怒火 */
+  --body: #8fae7a;     /* 身體 */
+  --tell: #b58ad6;     /* 知情者的破綻 */
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --text: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body:not(.playing) .hud { visibility: hidden; }
+body { background: var(--night); color: var(--ash); font-family: var(--text); overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+canvas#cv { display: block; width: 100%; height: 100%; }
+.hud { position: fixed; pointer-events: none; }
+#cross { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: var(--ash); opacity: .5; border-radius: 50%; }
+#vignette { inset: 0; box-shadow: inset 0 0 160px 40px var(--rage); opacity: 0; transition: opacity .2s; }
+#prompt { left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); text-align: center; font-size: 17px; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+#prompt .k { display: inline-block; border: 1px solid var(--dim); padding: 0 6px; margin-right: 6px; border-radius: 3px; font-size: 14px; }
+#warn { left: 50%; top: 38%; transform: translateX(-50%); font-family: var(--display); font-size: 24px; color: var(--fire); text-shadow: 0 2px 6px #000; white-space: nowrap; }
+#msgs { left: 50%; top: calc(18px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(720px, 92vw); }
+#msgs div { background: var(--panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 4.5s forwards; }
+@keyframes fade { 0%, 80% { opacity: 1 } 100% { opacity: 0 } }
+#bars { left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 7px; width: 230px; font-size: 13px; }
+.bar { display: grid; grid-template-columns: 3.2em 1fr; align-items: center; gap: 8px; }
+.bar i { display: block; height: 7px; background: var(--line); position: relative; }
+.bar i b { position: absolute; inset: 0 auto 0 0; width: 0; }
+.bar small { grid-column: 2; color: var(--dim); font-size: 12px; margin-top: -4px; }
+#knowers { right: max(16px, env(safe-area-inset-right, 0px)); top: calc(18px + env(safe-area-inset-top, 0px)); display: grid; gap: 8px; width: 210px; font-size: 13px; }
+#knowers .kn { background: var(--panel); padding: 7px 10px; display: grid; gap: 4px; }
+#knowers .kn span { color: var(--dim); font-size: 12px; }
+#knowers .kn i { display: block; height: 4px; background: var(--line); position: relative; }
+#knowers .kn i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--tell); }
+#hint { right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); text-align: right; color: var(--dim); font-size: 12px; line-height: 1.7; }
+#dialog { left: 50%; bottom: 90px; transform: translateX(-50%); background: var(--panel); padding: 12px 16px; width: min(560px, 92vw); font-size: 15px; line-height: 1.7; pointer-events: auto; }
+#dialog p { margin: 0 0 6px; color: var(--fire); font-family: var(--display); }
+
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(10, 8, 6, .82); overflow-y: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px; }
+.card { max-width: 640px; width: 100%; display: grid; gap: 14px; }
+.card h1 { font-family: var(--display); font-weight: 900; font-size: clamp(30px, 6vw, 46px); margin: 0; color: var(--fire); letter-spacing: .06em; text-wrap: balance; }
+.card h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4.5vw, 34px); margin: 0; text-wrap: balance; }
+.card p { margin: 0; line-height: 1.75; max-width: 62ch; }
+.card .dim { color: var(--dim); font-size: 13px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+.keys dt { color: var(--fire); white-space: nowrap; }
+.keys dd { margin: 0; color: var(--ash); min-width: 0; }
+fieldset { border: 1px solid var(--line); padding: 10px 14px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+legend { font-family: var(--display); color: var(--fire); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
+label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+input, select { accent-color: var(--fire); font: inherit; }
+select { background: #1c1712; color: var(--ash); border: 1px solid var(--line); padding: 2px 6px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; }
+button { font: inherit; font-size: 16px; background: transparent; color: var(--ash); border: 1px solid var(--fire); padding: 9px 18px; cursor: pointer; }
+button.primary { background: var(--fire); color: #1b130b; border-color: var(--fire); font-weight: 500; }
+button:hover { filter: brightness(1.12); }
+:focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
+.fail h2 { color: var(--rage); }
+.win h2 { color: var(--fire); }
+@media (max-width: 640px) { #bars { width: 170px; } #knowers { width: 150px; top: auto; bottom: calc(110px + env(safe-area-inset-bottom, 0px)); } #msgs { width: calc(100vw - 32px); } #hint { display: none; } #prompt { font-size: 15px; white-space: normal; width: 90vw; bottom: calc(118px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { #msgs div { animation: none; } }
+</style>
+
+<div id="stage"><canvas id="cv" aria-label="宮殿第一人稱畫面"></canvas></div>
+<div class="hud" id="vignette"></div>
+<div class="hud" id="cross"></div>
+<div class="hud" id="warn" hidden></div>
+<div class="hud" id="msgs" aria-live="polite"></div>
+<div class="hud" id="prompt"></div>
+<div class="hud" id="bars">
+  <div class="bar"><span>疑心</span><i><b id="bSusp" style="background:var(--susp)"></b></i><small id="bSuspWho"></small></div>
+  <div class="bar"><span>怒火</span><i><b id="bRage" style="background:var(--rage)"></b></i></div>
+  <div class="bar"><span>身體</span><i><b id="bBody" style="background:var(--body)"></b></i></div>
+  <div class="bar" id="ledgerRow"><span>帳</span><small id="bLedger" style="grid-column:2;margin:0"></small></div>
+</div>
+<div class="hud" id="knowers"></div>
+<div class="hud" id="hint">WASD 走・滑鼠 看<br>按住 Shift 站直・E 互動<br>空白鍵 笨拙地閃・按住 F 捶胸<br>Q 示意・Esc 暫停</div>
+<div class="hud" id="dialog" hidden></div>
+
+<!-- 開始／暫停 -->
+<div class="screen" id="menu">
+  <div class="card">
+    <h1>門檻上的乞丐</h1>
+    <p>二十年後，你扮成乞丐回到伊薩卡。宮裡擠滿了想娶你妻子的求婚者。你一定會被看見，只是不能被看穿：讓他們瞧不起你，但別被打死，也別忍不住動手。</p>
+    <p class="dim">原型・取材自《奧德賽》第 17～21 卷。兩段：宮門、大廳。試玩用，好玩的話再正式製作。需要鍵盤和滑鼠（電腦）。</p>
+    <dl class="keys">
+      <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠）。彎腰時只看得到腳和桌腳</dd>
+      <dt>按住 Shift</dt><dd>站直：看得見整個廳，但被人看到就會起疑</dd>
+      <dt>E</dt><dd>乞討、說話；按住＝揭露身分、坐下、摸狗</dd>
+      <dt>空白鍵</dt><dd>東西飛來時「笨拙地閃」：太早閃像戰士，不閃會受傷，最後一刻閃剛好</dd>
+      <dt>按住 F</dt><dd>捶胸：「忍耐吧，我的心」，怒火下降，但不能動</dd>
+      <dt>Q</dt><dd>對知情者示意（看著他按），讓他冷靜</dd>
+    </dl>
+    <fieldset>
+      <legend>實驗開關</legend>
+      <label><input type="checkbox" id="oKnowers" checked> 知情者機制</label>
+      <label><input type="checkbox" id="oTell" checked> 知情者會露出破綻</label>
+      <label><input type="checkbox" id="oStatue" checked> 神像會掉出來</label>
+      <label><input type="checkbox" id="oLedger" checked> 羞辱存成復仇（記帳）</label>
+      <label><input type="checkbox" id="oBars" checked> 顯示狀態條</label>
+      <label>閃避時機 <select id="oDodge"><option value="normal">普通</option><option value="loose">寬鬆</option></select></label>
+    </fieldset>
+    <fieldset>
+      <legend>直接進大廳時，誰已經知情</legend>
+      <label><input type="checkbox" id="pTele"> 忒勒馬科斯</label>
+      <label><input type="checkbox" id="pEum"> 歐邁俄斯</label>
+      <label><input type="checkbox" id="pPen"> 潘妮洛普</label>
+    </fieldset>
+    <div class="row">
+      <button class="primary" id="btnGate">從宮門開始</button>
+      <button id="btnHall">直接進大廳</button>
+      <button id="btnResume" hidden>繼續</button>
+    </div>
+  </div>
+</div>
+
+<!-- 結果 -->
+<div class="screen" id="result" hidden>
+  <div class="card" id="resultCard">
+    <h2 id="rTitle"></h2>
+    <p id="rText"></p>
+    <p class="dim" id="rHint"></p>
+    <div class="row">
+      <button class="primary" id="btnRetry">再試這一段（R）</button>
+      <button id="btnNext" hidden>進大廳</button>
+      <button id="btnMenu">回選單</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const opt = {
+  knowers: $('oKnowers'), tell: $('oTell'), statue: $('oStatue'), ledger: $('oLedger'), bars: $('oBars'), dodge: $('oDodge'),
+};
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---------- three.js ----------
+const canvas = $('cv');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, 1, 0.05, 90);
+camera.rotation.order = 'YXZ';
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+let world = new THREE.Group(); scene.add(world);
+const M = c => new THREE.MeshLambertMaterial({ color: c });
+function box(w, h, d, c, x, y, z, parent = world) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), M(c)); m.position.set(x, y, z); parent.add(m); return m;
+}
+function cyl(rt, rb, h, c, x, y, z, parent = world, seg = 12) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), M(c)); m.position.set(x, y, z); parent.add(m); return m;
+}
+function textSprite(text, color = '#d8cbb6', size = 46) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 96;
+  const g = c.getContext('2d');
+  g.font = `500 ${size}px "Noto Sans TC", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 8; g.strokeStyle = 'rgba(0,0,0,.8)'; g.strokeText(text, 256, 48); g.fillStyle = color; g.fillText(text, 256, 48);
+  const t = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  s.scale.set(1.6, 0.3, 1); s.renderOrder = 10; return s;
+}
+
+// ---------- 聲音 ----------
+let ac = null, murmurGain = null;
+function audio() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; } }
+  if (ac && ac.state === 'suspended') ac.resume();
+  return ac;
+}
+function tone(f, d, type = 'sine', v = .1, slide = 0) {
+  const a = audio(); if (!a) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, a.currentTime);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f * slide), a.currentTime + d);
+  g.gain.setValueAtTime(v, a.currentTime); g.gain.exponentialRampToValueAtTime(.0001, a.currentTime + d);
+  o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + d + .02);
+}
+function noise(d, v = .15, freq = 800) {
+  const a = audio(); if (!a) return;
+  const buf = a.createBuffer(1, Math.floor(a.sampleRate * d), a.sampleRate);
+  const ch = buf.getChannelData(0); for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / ch.length);
+  const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  f.type = 'bandpass'; f.frequency.value = freq; g.gain.value = v;
+  s.buffer = buf; s.connect(f).connect(g).connect(a.destination); s.start();
+}
+function startMurmur() {
+  const a = audio(); if (!a || murmurGain) return;
+  const len = a.sampleRate * 3, buf = a.createBuffer(1, len, a.sampleRate), ch = buf.getChannelData(0);
+  let last = 0; for (let i = 0; i < len; i++) { last = last * .98 + (Math.random() * 2 - 1) * .02; ch[i] = last * 6; }
+  const s = a.createBufferSource(); s.buffer = buf; s.loop = true;
+  const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+  murmurGain = a.createGain(); murmurGain.gain.value = 0;
+  s.connect(f).connect(murmurGain).connect(a.destination); s.start();
+}
+const sfx = {
+  lyre: () => { tone(294, .9, 'triangle', .06); setTimeout(() => tone(440, .8, 'triangle', .05), 120); },
+  whoosh: () => noise(.35, .12, 1200),
+  thud: () => { tone(90, .25, 'square', .14, .5); noise(.15, .2, 300); },
+  laugh: () => { for (let i = 0; i < 4; i++) setTimeout(() => tone(220 + Math.random() * 60, .12, 'sawtooth', .04), i * 110); },
+  whimper: () => tone(700, .7, 'sine', .05, .6),
+  heart: () => { tone(60, .15, 'sine', .2); setTimeout(() => tone(55, .15, 'sine', .15), 180); },
+  bread: () => tone(523, .2, 'sine', .05),
+};
+
+// ---------- 狀態 ----------
+const K_NAMES = { tele: '忒勒馬科斯', eum: '歐邁俄斯', pen: '潘妮洛普' };
+const KNOWER_STATE_TEXT = { unknown: '不知情', suspects: '起疑了', knows: '知情' };
+let G = null;            // 這一段的遊戲狀態
+let carry = null;        // 跨段保留：知情者、帳
+let running = false, paused = true;
+
+const P = { x: 0, z: 0, yaw: 0, pitch: -.6, eye: 1.0, standing: false };
+const keys = {};
+
+function freshCarry() {
+  return { tele: 'unknown', eum: 'unknown', pen: 'unknown', ledger: 0 };
+}
+
+function later(fn, ms) { const g = G; setTimeout(() => { if (running && G === g) fn(); }, ms); }
+function msg(text, cls) {
+  const d = document.createElement('div'); d.textContent = text; if (cls) d.style.color = cls;
+  $('msgs').appendChild(d); setTimeout(() => d.remove(), 4600);
+  while ($('msgs').children.length > 3) $('msgs').firstChild.remove();
+}
+
+// ---------- 人物 ----------
+function person(name, color, opts = {}) {
+  const g = new THREE.Group();
+  const h = opts.seated ? .55 : 0;
+  const bodyH = opts.seated ? 0.85 : 1.25;
+  const body = cyl(.24, .32, bodyH, color, 0, bodyH / 2 + h * .0 + (opts.seated ? .45 : 0), 0, g);
+  if (opts.seated) box(.5, .45, .5, 0x3a2b1e, 0, .225, 0, g); // 凳子
+  const headY = (opts.seated ? .45 : 0) + bodyH + .16;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.16, 12, 10), M(opts.skin || 0xb08a68)); head.position.set(0, headY, 0); g.add(head);
+  const nose = box(.08, .06, .12, 0x6b4a33, 0, headY, .16, g);          // 臉的方向
+  const arm = box(.09, .5, .09, color, .3, headY - .45, .05, g);          // 舉手預兆用
+  const label = textSprite(name); label.position.set(0, headY + .45, 0); g.add(label);
+  const mark = textSprite('', '#f2b866', 60); mark.position.set(0, headY + .75, 0); mark.visible = false; g.add(mark);
+  world.add(g);
+  return { name, g, body, head, arm, label, mark, headY, color };
+}
+function setMark(npc, text, color) {
+  if (npc._markText === text) return; npc._markText = text;
+  if (!text) { npc.mark.visible = false; return; }
+  const s = textSprite(text, color, 60); npc.mark.material.map.dispose(); npc.mark.material = s.material; npc.mark.visible = true;
+}
+
+function makeNpc(name, x, z, yaw, o = {}) {
+  const v = person(name, o.color || 0x5a4a3a, o);
+  const n = Object.assign({ x, z, yaw, baseYaw: yaw, lookYaw: yaw, hostile: false, susp: 0, lookT: rand(1, 4), begged: false, nearT: 0, tauntT: rand(6, 12), seated: !!o.seated, r: .45 }, v, o);
+  n.g.position.set(x, 0, z); n.g.rotation.y = yaw;
+  G.npcs.push(n);
+  return n;
+}
+
+// 視線：敵人面向的扇形內、距離內
+function sees(n, range = 12, half = 0.96) {
+  const dx = P.x - n.x, dz = P.z - n.z, d = Math.hypot(dx, dz);
+  if (d > range) return false;
+  if (d < 1.0) return true;
+  const fx = Math.sin(n.yaw), fz = Math.cos(n.yaw);
+  return (dx * fx + dz * fz) / d > Math.cos(half);
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const distP = n => Math.hypot(P.x - n.x, P.z - n.z);
+function seers() { return G.npcs.filter(n => n.hostile && sees(n)); }
+function addSusp(n, v) { n.susp = clamp(n.susp + v, 0, 1); if (n.susp >= 1) fail('seen', n); }
+
+// ---------- 場景：宮門 ----------
+function buildCommon(fogColor, fogNear, fogFar) {
+  scene.remove(world); world = new THREE.Group(); scene.add(world);
+  scene.background = new THREE.Color(fogColor); scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
+  G.npcs = []; G.obst = []; G.events = []; G.knowers = {}; G.props = {};
+}
+function wall(x, z, w, d, h = 3.2, c = 0x4a3d30) { box(w, h, d, c, x, h / 2, z); G.obst.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 }); }
+
+function buildGate() {
+  buildCommon(0x2a2430, 10, 38);
+  world.add(new THREE.HemisphereLight(0x8a8fb0, 0x2a2016, .7));
+  const sun = new THREE.DirectionalLight(0xffb070, .8); sun.position.set(-10, 6, -8); world.add(sun);
+  box(34, .1, 34, 0x5a4b38, 0, -.05, 0);                               // 泥地
+  // 外牆與宮門
+  wall(-8.5, 10.5, 13, .8); wall(8.5, 10.5, 13, .8);                    // 門洞 x∈[-2,2]
+  box(4.4, .6, .8, 0x3b3026, 0, 3.0, 10.5);                              // 門楣
+  wall(-15, 0, .8, 22); wall(15, -3, .8, 18); wall(15, 9.5, .8, 2.2);    // 右牆留側門 z∈[6,8.4]
+  G.sideDoor = box(.3, 2.4, 2.4, 0x2b2118, 14.6, 1.2, 7.2);
+  G.sideDoorObst = { x0: 14.4, x1: 15.6, z0: 6, z1: 8.4 }; G.obst.push(G.sideDoorObst);
+  // 糞堆與阿爾戈斯
+  const heap = cyl(1.3, 1.8, .6, 0x3d3020, -7, .3, 1); G.obst.push({ x0: -8.6, x1: -5.4, z0: -.6, z1: 2.6 });
+  const dog = new THREE.Group(); world.add(dog); dog.position.set(-6.9, .62, 1);
+  const dBody = box(.8, .3, .32, 0x6a5840, 0, .1, 0, dog), dHead = box(.26, .22, .24, 0x6a5840, .48, .18, 0, dog), tail = box(.36, .06, .06, 0x6a5840, -.55, .2, 0, dog);
+  const lab = textSprite('阿爾戈斯'); lab.position.set(0, .9, 0); dog.add(lab);
+  G.argos = { x: -6.9, z: 1, g: dog, head: dHead, tail, state: 'asleep', t: 0, pet: 0 };
+  // 牆邊雜物
+  box(1.2, 1, 1.2, 0x4b3a28, 9, .5, -6); box(1, .8, 1, 0x4b3a28, 10.4, .4, -5.2); G.obst.push({ x0: 8.4, x1: 10.9, z0: -6.6, z1: -4.7 });
+  // 人物
+  const mel = makeNpc('墨蘭提俄斯', 0, 9.2, Math.PI, { color: 0x6b5236, hostile: true, role: 'mel', kick: 'ready', patrolT: 0 });
+  G.mel = mel;
+  makeNpc('求婚者 阿格勞斯', -9.2, 3.4, Math.PI * .75, { color: 0x7a3f3f, hostile: true, role: 'loiter' });
+  makeNpc('求婚者 皮珊德洛斯', -4.6, 3.8, -Math.PI * .7, { color: 0x3f4f7a, hostile: true, role: 'loiter' });
+  const tele = makeNpc('忒勒馬科斯', 5.5, 7.5, Math.PI * 1.1, { color: 0x3c5a4a, role: 'tele', seated: true });
+  const eum = makeNpc('歐邁俄斯', -1.4, -12.6, 0, { color: 0x5b5a46, role: 'eum', follow: true });
+  G.knowers = { tele, eum };
+  P.x = 0; P.z = -13.5; P.yaw = Math.PI; P.pitch = -.6;   // 面向 +z（宮門）
+  G.goalText = '走進宮門（或找別的路）';
+  msg('你和老豬倌歐邁俄斯來到宮門外。他看不見，只當你是個乞丐。');
+  later(() => msg('門口的牧羊人墨蘭提俄斯專門找乞丐麻煩。'), 4200);
+}
+
+// ---------- 場景：大廳 ----------
+const SUITORS = [
+  // name, x, z, side(1=靠牆面向走道, 0=走道邊背對走道), kind
+  ['安提諾俄斯', -3.8, 3.6, 0, 'thrower'],
+  ['歐律馬科斯', 6.2, 1.2, 1, 'thrower'],
+  ['克特西波斯', -6.2, -2.8, 1, 'thrower'],
+  ['安菲諾摩斯', 3.8, -1.5, 0, 'giver'],
+  ['勒奧得斯', -6.2, 1.8, 1, 'giver'],
+  ['波呂玻斯', 6.2, -3.6, 1, 'mocker'],
+  ['阿格勞斯', -3.8, -1.0, 0, 'mocker'],
+  ['歐律諾摩斯', 3.8, 3.2, 0, 'mocker'],
+  ['德摩普托勒摩斯', 6.2, 4.2, 1, 'giver'],
+  ['皮珊德洛斯', -3.8, -4.4, 0, 'mocker'],
+];
+function buildHall() {
+  buildCommon(0x120d09, 6, 26);
+  world.add(new THREE.HemisphereLight(0x6a5a48, 0x1a120c, .45));
+  G.fire = new THREE.PointLight(0xffa050, 2.2, 16, 2); G.fire.position.set(0, 1.4, 6); world.add(G.fire);
+  const lamp = new THREE.PointLight(0xffb070, .6, 12, 2); lamp.position.set(0, 2.6, -4); world.add(lamp);
+  box(19, .1, 19, 0x3d2f22, 0, -.05, 0);
+  wall(0, -9.4, 19, .8); wall(0, 9.4, 19, .8); wall(-9.4, 0, .8, 19); wall(9.4, 0, .8, 19);
+  for (const [x, z] of [[-2.6, -6], [2.6, -6], [-2.6, 0], [2.6, 0]]) { cyl(.28, .32, 3.2, 0x5a4636, x, 1.6, z); G.obst.push({ x0: x - .35, x1: x + .35, z0: z - .35, z1: z + .35 }); }
+  // 長桌
+  for (const s of [-1, 1]) { box(1.0, .75, 10, 0x5e4630, 5 * s, .375, 0); G.obst.push({ x0: 5 * s - .5, x1: 5 * s + .5, z0: -5, z1: 5 }); }
+  // 爐火
+  cyl(1.1, 1.2, .5, 0x4a3a2e, 0, .25, 6); G.obst.push({ x0: -.9, x1: .9, z0: 5.1, z1: 6.9 });
+  G.flames = [0, 1, 2].map(i => { const m = new THREE.Mesh(new THREE.ConeGeometry(.3 - i * .06, .9 - i * .15, 8), new THREE.MeshBasicMaterial({ color: [0xf2b866, 0xe07a3a, 0xffd890][i] })); m.position.set((i - 1) * .25, .9, 6); world.add(m); return m; });
+  G.hearth = { x: 0, z: 6 };
+  // 潘妮洛普的門（左牆，靠爐火）
+  box(.2, 2.4, 1.6, 0x2a1f16, -9.0, 1.2, 7.2);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 2.0), new THREE.MeshBasicMaterial({ color: 0x8a6a48, transparent: true, opacity: .35, side: THREE.DoubleSide }));
+  screen.position.set(-8.75, 1.2, 7.2); screen.rotation.y = Math.PI / 2; world.add(screen);
+  const pen = makeNpc('潘妮洛普', -8.4, 7.2, Math.PI / 2, { color: 0x6a5a7a, role: 'pen', skin: 0xc09a78 });
+  G.obst.push({ x0: -9, x1: -7.9, z0: 6.6, z1: 7.8 });
+  // 兵器牆（右牆）
+  for (let i = 0; i < 5; i++) { box(.06, 2.2, .06, 0x9a8a6a, 9.0, 1.6, 5.2 + i * .45); }
+  cyl(.45, .45, .08, 0x9a7a3a, 9.0, 1.5, 7.9, world, 16).rotation.z = Math.PI / 2;
+  G.weapons = { x: 8.6, z: 6.4 };
+  // 求婚者
+  SUITORS.forEach(([name, x, z, side, kind]) => {
+    const facingIn = side === 1;             // 靠牆的面向走道
+    const yaw = x > 0 ? (facingIn ? -Math.PI / 2 : Math.PI / 2) : (facingIn ? Math.PI / 2 : -Math.PI / 2);
+    const col = kind === 'thrower' ? 0x7a3a32 : kind === 'giver' ? 0x4a5a3a : 0x3e4466;
+    makeNpc(name, x, z, yaw, { color: col, hostile: true, role: 'suitor', kind, seated: true });
+  });
+  const tele = makeNpc('忒勒馬科斯', 2.4, 7.6, Math.PI, { color: 0x3c5a4a, role: 'tele', seated: true });
+  const eum = makeNpc('歐邁俄斯', 3.4, -7.8, -Math.PI / 4, { color: 0x5b5a46, role: 'eum' });
+  G.knowers = { tele, eum, pen };
+  P.x = 0; P.z = -8.2; P.yaw = Math.PI; P.pitch = -.6;
+  G.goalText = '坐到爐火邊（按住 E）';
+  msg('大廳裡全是求婚者。走到爐火邊坐下，但別被看穿。');
+  later(() => msg('向求婚者乞討是乞丐該做的事；在廳裡無端走動、站直張望，都會引人注意。'), 4200);
+}
+
+// ---------- 開始一段 ----------
+function startSeg(seg) {
+  G = { seg, t: 0, body: 1, anger: 0, statue: 'carried', statueT: 0, hold: null, dialog: null, lastQ: 0, permission: false, fireSeen: false, weaponSeen: false };
+  if (seg === 'gate') buildGate(); else buildHall();
+  G.snapshot = JSON.parse(JSON.stringify(carry));
+  for (const k of Object.keys(G.knowers)) { const n = G.knowers[k]; n.tell = 0; n.kstate = carry[k]; }
+  if (G.knowers.pen && carry.pen === 'knows') G.permission = true;
+  $('result').hidden = true; $('menu').hidden = true; $('dialog').hidden = true; $('msgs').innerHTML = '';
+  running = true; paused = false; lockPointer();
+  startMurmur(); if (murmurGain) murmurGain.gain.value = seg === 'hall' ? .25 : .05;
+  sfx.lyre();
+}
+
+// ---------- 失敗與過關 ----------
+const FAIL = {
+  seen: n => ['這個乞丐不是乞丐。', `${n.name}看穿了你。`, '提示：站直張望、閃得太俐落、在爐火或兵器旁逗留，都會讓看著你的人起疑。挨罵、挨打、乞討會讓他們放下戒心。'],
+  rage: () => ['你沒能忍住。', '一個人對一百零八個人。', '提示：怒火快滿時，找沒人盯著的地方按住 F 捶胸。'],
+  beaten: () => ['你倒在自己家的地上。', '他們把你拖了出去。', '提示：不閃會傷得重；最後一刻按空白鍵「笨拙地閃」只會擦傷。爐火邊、乞來的麵包能補身體。'],
+  tell: n => [`${n.name}沉不住氣了。`, '求婚者看出你們認識。', '提示：知情者看到你受辱會越來越激動。看著他按 Q 示意，讓他冷靜。'],
+  statue: n => ['他們看見了神像。', `乞丐身上掉出一尊雅典娜神像，${n.name}認出了它。`, '提示：神像掉出來時，3 秒內按 E 撿起來。'],
+};
+function fail(kind, n) {
+  if (!running) return;
+  running = false; unlockPointer();
+  const [t, s, h] = FAIL[kind](n || {});
+  $('resultCard').className = 'card fail';
+  $('rTitle').textContent = t; $('rText').textContent = s; $('rHint').textContent = h;
+  $('btnNext').hidden = true; $('btnRetry').hidden = false;
+  $('result').hidden = false; $('warn').hidden = true;
+  sfx.laugh();
+}
+function win() {
+  if (!running) return;
+  running = false; unlockPointer();
+  const kn = Object.keys(K_NAMES).filter(k => carry[k] === 'knows').map(k => K_NAMES[k]);
+  $('resultCard').className = 'card win';
+  if (G.seg === 'gate') {
+    $('rTitle').textContent = '你走進了自己的家。';
+    $('rText').textContent = (kn.length ? `知情的人：${kn.join('、')}。` : '還沒有人知道你是誰。') + (opt.ledger.checked ? `　帳上記了 ${carry.ledger} 筆。` : '');
+    $('rHint').textContent = '下一段：大廳。';
+    $('btnNext').hidden = false;
+  } else {
+    $('rTitle').textContent = '你坐在爐火邊。';
+    $('rText').textContent = `今晚，潘妮洛普會來問這個乞丐的話。${kn.length ? `知情的人：${kn.join('、')}。` : '沒有人知道你是誰。'}${opt.ledger.checked ? `　帳上記了 ${carry.ledger} 筆，比箭時要一筆一筆算回來。` : ''}`;
+    $('rHint').textContent = '原型到這裡結束。可以換開關、改變誰知情，再試一次比較差異。';
+    $('btnNext').hidden = true;
+  }
+  $('result').hidden = false; tone(392, .6, 'triangle', .08); setTimeout(() => tone(587, .9, 'triangle', .07), 200);
+}
+
+// ---------- 羞辱、投擲、踢 ----------
+function knowerSeesHumiliation(amount, isHit) {
+  if (!opt.knowers.checked) return;
+  for (const k of ['tele', 'pen', 'eum']) {
+    const n = G.knowers[k]; if (!n || n.kstate !== 'knows') continue;
+    let seen;
+    if (k === 'eum') seen = distP(n) < 6;                       // 他看不見，靠聽
+    else if (k === 'pen') seen = distP(n) < 14 && sees(n, 14, 1.2);
+    else seen = distP(n) < 14;
+    if (seen && opt.tell.checked) { n.tell = clamp(n.tell + amount * (k === 'tele' ? 1.3 : 1), 0, 1); if (n.tell >= 1) tellBurst(n, k); }
+  }
+}
+function tellBurst(n, k) {
+  const lines = { tele: '忒勒馬科斯猛地站起來，對著求婚者吼：「你們誰敢再碰他！」', pen: '潘妮洛普推開門，盯著你看了太久。', eum: '歐邁俄斯忍不住大聲叫了一聲「主人」。' };
+  msg(lines[k], 'var(--tell)');
+  n.tell = .3;
+  for (const h of G.npcs) if (h.hostile && dist(h, n) < 12) {
+    h.susp = clamp(h.susp + .6, 0, 1);
+    if (h.susp >= 1) return fail('tell', n);       // 因知情者而被看穿
+  }
+}
+function humiliate(by, text, hit) {
+  G.anger = clamp(G.anger + (hit ? .3 : .16), 0, 1);
+  if (opt.ledger.checked) carry.ledger++;
+  if (by) by.susp = clamp(by.susp - (hit ? .3 : .25), 0, 1);
+  for (const h of G.npcs) if (h.hostile && h !== by && sees(h)) h.susp = clamp(h.susp - .06, 0, 1);
+  if (text) msg(text);
+  if (G.anger >= 1) return fail('rage');
+  knowerSeesHumiliation(hit ? .38 : .16, hit);
+}
+
+function startThrow(n, kind) {
+  if (G.events.some(e => e.by === n)) return;
+  const what = kind === 'kick' ? '抬起了腳' : (n.name === '克特西波斯' ? '抓起一隻牛蹄' : '抓起了腳凳');
+  G.events.push({ by: n, kind, t: 0, windup: kind === 'kick' ? .75 : .95, flight: kind === 'kick' ? 0 : .55, pressed: null, target: { x: P.x, z: P.z }, mesh: null });
+  $('warn').textContent = `${n.name}${what}`; $('warn').hidden = false;
+  n.lookYaw = Math.atan2(P.x - n.x, P.z - n.z);
+  sfx.whoosh();
+}
+function updateEvents(dt) {
+  for (const e of [...G.events]) {
+    e.t += dt;
+    const n = e.by;
+    n.arm.position.y = n.headY - .45 + (e.t < e.windup ? e.t / e.windup * .55 : .55);
+    if (e.kind === 'throw' && e.t >= e.windup && !e.mesh) {
+      e.mesh = box(.35, .25, .35, 0x7a5a3a, n.x, 1.6, n.z);
+      e.target = { x: P.x, z: P.z };
+    }
+    if (e.mesh) {
+      const k = clamp((e.t - e.windup) / e.flight, 0, 1);
+      e.mesh.position.set(n.x + (e.target.x - n.x) * k, 1.6 + Math.sin(k * Math.PI) * .8 - k * .6, n.z + (e.target.z - n.z) * k);
+      e.mesh.rotation.x += dt * 9;
+    }
+    const impact = e.windup + e.flight;
+    if (e.t >= impact) { resolveEvent(e, e.t - impact); G.events.splice(G.events.indexOf(e), 1); if (e.mesh) world.remove(e.mesh); n.arm.position.y = n.headY - .45; $('warn').hidden = !G.events.length; if (!running) return; }
+  }
+}
+function resolveEvent(e) {
+  const n = e.by;
+  const loose = opt.dodge.value === 'loose';
+  const w0 = loose ? -.42 : -.28, w1 = loose ? .04 : -.04;
+  const impactAt = e.windup + e.flight;
+  const moved = Math.hypot(P.x - e.target.x, P.z - e.target.z);
+  const reach = e.kind === 'kick' ? distP(n) : moved;
+  const rel = e.pressed == null ? null : e.pressed - impactAt;
+  if (e.kind === 'kick') n.kick = 'done';
+  if ((e.kind === 'kick' && reach > 2.4) || (e.kind === 'throw' && moved > 1.3)) {
+    // 走開躲掉：像是早有防備
+    addSusp(n, .22); if (!running) return;
+    msg(`你早一步躲開了。${n.name}眯起眼睛看你。`); return;
+  }
+  if (rel != null && rel < w0) {
+    addSusp(n, .38); if (!running) return;
+    for (const h of seers()) if (h !== n) { addSusp(h, .14); if (!running) return; }
+    msg('你閃得太俐落了，不像個老乞丐。', 'var(--susp)'); sfx.whoosh(); return;
+  }
+  if (rel != null && rel <= w1) {
+    G.body = clamp(G.body - .1, 0, 1); shake = .25; sfx.thud();
+    if (G.body <= 0) return fail('beaten');
+    humiliate(n, `你笨拙地一縮，被${e.kind === 'kick' ? '踢' : '砸'}到肩膀，摔倒在地。求婚者哄堂大笑。`, false);
+    if (!running) return;
+    checkStatueDrop(); return;
+  }
+  // 直接挨中
+  let dmg = e.kind === 'kick' ? .22 : .32;
+  const t = G.knowers.tele;
+  if (opt.knowers.checked && t && t.kstate === 'knows' && distP(t) < 14) {
+    dmg *= .5; msg('忒勒馬科斯：「夠了！他是我家的客人。」');
+  }
+  G.body = clamp(G.body - dmg, 0, 1); shake = .5; sfx.thud();
+  if (G.body <= 0) return fail('beaten');
+  humiliate(n, `${e.kind === 'kick' ? '一腳' : (n.name === '克特西波斯' ? '牛蹄' : '腳凳')}重重打在你身上。你像岩石一樣站著，默默搖頭。`, true);
+  if (!running) return;
+  checkStatueDrop();
+}
+function checkStatueDrop() {
+  if (!opt.statue.checked || G.statue !== 'carried' || G.body > .45) return;
+  if (Math.random() < .5) {
+    G.statue = 'dropped'; G.statueT = 3; G.statueChecked = false;
+    G.statueMesh = new THREE.Mesh(new THREE.ConeGeometry(.12, .4, 8), new THREE.MeshBasicMaterial({ color: 0xf2d488 }));
+    G.statueMesh.position.set(P.x + Math.sin(P.yaw) * -.6, .2, P.z + Math.cos(P.yaw) * -.6); world.add(G.statueMesh);
+    G.statuePos = { x: G.statueMesh.position.x, z: G.statueMesh.position.z };
+    msg('雅典娜神像從你的破衣裡掉了出來！快撿起來（E）', 'var(--fire)');
+  }
+}
+
+// ---------- 互動 ----------
+function nearestInteract() {
+  if (G.statue === 'dropped' && Math.hypot(P.x - G.statuePos.x, P.z - G.statuePos.z) < 1.6) return { type: 'statue', label: '撿起神像' };
+  const kn = opt.knowers.checked;
+  let best = null, bd = 1e9;
+  for (const n of G.npcs) {
+    const d = distP(n); if (d > 1.8 || d > bd) continue;
+    if (n.role === 'suitor') { bd = d; best = { type: 'beg', n, label: n.begged ? `再向${n.name}討（他會不耐煩）` : `向${n.name}乞討` }; }
+    else if (n.role === 'tele' && kn) { bd = d; best = n.kstate === 'suspects' ? { type: 'reveal', n, hold: 2, label: '按住：讓忒勒馬科斯知道你是誰' } : n.kstate === 'knows' ? { type: 'none', n, label: '忒勒馬科斯知道你是誰' } : { type: 'tele0', n, label: '和忒勒馬科斯說話' }; }
+    else if (n.role === 'eum' && kn) { bd = d; best = n.kstate === 'knows' ? { type: 'none', n, label: '歐邁俄斯知道你是誰' } : { type: 'eum', n, label: '對歐邁俄斯說起往事' }; }
+    else if (n.role === 'pen' && kn) { bd = d; best = n.kstate === 'knows' ? { type: 'none', n, label: '潘妮洛普知道你是誰' } : { type: 'reveal', n, hold: 2, label: G.statue === 'carried' ? '按住：隔著門拿出雅典娜神像' : '（神像不在你身上）' }; }
+  }
+  if (best) return best;
+  if (G.seg === 'gate' && G.argos.state === 'recognize' && Math.hypot(P.x - G.argos.x, P.z - G.argos.z) < 2.2) return { type: 'pet', hold: 4.5, label: '按住：蹲下摸摸牠' };
+  if (G.seg === 'hall' && Math.hypot(P.x - G.hearth.x, P.z - G.hearth.z) < 2.3) return { type: 'sit', hold: 3, label: G.permission ? '按住：坐到爐火邊（潘妮洛普允許的）' : '按住：坐到爐火邊（火光會照亮你的臉）' };
+  return null;
+}
+
+function pressE() {
+  const it = nearestInteract(); if (!it) return;
+  if (it.hold) { G.hold = { it, t: 0 }; return; }
+  if (it.type === 'statue') { G.statue = 'carried'; world.remove(G.statueMesh); msg('你把神像塞回破衣裡。'); return; }
+  if (it.type === 'beg') return beg(it.n);
+  if (it.type === 'tele0') { msg('忒勒馬科斯只當你是個乞丐，遞給你一塊肉。也許得有什麼事讓他起疑。'); return; }
+  if (it.type === 'eum') return openEumaeus(it.n);
+}
+
+function beg(n) {
+  n.lookYaw = Math.atan2(P.x - n.x, P.z - n.z);
+  if (n.begged) {
+    addSusp(n, .12); if (!running) return;
+    if (n.kind === 'thrower') return startThrow(n, 'throw');
+    msg(`${n.name}：「又是你？滾開。」`); return;
+  }
+  n.begged = true;
+  G.begT = G.t;
+  later(() => {
+    if (n.kind === 'giver') {
+      G.body = clamp(G.body + .12, 0, 1); n.susp = clamp(n.susp - .25, 0, 1);
+      for (const h of seers()) h.susp = clamp(h.susp - .05, 0, 1);
+      msg(`${n.name}丟給你一塊麵包。`); sfx.bread();
+    } else if (n.kind === 'mocker') {
+      humiliate(n, `${n.name}：「看看這個老東西，連狗都比他體面。」`, false);
+    } else {
+      msg(`${n.name}：「誰讓這個乞丐進來的？」`); startThrow(n, 'throw');
+    }
+  }, 700);
+}
+
+// 歐邁俄斯：靠往事
+const EUM_LINES = [
+  ['你跟著我去了特洛伊，在船上替我掌舵。', false],
+  ['你小時候被賣到這裡，是我母親把你和我妹妹一起帶大的。', true],
+  ['你是我從海上救起來的漁夫，後來才來養豬。', false],
+];
+function openEumaeus(n) {
+  if (G.t < (n.retryAt || 0)) { msg('歐邁俄斯還在皺眉，不想再聽你說。'); return; }
+  G.dialog = { n };
+  $('dialog').innerHTML = '<p>說一段只有奧德修斯知道的往事（敵人在 6 公尺內會聽到）</p>' + EUM_LINES.map((l, i) => `<div>${i + 1}．${l[0]}</div>`).join('') + '<div style="color:var(--dim)">按 1～3 選擇，Esc 取消</div>';
+  $('dialog').hidden = false;
+}
+function chooseEumaeus(i) {
+  const n = G.dialog.n; G.dialog = null; $('dialog').hidden = true;
+  const hearers = G.npcs.filter(h => h.hostile && distP(h) < 6);
+  for (const h of hearers) { addSusp(h, .3); if (!running) return; }
+  if (hearers.length) msg(`${hearers.map(h => h.name).join('、')}聽到你們在說悄悄話。`, 'var(--susp)');
+  if (EUM_LINES[i][1]) {
+    reveal(n, 'eum');
+    msg('歐邁俄斯的手開始發抖：「主人……你回來了。」');
+    if (G.seg === 'gate') later(() => msg('歐邁俄斯低聲說：「別走正門。右邊有一道側門，我帶你。墨蘭提俄斯看到乞丐靠近就會抬腳。」'), 1800);
+  } else { n.retryAt = G.t + 20; msg('歐邁俄斯皺起眉頭：「你怎麼會這樣說？」'); }
+}
+
+function reveal(n, k) {
+  n.kstate = 'knows'; carry[k] = 'knows'; sfx.lyre();
+  if (k === 'pen') { G.permission = true; msg('潘妮洛普隔著門看著神像，很久沒有說話。然後她吩咐女僕：「給那位客人一個爐火邊的位子。」'); }
+  if (k === 'tele') msg('忒勒馬科斯抓住你的手臂，眼眶紅了：「我會等你的信號。」');
+}
+function finishHold(it) {
+  if (it.type === 'reveal') {
+    const n = it.n, k = n.role;
+    if (k === 'pen' && G.statue !== 'carried') { msg('神像不在你身上。'); return; }
+    const s = seers();
+    for (const h of s) { addSusp(h, .5); if (!running) return; }
+    if (s.length) msg(`${s.map(h => h.name).join('、')}看到了這一幕。`, 'var(--susp)');
+    reveal(n, k);
+  } else if (it.type === 'sit') {
+    win();
+  }
+}
+
+// ---------- 每幀 ----------
+let shake = 0;
+function update(dt) {
+  G.t += dt;
+  // 視角與姿態
+  P.standing = !!keys.ShiftLeft || !!keys.ShiftRight;
+  const sitting = G.hold && G.hold.it.type === 'sit';
+  const beating = keys.KeyF && !G.dialog;
+  const targetEye = sitting ? .75 : P.standing ? 1.62 : 1.0;
+  P.eye += (targetEye - P.eye) * Math.min(1, dt * 8);
+  const maxPitch = P.standing ? .9 : -.5;
+  if (P.pitch > maxPitch) P.pitch = Math.max(maxPitch, P.pitch - dt * 2.5);
+
+  // 移動
+  let mx = 0, mz = 0;
+  if (!beating && !G.hold && !G.dialog) {
+    if (keys.KeyW) mz -= 1; if (keys.KeyS) mz += 1; if (keys.KeyA) mx -= 1; if (keys.KeyD) mx += 1;
+  }
+  const len = Math.hypot(mx, mz);
+  if (len) {
+    const sp = (P.standing ? 2.0 : 1.5) * dt / len;
+    const sin = Math.sin(P.yaw), cos = Math.cos(P.yaw);
+    move((mx * cos + mz * sin) * sp, (-mx * sin + mz * cos) * sp);
+  }
+
+  // 捶胸
+  if (beating) {
+    G.anger = clamp(G.anger - dt * .32, 0, 1);
+    G.beatT = (G.beatT || 0) - dt; if (G.beatT <= 0) { G.beatT = .7; sfx.heart(); }
+    $('warn').hidden = false; if (!G.events.length) $('warn').textContent = '忍耐吧，我的心……';
+  } else if (!G.events.length) $('warn').hidden = true;
+
+  // 按住互動
+  if (G.hold) {
+    const cur = nearestInteract();
+    if (!keys.KeyE || !cur || cur.type !== G.hold.it.type || cur.n !== G.hold.it.n) G.hold = null;
+    else {
+      G.hold.t += dt;
+      if (G.hold.it.type === 'sit' && !G.permission) for (const h of seers()) { addSusp(h, dt * .16); if (!running) return; }
+      if (G.hold.it.type === 'pet') { G.argos.petT = (G.argos.petT || 0) + dt; if (G.argos.petT >= 1.5) G.argos.pet = 1; for (const h of seers()) { addSusp(h, dt * .2); if (!running) return; } }
+      else if (G.hold.t >= G.hold.it.hold) { const it = G.hold.it; G.hold = null; finishHold(it); if (!running) return; }
+    }
+  }
+
+  // 敵人看你
+  let top = null;
+  for (const n of G.npcs) {
+    if (n.follow) followPlayer(n, dt);
+    // 轉頭
+    n.lookT -= dt;
+    if (n.lookT <= 0 && !G.events.some(e => e.by === n)) {
+      n.lookT = rand(2, 5);
+      const d = distP(n);
+      if (n.role === 'mel') n.lookYaw = Math.random() < .45 ? n.baseYaw + (Math.random() < .5 ? 1.6 : -1.6) : Math.atan2(P.x - n.x, P.z - n.z) * (d < 10 ? 1 : 0) + (d < 10 ? 0 : n.baseYaw);
+      else if (n.hostile && d < 9 && Math.random() < .4) n.lookYaw = Math.atan2(P.x - n.x, P.z - n.z);
+      else if (n.role !== 'pen') n.lookYaw = n.baseYaw + rand(-.7, .7);
+    }
+    let dy = ((n.lookYaw - n.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    n.yaw += clamp(dy, -dt * 2, dt * 2); n.g.rotation.y = n.yaw;
+
+    if (!n.hostile) continue;
+    const s = sees(n);
+    if (s) {
+      if (P.standing) addSusp(n, dt * .12);
+      if (G.seg === 'hall' && len && G.t - (G.begT ?? -99) > 6) addSusp(n, dt * .05);   // 沒在乞討卻在廳裡走動
+      if (G.seg === 'hall' && Math.hypot(P.x - G.weapons.x, P.z - G.weapons.z) < 2.2) {
+        addSusp(n, dt * .22);
+        if (!G.weaponSeen) { G.weaponSeen = true; msg('牆上掛著你的兵器。乞丐不該在這裡逗留。', 'var(--susp)'); }
+      }
+      if (!running) return;
+    } else n.susp = clamp(n.susp - dt * .02, 0, 1);
+    if (!top || n.susp > top.susp) top = n;
+
+    // 投擲者：待在身邊太久就動手
+    if (n.kind === 'thrower') {
+      if (distP(n) < 3.5 && !n.begged) { n.nearT += dt; if (n.nearT > 5) { n.nearT = -8; msg(`${n.name}：「這個乞丐一直在我旁邊轉。」`); startThrow(n, 'throw'); } }
+    }
+    // 嘲弄者：靠近時偶爾罵你
+    if (n.kind === 'mocker' && distP(n) < 3) { n.tauntT -= dt; if (n.tauntT <= 0) { n.tauntT = rand(9, 14); humiliate(n, `${n.name}朝你吐了一口：「乞丐就該待在門口。」`, false); if (!running) return; } }
+    // 墨蘭提俄斯：靠近就踢
+    if (n.role === 'mel' && n.kick === 'ready' && distP(n) < 2.0) { n.kick = 'kicking'; msg('墨蘭提俄斯：「豬倌，你把什麼髒東西帶來了？」'); startThrow(n, 'kick'); }
+    if (n.role === 'mel' && n.kick === 'done') { n.x += (3.4 - n.x) * Math.min(1, dt * 2); n.g.position.x = n.x; }
+    // 歐邁俄斯知情時，標出會丟東西的人
+    if (n.role === 'mel') setMark(n, opt.knowers.checked && G.knowers.eum && G.knowers.eum.kstate === 'knows' && n.kick === 'ready' ? '靠近會踢人' : '', '#c9573f');
+    if (n.kind === 'thrower') setMark(n, opt.knowers.checked && G.knowers.eum && G.knowers.eum.kstate === 'knows' ? '會丟東西' : '', '#c9573f');
+  }
+  G.top = top;
+
+  updateEvents(dt); if (!running) return;
+  updateKnowers(dt); if (!running) return;
+  if (G.seg === 'gate') { updateArgos(dt); if (!running) return; checkGateExit(); }
+
+  // 神像
+  if (G.statue === 'dropped') {
+    G.statueT -= dt;
+    if (G.statueT <= 0) {
+      const s = G.npcs.find(h => h.hostile && sees(h, 8) && Math.hypot(h.x - G.statuePos.x, h.z - G.statuePos.z) < 8);
+      if (s) return fail('statue', s);
+    }
+  }
+  // 爐火恢復
+  if (G.seg === 'hall' && Math.hypot(P.x - G.hearth.x, P.z - G.hearth.z) < 3) G.body = clamp(G.body + dt * .03, 0, 1);
+  shake = Math.max(0, shake - dt);
+}
+
+function updateKnowers(dt) {
+  if (!opt.knowers.checked) return;
+  const e = G.knowers.eum;
+  if (e && e.kstate === 'knows' && opt.tell.checked && distP(e) < 3 && G.npcs.some(h => h.hostile && dist(h, e) < 7)) {
+    e.tell = clamp(e.tell + dt * .12, 0, 1); if (e.tell >= 1) tellBurst(e, 'eum');
+  }
+  for (const k in G.knowers) { const n = G.knowers[k]; n.tell = clamp(n.tell - dt * .015, 0, 1); }
+}
+function signalQ() {
+  if (!opt.knowers.checked || G.t - G.lastQ < .8) return;
+  G.lastQ = G.t;
+  const fx = -Math.sin(P.yaw), fz = -Math.cos(P.yaw);
+  let hit = null;
+  for (const k in G.knowers) {
+    const n = G.knowers[k]; if (n.kstate !== 'knows') continue;
+    const dx = n.x - P.x, dz = n.z - P.z, d = Math.hypot(dx, dz);
+    const ok = k === 'eum' ? d < 2 : d < 14 && (dx * fx + dz * fz) / d > Math.cos(.6);
+    if (ok) hit = n;
+  }
+  if (!hit) { msg('附近沒有你能示意的知情者（要看著他）。'); return; }
+  hit.tell = clamp(hit.tell - .45, 0, 1);
+  const s = seers(); for (const h of s) { addSusp(h, .05); if (!running) return; }
+  msg(hit.role === 'eum' ? '你輕輕按住歐邁俄斯的手臂。他安靜下來。' : `你對${hit.name}輕輕搖頭。`);
+}
+
+function updateArgos(dt) {
+  const a = G.argos; const d = Math.hypot(P.x - a.x, P.z - a.z);
+  if (a.state === 'asleep' && d < 3.6) { a.state = 'recognize'; a.t = 0; msg('糞堆上的老狗抬起頭，豎起耳朵，搖起了尾巴。牠認得你。'); sfx.whimper(); }
+  if (a.state === 'recognize') {
+    a.t += dt; a.tail.rotation.y = Math.sin(a.t * 14) * .6; a.head.position.y = .28;
+    const tl = G.knowers.tele; if (tl && dist(tl, a) < 16 && a.t > 1) { tl.lookYaw = Math.atan2(a.x - tl.x, a.z - tl.z); tl.lookT = 3; }
+    if (a.t > 4.5) {
+      a.state = 'dead'; a.g.rotation.z = .3; a.head.position.y = .1; sfx.whimper();
+      if (a.pet) msg('你蹲下摸了摸牠。牠在你的手底下斷了氣。');
+      else { G.anger = clamp(G.anger + .25, 0, 1); msg('阿爾戈斯搖了搖尾巴，然後不動了。你沒有停下來。'); if (G.anger >= 1) return fail('rage'); }
+      const t = G.knowers.tele;
+      const tSees = t && dist(t, a) < 16 && ((a.x - t.x) * Math.sin(t.yaw) + (a.z - t.z) * Math.cos(t.yaw)) / dist(t, a) > Math.cos(1.0);
+      if (opt.knowers.checked && t && t.kstate === 'unknown' && tSees) {
+        t.kstate = 'suspects'; carry.tele = 'suspects';
+        later(() => msg('忒勒馬科斯一直盯著那隻狗……然後看向你。（避開旁人，走到他身邊按住 E）', 'var(--tell)'), 1400);
+      }
+    }
+  }
+}
+function checkGateExit() {
+  if (P.z > 11.2) return win();
+  if (P.x > 14.3 && P.z > 6 && P.z < 8.4) return win();
+  const e = G.knowers.eum;
+  if (opt.knowers.checked && e && e.kstate === 'knows' && !G.sideOpen) {
+    G.sideOpen = true; G.obst.splice(G.obst.indexOf(G.sideDoorObst), 1); G.sideDoor.position.z = 5.4;
+  }
+}
+
+function followPlayer(n, dt) {
+  if (G.seg !== 'gate') return;
+  const tx = n.kstate === 'knows' && G.sideOpen && P.x > 6 ? 13.6 : P.x - Math.sin(-P.yaw) * 0 , tz = n.kstate === 'knows' && G.sideOpen && P.x > 6 ? 7.2 : P.z;
+  const dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz);
+  if (d > 1.8) { const s = Math.min(d - 1.8, 1.4 * dt); n.x += dx / d * s; n.z += dz / d * s; n.lookYaw = Math.atan2(dx, dz); }
+  n.g.position.set(n.x, 0, n.z);
+}
+
+function move(dx, dz) {
+  const r = .32;
+  const blocked = (x, z) => {
+    for (const o of G.obst) if (x > o.x0 - r && x < o.x1 + r && z > o.z0 - r && z < o.z1 + r) return true;
+    for (const n of G.npcs) if (!(n.follow && G.seg === 'gate') && Math.hypot(x - n.x, z - n.z) < n.r + r) return true;
+    return false;
+  };
+  if (!blocked(P.x + dx, P.z)) P.x += dx;
+  if (!blocked(P.x, P.z + dz)) P.z += dz;
+  if (G.seg === 'hall') { P.x = clamp(P.x, -8.8, 8.8); P.z = clamp(P.z, -8.8, 8.8); }
+  else { P.x = clamp(P.x, -14.4, 15.5); P.z = clamp(P.z, -16, 12); }
+}
+
+// ---------- 畫面上的介面 ----------
+function hud() {
+  const showBars = opt.bars.checked;
+  $('bars').style.visibility = showBars ? 'visible' : 'hidden';
+  const top = G.top;
+  $('bSusp').style.width = (top ? top.susp * 100 : 0) + '%';
+  $('bSuspWho').textContent = top && top.susp > .05 ? `最起疑的：${top.name}` : '';
+  $('bRage').style.width = G.anger * 100 + '%';
+  $('bBody').style.width = G.body * 100 + '%';
+  $('ledgerRow').style.display = opt.ledger.checked ? '' : 'none';
+  $('bLedger').textContent = `${carry.ledger} 筆羞辱`;
+  $('vignette').style.opacity = clamp((G.anger - .45) * 1.4, 0, .85);
+  // 知情者
+  if (opt.knowers.checked) {
+    $('knowers').innerHTML = Object.keys(G.knowers).map(k => {
+      const n = G.knowers[k];
+      return `<div class="kn"><div>${K_NAMES[k]}　<span>${KNOWER_STATE_TEXT[n.kstate]}</span></div>${n.kstate === 'knows' && opt.tell.checked ? `<i><b style="width:${n.tell * 100}%"></b></i><span>破綻</span>` : ''}</div>`;
+    }).join('');
+  } else $('knowers').innerHTML = '';
+  // 提示
+  const it = nearestInteract();
+  let p = '';
+  if (G.dialog) p = '';
+  else if (G.hold) p = `${G.hold.it.label}　${Math.min(100, Math.round(G.hold.t / G.hold.it.hold * 100))}%`;
+  else if (G.events.length) p = '<span class="k">空白鍵</span>笨拙地閃（最後一刻）';
+  else if (it) p = `<span class="k">E</span>${it.label}`;
+  else p = `<span style="color:var(--dim)">目標：${G.goalText}</span>`;
+  if (G.statue === 'dropped' && G.statueT > 0) p = `<span class="k">E</span>撿起神像（${G.statueT.toFixed(1)} 秒）`;
+  $('prompt').innerHTML = p;
+  // 頭上名字：彎腰時只看得到很近的人
+  for (const n of G.npcs) { n.label.visible = P.standing || distP(n) < 3; if (n.mark) n.mark.visible = !!n._markText && (P.standing || distP(n) < 3); }
+}
+
+function render() {
+  camera.position.set(P.x + (shake ? rand(-.03, .03) : 0), P.eye + (shake ? rand(-.03, .03) : 0), P.z);
+  camera.rotation.set(P.pitch, P.yaw, 0);
+  if (G && G.flames) { const f = 1 + Math.sin(performance.now() / 90) * .08 + Math.random() * .05; G.flames.forEach(m => m.scale.set(1, f, 1)); G.fire.intensity = 2 + Math.random() * .4; }
+  renderer.render(scene, camera);
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(.1, (now - last) / 1000); last = now;
+  document.body.classList.toggle('playing', !!(G && running && !paused));
+  if (G && running && !paused) { update(dt); if (G && running) hud(); }
+  if (G) render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- 輸入 ----------
+let locked = false, drag = null;
+function lockPointer() { try { const r = canvas.requestPointerLock && canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+function unlockPointer() { try { document.exitPointerLock && document.exitPointerLock(); } catch (e) {} }
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (!locked && running && !paused && !G.dialog) pause();
+});
+canvas.addEventListener('mousedown', e => { audio(); if (!locked && running) { lockPointer(); drag = { x: e.clientX, y: e.clientY }; } });
+window.addEventListener('mouseup', () => { drag = null; });
+window.addEventListener('mousemove', e => {
+  if (!running || paused || keys.KeyF) return;
+  let dx = 0, dy = 0;
+  if (locked) { dx = e.movementX; dy = e.movementY; }
+  else if (drag) { dx = e.clientX - drag.x; dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY }; }
+  P.yaw -= dx * .0024; P.pitch = clamp(P.pitch - dy * .0024, -1.3, P.standing ? .9 : -.5);
+});
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  if (!G) return;
+  if (!running) { if (e.code === 'KeyR' && !$('result').hidden) retry(); return; }
+  if (paused) return;
+  if (G.dialog) {
+    if (['Digit1', 'Digit2', 'Digit3'].includes(e.code)) chooseEumaeus(+e.code.slice(-1) - 1);
+    if (e.code === 'Escape') { G.dialog = null; $('dialog').hidden = true; }
+    return;
+  }
+  if (e.code === 'KeyE' && !e.repeat) pressE();
+  if (e.code === 'Space' && !e.repeat) for (const ev of G.events) if (ev.pressed == null) ev.pressed = ev.t;
+  if (e.code === 'KeyQ' && !e.repeat) signalQ();
+  if (e.code === 'KeyR' && !e.repeat) retry();
+  if (e.code === 'Escape' && !locked) pause();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function pause() { paused = true; $('btnResume').hidden = false; $('menu').hidden = false; }
+$('btnResume').onclick = () => { paused = false; $('menu').hidden = true; lockPointer(); last = performance.now(); };
+$('btnGate').onclick = () => { audio(); carry = freshCarry(); startSeg('gate'); };
+$('btnHall').onclick = () => {
+  audio(); carry = freshCarry();
+  if ($('pTele').checked) carry.tele = 'knows'; if ($('pEum').checked) carry.eum = 'knows'; if ($('pPen').checked) carry.pen = 'knows';
+  startSeg('hall');
+};
+function retry() {
+  const gained = carry.ledger - G.snapshot.ledger;
+  carry = JSON.parse(JSON.stringify(G.snapshot));
+  carry.ledger += Math.floor(gained / 2);              // 失敗：這段記下的帳保留一半
+  startSeg(G.seg);
+}
+$('btnRetry').onclick = retry;
+$('btnNext').onclick = () => startSeg('hall');
+$('btnMenu').onclick = () => { running = false; $('result').hidden = true; $('btnResume').hidden = true; $('menu').hidden = false; };
+})();
+</script>
