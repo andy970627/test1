@@ -93,6 +93,7 @@ public class Boulder : MonoBehaviour
         rock.AddComponent<MeshFilter>().sharedMesh = BoulderMesh.Build(5, 2024);
         rock.AddComponent<MeshRenderer>().sharedMaterial = stone;
         AddGrooves(body);
+        AddMegalithFacets(body);
         rimMaterial = OdysseyMaterials.Create(Color.black, MoonGlow);
         AddMoonRim(body, rimMaterial);
 
@@ -130,6 +131,23 @@ public class Boulder : MonoBehaviour
             float y = (i - 1) * 0.25f; // 高度的 −25%、0、+25%
             t.localPosition = new Vector3(0f, y, -0.5f - GrooveDepth / 2f / Depth);
             t.localScale = new Vector3(0.8f, GrooveHeight / Height, GrooveDepth / Depth);
+        }
+    }
+
+    /// <summary>巨石兩側的粗糙風化切角（古希臘獨眼巨石建築風格 Cyclopean Masonry）。</summary>
+    static void AddMegalithFacets(Transform body)
+    {
+        var stoneShade = EchoMaterials.Create(new Color(0.24f, 0.20f, 0.16f));
+        for (int x = -1; x <= 1; x += 2)
+        {
+            var pillar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Destroy(pillar.GetComponent<Collider>());
+            pillar.name = "PillarFacet" + x;
+            pillar.transform.SetParent(body, false);
+            pillar.transform.localPosition = new Vector3(x * 0.46f, 0f, -0.48f);
+            pillar.transform.localScale = new Vector3(0.08f, 0.94f, 0.06f);
+            pillar.transform.localRotation = Quaternion.Euler(0f, x * 25f, 0f);
+            pillar.GetComponent<Renderer>().sharedMaterial = stoneShade;
         }
     }
 

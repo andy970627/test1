@@ -36,7 +36,8 @@ public class OliveStake : MonoBehaviour
         body = gameObject.AddComponent<Rigidbody>();
         body.mass = 4f;
         body.collisionDetectionMode = CollisionDetectionMode.Continuous;
-        gameObject.AddComponent<ImpactEmitter>().Init(SoundKind.Drag, SoundRules.Loudness(SoundKind.Drag));
+        // 落地時發出沉重的木質撞擊聲（ProceduralAudio.SoftThud）
+        gameObject.AddComponent<ImpactEmitter>().Init(SoundKind.Cheese, SoundRules.Loudness(SoundKind.Drag));
     }
 
     /// <summary>平放在地上（剛體）。</summary>

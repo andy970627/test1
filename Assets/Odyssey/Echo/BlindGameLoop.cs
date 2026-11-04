@@ -171,6 +171,9 @@ public partial class BlindGameLoop : MonoBehaviour
                 sounds?.PlayLocal(sounds.CrewReply);
         };
         player.PickedUpStone += () => sounds?.PlayLocal(sounds.PebbleClick, 0.5f);
+        player.PickedUpArrow += () => sounds?.PlayLocal(sounds.WoodTap, 0.6f);
+        hands = new GameObject("Hands").AddComponent<FirstPersonHands>();
+        hands.Init(player, Slide, body.CameraTransform);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
         gameObject.AddComponent<SituationHints>().Init(this, Hints);
         menus = gameObject.AddComponent<GameMenus>();
@@ -986,41 +989,27 @@ public partial class BlindGameLoop : MonoBehaviour
         Fill(new Rect(bar.x, bar.y, w * Mathf.Clamp01(left), h), new Color(0.85f, 0.92f, 1f, 0.9f));
     }
 
-    /// <summary>右下角三顆石子：有的亮、沒有的暗。</summary>
+    /// <summary>右下角三顆石子：有的亮、沒有的暗（箭改由第一人稱視角箭筒呈現，規格第 26 節 C、D）。</summary>
     void DrawStones(int fontSize)
     {
-        float size = fontSize * 0.9f;
+        float size = fontSize * 0.65f;
         float gap = size * 0.4f;
-        float bottomPad = fontSize * 3f;
+        float bottomPad = fontSize * 2.5f;
         for (int i = 0; i < EchoPlayer.MaxStones; i++)
         {
-            var r = new Rect(Screen.width - (EchoPlayer.MaxStones - i) * (size + gap) - 10, Screen.height - bottomPad - size, size, size);
+            var r = new Rect(Screen.width - (EchoPlayer.MaxStones - i) * (size + gap) - 15, Screen.height - bottomPad - size, size, size);
             Fill(r, i < player.Stones ? new Color(0.85f, 0.85f, 0.8f, 0.9f) : new Color(1f, 1f, 1f, 0.12f));
-        }
-
-        // 石子左邊一列細長條＝箭；拉弓時最右那支隨拉弓程度變亮。
-        float stonesLeft = Screen.width - EchoPlayer.MaxStones * (size + gap) - 10;
-        float arrowW = size * 0.18f, arrowGap = size * 0.3f;
-        for (int i = 0; i < EchoPlayer.MaxArrows; i++)
-        {
-            float x = stonesLeft - gap - (EchoPlayer.MaxArrows - i) * (arrowW + arrowGap);
-            var r = new Rect(x, Screen.height - bottomPad - size * 1.3f, arrowW, size * 1.3f);
-            bool have = i < player.Arrows;
-            Color c = have ? new Color(0.75f, 0.6f, 0.4f, 0.9f) : new Color(1f, 1f, 1f, 0.12f);
-            if (have && i == player.Arrows - 1 && player.Bow.Drawing)
-                c = Color.Lerp(c, Color.white, player.Bow.Fraction);
-            Fill(r, c);
         }
     }
 
-    /// <summary>左下角體力條：滿格時隱藏；耗盡、還不能跑時是紅色。</summary>
+    /// <summary>左下角體力條：滿格時隱藏；耗盡、還不能跑時是紅色（縮小呈現，規格第 26 節 C）。</summary>
     void DrawStamina(int fontSize)
     {
         var stamina = player.Stamina;
         if (stamina.Value >= 1f)
             return;
-        float w = Screen.width * 0.18f, h = fontSize * 0.4f;
-        var r = new Rect(10, Screen.height - fontSize * 3f - h, w, h);
+        float w = Screen.width * 0.12f, h = fontSize * 0.28f;
+        var r = new Rect(15, Screen.height - fontSize * 2.5f - h, w, h);
         Fill(r, new Color(1f, 1f, 1f, 0.15f));
         Color fill = stamina.CanRun ? new Color(0.85f, 0.92f, 1f, 0.9f) : new Color(0.85f, 0.2f, 0.15f, 0.9f);
         Fill(new Rect(r.x, r.y, w * stamina.Value, h), fill);

@@ -30,8 +30,6 @@ public partial class BlindGameLoop
         CyclopsHits.Hit += OnCyclopsHit;
         player.PickedUpStone += () => Hint(HintKind.FirstStone);
         music = gameObject.AddComponent<TerrorMusic>();
-        hands = body.gameObject.AddComponent<FirstPersonHands>();
-        hands.Init(body.CameraTransform);
         thunderScene = new GameObject("ZeusThunder").AddComponent<ZeusThunderScene>();
         thunderScene.Init(body, hands);
         thunderScene.OwlFlies += sounds.PlayOwl;
@@ -91,8 +89,6 @@ public partial class BlindGameLoop
         bool close = Flags.Terror == TerrorMode.Layered && Terror.Layer is TerrorLayer.Three or TerrorLayer.Chase;
         feedback.SetTerrorVignette(close ? (Terror.Layer == TerrorLayer.Chase ? 0.8f : 0.55f) : 0f);
 
-        hands.Visible = !player.CarryingStake;
-        hands.Draw = player.Slingshot.Fraction;
         hands.Tremble = Favor.Tremble ? 0.6f : 0f;
 
         // 巨人走動時，越近腳步越讓鏡頭震。

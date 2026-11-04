@@ -17,13 +17,14 @@ Shader "Odyssey/Echo"
             half4 _BaseColor;
         CBUFFER_END
 
-        struct Attributes { float4 positionOS : POSITION; };
-        struct Varyings { float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; };
+        struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
+        struct Varyings { float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 normalWS : TEXCOORD1; };
 
         Varyings vert(Attributes v)
         {
             Varyings o;
             o.positionWS = TransformObjectToWorld(v.positionOS.xyz);
+            o.normalWS = TransformObjectToWorldNormal(v.normalOS);
             o.positionCS = TransformWorldToHClip(o.positionWS);
             return o;
         }
@@ -74,7 +75,16 @@ Shader "Odyssey/Echo"
                     if (hear > 0 && front >= min(hear, radius))
                         ring += color * 0.5 * (1 - saturate(abs(d - hear) / 0.15)) * (1 - saturate(age / fade));
                 }
-                return half4(_BaseColor.rgb * lit * 2 + ring * 0.6, 1);
+                // 諾蘭式暗黑洞穴質樸微細節：微結構顆粒與潮濕岩壁側掠高光 (Fresnel)
+                float3 nWS = normalize(i.normalWS);
+                float3 vWS = normalize(GetCameraPositionWS() - i.positionWS);
+                float NdotV = saturate(dot(nWS, vWS));
+                float fresnel = pow(1.0 - NdotV, 3.0) * 0.4;
+                float grain = frac(sin(dot(floor(i.positionWS * 36.0), float3(12.9898, 78.233, 45.164))) * 43758.5453);
+                float microTexture = 0.85 + 0.3 * grain;
+
+                half3 surfaceColor = _BaseColor.rgb * microTexture;
+                return half4(surfaceColor * lit * 2.0 + ring * 0.65 + fresnel * lit * 1.2, 1);
             }
             ENDHLSL
         }
@@ -91,6 +101,26 @@ Shader "Odyssey/Echo"
             #pragma vertex vert
             #pragma fragment fragDepth
             half fragDepth(Varyings i) : SV_Target { return 0; }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "DepthNormals"
+            Tags { "LightMode" = "DepthNormals" }
+            ZWrite On
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment fragDepthNormals
+
+            half4 fragDepthNormals(Varyings i) : SV_Target
+            {
+                float3 normalWS = normalize(i.normalWS);
+                float3 normalVS = TransformWorldToViewNormal(normalWS, true);
+                return half4(PackNormalOctahedron(normalVS), 0.0, 0.0);
+            }
             ENDHLSL
         }
     }

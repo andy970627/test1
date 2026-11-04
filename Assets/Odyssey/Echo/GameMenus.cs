@@ -407,8 +407,15 @@ public class GameMenus : MonoBehaviour
         var oldAlign = itemStyle.alignment;
         itemStyle.alignment = TextAnchor.MiddleLeft;
         for (int i = 0; i < pages.Length; i++)
-            Label(new Rect(left, top + i * pageH, Screen.width * 0.22f, pageH),
-                (i == page ? "▸ " : "   ") + GuideBook.PageName(pages[i]), itemStyle, i == page ? Text : Dim);
+        {
+            var r = new Rect(left, top + i * pageH, Screen.width * 0.22f, pageH);
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && r.Contains(Event.current.mousePosition))
+            {
+                page = i;
+                Event.current.Use();
+            }
+            Label(r, (i == page ? "▸ " : "   ") + GuideBook.PageName(pages[i]), itemStyle, i == page ? Text : Dim);
+        }
         itemStyle.alignment = oldAlign;
 
         float x = Screen.width * 0.33f;
@@ -433,9 +440,15 @@ public class GameMenus : MonoBehaviour
         }
         bodyStyle.alignment = oldBody;
 
+        var returnRect = new Rect(0, Screen.height - smallStyle.fontSize * 2.5f, Screen.width, smallStyle.fontSize * 1.5f);
+        if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && returnRect.Contains(Event.current.mousePosition))
+        {
+            Event.current.Use();
+            Go(chronicleReturn, IndexOf(chronicleReturn, Chronicle));
+        }
         var oldSmall = smallStyle.alignment;
         smallStyle.alignment = TextAnchor.MiddleCenter;
-        Label(new Rect(0, Screen.height - smallStyle.fontSize * 2.5f, Screen.width, smallStyle.fontSize * 1.5f), "W／S 換頁・Tab 返回", smallStyle, Dim);
+        Label(returnRect, "W／S 換頁・Tab 或點此返回", smallStyle, Dim);
         smallStyle.alignment = oldSmall;
     }
 
@@ -449,6 +462,12 @@ public class GameMenus : MonoBehaviour
         {
             "rock" => brain.ThrowCooldownLeft <= 0f ? "\n現在：可以丟" : $"\n現在：還要 {Mathf.CeilToInt(brain.ThrowCooldownLeft)} 秒",
             "decoy" => $"\n現在：被騙 {Mathf.Min(loop.Decoys.Fooled, DecoyMemory.FooledLimit)}／{DecoyMemory.FooledLimit}",
+            "footstep" => loop.Flags.Passive switch
+            {
+                PassiveLight.Dim => "\n（實驗中：被動聲音發出微光）",
+                PassiveLight.Full => "\n（實驗中：所有聲音都會發光）",
+                _ => "",
+            },
             _ => "",
         };
     }

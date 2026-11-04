@@ -14,7 +14,8 @@ public class Stalagmite : MonoBehaviour { }
 public class CaveAtmosphere : MonoBehaviour
 {
     const float RadiusX = 15f, RadiusZ = 10f, RadiusY = 7f;
-    const int Stalactites = 30, Stalagmites = 10;
+    // CaveBuilder 的美術打磨已經沿洞頂邊緣放了 16 根；這裡補洞頂中間一帶。
+    const int Stalactites = 14, Stalagmites = 10;
     const float DustReach = 8f;
     const int DustPool = 24;
 

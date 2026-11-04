@@ -83,6 +83,7 @@ public class EchoPlayer : MonoBehaviour
 
     /// <summary>正在塞楔子（0.6 秒內不能推）。</summary>
     public bool Wedging => wedgeBusy >= 0f;
+    public float WedgeBusy => wedgeBusy;
 
     int enabledFrame = -1;
 
@@ -105,6 +106,9 @@ public class EchoPlayer : MonoBehaviour
 
     /// <summary>撿到一顆石子（地上的或彈出來的）；只給玩家聽的小回饋用。</summary>
     public event Action PickedUpStone;
+
+    /// <summary>撿回一支箭；只給玩家聽的小回饋用。</summary>
+    public event Action PickedUpArrow;
 
     /// <summary>玩家用了某個操作（給遊戲內提示計次）。</summary>
     public event Action<PromptKind> Used;
@@ -181,7 +185,8 @@ public class EchoPlayer : MonoBehaviour
         UpdateWedgeButton(mouse, dt);
 
         // 體力每幀只算一次：推巨石時 Shift 是猛推，否則是跑步（拿著木樁不能跑）。
-        bool pushing = AtBoulder && keyboard.eKey.isPressed && !ePressedUsed && !Wedging && rightHeld < 0f;
+        // 巨人拔楔子後的滑回期間（slide.PullingBack）推力無效，也不耗體力。
+        bool pushing = AtBoulder && keyboard.eKey.isPressed && !ePressedUsed && !Wedging && rightHeld < 0f && !slide.PullingBack;
         bool running = false;
         if (pushing)
         {
@@ -259,9 +264,16 @@ public class EchoPlayer : MonoBehaviour
     {
         if (wedgeBusy >= 0f)
         {
-            wedgeBusy -= dt;
-            if (wedgeBusy < 0f)
-                PlaceWedge();
+            if (!AtBoulder)
+            {
+                wedgeBusy = -1f;
+            }
+            else
+            {
+                wedgeBusy -= dt;
+                if (wedgeBusy < 0f)
+                    PlaceWedge();
+            }
         }
 
         if (mouse.rightButton.wasPressedThisFrame && AtBoulder && wedgeBusy < 0f)
@@ -438,6 +450,7 @@ public class EchoPlayer : MonoBehaviour
 
     void UpdatePickups()
     {
+        bool pickedArrow = false;
         // 射出去的箭：停下來、搆得到就撿回來。
         for (int i = Arrow.All.Count - 1; i >= 0 && Arrows < MaxArrows; i--)
         {
@@ -446,30 +459,35 @@ public class EchoPlayer : MonoBehaviour
                 continue;
             a.Take();
             Arrows++;
-            PickedUpStone?.Invoke();
+            pickedArrow = true;
         }
+        if (pickedArrow)
+            PickedUpArrow?.Invoke();
 
+        bool pickedStone = false;
         foreach (var p in pickups)
         {
             if (Stones >= MaxStones)
-                return;
+                break;
             if (p.Taken || Flat(p.transform.position - transform.position).magnitude > PickupReach)
                 continue;
             p.Take();
             Stones++;
-            PickedUpStone?.Invoke();
+            pickedStone = true;
         }
         // 被拔掉、彈出來停在地上的石子也撿得回來。
         foreach (var s in new List<LooseStone>(LooseStone.All))
         {
             if (Stones >= MaxStones)
-                return;
+                break;
             if (s == null || !s.Settled || Flat(s.transform.position - transform.position).magnitude > PickupReach)
                 continue;
             s.Take();
             Stones++;
-            PickedUpStone?.Invoke();
+            pickedStone = true;
         }
+        if (pickedStone)
+            PickedUpStone?.Invoke();
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);

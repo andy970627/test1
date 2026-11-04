@@ -30,6 +30,15 @@ public class MilkPail : MonoBehaviour
         DestroyImmediate(shape.GetComponent<Collider>());
         shape.AddComponent<MeshCollider>().convex = true;
 
+        // 荷馬史詩青銅外箍 (Bronze hoop around the rustic milk pail)
+        var hoop = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        hoop.name = "BronzeHoop";
+        hoop.transform.SetParent(shape.transform, false);
+        hoop.transform.localPosition = new Vector3(0f, 0.35f, 0f);
+        hoop.transform.localScale = new Vector3(1.02f, 0.12f, 1.02f);
+        hoop.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.55f, 0.42f, 0.22f));
+        DestroyImmediate(hoop.GetComponent<Collider>());
+
         body = gameObject.AddComponent<Rigidbody>();
         body.mass = 2f;
         body.collisionDetectionMode = CollisionDetectionMode.Continuous;
