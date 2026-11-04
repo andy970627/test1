@@ -44,13 +44,22 @@
       decay: 0.6,            // 放手時張力每秒退回
       zone: 0.4,             // 亮區半寬（指針範圍 -1.2 … 1.2）
       outLimit: 0.9,         // 指針離開亮區累計幾秒就滑掉
-      pxPerUnit: 220,        // 手橫移多少像素＝指針一個單位
+      handSpan: 4.5,         // 整個輸入面（例如整個畫面寬）對應幾個指針單位：手在 ±0.45 面寬內移動就夠上好弦
       driftWave: 3.0,        // 指針漂移：慢波
       driftNoise: 10.0,      // 指針漂移：亂流
       damping: 0.985,        // 每 1/60 秒的速度保留
-      tensionGain: 1.4,      // 弦越緊越難控
-      recenter: 1.5          // 放手時指針回中的速度
+      tensionGain: 1.4       // 弦越緊越難控
     },
+
+    // 瞄準
+    aim: {
+      drawSensitivity: 0.55, // 拉弓時瞄準變慢（乘在視角位移上）
+      yawLimit: 0.7,         // 左右最多轉幾弧度
+      pitchLimit: 0.35       // 上下最多抬幾弧度
+    },
+
+    flightTimeScale: 0.22,   // 箭飛行時的慢動作（遊戲時間 × 這個值＝箭的時間）
+    fullDrawRemark: 0.8,     // 拉力低於這個值，結果會說「弓沒拉滿」
 
     // 拉弓與手晃
     draw: {
@@ -120,7 +129,8 @@
     };
   }
 
-  // input: { down: 是否按住, dx: 這一步手的橫移（像素，往右為正）}
+  // input: { down: 是否按住, dx: 這一步手的橫移（指針單位，往右為正；換算由輸入端負責）}
+  // 放手時：指針停在原地（不回中），張力慢慢退回；再按下從原處繼續。
   function stepString(s, dt, input) {
     if (s.failed || s.done) return s;
     var P = TUNING.string, down = !!(input && input.down), dx = (input && input.dx) || 0;
@@ -131,13 +141,11 @@
       s.driftVel += acc * dt;
       s.driftVel *= Math.pow(P.damping, dt * 60);
       s.drift += s.driftVel * dt;
-      s.hand += dx / P.pxPerUnit;               // 手往右，指針往左
+      s.hand += dx;                             // 手往右，指針往左
       s.tension = Math.min(1, s.tension + dt / P.fillTime);
     } else {
-      // 放手：弓慢慢彈直，指針回中
-      s.driftVel *= Math.pow(0.9, dt * 60);
-      var target = s.hand;
-      s.drift += (target - s.drift) * Math.min(1, P.recenter * dt);
+      // 放手：弓慢慢彈直；指針不動，漂移的速度歸零
+      s.driftVel = 0;
       s.tension = Math.max(0, s.tension - dt * P.decay);
     }
     s.needle = clamp(s.drift - s.hand, -1.2, 1.2);
@@ -147,7 +155,7 @@
     if (down && Math.abs(s.needle) > P.zone) {
       s.outTime += dt;
       if (s.outTime > P.outLimit) s.failed = true;
-    } else {
+    } else if (down) {
       s.outTime = Math.max(0, s.outTime - dt * 2);
     }
     if (!s.failed && s.tension >= 1) s.done = true;
@@ -286,16 +294,124 @@
   function describe(res) {
     var s = res.stop, n = res.passed;
     if (res.win) return '箭穿過全部十二把斧頭的孔，一把也沒碰到，直飛出門外。';
+    var why = res.power !== undefined && res.power < TUNING.fullDrawRemark ? '弓沒拉滿，' : '';
     if (s.kind === 'short') {
-      var why = res.power !== undefined && res.power < 0.8 ? '弓沒拉滿，' : '';
       return n === 0 ? why + '箭往下沉，還沒穿過第一把斧頭就落地了。'
         : '穿過 ' + n + ' 個孔，' + why + '箭往下沉，沒能穿過第 ' + (n + 1) + ' 把斧頭（偏低），落在地上。';
     }
     var w = DIR_LABEL[s.dir];
     if (s.kind === 'wide') return n === 0 ? '箭從第一把斧頭旁邊飛過（' + w + '）。'
       : '穿過 ' + n + ' 個孔，從第 ' + (n + 1) + ' 把斧頭旁邊飛過（' + w + '）。';
-    return n === 0 ? '箭打在第一把斧頭上（' + w + '）。'
-      : '穿過 ' + n + ' 個孔，撞在第 ' + (n + 1) + ' 把斧頭上（' + w + '）。';
+    return n === 0 ? why + '箭打在第一把斧頭上（' + w + '）。'
+      : '穿過 ' + n + ' 個孔，' + why + '撞在第 ' + (n + 1) + ' 把斧頭上（' + w + '）。';
+  }
+
+  // ---------------------------------------------------------------- 一輪（狀態機）
+  // 上弦 string → 瞄準 aim → 飛行 flight → 結果 result。
+  // 渲染端每格呼叫 stepRound，畫回傳的狀態；事件陣列告訴它這一步發生了什麼（播聲音、亮斧孔）。
+  var TEXT = {
+    introString: '求婚者一個接一個都拉不開這把弓。現在輪到乞丐模樣的你。',
+    introAim: '弓已上弦。等十二個孔排成一條隧道，再放手。',
+    strung: '弓弦在指下歌唱，聲音像燕子。宙斯在天上打了一聲雷。求婚者臉色都變了。',
+    cancel: '放得太早，箭還沒拉開。',
+    slipTitle: '弓弦滑掉了',
+    slipText: '指針離開亮區太久，弓又彈直了。求婚者哄堂大笑。',
+    winTitle: '十二孔，一箭穿過',
+    winTail: '大廳裡的笑聲停了。',
+    missTitle: '沒有成功',
+    missTail: '求婚者哄堂大笑。'
+  };
+
+  // options: { difficulty, stringPhase (預設 true), fatigue (預設 true) }
+  // carry:   { strungOnce } 這場比試裡已經上好過弦，重來就跳過上弦
+  function createRound(options, rng, carry) {
+    options = options || {}; rng = rng || Math.random; carry = carry || {};
+    var strungOnce = !!carry.strungOnce;
+    var needString = options.stringPhase !== false && !strungOnce;
+    return {
+      phase: needString ? 'string' : 'aim',
+      difficulty: options.difficulty || 'normal',
+      fatigue: options.fatigue !== false,
+      strungOnce: strungOnce || options.stringPhase === false,
+      str: createStringState(rng),
+      draw: createDrawState(rng),
+      aim: { yaw: (rng() - 0.5) * 0.06, pitch: -0.02 + rng() * 0.02 },
+      waitRelease: false,     // 上好弦那一下還按著：要先放開才開始拉弓
+      flight: null,           // { shot, res, t, nextEvent, done }
+      result: null,           // { win, title, text, passed, reason }
+      intro: needString ? TEXT.introString : TEXT.introAim
+    };
+  }
+
+  // 這一刻瞄準視角的倍率（拉弓時變慢）：渲染端也可以讀來縮放游標
+  function aimSensitivity(round) {
+    return round.draw.drawing ? TUNING.aim.drawSensitivity : 1;
+  }
+
+  // 射出：rel 是放手那一刻的快照 { power, sway }
+  function fireRound(round, rel) {
+    var A = round.aim;
+    var shot = makeShot({ yaw: A.yaw, pitch: A.pitch, power: rel.power, sway: rel.sway });
+    var res = simulate(shot, round.difficulty);
+    round.flight = { shot: shot, res: res, t: 0, nextEvent: 0, done: false };
+    round.phase = 'flight';
+    return res;
+  }
+
+  function finish(round, win, title, text, reason) {
+    round.phase = 'result';
+    round.result = { win: win, title: title, text: text, reason: reason,
+                     passed: round.flight ? round.flight.res.passed : 0 };
+    return round.result;
+  }
+
+  // input: { down: 是否按住（上弦／拉弓）, stringDx: 這一步手的橫移（指針單位）,
+  //          look: { yaw, pitch } 這一步想轉的角度（弧度，未乘拉弓倍率） }
+  // 回傳事件：{type:'strung'|'slip'|'fire'|'cancel'|'pass'|'stop'|'result', ...}
+  function stepRound(round, dt, input) {
+    input = input || {};
+    var ev = [], down = !!input.down;
+    if (round.phase === 'string') {
+      stepString(round.str, dt, { down: down, dx: input.stringDx || 0 });
+      if (round.str.failed) {
+        ev.push({ type: 'slip' });
+        ev.push({ type: 'result', result: finish(round, false, TEXT.slipTitle, TEXT.slipText, 'slip') });
+      } else if (round.str.done) {
+        round.strungOnce = true; round.phase = 'aim'; round.waitRelease = down;
+        ev.push({ type: 'strung', text: TEXT.strung });
+      }
+    } else if (round.phase === 'aim') {
+      if (round.waitRelease && !down) round.waitRelease = false;
+      var pull = down && !round.waitRelease, d = round.draw;
+      var look = input.look;
+      if (look) {
+        var k = aimSensitivity(round), A = TUNING.aim;
+        round.aim.yaw = clamp(round.aim.yaw + (look.yaw || 0) * k, -A.yawLimit, A.yawLimit);
+        round.aim.pitch = clamp(round.aim.pitch + (look.pitch || 0) * k, -A.pitchLimit, A.pitchLimit);
+      }
+      if (d.drawing && !pull) {
+        var rel = releaseDraw(d);
+        if (rel.fire) { var res = fireRound(round, rel); ev.push({ type: 'fire', res: res, power: rel.power }); }
+        else ev.push({ type: 'cancel', text: TEXT.cancel });
+      } else {
+        stepDraw(d, dt, { down: pull, fatigue: round.fatigue });
+      }
+    } else if (round.phase === 'flight') {
+      var f = round.flight;
+      f.t = Math.min(f.res.endT, f.t + dt * TUNING.flightTimeScale);
+      while (f.nextEvent < f.res.events.length && f.res.events[f.nextEvent].t <= f.t) {
+        ev.push({ type: 'pass', axe: f.res.events[f.nextEvent++].axe });
+      }
+      if (f.t >= f.res.endT) {
+        f.done = true;
+        ev.push({ type: 'stop', kind: f.res.stop.kind });
+        var text = describe(f.res);
+        var r = f.res.win ? finish(round, true, TEXT.winTitle, text + TEXT.winTail, 'door')
+                          : finish(round, false, TEXT.missTitle, text + TEXT.missTail, f.res.stop.kind);
+        ev.push({ type: 'result', result: r });
+      }
+    }
+    return ev;
   }
 
   // ---------------------------------------------------------------- 解算（測試與除錯用）
@@ -329,6 +445,7 @@
     createStringState: createStringState, stepString: stepString,
     createDrawState: createDrawState, stepDraw: stepDraw, releaseDraw: releaseDraw, swayAmplitude: swayAmplitude,
     speed: speed, aimDir: aimDir, makeShot: makeShot, positionAt: positionAt, velocityAt: velocityAt,
-    floorTime: floorTime, simulate: simulate, describe: describe, solveWindow: solveWindow
+    floorTime: floorTime, simulate: simulate, describe: describe, solveWindow: solveWindow,
+    TEXT: TEXT, createRound: createRound, stepRound: stepRound, fireRound: fireRound, aimSensitivity: aimSensitivity
   };
 }));

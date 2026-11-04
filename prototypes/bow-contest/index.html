@@ -119,7 +119,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 <div class="below">
   <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠。<br>
   <b>上弦</b>：按住滑鼠左右移動，讓指針待在亮區，直到弓彎滿。<b>射箭</b>：按住拉弓（或空白鍵），放開射出。拉滿後有一小段最穩，撐太久手會抖。<b>R</b>：再來一次。<br>
-  手機上：手指拖曳畫面瞄準，按住右下的圓鈕上弦或拉弓；上弦時在圓鈕上左右滑。</p>
+  手機上：上弦時手指按住畫面任何地方左右拖；瞄準時手指拖曳畫面，按住右下的圓鈕拉弓。</p>
   <fieldset>
     <legend>實驗開關</legend>
     <label><input type="checkbox" id="optString" checked> 上弦階段</label>
@@ -127,7 +127,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     <label><input type="checkbox" id="optGuide"> 彈道輔助線</label>
     <label>斧孔 <select id="optHole"><option value="normal">普通</option><option value="easy">寬鬆</option><option value="hard">嚴格</option></select></label>
   </fieldset>
-  <p class="note">試玩用原型。規則（上弦、手晃、彈道、穿孔判定）放在獨立的 rules.js。改開關會從頭開始。</p>
+  <p class="note">改開關會從頭開始比試。</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -520,140 +520,140 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     seg(rightArm, rightHand.position.clone(), tmpV.clone());
   }
 
-  // ================================================================ 遊戲狀態
-  let st = null, attempts = 0, best = 0, strungOnce = false;
-  const aim = { yaw: 0, pitch: 0 };
-  const input = { down: false, stringDx: 0 };
+  // ================================================================ 遊戲狀態（規則在 rules.js 的 createRound / stepRound）
+  let round = null, attempts = 0, best = 0, time = 0, fov = 55, resultAt = 0, flightDoneAt = 0;
+  let pendingEnd = null;        // 結果出來後，等一下再讓求婚者笑、跳出結果面板
+  let resultShowAt = 0;
+  // 送進 stepRound 的輸入：stringDx 以指針單位累計，look 以弧度累計
+  const input = { down: false, stringDx: 0, look: { yaw: 0, pitch: 0 } };
   let locked = false, touchUI = false;
 
   function diff() { return opt.hole.value; }
   function newRound(full) {
-    if (full) { strungOnce = false; attempts = 0; best = 0; buildAxes(diff()); }
-    const needString = opt.string.checked && !strungOnce;
-    st = {
-      phase: needString ? 'string' : 'aim',
-      str: R.createStringState(),
-      draw: R.createDrawState(),
-      flight: null, result: null, resultAt: 0, time: 0, fov: 55,
-    };
-    input.down = false; input.stringDx = 0;
-    aim.yaw = (Math.random() - .5) * .06; aim.pitch = -.02 + Math.random() * .02;
+    if (full) { attempts = 0; best = 0; buildAxes(diff()); }
+    round = R.createRound({ difficulty: diff(), stringPhase: opt.string.checked, fatigue: opt.fatigue.checked },
+                          Math.random, { strungOnce: !full && round ? round.strungOnce : false });
+    resultAt = 0; flightDoneAt = 0; pendingEnd = null; resultShowAt = 0;
+    input.down = false; input.stringDx = 0; input.look.yaw = input.look.pitch = 0;
+    holdT.id = null; touch.id = null; touch.pressed = false; ui.hold.classList.remove('on');
     axes.forEach(a => { a.lit = 0; });
     worldArrow.visible = false;
     ui.result.hidden = true;
-    say(needString ? '求婚者一個接一個都拉不開這把弓。現在輪到乞丐模樣的你。' : '弓已上弦。等十二個孔排成一條隧道，再放手。');
+    say(round.intro);
+    setCreak(0);
     refreshHud();
   }
   let msgTimer = 0;
   function say(text, hold) { ui.msg.textContent = text; ui.msg.style.opacity = 1; msgTimer = hold || 5; }
 
+  const showResult = () => !!round.result && !pendingEnd;
   function refreshHud() {
-    ui.score.textContent = `第 ${attempts + (st.flight ? 0 : 1)} 箭　最好 ${best} / 12`;
-    ui.stringUI.hidden = st.phase !== 'string' || !!st.result;
-    ui.drawUI.hidden = st.phase !== 'aim' || !!st.flight || !!st.result;
-    ui.hold.hidden = !touchUI || !!st.result || !!st.flight;
-    ui.hold.textContent = st.phase === 'string' ? '上弦' : '拉弓';
-    ui.stringTip.textContent = touchUI ? '上弦：按住圓鈕，手指左右滑，讓指針留在亮區' : '上弦：按住滑鼠，左右移動，讓指針留在亮區';
+    const ph = round.phase;
+    ui.score.textContent = `第 ${attempts + (round.flight ? 0 : 1)} 箭　最好 ${best} / 12`;
+    ui.stringUI.hidden = ph !== 'string';
+    ui.drawUI.hidden = ph !== 'aim';
+    // 上弦時手指直接在畫面上拖，不用圓鈕
+    ui.hold.hidden = !touchUI || ph !== 'aim';
+    ui.hold.textContent = '拉弓';
+    ui.stringTip.textContent = touchUI ? '上弦：手指按住畫面左右拖，讓指針留在亮區' : '上弦：按住滑鼠，左右移動，讓指針留在亮區';
     let hint = '';
-    if (!st.result && !st.flight) {
+    if (ph === 'string' || ph === 'aim') {
       if (!touchUI && !locked) hint = '點一下畫面鎖住滑鼠（Esc 放開）';
-      else if (st.phase === 'aim') hint = touchUI ? '拖曳瞄準，按住圓鈕拉弓，放開射出' : '按住拉弓，放開射出';
+      else if (ph === 'aim') hint = touchUI ? '拖曳瞄準，按住圓鈕拉弓，放開射出' : '按住拉弓，放開射出';
     }
     ui.hint.textContent = hint; ui.hint.hidden = !hint;
   }
 
-  function endRound(win, title, text) {
-    st.result = { win };
-    best = Math.max(best, st.flight ? st.flight.res.passed : 0);
-    ui.result.classList.toggle('win', win);
-    ui.resTitle.textContent = title; ui.resText.textContent = text;
-    ui.resCount.textContent = st.flight ? `穿過 ${st.flight.res.passed} / 12 個孔　最好 ${best} / 12` : '';
-    st.resultAt = st.time;
+  // 規則已判定結果；這裡只負責演出
+  function presentResult(r) {
+    best = Math.max(best, r.passed);
+    ui.result.classList.toggle('win', r.win);
+    ui.resTitle.textContent = r.title; ui.resText.textContent = r.text;
+    ui.resCount.textContent = round.flight ? `穿過 ${r.passed} / 12 個孔　最好 ${best} / 12` : '';
+    resultAt = time;
     input.down = false; setCreak(0);
-    if (!win) { suitors.forEach(s => { s.laugh = 1; }); sfx.laugh(); }
+    if (!r.win) { suitors.forEach(s => { s.laugh = 1; }); sfx.laugh(); }
     else sfx.win();
     if (document.pointerLockElement) document.exitPointerLock();
-    st.result.showAt = st.time + (win ? .9 : .65);
-    ui.msg.textContent = ""; msgTimer = 0;
+    resultShowAt = time + (r.win ? .9 : .65);
+    ui.msg.textContent = ''; msgTimer = 0;
     refreshHud();
   }
 
-  function fire(sway) {
-    const power = st.draw.power;
-    const shot = R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power, sway });
-    const res = R.simulate(shot, diff());
-    st.flight = { shot, res, t: 0, nextEvent: 0, done: false, doneAt: 0 };
-    attempts++;
-    sfx.twang();
-    worldArrow.visible = true;
-    guide.visible = false;
-    refreshHud();
-    return res;
-  }
-
-  function release() {
-    if (!input.down) return;
-    input.down = false;
-    if (st.phase === 'aim' && st.draw.drawing && !st.flight && !st.result) {
-      const sway = { ...st.draw.sway };
-      const rel = R.releaseDraw(st.draw);
-      st.draw.power = rel.power; // 留給 fire 讀
-      if (rel.fire) fire(sway); else { st.draw.power = 0; say('放得太早，箭還沒拉開。'); }
+  function onEvents(evs) {
+    for (const e of evs) {
+      if (e.type === 'strung') { setCreak(0); sfx.swallow(); sfx.thunder(); say(e.text, 6); refreshHud(); }
+      else if (e.type === 'slip') sfx.slip();
+      else if (e.type === 'cancel') say(e.text);
+      else if (e.type === 'fire') { attempts++; sfx.twang(); worldArrow.visible = true; guide.visible = false; refreshHud(); }
+      else if (e.type === 'pass') { axes[e.axe].lit = 1; sfx.ring(e.axe); }
+      else if (e.type === 'stop') { flightDoneAt = time; if (e.kind === 'hit') sfx.thunk(); else if (e.kind !== 'door') sfx.land(); }
+      else if (e.type === 'result') {
+        const wait = round.flight ? (e.result.win ? .9 : .7) : 0;
+        pendingEnd = { at: time + wait, result: e.result };
+      }
     }
   }
+
   function press() {
     audio();
-    if (st.result) { if (st.time - st.resultAt > .5) newRound(false); return; }
-    if (st.flight) return;
+    if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); return; }
+    if (round.phase === 'flight') return;
     input.down = true;
   }
+  function release() { input.down = false; }
 
-  // ================================================================ 輸入
-  const SENS = .0022, TOUCH_SENS = .0042;
+  // ================================================================ 輸入（像素 → 規則單位）
+  const SENS = .0022, TOUCH_SENS = .0042;       // 每像素幾弧度（未拉近時）
+  const MOUSE_PX_PER_UNIT = 220;                 // 滑鼠：多少像素＝指針一個單位
+  function stringUnitsFromTouch(dxPx) { return dxPx / Math.max(1, stage.clientWidth) * T.string.handSpan; }
   function lookBy(dx, dy, base) {
-    const k = base * (st.fov / 55) * (st.draw.drawing ? .55 : 1);
-    aim.yaw = R.clamp(aim.yaw - dx * k, -.7, .7);
-    aim.pitch = R.clamp(aim.pitch - dy * k, -.35, .35);
+    // 只換算成角度並照鏡頭拉近縮放；拉弓時變慢的倍率由規則套用
+    const k = base * (fov / 55);
+    input.look.yaw -= dx * k; input.look.pitch -= dy * k;
   }
-  function moveBy(dx, dy, base) {
-    if (st.result || st.flight) return;
-    if (st.phase === 'string') { if (input.down) input.stringDx += dx; return; }
-    lookBy(dx, dy, base);
-  }
+  const touch = { id: null, x: 0, y: 0, pressed: false };
+  const holdT = { id: null, x: 0, y: 0 };
+
   cv.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'mouse') {
       touchUI = true; touch.id = e.pointerId; touch.x = e.clientX; touch.y = e.clientY;
       try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       audio();
-      if (st.result && st.time - st.resultAt > .5) newRound(false);
+      if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); }
+      else if (round.phase === 'string') { press(); touch.pressed = input.down; }    // 上弦：在畫面任何地方按住拖
       refreshHud(); return;
     }
     if (e.button !== 0) return;
-    if (!locked && !NOLOCK && cv.requestPointerLock && !st.result) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+    if (!locked && !NOLOCK && cv.requestPointerLock && !round.result) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
     press();
   });
   window.addEventListener('mouseup', e => { if (e.button === 0) release(); });
+  let lockAt = 0;
   document.addEventListener('mousemove', e => {
     if (touch.id !== null) return;
     if (!locked && e.target !== cv) return;       // 沒鎖住時：在畫面上移動就能看（退而求其次）
     const dx = e.movementX || 0, dy = e.movementY || 0;
     if (Math.abs(dx) > 200 || Math.abs(dy) > 200 || performance.now() - lockAt < 80) return;   // 鎖住瞬間的跳動
-    moveBy(dx, dy, SENS);
+    if (round.phase === 'string') { if (input.down) input.stringDx += dx / MOUSE_PX_PER_UNIT; }
+    else if (round.phase === 'aim') lookBy(dx, dy, SENS);
   });
-  let lockAt = 0;
   document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === cv; lockAt = performance.now(); refreshHud(); });
   document.addEventListener('pointerlockerror', () => { locked = false; });
 
-  const touch = { id: null, x: 0, y: 0 };
   cv.addEventListener('pointermove', e => {
     if (e.pointerType === 'mouse' || e.pointerId !== touch.id) return;
     const dx = e.clientX - touch.x, dy = e.clientY - touch.y; touch.x = e.clientX; touch.y = e.clientY;
-    moveBy(dx, dy, TOUCH_SENS);
+    if (round.phase === 'string') { if (input.down) input.stringDx += stringUnitsFromTouch(dx); }
+    else if (round.phase === 'aim') lookBy(dx, dy, TOUCH_SENS);
   });
-  const endTouch = e => { if (e.pointerId === touch.id) touch.id = null; };
+  const endTouch = e => {
+    if (e.pointerId !== touch.id) return;
+    touch.id = null;
+    if (touch.pressed) { touch.pressed = false; if (holdT.id === null) release(); }
+  };
   cv.addEventListener('pointerup', endTouch); cv.addEventListener('pointercancel', endTouch);
 
-  const holdT = { id: null, x: 0, y: 0 };
   ui.hold.addEventListener('pointerdown', e => {
     e.preventDefault(); touchUI = true; holdT.id = e.pointerId; holdT.x = e.clientX; holdT.y = e.clientY;
     try { ui.hold.setPointerCapture(e.pointerId); } catch (_) {}
@@ -662,7 +662,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   ui.hold.addEventListener('pointermove', e => {
     if (e.pointerId !== holdT.id) return;
     const dx = e.clientX - holdT.x, dy = e.clientY - holdT.y; holdT.x = e.clientX; holdT.y = e.clientY;
-    moveBy(dx * (st.phase === 'string' ? 1.4 : .5), dy * .5, TOUCH_SENS);
+    if (round.phase === 'aim') lookBy(dx * .5, dy * .5, TOUCH_SENS);
   });
   const holdEnd = e => { if (e.pointerId !== holdT.id) return; holdT.id = null; ui.hold.classList.remove('on'); release(); };
   ui.hold.addEventListener('pointerup', holdEnd); ui.hold.addEventListener('pointercancel', holdEnd);
@@ -688,70 +688,40 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   new ResizeObserver(resize).observe(stage); resize();
 
   // ================================================================ 更新
-  const SLOW = .22;   // 跟拍時的慢動作
   const easeOut = x => 1 - (1 - x) * (1 - x);
   let poseT = 0;
   function update(dt) {
-    st.time += dt;
-    const s = st;
-    if (s.result && s.result.showAt && s.time >= s.result.showAt) { s.result.showAt = 0; ui.result.hidden = false; refreshHud(); }
+    time += dt;
+    if (pendingEnd && time >= pendingEnd.at) { const r = pendingEnd.result; pendingEnd = null; presentResult(r); }
+    if (resultShowAt && time >= resultShowAt) { resultShowAt = 0; ui.result.hidden = false; refreshHud(); }
     if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) ui.msg.style.opacity = 0; }
 
-    if (s.phase === 'string' && !s.result) {
-      const dx = input.stringDx; input.stringDx = 0;
-      R.stepString(s.str, dt, { down: input.down, dx });
-      setCreak(input.down ? .3 + s.str.tension * .7 : 0);
-      if (s.str.failed) { sfx.slip(); endRound(false, '弓弦滑掉了', '指針離開亮區太久，弓又彈直了。求婚者哄堂大笑。'); }
-      else if (s.str.done) {
-        strungOnce = true; s.phase = 'aim'; input.down = false; setCreak(0);
-        sfx.swallow(); sfx.thunder();
-        say('弓弦在指下歌唱，聲音像燕子。宙斯在天上打了一聲雷。求婚者臉色都變了。', 6);
-      }
-    }
-    if (s.phase === 'aim' && !s.flight && !s.result) {
-      R.stepDraw(s.draw, dt, { down: input.down, fatigue: opt.fatigue.checked });
-      setCreak(s.draw.drawing && s.draw.power < 1 ? .4 : 0);
-    } else if (s.phase === 'aim' && !s.draw.drawing) {
-      R.stepDraw(s.draw, dt, { down: false, fatigue: true });
-    }
+    const evs = R.stepRound(round, dt, { down: input.down, stringDx: input.stringDx, look: input.look });
+    input.stringDx = 0; input.look.yaw = input.look.pitch = 0;
+    onEvents(evs);
+
+    const ph = round.phase, d = round.draw, f = round.flight;
+    if (ph === 'string') setCreak(input.down ? .3 + round.str.tension * .7 : 0);
+    else if (ph === 'aim') setCreak(d.drawing && d.power < 1 ? .4 : 0);
 
     // 視角：拉弓時視線集中（拉近）
-    const f = s.flight, d = s.draw;
     let targetFov = 55;
-    if (s.phase === 'aim' && !f) targetFov = 55 - 37 * easeOut(d.drawing ? d.power : 0);
+    if (ph === 'aim') targetFov = 55 - 37 * easeOut(d.drawing ? d.power : 0);
     if (f) targetFov = 50;
-    s.fov += (targetFov - s.fov) * Math.min(1, dt * (f ? 3 : 8));
-    poseT += ((s.phase === 'aim' ? 1 : 0) - poseT) * Math.min(1, dt * 4);
-
-    // 飛行
-    if (f && !f.done) {
-      f.t = Math.min(f.res.endT, f.t + dt * SLOW);
-      while (f.nextEvent < f.res.events.length && f.res.events[f.nextEvent].t <= f.t) {
-        const ev = f.res.events[f.nextEvent++]; axes[ev.axe].lit = 1; sfx.ring(ev.axe);
-      }
-      if (f.t >= f.res.endT) {
-        f.done = true; f.doneAt = s.time;
-        const k = f.res.stop.kind;
-        if (k === 'hit') sfx.thunk(); else if (k === 'short') sfx.land(); else if (k === 'wide') sfx.land();
-      }
-    }
-    if (f && f.done && !s.result && s.time - f.doneAt > (f.res.win ? .9 : .7)) {
-      const text = R.describe(f.res);
-      if (f.res.win) endRound(true, '十二孔，一箭穿過', text + '大廳裡的笑聲停了。');
-      else endRound(false, '沒有成功', text + '求婚者哄堂大笑。');
-    }
+    fov += (targetFov - fov) * Math.min(1, dt * (f ? 3 : 8));
+    poseT += ((ph === 'string' ? 0 : 1) - poseT) * Math.min(1, dt * 4);
 
     // 斧孔發光、求婚者
-    axes.forEach(a => { a.rimMat.emissiveIntensity = a.lit * 2.2; a.lit = Math.max(s.flight && s.flight.res.win && s.flight.done ? .35 : 0, a.lit - dt * .35); });
+    axes.forEach(a => { a.rimMat.emissiveIntensity = a.lit * 2.2; a.lit = Math.max(f && f.res.win && f.done ? .35 : 0, a.lit - dt * .35); });
     suitors.forEach(p => {
       p.laugh = Math.max(0, p.laugh - dt * .3);
-      const l = p.laugh, b = Math.abs(Math.sin(s.time * p.rate + p.ph));
-      p.headG.rotation.x = -.45 * l * b + Math.sin(s.time * .7 + p.ph) * .04;
+      const l = p.laugh, b = Math.abs(Math.sin(time * p.rate + p.ph));
+      p.headG.rotation.x = -.45 * l * b + Math.sin(time * .7 + p.ph) * .04;
       p.body.position.y = p.seatY + .03 * l * b;
       p.body.rotation.x = -.12 * l;
     });
     flames.forEach(fl => {
-      const k = .85 + .1 * Math.sin(s.time * 9 + fl.ph) + .07 * Math.sin(s.time * 23 + fl.ph * 2) + .05 * (Math.random() - .5);
+      const k = .85 + .1 * Math.sin(time * 9 + fl.ph) + .07 * Math.sin(time * 23 + fl.ph * 2) + .05 * (Math.random() - .5);
       fl.sp.scale.set(fl.size * k, fl.size * 1.3 * k, 1);
       if (fl.light) fl.light.intensity = fl.base * (.85 + .2 * k);
     });
@@ -760,10 +730,11 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
   // ================================================================ 繪製
   function render(dt) {
-    const s = st, d = s.draw, f = s.flight;
-    camera.fov = s.fov; camera.updateProjectionMatrix();
+    const d = round.draw, f = round.flight, aim = round.aim, ph = round.phase;
+    const aiming = ph === 'aim';
+    camera.fov = fov; camera.updateProjectionMatrix();
 
-    const winView = f && f.done && f.res.win && s.time - f.doneAt > .35;
+    const winView = f && f.done && f.res.win && time - flightDoneAt > .35;
     if (winView) {
       // 射穿之後切回奧德修斯的眼睛：十二個亮起的孔排成一線
       camera.position.set(0, H, 0);
@@ -781,15 +752,15 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       worldArrow.position.set(ap.x, ap.y, ap.z);
       tmpV.set(ap.x - av.x, ap.y - av.y, ap.z - av.z);   // 箭尾方向
       worldArrow.lookAt(tmpV);
-      if (f.done && f.res.stop.kind === 'hit') worldArrow.rotation.z += Math.sin((s.time - f.doneAt) * 40) * .002 * Math.max(0, 1 - (s.time - f.doneAt));
+      if (f.done && f.res.stop.kind === 'hit') worldArrow.rotation.z += Math.sin((time - flightDoneAt) * 40) * .002 * Math.max(0, 1 - (time - flightDoneAt));
     } else {
-      const sw = s.phase === 'aim' ? d.sway : { yaw: 0, pitch: 0, x: 0, y: 0 };
+      const sw = aiming ? d.sway : { yaw: 0, pitch: 0, x: 0, y: 0 };
       camera.position.set(sw.x, H + sw.y, 0);
       camera.rotation.set(aim.pitch + sw.pitch, aim.yaw + sw.yaw, 0, 'YXZ');
     }
 
     // 彈道輔助線
-    if (opt.guide.checked && s.phase === 'aim' && !f && !s.result) {
+    if (opt.guide.checked && aiming) {
       const shot = R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power: d.drawing ? Math.max(.3, d.power) : 1, sway: d.sway });
       const arr = guideGeo.attributes.position.array;
       for (let i = 0; i < T.axeCount; i++) { const p = R.positionAt(shot, (R.axeZ(i) - shot.origin.z) / shot.vel.z); arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }
@@ -797,22 +768,23 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     } else guide.visible = false;
 
     // 前景
-    const tension = s.phase === 'string' ? s.str.tension : 1;
-    const pull = s.phase === 'aim' && !f ? easeOut(d.drawing ? d.power : 0) : 0;
-    updateViewmodel(poseT, tension, pull, s.phase === 'aim' && !f, s.phase === 'aim' ? d.sway : null, s.time);
+    const stringing = ph === 'string' || (ph === 'result' && !round.strungOnce);
+    const tension = stringing ? round.str.tension : 1;
+    const pull = aiming ? easeOut(d.drawing ? d.power : 0) : 0;
+    updateViewmodel(poseT, tension, pull, !stringing && !f, aiming ? d.sway : null, time);
 
     renderer.clear();
     renderer.render(scene, camera);
     if (!f) { renderer.clearDepth(); renderer.render(vScene, vCam); }
 
     // HUD
-    if (s.phase === 'string' && !s.result) {
-      const n = R.clamp(s.str.needle, -1, 1);
+    if (ph === 'string') {
+      const n = R.clamp(round.str.needle, -1, 1);
       ui.needle.style.left = (50 + n * 50) + '%';
-      ui.needle.classList.toggle('out', s.str.outTime > 0);
-      ui.tension.style.width = (s.str.tension * 100) + '%';
+      ui.needle.classList.toggle('out', round.str.outTime > 0);
+      ui.tension.style.width = (round.str.tension * 100) + '%';
     }
-    if (s.phase === 'aim' && !f && !s.result) {
+    if (aiming) {
       const shake = d.stage === 'tremble';
       ui.power.style.width = (d.power * 100) + '%';
       ui.power.className = d.stage === 'steady' ? 'steady' : shake ? 'shake' : '';
@@ -833,25 +805,22 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
   // ================================================================ 除錯（網址帶 ?debug 才有）
   if (DEBUG) {
+    const still = { yaw: 0, pitch: 0, x: 0, y: 0 };
+    const debugFire = power => { const res = R.fireRound(round, { power, sway: still }); onEvents([{ type: 'fire', res, power }]); return res; };
     window.bowDebug = {
-      get state() { return st; }, aim,
+      get state() { return round; }, get input() { return input; },
       // 固定步長推進遊戲時間（慢機器上測試用）
-      advance(sec) { for (let t = 0; t < sec - 1e-9; t += 1 / 60) update(1 / 60); render(1 / 60); return st.phase; },
+      advance(sec) { for (let t = 0; t < sec - 1e-9; t += 1 / 60) update(1 / 60); render(1 / 60); return round.phase; },
       pause(on) { paused = !!on; },
-      skipString() { if (st.phase === 'string') { st.str.tension = 1; st.str.done = true; } },
+      skipString() { if (round.phase === 'string') { round.str.tension = 1; round.str.done = true; round.phase = 'aim'; round.strungOnce = true; refreshHud(); } },
       window(power) { return R.solveWindow(power === undefined ? 1 : power, diff()); },
       perfectShot() {
         const w = R.solveWindow(1, diff());
-        st.phase = 'aim'; strungOnce = true;
-        aim.yaw = w.yawMid; aim.pitch = w.pitchMid;
-        st.draw.drawing = true; st.draw.power = 1; st.draw.fullTime = 1.2;
-        st.draw.power = 1;
-        return fire({ yaw: 0, pitch: 0, x: 0, y: 0 });
+        round.phase = 'aim'; round.strungOnce = true;
+        round.aim.yaw = w.yawMid; round.aim.pitch = w.pitchMid;
+        return debugFire(1);
       },
-      shoot(yaw, pitch, power) {
-        st.phase = 'aim'; aim.yaw = yaw; aim.pitch = pitch; st.draw.power = power;
-        return fire({ yaw: 0, pitch: 0, x: 0, y: 0 });
-      },
+      shoot(yaw, pitch, power) { round.phase = 'aim'; round.aim.yaw = yaw; round.aim.pitch = pitch; return debugFire(power); },
     };
   }
 })();
