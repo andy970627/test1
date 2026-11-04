@@ -12,7 +12,11 @@
     speedCrouch: 1.5, speedStand: 2.0, limpMul: .6,
     rangeDark: 4.5, rangeLit: 12, crouchRangeMul: .75, sharpMul: 1.2,
     coneHalf: .96, coneAlert: 1.2,
-    gainStand: .12, gainWander: .05, gainWeapons: .22, gainHearth: .16,
+    gainStand: .12, gainWander: .08, gainWeapons: .22,
+    // 沒有潘妮洛普允許就坐上爐火邊的位子：火光照著臉，旁邊座位的人會轉過來看（約 3 m 內一個人盯著，3 秒的坐下就會被看穿）
+    gainHearth: .6, hearthNotice: 7, hearthNoticeDelay: .4,
+    // 靠走道（內側）的求婚者背對走道坐，但乞丐在附近時會常常回頭看
+    glanceRadius: 6, glanceP: .6, glanceCuriousP: .85, glanceHold: [1.4, 2.6],
     decay: .02, crouchCalm: .01,
     stageCurious: .3, stageSuspicious: .6,
     contagionRadius: 4, contagionRate: .05,
@@ -24,6 +28,8 @@
     throwSidestep: .7,   // 丟出後（飛行 .55 秒）離開瞄準點多遠算「早一步躲開」；舊值 1.3 m 以最快速度也走不到
     dodgeNormal: [-.28, -.04], dodgeLoose: [-.42, .04],
     statueDropBelow: .45, statueTime: 3,
+    argosWake: 2.6, argosLife: 7, argosPet: 1.5,   // 牠醒來後約 7 秒死去；蹲下摸 1.5 秒就算摸到了
+    whisperRadius: 6,   // 對歐邁俄斯說往事時，這個距離內的敵人會聽到
   };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -166,7 +172,7 @@
       SUITORS.forEach(([name, x, z, side, kind]) => {
         const inward = side === 1;
         const yaw = x > 0 ? (inward ? -Math.PI / 2 : Math.PI / 2) : (inward ? Math.PI / 2 : -Math.PI / 2);
-        npc(name, x, z, yaw, { hostile: true, role: 'suitor', kind, seated: true });
+        npc(name, x, z, yaw, { hostile: true, role: 'suitor', kind, seated: true, inner: side === 0 });
       });
       npc('墨蘭托', -1.5, -7.4, 0, { hostile: true, role: 'maid', sharp: true, route: [[-1.5, -7.4], [-1.5, 4.0], [1.5, 4.0], [1.5, -7.4]], wp: 1, pauseT: 0, speed: 1.1 });
       npc('僕人', -3.1, -7.6, 0, { role: 'servant', route: [[-3.1, -7.6], [-3.1, 4.6], [-7.6, 4.6], [-7.6, -7.6]], wp: 1, pauseT: 0, speed: .9 });
@@ -320,7 +326,7 @@
       }
       // 「某某知道你是誰」只是提示，不能擋住旁邊的火盆、爐火
       if (best && best.type !== 'none') return best;
-      if (g.argos && g.argos.state === 'recognize' && hyp(P.x, P.z, g.argos.x, g.argos.z) < 2.2) return { type: 'pet', hold: 4.5, label: '按住：蹲下摸摸牠' };
+      if (g.argos && g.argos.state === 'recognize' && g.argos.petT < T.argosPet && hyp(P.x, P.z, g.argos.x, g.argos.z) < 2.2) return { type: 'pet', hold: T.argosPet, label: '按住：蹲下摸摸牠' };
       for (const b of g.braziers) if (hyp(P.x, P.z, b.x, b.z) < 1.6) return { type: 'tend', b, hold: 2, tap: true, label: b.lit ? '點一下：照看火盆（差事）・按住：把火撥暗' : '點一下：把火盆重新撥旺' };
       if (L.hearth && hyp(P.x, P.z, L.hearth.x, L.hearth.z) < 2.3) return { type: 'sit', hold: 3, label: g.permission ? '按住：坐到爐火邊（潘妮洛普允許的）' : '按住：坐到爐火邊（火光會照亮你的臉）' };
       return best;
@@ -360,6 +366,7 @@
       });
     }
     const EUM = [['你跟著我去了特洛伊，在船上替我掌舵。', false], ['你小時候被賣到這裡，是我母親把你和我妹妹一起帶大的。', true], ['你是我從海上救起來的漁夫，後來才來養豬。', false]];
+    for (let i = EUM.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [EUM[i], EUM[j]] = [EUM[j], EUM[i]]; }   // 每局洗牌，正確的那段不固定在第幾個
     g.eumLines = EUM.map(l => l[0]);
     function openEumaeus(n) {
       if (g.t < (n.retryAt || 0)) return g.msg('歐邁俄斯還在皺眉，不想再聽你說。');
@@ -367,7 +374,7 @@
     }
     function choose(i) {
       const n = g.dialog.n; g.dialog = null;
-      const hearers = hostiles().filter(h => dP(h) < 6);
+      const hearers = hostiles().filter(h => dP(h) < T.whisperRadius);
       for (const h of hearers) addSusp(h, .3);
       if (g.phase !== 'play') return;
       if (hearers.length) g.msg(`${hearers.map(h => h.name).join('、')}聽到你們在說悄悄話。`, 'susp');
@@ -449,10 +456,10 @@
       // 對話中只等選擇
       if (g.dialog) { if (Number.isInteger(I.choice) && I.choice >= 0 && I.choice < EUM.length) choose(I.choice); else if (I.cancel) g.dialog = null; return; }
 
-      if (Number.isFinite(I.yaw)) P.yaw = wrapAng(I.yaw);
+      const beating = !!I.beat;
+      if (Number.isFinite(I.yaw) && !beating) P.yaw = wrapAng(I.yaw);   // 捶胸時不能看別處
       P.standing = !!I.stand; P.limp = !!I.limp && !P.standing;
       P.crouched = !P.standing;
-      const beating = !!I.beat;
       // 移動
       let mx = I.mx || 0, mz = I.mz || 0; const len = Math.hypot(mx, mz);
       P.moving = false;
@@ -490,9 +497,16 @@
         if (!I.eDown || !cur || cur.type !== g.hold.it.type || cur.n !== g.hold.it.n || cur.b !== g.hold.it.b) g.hold = null;
         else {
           g.hold.t += dt;
-          if (g.hold.it.type === 'pet') { g.argos.petT += dt; for (const h of seers()) addSusp(h, dt * .2); }
+          if (g.hold.it.type === 'pet') {
+            g.argos.petT += dt; for (const h of seers()) addSusp(h, dt * .2);
+            if (g.phase === 'play' && g.argos.petT >= T.argosPet) { g.hold = null; g.msg('你蹲下摸了摸牠的頭。牠的尾巴輕輕拍著地。'); }
+          }
           else {
-            if (g.hold.it.type === 'sit' && !g.permission) for (const h of seers()) addSusp(h, dt * T.gainHearth * (h.vis + .5));
+            if (g.hold.it.type === 'sit' && !g.permission) {
+              // 有人沒經允許就坐上爐火邊的位子：附近座位上的人轉過來看
+              if (g.hold.t > T.hearthNoticeDelay) for (const h of hostiles()) if (h.seated && h.mode === 'idle' && hyp(h.x, h.z, L.hearth.x, L.hearth.z) < T.hearthNotice && !g.throws.some(e => e.by === h)) if (!h.focus || h.focus.notice) h.focus = { x: P.x, z: P.z, until: g.t + .6, notice: true };   // 被骨頭聲引開的人不會回頭
+              for (const h of seers()) addSusp(h, dt * T.gainHearth * (h.vis + .5));
+            }
             if (g.phase === 'play' && g.hold && g.hold.t >= g.hold.it.hold) { const it = g.hold.it; g.hold = null; finishHold(it); }
           }
           if (g.phase !== 'play') return;
@@ -519,7 +533,13 @@
           if (n.lookT <= 0 && !g.throws.some(e => e.by === n) && n.mode === 'idle') {
             n.lookT = 2 + rng() * 3;
             const d = dP(n), lookP = n.stage === 'curious' ? .7 : .4;
-            if (n.role === 'mel') n.lookYaw = rng() < .45 ? n.baseYaw + (rng() < .5 ? 1.6 : -1.6) : d < 10 ? Math.atan2(P.x - n.x, P.z - n.z) : n.baseYaw;
+            const glancer = n.inner && n.seated && d < T.glanceRadius;
+            if (glancer && rng() < (n.stage === 'curious' ? T.glanceCuriousP : T.glanceP)) {
+              // 內側的人回頭看一眼走道上的乞丐，看一下就轉回桌子
+              n.lookYaw = Math.atan2(P.x - n.x, P.z - n.z); n.lookT = T.glanceHold[0] + rng() * (T.glanceHold[1] - T.glanceHold[0]);
+            }
+            else if (glancer) n.lookYaw = n.baseYaw + (rng() - .5) * 1.4;
+            else if (n.role === 'mel') n.lookYaw = rng() < .45 ? n.baseYaw + (rng() < .5 ? 1.6 : -1.6) : d < 10 ? Math.atan2(P.x - n.x, P.z - n.z) : n.baseYaw;
             else if (n.hostile && d < 9 && rng() < lookP) n.lookYaw = Math.atan2(P.x - n.x, P.z - n.z);
             else if (n.role !== 'pen' && !n.route) n.lookYaw = n.baseYaw + (rng() - .5) * 1.4;
           }
@@ -633,14 +653,14 @@
     }
     function argosStep(dt) {
       const a = g.argos, d = hyp(P.x, P.z, a.x, a.z);
-      if (a.state === 'asleep' && d < 3.6) { a.state = 'recognize'; a.t = 0; g.msg('糞堆上的老狗抬起頭，豎起耳朵，搖起了尾巴。牠認得你。'); g.sfx('whimper'); }
+      if (a.state === 'asleep' && d < T.argosWake) { a.state = 'recognize'; a.t = 0; g.msg('糞堆上的老狗抬起頭，豎起耳朵，搖起了尾巴。牠認得你。'); g.sfx('whimper'); }
       if (a.state !== 'recognize') return;
       a.t += dt;
       const t = g.knowers.tele;
       if (t && hyp(t.x, t.z, a.x, a.z) < 16 && a.t > 1) { t.lookYaw = Math.atan2(a.x - t.x, a.z - t.z); t.lookT = 3; }
-      if (a.t <= 4.5) return;
+      if (a.t <= T.argosLife) return;
       a.state = 'dead'; g.sfx('whimper');
-      if (a.petT >= 1.5) g.msg('你蹲下摸了摸牠。牠在你的手底下斷了氣。');
+      if (a.petT >= T.argosPet) g.msg('阿爾戈斯閉上眼睛，不動了。二十年，牠等到了你。');
       else { g.anger = clamp(g.anger + .25, 0, 1); g.msg('阿爾戈斯搖了搖尾巴，然後不動了。你沒有停下來。'); if (g.anger >= 1) return fail('rage'); }
       const dd = t ? hyp(t.x, t.z, a.x, a.z) : 99;
       const tSees = t && dd < 16 && ((a.x - t.x) * Math.sin(t.yaw) + (a.z - t.z) * Math.cos(t.yaw)) / dd > Math.cos(1.0);

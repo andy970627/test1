@@ -43,6 +43,10 @@ function walkPath(g, pts, extra = {}, maxSec = 120) {
   return i === pts.length;
 }
 const msgs = g => g.out.filter(o => o.type === 'msg').map(o => o.a);
+// 歐邁俄斯的三段往事每局洗牌：找出正確那段（被賣到這裡、和妹妹一起長大）在第幾個
+const EUM_RIGHT = '被賣到這裡';
+const eumRight = g => g.eumLines.findIndex(l => l.includes(EUM_RIGHT));
+const eumWrong = g => g.eumLines.findIndex(l => !l.includes(EUM_RIGHT));
 
 // ---------- 純函式 ----------
 test('stageOf 門檻', () => {
@@ -303,7 +307,8 @@ test('忒勒馬科斯：阿爾戈斯死時他在看，才會起疑、才能揭�
   put(g, -6.9, -1.5);
   run(g, .2, {});
   assert.equal(g.argos.state, 'recognize');
-  run(g, 5, {});
+  run(g, T.argosLife - 1, {}); assert.equal(g.argos.state, 'recognize', 'still alive a while');
+  run(g, 1.5, {});
   assert.equal(g.argos.state, 'dead');
   assert.equal(t.kstate, 'suspects'); assert.equal(g.carry.tele, 'suspects');
   assert.ok(g.anger > 0, 'walked away from the dying dog');
@@ -320,28 +325,38 @@ test('忒勒馬科斯：阿爾戈斯死時他在看，才會起疑、才能揭�
 
   // 他沒在看（離太遠）就不會起疑
   const k = mk('gate'); k.knowers.tele.x = 40;
-  put(k, -6.9, -1.5); run(k, 6, {});
+  put(k, -6.9, -1.5); run(k, T.argosLife + 1, {});
   assert.equal(k.argos.state, 'dead'); assert.equal(k.knowers.tele.kstate, 'unknown');
   // 摸過牠就不扣怒火
   const p = mk('gate'); isolate(p); put(p, -6.9, -1.0); run(p, .2, {});   // 糞堆是矮障礙，最近只到 2 m
   assert.equal(p.interact().type, 'pet');
-  p.step(DT, { ePressed: true, eDown: true }); run(p, 5, { eDown: true });
+  assert.equal(p.interact().hold, T.argosPet);
+  p.step(DT, { ePressed: true, eDown: true }); run(p, T.argosPet + .1, { eDown: true });
+  assert.ok(p.argos.petT >= T.argosPet); assert.equal(p.hold, null, 'pet hold completes');
+  assert.notEqual(p.interact() && p.interact().type, 'pet', 'not offered again');
+  assert.equal(p.argos.state, 'recognize');
+  run(p, T.argosLife, {});
   assert.equal(p.argos.state, 'dead'); assert.equal(p.anger, 0);
+  // 醒來的距離：2.6 m 外不醒，走近才醒
+  const w = mk('gate'); isolate(w); put(w, -6.9, 1 - T.argosWake - .3); run(w, .2, {});
+  assert.equal(w.argos.state, 'asleep');
+  put(w, -6.9, 1 - T.argosWake + .2); run(w, .1, {});
+  assert.equal(w.argos.state, 'recognize');
 });
 
-test('歐邁俄斯：選第 2 段往事才對；選錯 20 秒內不能再試；知情後宮門側門打開', () => {
+test('歐邁俄斯：選對往事才行（三段每局洗牌）；選錯 20 秒內不能再試；知情後宮門側門打開', () => {
   const g = mk('gate'); const e = g.knowers.eum;
   assert.equal(g.interact().type, 'eum');
   assert.equal(g.eumLines.length, 3);
   g.step(DT, { ePressed: true }); assert.ok(g.dialog);
   g.step(DT, { choice: 7 }); assert.ok(g.dialog, 'out-of-range choice ignored');
-  g.step(DT, { choice: 0 }); assert.equal(g.dialog, null);
+  g.step(DT, { choice: eumWrong(g) }); assert.equal(g.dialog, null);
   assert.equal(e.kstate, 'unknown'); assert.ok(e.retryAt > g.t + 19);
   g.step(DT, { ePressed: true }); assert.equal(g.dialog, null, 'cooldown');
   run(g, 20, {});
   g.step(DT, { ePressed: true }); assert.ok(g.dialog);
   assert.equal(g.sideOpen, false);
-  g.step(DT, { choice: 1 });
+  g.step(DT, { choice: eumRight(g) });
   assert.equal(e.kstate, 'knows'); assert.equal(g.carry.eum, 'knows');
   g.step(DT, {});
   assert.equal(g.sideOpen, true);
@@ -350,6 +365,21 @@ test('歐邁俄斯：選第 2 段往事才對；選錯 20 秒內不能再試；�
   assert.equal(g.mel.mark, '靠近會踢人');
   // 取消對話
   const h = mk('gate'); h.step(DT, { ePressed: true }); h.step(DT, { cancel: true }); assert.equal(h.dialog, null);
+  // 洗牌：不同的種子，正確的那段不總在同一個位置；同一個種子結果一樣
+  const pos = new Set(); for (let seed = 1; seed <= 12; seed++) pos.add(eumRight(mk('gate', {}, { seed })));
+  assert.ok(pos.size >= 2, `positions ${[...pos]}`);
+  assert.deepEqual(mk('gate', {}, { seed: 4 }).eumLines, mk('gate', {}, { seed: 4 }).eumLines);
+  for (let seed = 1; seed <= 6; seed++) assert.equal(new Set(mk('gate', {}, { seed }).eumLines).size, 3);
+});
+
+test('悄悄話：T.whisperRadius 內的敵人聽得到，外面的聽不到', () => {
+  const g = mk('hall'); const a = byName(g, '阿格勞斯'), b = byName(g, '安提諾俄斯'); isolate(g, [a, b]);
+  const e = g.knowers.eum; put(g, e.x + .8, e.z);
+  a.x = a.homeX = g.player.x + T.whisperRadius - .5; a.z = a.homeZ = g.player.z;
+  b.x = b.homeX = g.player.x - T.whisperRadius - .5; b.z = b.homeZ = g.player.z;
+  g.step(DT, { ePressed: true }); assert.ok(g.dialog);
+  g.step(DT, { choice: eumWrong(g) });
+  assert.ok(a.susp >= .3 - 1e-9, `near ${a.susp}`); assert.equal(b.susp, 0);
 });
 
 test('潘妮洛普：要帶著神像才能揭露，揭露後准你坐爐火邊', () => {
@@ -387,8 +417,10 @@ test('怒火滿了就失敗（rage）；捶胸降怒火', () => {
   const g = mk('hall'); isolate(g); put(g, -3.1, 1.75, Math.PI); g.anger = .9;
   for (let i = 0; i < 40 && g.phase === 'play'; i++) g.step(DT, { mz: -1 });
   assert.equal(g.phase, 'fail'); assert.equal(g.result.kind, 'rage');
-  const h = mk('hall'); isolate(h); h.anger = .8; run(h, 1, { beat: true, mz: -1 });
+  const h = mk('hall'); isolate(h); h.anger = .8; const yaw0 = h.player.yaw; run(h, 1, { beat: true, mz: -1, yaw: yaw0 + 1.2 });
   assert.ok(h.anger < .5); assert.equal(h.player.moving, false);
+  assert.equal(h.player.yaw, yaw0, 'cannot look elsewhere while beating the chest');
+  h.step(DT, { yaw: yaw0 + 1.2 }); assert.ok(Math.abs(h.player.yaw - S.angDiff(0, yaw0 + 1.2)) < 1e-9, 'looks again after');
 });
 
 // ---------- 過關 ----------
@@ -450,7 +482,7 @@ test('對話中整個場面暫停（回座位的人也不動）', () => {
 test('機器人通關：宮門（揭露歐邁俄斯，走側門）', () => {
   for (const seed of [1, 2, 3]) {
     const g = mk('gate', {}, { seed });
-    g.step(DT, { ePressed: true }); g.step(DT, { choice: 1 });
+    g.step(DT, { ePressed: true }); g.step(DT, { choice: eumRight(g) });
     assert.equal(g.knowers.eum.kstate, 'knows');
     walkPath(g, [[12.5, -13], [13.8, -6], [13.8, 7.2], [15.3, 7.2]]);
     assert.equal(g.phase, 'win', `seed ${seed}: ${g.phase} ${JSON.stringify(g.result)}`);
@@ -471,4 +503,66 @@ test('機器人通關：大廳（潘妮洛普知情，彎腰照看火盆當差�
     g.step(DT, { ePressed: true, eDown: true }); run(g, 3.3, { eDown: true });
     assert.equal(g.phase, 'win', `seed ${seed}: ${g.phase} ${JSON.stringify(g.result)}`);
   }
+});
+
+// ---------- 大廳難度：走道有人回頭看、擅自坐爐火邊很危險 ----------
+test('內側求婚者背對走道，但乞丐在附近時會常常回頭看一眼，看完轉回去', () => {
+  const g = mk('hall', {}, { seed: 3 }); const n = byName(g, '安菲諾摩斯'); isolate(g, [n]);   // 內側（x=3.8），面向桌子（+x）
+  assert.ok(n.inner && Math.sin(n.baseYaw) > .9, 'faces the table, back to the aisle');
+  put(g, 1.2, -1.5);
+  let toward = 0, away = 0;
+  for (let i = 0; i < 30 / DT; i++) {
+    g.step(DT, {});
+    const fx = Math.sin(n.yaw), fz = Math.cos(n.yaw), dx = g.player.x - n.x, dz = g.player.z - n.z, d = Math.hypot(dx, dz);
+    if ((dx * fx + dz * fz) / d > Math.cos(T.coneHalf)) toward++; else away++;
+  }
+  assert.ok(toward * DT > 6, `looked toward the aisle ${(toward * DT).toFixed(1)} s of 30`);
+  assert.ok(away * DT > 6, `also turns back to the table ${(away * DT).toFixed(1)} s`);
+  // 乞丐離得遠，內側的人就不常回頭
+  const h = mk('hall', {}, { seed: 3 }); const m = byName(h, '安菲諾摩斯'); isolate(h, [m]); put(h, -8.3, -8.3);
+  let far = 0; for (let i = 0; i < 30 / DT; i++) { h.step(DT, {}); if (Math.cos(m.yaw - m.baseYaw) < 0) far++; }
+  assert.ok(far * DT < toward * DT / 2, `far ${far * DT}`);
+});
+
+test('沒經允許坐上爐火邊：旁邊座位的人轉過來看，坐不滿 3 秒就被看穿；有允許就沒事', () => {
+  const g = mk('hall'); const n = byName(g, '歐律諾摩斯'); isolate(g, [n]);   // 內側，在爐火旁
+  fixGaze(n, null, null, n.baseYaw);   // 背對爐火
+  put(g, .9, 4.4); assert.equal(g.interact().type, 'sit');
+  g.step(DT, { ePressed: true, eDown: true }); run(g, 3.3, { eDown: true });
+  assert.equal(g.phase, 'fail'); assert.equal(g.result.who, '歐律諾摩斯');
+  const h = mk('hall', { pen: 'knows' }); const m = byName(h, '歐律諾摩斯'); isolate(h, [m]); fixGaze(m, null, null, m.baseYaw);
+  put(h, .9, 4.4); h.step(DT, { ePressed: true, eDown: true }); run(h, 3.3, { eDown: true });
+  assert.equal(h.phase, 'win');
+  assert.ok(Math.cos(m.yaw - m.baseYaw) > .9, 'with permission nobody turns round');
+});
+
+// 機器人：sd 個種子 × 4 種開局等待時間
+function winRate(bot, carry = {}, seeds = 12) {
+  let w = 0, n = 0;
+  for (let seed = 1; seed <= seeds; seed++) for (const delay of [0, 1.5, 3, 5]) {
+    const g = mk('hall', carry, { seed }); run(g, delay, {}); bot(g); n++; if (g.phase === 'win') w++;
+  }
+  return w / n;
+}
+const sitDown = g => { if (g.phase !== 'play') return; g.step(DT, { ePressed: true, eDown: true }); run(g, 3.4, { eDown: true }); };
+const tap = g => { g.step(DT, { ePressed: true, eDown: true }); g.step(DT, { eReleased: true }); };
+test('大廳不能直接走過去坐下：彎腰繞過中央火盆、走到爐火邊按住 E 的機器人多半失敗', () => {
+  const right = winRate(g => { walkPath(g, [[.9, -7.5], [.9, -1.5], [.9, 4.4]]); sitDown(g); });
+  const left = winRate(g => { walkPath(g, [[-.9, -7.5], [-.9, -1.5], [-.9, 4.4]]); sitDown(g); });
+  const tendOnly = winRate(g => { walkPath(g, [[.9, -7.5], [.9, -3.3]]); tap(g); walkPath(g, [[.9, 4.4]]); sitDown(g); });
+  assert.ok(right <= .3 && left <= .3, `naive win rate right ${right} left ${left}`);
+  assert.ok(tendOnly <= .3, `pretext alone does not buy the fire seat: ${tendOnly}`);
+});
+test('用對工具就過得了：照看火盆當差事、先到潘妮洛普門前拿出神像取得允許', () => {
+  const penKnown = winRate(g => { walkPath(g, [[.9, -7.5], [.9, -3.3]]); tap(g); walkPath(g, [[.9, 4.4]]); sitDown(g); }, { pen: 'knows' });
+  const penInHall = winRate(g => {
+    walkPath(g, [[.9, -7.5], [.9, -3.3]]); tap(g);                                  // 照看中央火盆：之後 12 秒走動不起疑
+    walkPath(g, [[-1.2, -1], [-1.8, 4.4], [-4, 5.8], [-7.45, 7.0]]);                  // 繞到潘妮洛普的門前
+    if (g.phase !== 'play') return;
+    g.step(DT, { ePressed: true, eDown: true }); run(g, 2.2, { eDown: true }); g.step(DT, { eReleased: true });
+    assert.ok(g.phase !== 'play' || g.permission, 'permission granted');
+    walkPath(g, [[-4, 5.8], [-1.3, 4.4]]); sitDown(g);
+  });
+  assert.ok(penKnown >= .7, `pen known ${penKnown}`);
+  assert.ok(penInHall >= .7, `pen in hall ${penInHall}`);
 });
