@@ -13,7 +13,7 @@
     rangeDark: 4.5, rangeLit: 12, crouchRangeMul: .75, sharpMul: 1.2,
     coneHalf: .96, coneAlert: 1.2,
     gainStand: .12, gainWander: .05, gainWeapons: .22, gainHearth: .16,
-    decay: .02,
+    decay: .02, crouchCalm: .01,
     stageCurious: .3, stageSuspicious: .6,
     contagionRadius: 4, contagionRate: .05,
     stepEvery: .6, noiseCrouch: 1.5, noiseStand: 3, noiseLimp: 2.2,
@@ -21,13 +21,18 @@
     begPretext: 6, tendPretext: 12, bankTime: 45, blendRadius: 1.6,
     angerInsult: .16, angerHit: .3, chestRate: .32,
     dmgThrow: .32, dmgKick: .22, dmgClumsy: .1,
+    throwSidestep: .7,   // 丟出後（飛行 .55 秒）離開瞄準點多遠算「早一步躲開」；舊值 1.3 m 以最快速度也走不到
     dodgeNormal: [-.28, -.04], dodgeLoose: [-.42, .04],
     statueDropBelow: .45, statueTime: 3,
   };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const hyp = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
-  const angDiff = (a, b) => ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+  const TAU = Math.PI * 2;
+  const wrapAng = a => { a = a % TAU; return a > Math.PI ? a - TAU : a < -Math.PI ? a + TAU : a; };
+  // a→b 的最短轉角（-π～π）；舊寫法在差值小於 -3π 時會算錯方向
+  const angDiff = (a, b) => wrapAng(b - a);
+  const freshCarry = () => ({ tele: 'unknown', eum: 'unknown', pen: 'unknown', ledger: 0 });
 
   function stageOf(s) { return s >= 1 ? 'seen' : s >= T.stageSuspicious ? 'suspicious' : s >= T.stageCurious ? 'curious' : 'calm'; }
 
@@ -125,6 +130,8 @@
     const rng = opts.rng || Math.random;
     const O = Object.assign({ knowers: true, tell: true, statue: true, ledger: true, loose: false }, opts.options || {});
     const L = level(seg);
+    carry = Object.assign(freshCarry(), carry || {});
+    if (!Number.isFinite(carry.ledger)) carry.ledger = 0;
     const g = {
       seg, L, O, T, t: 0, phase: 'play', result: null, out: [],
       carry: JSON.parse(JSON.stringify(carry)), snapshot: JSON.parse(JSON.stringify(carry)),
@@ -237,7 +244,7 @@
         if (k === 'eum') seen = dP(n) < 6;
         else if (k === 'pen') { const d = dP(n); seen = d < 14 && ((P.x - n.x) * Math.sin(n.yaw) + (P.z - n.z) * Math.cos(n.yaw)) / d > Math.cos(1.2); }
         else seen = dP(n) < 14;
-        if (seen) { n.tell = clamp(n.tell + amount * (k === 'tele' ? 1.3 : 1), 0, 1); if (n.tell >= 1) tellBurst(n, k); }
+        if (seen) { n.tell = clamp(n.tell + amount * (k === 'tele' ? 1.3 : 1), 0, 1); if (n.tell >= 1) tellBurst(n, k); if (g.phase !== 'play') return; }
       }
     }
     function tellBurst(n, k) {
@@ -267,12 +274,13 @@
       const n = e.by;
       if (e.kind === 'kick') n.kick = 'done';
       const moved = hyp(P.x, P.z, e.target.x, e.target.z);
-      if ((e.kind === 'kick' && dP(n) > 2.4) || (e.kind === 'throw' && moved > 1.3)) {
+      if ((e.kind === 'kick' && dP(n) > 2.4) || (e.kind === 'throw' && moved > T.throwSidestep)) {
         addSusp(n, .22); g.msg(`你早一步躲開了。${n.name}眯起眼睛看你。`); return;
       }
       const res = judgeDodge(e.pressed == null ? null : e.pressed - (e.windup + e.flight), O.loose);
       if (res === 'clean') {
         addSusp(n, .38); for (const h of seers()) if (h !== n) addSusp(h, .14);
+        if (g.phase !== 'play') return;
         g.msg('你閃得太俐落了，不像個老乞丐。', 'susp'); g.sfx('whoosh'); return;
       }
       if (res === 'clumsy') {
@@ -293,7 +301,7 @@
       if (g.phase !== 'play' || !O.statue || g.statue !== 'carried' || g.body > T.statueDropBelow) return;
       if (rng() < .5) {
         g.statue = 'dropped'; g.statueT = T.statueTime;
-        g.statuePos = { x: P.x - Math.sin(P.yaw) * -.6, z: P.z - Math.cos(P.yaw) * -.6 };
+        g.statuePos = { x: P.x - Math.sin(P.yaw) * .6, z: P.z - Math.cos(P.yaw) * .6 };   // 掉在腳前（前方＝-sin, -cos）
         g.msg('雅典娜神像從你的破衣裡掉了出來！快撿起來（E）', 'fire');
       }
     }
@@ -310,16 +318,17 @@
         else if (n.role === 'eum') { bd = d; best = n.kstate === 'knows' ? { type: 'none', n, label: '歐邁俄斯知道你是誰' } : { type: 'eum', n, label: '對歐邁俄斯說起往事' }; }
         else if (n.role === 'pen') { bd = d; best = n.kstate === 'knows' ? { type: 'none', n, label: '潘妮洛普知道你是誰' } : { type: 'reveal', n, hold: 2, label: g.statue === 'carried' ? '按住：隔著門拿出雅典娜神像' : '（神像不在你身上）' }; }
       }
-      if (best) return best;
+      // 「某某知道你是誰」只是提示，不能擋住旁邊的火盆、爐火
+      if (best && best.type !== 'none') return best;
       if (g.argos && g.argos.state === 'recognize' && hyp(P.x, P.z, g.argos.x, g.argos.z) < 2.2) return { type: 'pet', hold: 4.5, label: '按住：蹲下摸摸牠' };
       for (const b of g.braziers) if (hyp(P.x, P.z, b.x, b.z) < 1.6) return { type: 'tend', b, hold: 2, tap: true, label: b.lit ? '點一下：照看火盆（差事）・按住：把火撥暗' : '點一下：把火盆重新撥旺' };
       if (L.hearth && hyp(P.x, P.z, L.hearth.x, L.hearth.z) < 2.3) return { type: 'sit', hold: 3, label: g.permission ? '按住：坐到爐火邊（潘妮洛普允許的）' : '按住：坐到爐火邊（火光會照亮你的臉）' };
-      return null;
+      return best;
     };
     function pressE() {
       const it = g.interact(); if (!it) return;
       if (it.hold) { g.hold = { it, t: 0 }; return; }
-      if (it.type === 'statue') { g.statue = 'carried'; g.msg('你把神像塞回破衣裡。'); return; }
+      if (it.type === 'statue') { g.statue = 'carried'; g.statueT = 0; g.statuePos = null; g.msg('你把神像塞回破衣裡。'); return; }
       if (it.type === 'beg') return beg(it.n);
       if (it.type === 'tele0') return g.msg('忒勒馬科斯只當你是個乞丐，遞給你一塊肉。也許得有什麼事讓他起疑。');
       if (it.type === 'eum') return openEumaeus(it.n);
@@ -415,7 +424,7 @@
       const r = .32, obst = obstNow();
       const hit = (x, z) => {
         for (const o of obst) if (x > o.x0 - r && x < o.x1 + r && z > o.z0 - r && z < o.z1 + r) return true;
-        for (const n of g.npcs) { if (n.follow || n.mode === 'walk' || n.route) continue; if (hyp(x, z, n.x, n.z) < n.r + r) return true; }
+        for (const n of g.npcs) { if (n.follow || n.mode === 'walk' || n.route) continue; const d = hyp(x, z, n.x, n.z); if (d < n.r + r && d < hyp(P.x, P.z, n.x, n.z)) return true; }   // 已經重疊時允許往外走，免得被走過來查看的人卡住
         return false;
       };
       if (!hit(P.x + dx, P.z)) P.x += dx;
@@ -432,15 +441,16 @@
     // ----- 每幀 -----
     g.step = (dt, I) => {
       if (g.phase !== 'play') return;
+      I = I || {};
+      dt = Number.isFinite(dt) ? clamp(dt, 0, .25) : 0;   // 分頁切回來的長幀、NaN 都不能讓模擬爆掉
       g.t += dt;
       for (let i = later.length - 1; i >= 0; i--) if (g.t >= later[i].at) { const f = later.splice(i, 1)[0].fn; f(); if (g.phase !== 'play') return; }
 
       // 對話中只等選擇
-      if (g.dialog) { if (I.choice != null) choose(I.choice); else if (I.cancel) g.dialog = null; return; }
+      if (g.dialog) { if (Number.isInteger(I.choice) && I.choice >= 0 && I.choice < EUM.length) choose(I.choice); else if (I.cancel) g.dialog = null; return; }
 
-      P.yaw = I.yaw;
+      if (Number.isFinite(I.yaw)) P.yaw = wrapAng(I.yaw);
       P.standing = !!I.stand; P.limp = !!I.limp && !P.standing;
-      const sitting = g.hold && g.hold.it.type === 'sit';
       P.crouched = !P.standing;
       const beating = !!I.beat;
       // 移動
@@ -514,7 +524,8 @@
             else if (n.role !== 'pen' && !n.route) n.lookYaw = n.baseYaw + (rng() - .5) * 1.4;
           }
         }
-        n.yaw += clamp(angDiff(n.yaw, n.lookYaw), -dt * 2.2, dt * 2.2);
+        n.lookYaw = wrapAng(n.lookYaw);
+        n.yaw = wrapAng(n.yaw + clamp(angDiff(n.yaw, n.lookYaw), -dt * 2.2, dt * 2.2));
         if (!n.hostile) continue;
 
         // 看
@@ -523,6 +534,7 @@
         if (n.vis > 0) {
           n.lastSeen = { x: P.x, z: P.z };
           if (P.standing) addSusp(n, dt * T.gainStand * k);
+          else if (!P.moving) n.susp = clamp(n.susp - dt * T.crouchCalm, 0, 1);   // 彎腰縮著不動：像個乞丐，疑心慢慢下降
           if (P.moving && wanderMul) addSusp(n, dt * T.gainWander * wanderMul * k);
           if (L.weapons && hyp(P.x, P.z, L.weapons.x, L.weapons.z) < 2.2) {
             addSusp(n, dt * T.gainWeapons * k);
@@ -537,17 +549,20 @@
           n.mode = 'investigate'; n.searchT = 0; g.msg(`${n.name}起了疑心，走過來查看。`, 'susp');
         }
         if (n.mode === 'investigate') investigate(n, dt);
+        if (n.mode === 'walk') walkHome(n, dt);
+        n.away = n.mode === 'investigate' || n.mode === 'walk';
         // 傳染：懷疑的人和身邊的人交頭接耳
         if (n.stage === 'suspicious') for (const o of hostiles()) if (o !== n && o.stage !== 'suspicious' && hyp(o.x, o.z, n.x, n.z) < T.contagionRadius) {
-          o.susp = clamp(o.susp + dt * T.contagionRate, 0, .99); if (n.lastSeen && !o.focus) o.focus = { x: n.lastSeen.x, z: n.lastSeen.z, until: g.t + 1.5 };
+          o.susp = clamp(o.susp + dt * T.contagionRate, 0, .99); if (n.lastSeen && !o.lastSeen) o.lastSeen = { x: n.lastSeen.x, z: n.lastSeen.z }; if (n.lastSeen && !o.focus) o.focus = { x: n.lastSeen.x, z: n.lastSeen.z, until: g.t + 1.5 };
         }
 
         // 各角色
         if (n.kind === 'thrower' && dP(n) < 3.5 && !n.begged && n.mode === 'idle') { n.nearT += dt; if (n.nearT > 5) { n.nearT = -8; g.msg(`${n.name}：「這個乞丐一直在我旁邊轉。」`); startThrow(n, 'throw'); } }
+        else if (n.nearT > 0) n.nearT = Math.max(0, n.nearT - dt);   // 走開就慢慢忘了，不會累積到下次經過
         if (n.kind === 'mocker' && dP(n) < 3) { n.tauntT -= dt; if (n.tauntT <= 0) { n.tauntT = 9 + rng() * 5; humiliate(n, `${n.name}朝你吐了一口：「乞丐就該待在門口。」`, false); if (g.phase !== 'play') return; } }
         if (n.role === 'maid' && n.vis > 0 && dP(n) < 3.5 && g.t > (n.scoldAt || 0)) { n.scoldAt = g.t + 16; humiliate(n, '墨蘭托：「你這個討人嫌的老東西，還在這裡晃？」', false); if (g.phase !== 'play') return; }
         if (n.role === 'mel' && n.kick === 'ready' && dP(n) < 2.0 && n.vis > 0) { n.kick = 'kicking'; g.msg('墨蘭提俄斯：「豬倌，你把什麼髒東西帶來了？」'); startThrow(n, 'kick'); }
-        if (n.role === 'mel' && n.kick === 'done') { n.x += (3.4 - n.x) * Math.min(1, dt * 2); }
+        if (n.role === 'mel' && n.kick === 'done' && n.homeX !== 3.4) { n.homeX = 3.4; if (n.mode === 'idle') n.mode = 'walk'; }   // 踢完退到一旁；查看完也回到一旁
         n.mark = '';
         if (O.knowers && g.knowers.eum && g.knowers.eum.kstate === 'knows') {
           if (n.kind === 'thrower') n.mark = '會丟東西';
@@ -592,15 +607,11 @@
       }
       if (n.mode === 'return') { n.mode = 'walk'; n.lastSeen = null; }
     }
-    // 回座位
-    const _step = g.step;
-    g.step = (dt, I) => {
-      _step(dt, I);
-      for (const n of g.npcs) if (n.mode === 'walk') {
-        if (n.route) { n.mode = 'idle'; continue; }
-        if (walkTo(n, n.homeX, n.homeZ, 1.0, dt)) { n.mode = 'idle'; n.lookYaw = n.baseYaw; }
-      }
-    };
+    // 回座位（巡邏的人直接回到路線上）。原本包在 step 外層，對話中、失敗後也會走，現在併進 NPC 迴圈
+    function walkHome(n, dt) {
+      if (n.route) { n.mode = 'idle'; return; }
+      if (walkTo(n, n.homeX, n.homeZ, 1.0, dt)) { n.mode = 'idle'; n.lookYaw = n.baseYaw; }
+    }
     function patrol(n, dt) {
       if (n.pauseT > 0) { n.pauseT -= dt; return; }
       const [x, z] = n.route[n.wp];
@@ -657,5 +668,5 @@
     statue: w => ['他們看見了神像。', `乞丐身上掉出一尊雅典娜神像，${w}認出了它。`, '提示：神像掉出來時，3 秒內按 E 撿起來。'],
   };
 
-  return { T, createGame, level, stageOf, lightAt, segHitsRect, segHitsCircle, blocked, judgeDodge, FAIL_TEXT, freshCarry: () => ({ tele: 'unknown', eum: 'unknown', pen: 'unknown', ledger: 0 }) };
+  return { T, createGame, level, stageOf, lightAt, segHitsRect, segHitsCircle, blocked, judgeDodge, FAIL_TEXT, freshCarry, angDiff };
 });
