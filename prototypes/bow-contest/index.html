@@ -66,7 +66,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 }
 .hold.on { background: rgba(185, 138, 75, .45); }
 .result {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); box-sizing: border-box;
+  position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); box-sizing: border-box;
   text-align: center; pointer-events: auto; padding: 20px 18px;
 }
 .result h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4vw, 34px); margin: 0 0 10px; color: var(--blood); letter-spacing: .05em; }
@@ -144,6 +144,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   };
   const opt = { string: $('optString'), fatigue: $('optFatigue'), guide: $('optGuide'), hole: $('optHole') };
   const DEBUG = /(^|[?#&])debug\b/.test(location.search + location.hash);
+  const NOLOCK = DEBUG && /nolock/.test(location.search + location.hash);   // 測試用：不鎖滑鼠
   if (!window.THREE) { ui.msg.textContent = '畫面無法載入。'; return; }
 
   // ================================================================ 聲音（WebAudio 合成）
@@ -270,7 +271,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     beam: new THREE.MeshStandardMaterial({ color: 0x2b1d12, roughness: .9 }),
     column: new THREE.MeshStandardMaterial({ color: 0x5a2f1c, roughness: .7 }),   // 塗了紅的木柱
     stone: new THREE.MeshStandardMaterial({ color: 0x5a5046, roughness: 1 }),
-    earth: new THREE.MeshStandardMaterial({ color: 0x3b2c1e, roughness: 1 }),
+    earth: new THREE.MeshStandardMaterial({ color: 0x241a11, roughness: 1 }),
     haft: new THREE.MeshStandardMaterial({ color: 0x5b4028, roughness: .8 }),
     bronze: new THREE.MeshStandardMaterial({ color: 0xc08a48, metalness: .55, roughness: .38 }),
     table: new THREE.MeshStandardMaterial({ color: 0x4a321f, roughness: .8 }),
@@ -310,7 +311,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   const trenchLen = T.axeCount * T.axeSpacing + 1.4, trenchZ = -(T.axeFirst + (T.axeCount - 1) * T.axeSpacing / 2);
   const trench = new THREE.Mesh(new THREE.PlaneGeometry(.34, trenchLen), new THREE.MeshBasicMaterial({ color: 0x080503 }));
   trench.rotation.x = -Math.PI / 2; trench.position.set(0, .004, trenchZ); scene.add(trench);
-  for (const sx of [-1, 1]) { const m = box(.22, .07, trenchLen, M.earth); m.position.set(sx * .28, .035, trenchZ); scene.add(m); }
+  for (const sx of [-1, 1]) { const m = box(.2, .035, trenchLen, M.earth); m.position.set(sx * .27, .018, trenchZ); scene.add(m); }
 
   // 火光：灶火、油燈、門外
   const flames = [];
@@ -335,7 +336,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     flame(x, 1.93, z, .42, l);
   }
   const doorLight = new THREE.PointLight(0xff9a50, 2.2, 10, 1.6); doorLight.position.set(0, 2, Z1 - 1.5); scene.add(doorLight);
-  flame(0, 1.2, Z1 - 3, 2.4, doorLight);
+  flame(1.6, .9, Z1 - 3.4, 1.4, doorLight);
 
   // ---------------------------------------------------------------- 斧頭
   const axeGroup = new THREE.Group(); scene.add(axeGroup);
@@ -414,7 +415,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   });
   // 特勒馬科斯：站在斧頭旁，手持長矛
   const tele = person(0xb8aa8a, true);
-  tele.g.position.set(1.05, 0, -4.8); tele.g.rotation.y = -1.1; scene.add(tele.g);
+  tele.g.position.set(1.45, 0, -4.2); tele.g.rotation.y = -1.0; scene.add(tele.g);
   const spear = cyl(.015, .015, 2.3, M.haft, 6); spear.position.set(.28, 1.15, .1); tele.g.add(spear);
   const spearTip = new THREE.Mesh(new THREE.ConeGeometry(.03, .16, 6), M.bronze); spearTip.position.set(.28, 2.38, .1); tele.g.add(spearTip);
 
@@ -438,8 +439,9 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
   // 彈道輔助線
-  const guideGeo = new THREE.BufferGeometry(); guideGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(80 * 3), 3));
-  const guide = new THREE.Line(guideGeo, new THREE.LineBasicMaterial({ color: 0xf0c27a, transparent: true, opacity: .35, fog: false }));
+  // 箭到每一把斧頭時的位置畫成小點：點都落在孔裡就會過
+  const guideGeo = new THREE.BufferGeometry(); guideGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(T.axeCount * 3), 3));
+  const guide = new THREE.Points(guideGeo, new THREE.PointsMaterial({ color: 0x9fe0ff, size: 4, sizeAttenuation: false, transparent: true, opacity: .85, fog: false, depthTest: false }));
   guide.frustumCulled = false; guide.visible = false; scene.add(guide);
 
   // ---------------------------------------------------------------- 前景：弓、弦、箭、雙手
@@ -466,10 +468,10 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   const sleeveM = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 1 });   // 乞丐的破衣
   const leftHand = new THREE.Group(); vScene.add(leftHand);
   { const fist = box(.07, .1, .07, handM); leftHand.add(fist); const thumb = box(.025, .05, .03, handM); thumb.position.set(.035, .03, .02); leftHand.add(thumb); }
-  const leftArm = cyl(.035, .05, 1, sleeveM, 8); vScene.add(leftArm);
+  const leftArm = cyl(.03, .042, 1, sleeveM, 8); vScene.add(leftArm);
   const rightHand = new THREE.Group(); vScene.add(rightHand);
-  { const fist = box(.06, .08, .08, handM); rightHand.add(fist); for (let i = 0; i < 3; i++) { const f = box(.012, .02, .045, handM); f.position.set(-.035, .025 - i * .022, -.02); rightHand.add(f); } }
-  const rightArm = cyl(.035, .05, 1, sleeveM, 8); vScene.add(rightArm);
+  { const fist = box(.05, .065, .07, handM); rightHand.add(fist); for (let i = 0; i < 3; i++) { const f = box(.012, .02, .045, handM); f.position.set(-.035, .025 - i * .022, -.02); rightHand.add(f); } }
+  const rightArm = cyl(.026, .034, 1, sleeveM, 8); vScene.add(rightArm);
 
   function bowPoint(t, c, ly) { return new THREE.Vector3(0, t * ly, c * t * t + .02 * (1 - t * t)); }
   let lastBowKey = '';
@@ -492,10 +494,10 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     // 姿勢：上弦時弓斜放低、靠中間；瞄準時立在左前方
     const lerp = (a, b) => a + (b - a) * pose;
     const sw = sway || { yaw: 0, pitch: 0 };
-    bowG.position.set(lerp(.02, -.075) + sw.yaw * 4, lerp(-.3, -.1) + sw.pitch * 4, lerp(-.75, -.74));
-    bowG.rotation.set(lerp(-.5, 0), 0, lerp(1.05, -.14));
+    bowG.position.set(lerp(.06, -.13) + sw.yaw * 4, lerp(-.36, -.12) + sw.pitch * 4, lerp(-1.0, -.72));
+    bowG.rotation.set(lerp(-.55, 0), 0, lerp(1.25, .06));
     if (strung) {
-      vNock.set(0, 0, c + .44 * pull);
+      vNock.set(0, 0, c + .3 * pull);
       seg(strA, vTop, vNock); seg(strB, vNock, vBot);
     } else {
       // 弦掛在下端，右手把弦往上端拉
@@ -512,8 +514,10 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     rightHand.position.copy(hold.applyMatrix4(bowG.matrixWorld)); rightHand.quaternion.copy(bowG.quaternion);
     const shake = Math.sin(t * 40) * .002 * (strung ? 0 : tension);
     rightHand.position.x += shake;
-    seg(leftArm, leftHand.position, tmpV2.set(-.35, -.55, -.25));
-    seg(rightArm, rightHand.position.clone(), new THREE.Vector3(.45, -.5, .3));
+    seg(leftArm, leftHand.position, tmpV2.set(lerp(-.1, -.32), lerp(-.75, -.6), lerp(-.55, -.3)));
+    // 右前臂只露一小截，往右下方伸出
+    tmpV.set(.04, -.13, .03).applyQuaternion(bowG.quaternion).add(rightHand.position);
+    seg(rightArm, rightHand.position.clone(), tmpV.clone());
   }
 
   // ================================================================ 遊戲狀態
@@ -544,7 +548,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   function say(text, hold) { ui.msg.textContent = text; ui.msg.style.opacity = 1; msgTimer = hold || 5; }
 
   function refreshHud() {
-    ui.score.textContent = `第 ${attempts + (st.flight || st.result ? 0 : 1)} 箭　最好 ${best} / 12`;
+    ui.score.textContent = `第 ${attempts + (st.flight ? 0 : 1)} 箭　最好 ${best} / 12`;
     ui.stringUI.hidden = st.phase !== 'string' || !!st.result;
     ui.drawUI.hidden = st.phase !== 'aim' || !!st.flight || !!st.result;
     ui.hold.hidden = !touchUI || !!st.result || !!st.flight;
@@ -569,7 +573,8 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     if (!win) { suitors.forEach(s => { s.laugh = 1; }); sfx.laugh(); }
     else sfx.win();
     if (document.pointerLockElement) document.exitPointerLock();
-    setTimeout(() => { if (st.result) { ui.result.hidden = false; refreshHud(); } }, win ? 900 : 650);
+    st.result.showAt = st.time + (win ? .9 : .65);
+    ui.msg.textContent = ""; msgTimer = 0;
     refreshHud();
   }
 
@@ -624,16 +629,19 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       refreshHud(); return;
     }
     if (e.button !== 0) return;
-    if (!locked && cv.requestPointerLock && !st.result) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+    if (!locked && !NOLOCK && cv.requestPointerLock && !st.result) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
     press();
   });
   window.addEventListener('mouseup', e => { if (e.button === 0) release(); });
   document.addEventListener('mousemove', e => {
     if (touch.id !== null) return;
     if (!locked && e.target !== cv) return;       // 沒鎖住時：在畫面上移動就能看（退而求其次）
-    moveBy(e.movementX || 0, e.movementY || 0, SENS);
+    const dx = e.movementX || 0, dy = e.movementY || 0;
+    if (Math.abs(dx) > 200 || Math.abs(dy) > 200 || performance.now() - lockAt < 80) return;   // 鎖住瞬間的跳動
+    moveBy(dx, dy, SENS);
   });
-  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === cv; refreshHud(); });
+  let lockAt = 0;
+  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === cv; lockAt = performance.now(); refreshHud(); });
   document.addEventListener('pointerlockerror', () => { locked = false; });
 
   const touch = { id: null, x: 0, y: 0 };
@@ -681,9 +689,12 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
   // ================================================================ 更新
   const SLOW = .22;   // 跟拍時的慢動作
+  const easeOut = x => 1 - (1 - x) * (1 - x);
+  let poseT = 0;
   function update(dt) {
     st.time += dt;
     const s = st;
+    if (s.result && s.result.showAt && s.time >= s.result.showAt) { s.result.showAt = 0; ui.result.hidden = false; refreshHud(); }
     if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) ui.msg.style.opacity = 0; }
 
     if (s.phase === 'string' && !s.result) {
@@ -704,8 +715,15 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       R.stepDraw(s.draw, dt, { down: false, fatigue: true });
     }
 
+    // 視角：拉弓時視線集中（拉近）
+    const f = s.flight, d = s.draw;
+    let targetFov = 55;
+    if (s.phase === 'aim' && !f) targetFov = 55 - 37 * easeOut(d.drawing ? d.power : 0);
+    if (f) targetFov = 50;
+    s.fov += (targetFov - s.fov) * Math.min(1, dt * (f ? 3 : 8));
+    poseT += ((s.phase === 'aim' ? 1 : 0) - poseT) * Math.min(1, dt * 4);
+
     // 飛行
-    const f = s.flight;
     if (f && !f.done) {
       f.t = Math.min(f.res.endT, f.t + dt * SLOW);
       while (f.nextEvent < f.res.events.length && f.res.events[f.nextEvent].t <= f.t) {
@@ -741,23 +759,23 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   }
 
   // ================================================================ 繪製
-  const easeOut = x => 1 - (1 - x) * (1 - x);
-  let poseT = 0;
   function render(dt) {
     const s = st, d = s.draw, f = s.flight;
-    // 視角
-    let targetFov = 55;
-    if (s.phase === 'aim' && !f) targetFov = 55 - 37 * easeOut(d.drawing ? d.power : 0);
-    if (f) targetFov = 50;
-    s.fov += (targetFov - s.fov) * Math.min(1, dt * (f ? 3 : 8));
     camera.fov = s.fov; camera.updateProjectionMatrix();
 
-    if (f) {
+    const winView = f && f.done && f.res.win && s.time - f.doneAt > .35;
+    if (winView) {
+      // 射穿之後切回奧德修斯的眼睛：十二個亮起的孔排成一線
+      camera.position.set(0, H, 0);
+      camera.rotation.set(aim.pitch * .3, 0, 0, 'YXZ');
+      camera.fov = 26; camera.updateProjectionMatrix();
+      const ap = R.positionAt(f.shot, f.t); worldArrow.position.set(ap.x, ap.y, ap.z);
+    } else if (f) {
       // 跟拍：相機沿著箭的路徑，落後一小段
       const lag = .55 / R.speed(f.shot.power), tc = Math.max(0, f.t - lag);
       const p = R.positionAt(f.shot, tc), v = R.velocityAt(f.shot, Math.max(tc, 0));
-      camera.position.set(p.x, p.y + .025, p.z);
-      tmpV.set(p.x + v.x, p.y + .025 + v.y, p.z + v.z);
+      camera.position.set(p.x, p.y + .05, p.z);
+      tmpV.set(p.x + v.x, p.y + .05 + v.y, p.z + v.z);
       camera.lookAt(tmpV);
       const ap = R.positionAt(f.shot, f.t), av = R.velocityAt(f.shot, f.t);
       worldArrow.position.set(ap.x, ap.y, ap.z);
@@ -773,13 +791,12 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     // 彈道輔助線
     if (opt.guide.checked && s.phase === 'aim' && !f && !s.result) {
       const shot = R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power: d.drawing ? Math.max(.3, d.power) : 1, sway: d.sway });
-      const arr = guideGeo.attributes.position.array, t0 = 2 / R.speed(shot.power), tEnd = Math.min(R.floorTime(shot), (T.doorZ - shot.origin.z) / shot.vel.z);
-      for (let i = 0; i < 80; i++) { const p = R.positionAt(shot, t0 + (tEnd - t0) * i / 79); arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }
+      const arr = guideGeo.attributes.position.array;
+      for (let i = 0; i < T.axeCount; i++) { const p = R.positionAt(shot, (R.axeZ(i) - shot.origin.z) / shot.vel.z); arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }
       guideGeo.attributes.position.needsUpdate = true; guide.visible = true;
     } else guide.visible = false;
 
     // 前景
-    poseT += ((s.phase === 'aim' ? 1 : 0) - poseT) * Math.min(1, dt * 4);
     const tension = s.phase === 'string' ? s.str.tension : 1;
     const pull = s.phase === 'aim' && !f ? easeOut(d.drawing ? d.power : 0) : 0;
     updateViewmodel(poseT, tension, pull, s.phase === 'aim' && !f, s.phase === 'aim' ? d.sway : null, s.time);
@@ -803,10 +820,10 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     }
   }
 
-  let last = performance.now(), hudTick = 0;
+  let last = performance.now(), hudTick = 0, paused = false;
   function loop(now) {
     const dt = Math.min(.05, (now - last) / 1000); last = now;
-    update(dt); render(dt);
+    if (!paused) { update(dt); render(dt); }
     if ((hudTick += dt) > .25) { hudTick = 0; refreshHud(); }
     requestAnimationFrame(loop);
   }
@@ -818,6 +835,9 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   if (DEBUG) {
     window.bowDebug = {
       get state() { return st; }, aim,
+      // 固定步長推進遊戲時間（慢機器上測試用）
+      advance(sec) { for (let t = 0; t < sec - 1e-9; t += 1 / 60) update(1 / 60); render(1 / 60); return st.phase; },
+      pause(on) { paused = !!on; },
       skipString() { if (st.phase === 'string') { st.str.tension = 1; st.str.done = true; } },
       window(power) { return R.solveWindow(power === undefined ? 1 : power, diff()); },
       perfectShot() {
