@@ -114,12 +114,18 @@ Shader "Odyssey/Echo"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment fragDepthNormals
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
 
+            // Same output as URP 17's DepthNormalsPass.hlsl: world-space normals.
             half4 fragDepthNormals(Varyings i) : SV_Target
             {
                 float3 normalWS = normalize(i.normalWS);
-                float3 normalVS = TransformWorldToViewNormal(normalWS, true);
-                return half4(PackNormalOctahedron(normalVS), 0.0, 0.0);
+            #if defined(_GBUFFER_NORMALS_OCT)
+                float2 oct = saturate(PackNormalOctQuadEncode(normalWS) * 0.5 + 0.5);
+                return half4(PackFloat2To888(oct), 0.0);
+            #else
+                return half4(normalWS, 0.0);
+            #endif
             }
             ENDHLSL
         }
