@@ -102,6 +102,11 @@
     ['阿格勞斯', -3.8, -1.0, 0, 'mocker'], ['歐律諾摩斯', 3.8, 3.2, 0, 'mocker'], ['德摩普托勒摩斯', 6.2, 4.2, 1, 'giver'],
     ['皮珊德洛斯', -3.8, -4.4, 0, 'mocker'],
   ];
+  // 系列模式：在卡呂普索的島上困得越久（years 7～9），求婚者越囂張【改編】
+  // 每多 1 年：回頭看的機率 ×1.12，並依這個順序把一個嘲弄者改成會丟東西的人（固定順序，好測、好重現）
+  const YEARS_MIN = 7, YEARS_MAX = 9, YEAR_GLANCE_MUL = 1.12;
+  const YEAR_THROWERS = ['阿格勞斯', '歐律諾摩斯'];
+  const yearsOf = y => Number.isFinite(y) ? clamp(Math.round(y), YEARS_MIN, YEARS_MAX) : YEARS_MIN;
   function level(seg) {
     if (seg === 'gate') return {
       seg, bounds: R(-14.4, 15.5, -16, 12), ambient: .42,
@@ -134,12 +139,15 @@
   // ---------- 遊戲 ----------
   function createGame(seg, carry, opts = {}) {
     const rng = opts.rng || Math.random;
-    const O = Object.assign({ knowers: true, tell: true, statue: true, ledger: true, loose: false }, opts.options || {});
+    const O = Object.assign({ knowers: true, tell: true, statue: true, ledger: true, loose: false, years: YEARS_MIN }, opts.options || {});
+    O.years = yearsOf(O.years);
+    const extra = O.years - YEARS_MIN;
+    const glanceMul = Math.pow(YEAR_GLANCE_MUL, extra);
     const L = level(seg);
     carry = Object.assign(freshCarry(), carry || {});
     if (!Number.isFinite(carry.ledger)) carry.ledger = 0;
     const g = {
-      seg, L, O, T, t: 0, phase: 'play', result: null, out: [],
+      seg, L, O, T, years: O.years, glanceP: Math.min(1, T.glanceP * glanceMul), glanceCuriousP: Math.min(1, T.glanceCuriousP * glanceMul), t: 0, phase: 'play', result: null, out: [],
       carry: JSON.parse(JSON.stringify(carry)), snapshot: JSON.parse(JSON.stringify(carry)),
       player: { x: L.start.x, z: L.start.z, yaw: L.start.yaw, standing: false, limp: false, crouched: true, moving: false, light: 0, stepT: 0, bones: 1 },
       body: 1, anger: 0, statue: 'carried', statueT: 0, statuePos: null,
@@ -169,7 +177,9 @@
       g.msg('你和老豬倌歐邁俄斯來到宮門外。他看不見，只當你是個乞丐。');
       g.later(4.2, () => g.msg('門口的牧羊人墨蘭提俄斯專門找乞丐麻煩。火把照得到的地方，人看得比較清楚。'));
     } else {
+      const turned = YEAR_THROWERS.slice(0, extra);
       SUITORS.forEach(([name, x, z, side, kind]) => {
+        if (kind === 'mocker' && turned.includes(name)) kind = 'thrower';
         const inward = side === 1;
         const yaw = x > 0 ? (inward ? -Math.PI / 2 : Math.PI / 2) : (inward ? Math.PI / 2 : -Math.PI / 2);
         npc(name, x, z, yaw, { hostile: true, role: 'suitor', kind, seated: true, inner: side === 0 });
@@ -534,7 +544,7 @@
             n.lookT = 2 + rng() * 3;
             const d = dP(n), lookP = n.stage === 'curious' ? .7 : .4;
             const glancer = n.inner && n.seated && d < T.glanceRadius;
-            if (glancer && rng() < (n.stage === 'curious' ? T.glanceCuriousP : T.glanceP)) {
+            if (glancer && rng() < (n.stage === 'curious' ? g.glanceCuriousP : g.glanceP)) {
               // 內側的人回頭看一眼走道上的乞丐，看一下就轉回桌子
               n.lookYaw = Math.atan2(P.x - n.x, P.z - n.z); n.lookT = T.glanceHold[0] + rng() * (T.glanceHold[1] - T.glanceHold[0]);
             }
@@ -688,5 +698,5 @@
     statue: w => ['他們看見了神像。', `乞丐身上掉出一尊雅典娜神像，${w}認出了它。`, '提示：神像掉出來時，3 秒內按 E 撿起來。'],
   };
 
-  return { T, createGame, level, stageOf, lightAt, segHitsRect, segHitsCircle, blocked, judgeDodge, FAIL_TEXT, freshCarry, angDiff };
+  return { T, createGame, level, stageOf, lightAt, segHitsRect, segHitsCircle, blocked, judgeDodge, FAIL_TEXT, freshCarry, angDiff, YEAR_THROWERS };
 });

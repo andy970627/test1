@@ -143,6 +143,7 @@ button:hover { filter: brightness(1.12); }
     <h1>門檻上的乞丐</h1>
     <p>二十年後，你扮成乞丐回到伊薩卡。宮裡擠滿了想娶你妻子的求婚者。你一定會被看見，只是不能被看穿：讓他們瞧不起你，但別被打死，也別忍不住動手。</p>
     <p class="dim">取材自《奧德賽》第 17～21 卷。兩段：宮門、大廳。需要鍵盤和滑鼠（電腦）。</p>
+    <p id="seriesYears" style="color:var(--fire);font-family:var(--display)" hidden></p>
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠）。彎腰時只看得到腳和桌腳</dd>
       <dt>按住 Shift</dt><dd>站直：看得見整個廳，但被人看到就會起疑</dd>
@@ -187,6 +188,7 @@ button:hover { filter: brightness(1.12); }
     <div class="row">
       <button class="primary" id="btnRetry">再試這一段（R）</button>
       <button id="btnNext" hidden>進大廳</button>
+      <button class="primary" id="btnBow" hidden>帶著弓的事去比箭</button>
       <button id="btnMenu">回選單</button>
     </div>
   </div>
@@ -202,7 +204,20 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
 const hyp = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const opt = { knowers: $('oKnowers'), tell: $('oTell'), statue: $('oStatue'), ledger: $('oLedger'), bars: $('oBars'), dodge: $('oDodge') };
-const options = () => ({ knowers: opt.knowers.checked, tell: opt.tell.checked, statue: opt.statue.checked, ledger: opt.ledger.checked, loose: opt.dodge.value === 'loose' });
+
+// ---------- 系列模式（網址帶 ?series=1）：讀寫跨章存檔 ----------
+// 沒有 ?series=1、或讀不到存檔時，和單獨遊玩完全一樣
+const SAVE_KEY = 'odyssey-series-v1';
+function readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && typeof s === 'object' ? s : null; } catch (e) { return null; } }
+function writeSave(patch) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(Object.assign(readSave() || {}, patch))); } catch (e) {} }   // 合併，不丟其他章的欄位
+const series = (() => {
+  let on = false; try { on = new URLSearchParams(location.search).get('series') === '1'; } catch (e) {}
+  const save = on ? readSave() : null;
+  if (!save) return null;
+  return { years: Number.isFinite(save.years) ? Math.max(7, Math.min(9, Math.round(save.years))) : 7 };
+})();
+if (series) { $('seriesYears').textContent = `在卡呂普索的島上困了 ${series.years} 年`; $('seriesYears').hidden = false; }
+const options = () => Object.assign({ knowers: opt.knowers.checked, tell: opt.tell.checked, statue: opt.statue.checked, ledger: opt.ledger.checked, loose: opt.dodge.value === 'loose' }, series ? { years: series.years } : {});
 
 // ---------- three.js ----------
 const canvas = $('cv');
@@ -527,6 +542,11 @@ function showResult() {
   if (resultShown) return; resultShown = true;
   unlockPointer(); $('warn').hidden = true; $('dialog').hidden = true;
   const r = game.result, c = game.carry, ledger = game.O.ledger;
+  $('btnBow').hidden = true;
+  if (series && game.phase === 'win') {
+    if (game.seg === 'gate') writeSave({ step: 'beggar-hall' });
+    else writeSave({ ledger: c.ledger, knowers: { tele: c.tele, eum: c.eum, pen: c.pen }, step: 'bow' });
+  }
   if (game.phase === 'fail') {
     const [t, s, h] = BeggarSim.FAIL_TEXT[r.kind](r.who || '');
     $('resultCard').className = 'card fail';
@@ -543,8 +563,9 @@ function showResult() {
     } else {
       $('rTitle').textContent = '你坐在爐火邊。';
       $('rText').textContent = `今晚，潘妮洛普會來問這個乞丐的話。${kn.length ? `知情的人：${kn.join('、')}。` : '沒有人知道你是誰。'}${ledger ? `　帳上記了 ${c.ledger} 筆，比箭時要一筆一筆算回來。` : ''}`;
-      $('rHint').textContent = '這一段到此為止。今晚的問話與比箭，留待下一段。';
+      $('rHint').textContent = series ? '帳和知情的人都記下了。明天，潘妮洛普要拿出奧德修斯的弓。' : '這一段到此為止。今晚的問話與比箭，留待下一段。';
       $('btnNext').hidden = true;
+      $('btnBow').hidden = !series;
     }
   }
   $('result').hidden = false;
@@ -812,6 +833,8 @@ $('btnHall').onclick = () => {
 function retry() { if (game) startGame(game.seg, game.retryCarry()); }
 $('btnRetry').onclick = retry;
 $('btnNext').onclick = () => startGame('hall', game.carry);
+$('btnBow').onclick = () => { location.href = '../bow/index.html?series=1'; };   // 打包後 beggar/ 和 bow/ 是同層資料夾
+window.BeggarDebug = { get game() { return game; } };   // 自動測試用：讀目前的遊戲狀態
 $('btnMenu').onclick = () => { game = null; $('tags').innerHTML = ''; $('result').hidden = true; $('btnResume').hidden = true; $('btnRestart').hidden = true; $('menu').hidden = false; };
 })();
 </script>

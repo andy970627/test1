@@ -566,3 +566,51 @@ test('用對工具就過得了：照看火盆當差事、先到潘妮洛普門�
   assert.ok(penKnown >= .7, `pen known ${penKnown}`);
   assert.ok(penInHall >= .7, `pen in hall ${penInHall}`);
 });
+
+// ---------- 系列模式：困在島上的年數（years 7～9）【改編】 ----------
+test('years：預設 7；超出範圍夾在 7～9；只有大廳會把嘲弄者改成會丟東西的人', () => {
+  assert.equal(mk('hall').years, 7);
+  assert.equal(mk('hall', {}, { options: { years: 12 } }).years, 9);
+  assert.equal(mk('hall', {}, { options: { years: 3 } }).years, 7);
+  assert.equal(mk('hall', {}, { options: { years: undefined } }).years, 7);
+  const kinds = g => g.npcs.filter(n => n.role === 'suitor').map(n => n.kind);
+  const count = (g, k) => kinds(g).filter(x => x === k).length;
+  const g7 = mk('hall'), g8 = mk('hall', {}, { options: { years: 8 } }), g9 = mk('hall', {}, { options: { years: 9 } });
+  assert.deepEqual([count(g7, 'thrower'), count(g8, 'thrower'), count(g9, 'thrower')], [3, 4, 5]);
+  assert.deepEqual([count(g7, 'mocker'), count(g8, 'mocker'), count(g9, 'mocker')], [4, 3, 2]);
+  assert.equal(count(g9, 'giver'), count(g7, 'giver'));
+  // 固定順序：8 年改第一個，9 年再改第二個
+  assert.equal(byName(g8, S.YEAR_THROWERS[0]).kind, 'thrower');
+  assert.equal(byName(g8, S.YEAR_THROWERS[1]).kind, 'mocker');
+  assert.equal(byName(g9, S.YEAR_THROWERS[1]).kind, 'thrower');
+});
+
+test('years：每多 1 年回頭看的機率 ×1.12（上限 1）', () => {
+  const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+  close(mk('hall').glanceP, T.glanceP);
+  close(mk('hall', {}, { options: { years: 8 } }).glanceP, T.glanceP * 1.12);
+  close(mk('hall', {}, { options: { years: 9 } }).glanceP, T.glanceP * 1.12 * 1.12);
+  close(mk('hall', {}, { options: { years: 9 } }).glanceCuriousP, 1);
+  // 行為：亂數固定 0.65（介於 0.6 和 0.672 之間），7 年不回頭、8 年回頭看乞丐
+  const looks = years => {
+    const g = S.createGame('hall', S.freshCarry(), { rng: () => .65, options: { years } });
+    const n = byName(g, '安菲諾摩斯'); isolate(g, [n]);
+    put(g, 2.2, -1.5, 0);
+    n.lookT = .01;
+    g.step(DT, { yaw: 0 });
+    return Math.abs(S.angDiff(n.lookYaw, Math.atan2(g.player.x - n.x, g.player.z - n.z))) < 1e-6;
+  };
+  assert.equal(looks(7), false);
+  assert.equal(looks(8), true);
+});
+
+test('years = 7 和沒給 years 完全一樣（同一個亂數種子、同樣的輸入）', () => {
+  const snap = g => JSON.stringify({ t: g.t, p: g.player, phase: g.phase, carry: g.carry, anger: g.anger, body: g.body,
+    npcs: g.npcs.map(n => [n.kind, n.x, n.z, n.yaw, n.susp, n.mode]) });
+  for (const seg of ['gate', 'hall']) {
+    const a = mk(seg, {}, { seed: 11 }), b = mk(seg, {}, { seed: 11, options: { years: 7 } });
+    const input = i => ({ yaw: Math.sin(i / 30) * 2, mz: i % 90 < 60 ? -1 : 0, stand: i % 200 > 180, ePressed: i % 50 === 0 });
+    run(a, 40, input); run(b, 40, input);
+    assert.equal(snap(a), snap(b));
+  }
+});
