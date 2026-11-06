@@ -422,7 +422,9 @@
       pl.hidden = isHidden(pl);
 
       // 致命一擊
-      if (inp.takedown && !pl.inBelly) {
+      // 站在門閂旁時，E 只算推門閂，不算暗殺
+      const atLatch = g.zone === 4 && !g.gate.open && level.gate && Math.hypot(pl.x - level.gate.latch.x, pl.z - level.gate.latch.z) <= K.LATCH_R;
+      if (inp.takedown && !pl.inBelly && !atLatch) {
         let best = null, bd = Infinity;
         for (const q of g.guards) {
           if (!q.active) continue;
