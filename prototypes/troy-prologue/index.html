@@ -315,7 +315,7 @@ function build(L) {
     { x: 18.6, z: 11.2 }, { x: 27.4, z: 11.2 },             // 神殿前
     { x: 21.4, z: 12.9, y: 1.45, small: true }, { x: 22.6, z: 12.9, y: 1.45, small: true },   // 祭壇（雕像台座）上的火盆
     { x: 38.5, z: 17.25, torch: true }, { x: 43, z: 27.75, torch: true },                     // 窄巷牆上的火把
-    { x: 59.1, z: 9.5, torch: true }, { x: 59.1, z: 20.5, torch: true },                      // 城門兩側
+    { x: 58.5, z: 9.6, torch: true }, { x: 58.5, z: 20.4, torch: true }, { x: 54, z: 21.5 },                      // 城門兩側
   ];
   for (const b of fires) {
     let y;
@@ -399,7 +399,7 @@ function buildHorse(H, L) {
   // 木馬身體（中空）：比腹中走道每邊寬一些
   const bx0 = zb.x0 - .4, bx1 = zb.x1 + .4, bz0 = zb.z0 - .6, bz1 = zb.z1 + .6, top = fy + 2.3;
   const bxc = (bx0 + bx1) / 2, bzc = (bz0 + bz1) / 2, bw = bx1 - bx0, bd = bz1 - bz0;
-  const plank = MD(0x5a4028), dark = MD(0x3e2c1a);
+  const plank = new THREE.MeshBasicMaterial({ color: 0x24180e, side: THREE.DoubleSide }), dark = new THREE.MeshBasicMaterial({ color: 0x1a110a, side: THREE.DoubleSide }), floorM = new THREE.MeshBasicMaterial({ color: 0x2e2012 });
   // 輪子與兩側底樑（衛兵從腹下走過，中間不擋）
   for (const sz of [r.z0 + .2, r.z1 - .2]) {
     box(r.x1 - r.x0, .3, .3, 0x3a2a1a, (r.x0 + r.x1) / 2, .75, sz, g);
@@ -416,28 +416,27 @@ function buildHorse(H, L) {
   const td = H.trapdoor || (L.zones && L.zones[1] && L.zones[1].exit);
   const n = Math.round(bd / .32);
   for (let i = 0; i < n; i++) {
-    const z = bz0 + (i + .5) * bd / n, wdt = bd / n - .09;
+    const z = bz0 + (i + .5) * bd / n, wdt = bd / n - .13;
     if (td && Math.abs(z - td.z) < .45) {
-      box(td.x - .45 - bx0, .08, wdt, 0, (bx0 + td.x - .45) / 2, fy, z, g, plank);
-      if (bx1 > td.x + .45) box(bx1 - td.x - .45, .08, wdt, 0, (td.x + .45 + bx1) / 2, fy, z, g, plank);
-    } else box(bw, .08, wdt, 0, bxc, fy, z, g, plank);
+      box(td.x - .45 - bx0, .08, wdt, 0, (bx0 + td.x - .45) / 2, fy, z, g, floorM);
+      if (bx1 > td.x + .45) box(bx1 - td.x - .45, .08, wdt, 0, (td.x + .45 + bx1) / 2, fy, z, g, floorM);
+    } else box(bw, .08, wdt, 0, bxc, fy, z, g, floorM);
   }
   if (td) {
     for (const [ox, oz, ww, dd] of [[0, -.45, .95, .06], [0, .45, .95, .06], [-.45, 0, .06, .95], [.45, 0, .06, .95]]) box(ww, .1, dd, 0, td.x + ox, fy + .05, td.z + oz, g, MB(0x7a5a30));
     cyl(.03, .03, fy, 0x8a7a50, td.x + .25, fy / 2, td.z, g, 5);                                  // 垂下的繩子
-    const lid = box(.9, .06, .9, 0, td.x - .55, fy + .3, td.z, g, plank); lid.rotation.z = 1.2;   // 掀開的暗門蓋
     const glow = new THREE.PointLight(0xff9040, .7, 3, 2); glow.position.set(td.x, fy - .5, td.z); g.add(glow);
   }
   // 側板：豎著的木條，縫隙透出外面的火光
-  for (const sz of [bz0, bz1]) for (let x = bx0; x < bx1 - .05; x += .34) { const p = box(.28, top - fy, .08, 0, x + .14, (fy + top) / 2, sz, g, plank); if (Math.random() < .3) p.material = dark; }
+  for (const sz of [bz0, bz1]) for (let x = bx0; x < bx1 - .05; x += .34) { const p = box(.26, top - fy, .08, 0, x + .14, (fy + top) / 2, sz, g, plank); if (Math.random() < .3) p.material = dark; }
   for (const sx of [bx0, bx1]) for (let z = bz0; z < bz1 - .05; z += .34) box(.08, top - fy, .28, 0, sx, (fy + top) / 2, z + .14, g, plank);
   for (let x = bx0; x < bx1 - .05; x += .34) box(.28, .08, bd + .1, 0, x + .14, top, bzc, g, plank);       // 頂
-  for (const sx of [bx0 + 1, bxc, bx1 - 1]) box(.14, .14, bd, 0, sx, top - .2, bzc, g, M(0x3a2818));     // 橫樑
+  for (const sx of [bx0 + 1, bxc, bx1 - 1]) box(.14, .14, bd, 0, sx, top - .2, bzc, g, dark);     // 橫樑
   // 從地板縫往上透的火光
   const shaftMat = new THREE.MeshBasicMaterial({ color: 0xff9a50, transparent: true, opacity: .07, blending: THREE.AdditiveBlending, depthWrite: false });
   for (let i = 0; i < 9; i++) { const s = box(rand(.3, 1.2), 1.7, .05, 0, rand(bx0 + .4, bx1 - .4), fy + .85, bz0 + (Math.floor(rand(1, n)) * bd / n), g, shaftMat); s.rotation.x = rand(-.25, .25); S.shafts.push(s); }
   for (let i = 0; i < 6; i++) { const s = box(.05, rand(.6, 1.6), .26, 0, rand(bx0 + .3, bx1 - .3), fy + 1.2, rand(0, 1) < .5 ? bz0 + .05 : bz1 - .05, g, shaftMat); S.shafts.push(s); }
-  const inner = new THREE.PointLight(0xff8a40, .5, 4, 2); inner.position.set(bxc, fy + .4, bzc); g.add(inner); S.horseLight = inner;
+  const inner = new THREE.PointLight(0xff8a40, .12, 3, 2); inner.position.set(bxc, fy + .4, bzc); g.add(inner); S.horseLight = inner;
   // 脖子、頭、尾巴（頭朝東，玩家前進的方向）
   const wood = M(0x5a4028);
   const neck = box(1.6, 3.4, 1.4, 0, bx1 + .3, top + 1, bzc, g, wood); neck.rotation.z = -.5;
@@ -449,8 +448,9 @@ function buildHorse(H, L) {
   for (const [ox, side] of [[.9, -1], [2.3, 1], [3.8, -1], [4.6, 1]]) {
     const px = zb.x0 + ox; if (px > zb.x1 - 1.2) continue;
     const p = new THREE.Group(); p.position.set(px, fy, bzc + side * (bd / 2 - .35)); g.add(p);
-    cyl(.2, .26, .75, 0x2a2a2e, 0, .4, 0, p); const hm = cyl(.14, .15, .2, 0x6a5a30, 0, 1.0, 0, p); hm.scale.y = 1.2;
-    box(.3, .15, .6, 0, 0, .1, -side * .35, p, M(0x2a2a2e));
+    const sil = new THREE.MeshBasicMaterial({ color: 0x0c0b0a }), helm = new THREE.MeshBasicMaterial({ color: 0x3a2e18 });
+    box(.4, .75, .3, 0, 0, .4, 0, p, sil); const hd = new THREE.Mesh(new THREE.SphereGeometry(.15, 8, 6), helm); hd.position.y = .98; p.add(hd);
+    box(.04, .16, .3, 0, 0, 1.14, 0, p, sil); box(.3, .15, .6, 0, 0, .1, -side * .35, p, sil);
     const sp = cyl(.02, .02, 2, 0x5a5040, .2, 1, 0, p, 4); sp.rotation.x = side * .25;
   }
 }
@@ -507,7 +507,7 @@ function makeGuard() {
   // 頭上的微光：警戒（黃）、追殺（紅）
   const glow = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xe0b04a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
   glow.position.y = 2.3; up.add(glow);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(.25, 10, 8), new THREE.MeshBasicMaterial({ color: 0xe0b04a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(.17, 10, 8), new THREE.MeshBasicMaterial({ color: 0xe0b04a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   halo.position.y = 2.3; up.add(halo);
   // 除錯：感知範圍圈
   const ring = new THREE.Mesh(new THREE.RingGeometry(.96, 1, 48), new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: .35, side: THREE.DoubleSide, depthWrite: false }));
@@ -569,7 +569,8 @@ function retryZone() {
 
 // 介面延遲：p>0.8 時刻意慢 0.15 秒（視聽不協調）
 function curP() { return game && game.cycle ? game.cycle.p || 0 : 0; }
-function lag(fn) { if (curP() > .8) setTimeout(fn, 150); else fn(); }
+const desync = () => game && game.cycle && (game.cycle.desync != null ? !!game.cycle.desync : curP() > num(K().DESYNC_P, .8));
+function lag(fn) { if (desync()) setTimeout(fn, num(K().DESYNC_LAG, .15) * 1000); else fn(); }
 
 const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'Shift': 'Shift', '空白鍵': '空白鍵' };
 function showHint(text) {
@@ -755,7 +756,7 @@ function hud(dt) {
   $('red').style.opacity = g.hunted ? (.75 + Math.sin(performance.now() / 160) * .15).toFixed(2) : flashV.toFixed(2);
   flashV = Math.max(0, flashV - dt * 1.5);
   // p>0.8：畫面雜訊
-  const nz = p > .8 ? (p - .8) / .2 : 0;
+  const dp = num(K().DESYNC_P, .8), nz = desync() ? clamp((p - dp) / (1 - dp), .15, 1) : 0;
   $('noise').style.opacity = (nz * .22).toFixed(3);
   if (nz > 0 && (noiseT += dt) > .04) {
     noiseT = 0; const d = nimg.data;
