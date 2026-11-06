@@ -49,10 +49,17 @@
     step: 'step', footstep: 'step', move: 'step',
     latch: 'latch', bolt: 'latch', door: 'latch', push: 'latch',
     down: 'down', thud: 'down', fall: 'down', takedown: 'down', kill: 'down',
-    bell: 'bell', alarm: 'bell', alert: 'bell', caught: 'bell', hunted: 'bell',
+    bell: 'bell', alarm: 'bell', hunt: 'bell', hunted: 'bell',
+    alert: 'alert', suspicious: 'alert',
+    caught: 'caught', fail: 'caught',
+    takedownfail: 'takedownFail',
+    calmok: 'calmOk', calmbad: 'calmBad', calmdone: 'calmDone',
+    checkpoint: 'checkpoint', dash: 'dash', escape: 'escape', trapdoor: 'trapdoor',
     blind: 'blind', gap: 'blind',
-    win: 'win', victory: 'win', gate: 'win', open: 'win'
+    win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
+  // risset.js 的 game.out sfx 名稱：alert breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
+  //   dash escape gasp gate_open hunt latch takedown takedown_fail trapdoor（底線、大小寫都忽略）
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function frac(v) { return v - Math.floor(v); }
@@ -195,8 +202,10 @@
       if (w > 0.05 && i1 !== i0) INST[i1](dest, t, g * w);
     }
 
+    var bassPending = [];                 // 已排程、還沒響的低音拍（重新對齊時取消舊網格）
     function bassHit(t) {                 // 極慢重低音：深鼓 + 一聲低吟般的嗡
-      var d = bassBus;
+      var d = ctx.createGain(); d.connect(bassBus);
+      bassPending.push({ t: t, out: d });
       tone(d, t, 'sine', 64, 43, 0.45, 0.95, 0.004, 1.15);
       tone(d, t, 'sine', 128, 88, 0.3, 0.25, 0.004, 0.5);
       noise(d, t, 'lowpass', 140, 0.8, 0.4, 0.003, 0.12);
@@ -229,7 +238,7 @@
 
     // ---------- 狀態 ----------
     var st = { alarm: 0, hunted: false, bassPeriod: C.BASS_PERIOD, bassAnchor: t0,
-               alarmStart: null, alarmNext: 0, lastBass: -1e9 };
+               alarmStart: null, alarmNext: 0, lastBass: -1e9, panic: 0, lastCreak: -1e9 };
     var schedEnd = ctx.currentTime;          // 已排程到哪個時間（不含）
     var gateCycle = null;                    // 已排好 gate 自動化的最後一個循環
     var timer = null, dead = false;
@@ -292,7 +301,7 @@
       }
 
       // 失控層：不規則、越來越快（警戒或追殺時）
-      var eff = Math.max(st.alarm, st.hunted ? 0.6 : 0);
+      var eff = Math.max(st.alarm, st.panic * 0.8, st.hunted ? 0.6 : 0);
       if (eff > 0.02) {
         if (st.alarmStart == null) { st.alarmStart = a; st.alarmNext = Math.max(a, ctx.currentTime); }
         while (st.alarmNext < b) {
@@ -304,7 +313,7 @@
             if (Math.random() < 0.25) playHit(alarmBus, xa, ta + 0.018 + Math.random() * 0.02, ga * 0.6);  // 亂拍、雙擊
             if (log) log.push({ type: 'alarm', t: ta });
           }
-          var rate = 4 + 8 * eff + Math.min(12, el * 1.6);
+          var rate = 4 + 8 * eff + 6 * st.panic + Math.min(12, el * 1.6);
           st.alarmNext = ta + (1 / rate) * (0.5 + Math.random());
         }
       } else st.alarmStart = null;
@@ -314,7 +323,7 @@
       for (var m = Math.ceil((a - an) / per - 1e-9); ; m++) {
         var tb = an + m * per;
         if (tb >= b) break;
-        if (tb < a || tb < nowT || tb < st.lastBass + per * 0.5) continue;
+        if (tb < a || tb < nowT || tb < st.bassAnchor - 1e-4 || tb < st.lastBass + 0.25) continue;
         bassHit(tb); st.lastBass = tb;
         if (log) log.push({ type: 'bass', t: tb });
       }
@@ -396,6 +405,64 @@
         horn(t + 3.9, 146.8, 2.6, 0.12);
         for (var i = 0; i < 8; i++) CUES._drum(t + 3.9 + i * 0.32, i % 4 === 0 ? 1 : 0.6);
       },
+      alert: function (t) {               // 起疑：衛兵猛然轉身，短促的青銅刮擦＋低鼓一擊
+        tone(cueBus, t, 'sine', 70, 45, 0.25, 0.6, 0.003, 0.4);
+        var f = noise(cueBus, t, 'bandpass', 2400, 6, 0.35, 0.01, 0.35); f.frequency.exponentialRampToValueAtTime(3600, t + 0.3);
+        tone(cueBus, t + 0.02, 'sine', 990, 1180, 0.3, 0.05, 0.01, 0.4);
+        tone(cueBus, t + 0.02, 'sine', 1050, 1240, 0.3, 0.04, 0.01, 0.4);   // 兩條略不和諧
+      },
+      caught: function (t) {              // 被抓：重擊＋警鐘
+        tone(cueBus, t, 'sine', 90, 35, 0.5, 1.0, 0.002, 0.9);
+        noise(cueBus, t, 'lowpass', 600, 0.8, 0.7, 0.002, 0.3);
+        CUES.bell(t + 0.15);
+      },
+      takedown: function (t) { CUES.down(t); },
+      takedownFail: function (t) {        // 暗殺失手：扭打、青銅碰撞
+        noise(cueBus, t, 'bandpass', 700, 1, 0.4, 0.01, 0.2);
+        tone(cueBus, t + 0.12, 'sine', 760, 0, 0, 0.08, 0.001, 0.4);
+        tone(cueBus, t + 0.12, 'sine', 1137, 0, 0, 0.06, 0.001, 0.3);
+        CUES.step(t + 0.25); CUES.step(t + 0.4);
+      },
+      calmOk: function (t) {              // 安撫成功一次：輕而穩的低鼓（和低音同色）
+        tone(cueBus, t, 'sine', 110, 82, 0.15, 0.22, 0.003, 0.35);
+      },
+      calmBad: function (t) {             // 安撫失敗：悶、不協和
+        tone(cueBus, t, 'sawtooth', 98, 92, 0.3, 0.08, 0.005, 0.4);
+        tone(cueBus, t, 'sawtooth', 104, 97, 0.3, 0.08, 0.005, 0.4);
+        noise(cueBus, t, 'lowpass', 300, 0.7, 0.3, 0.003, 0.15);
+      },
+      calmDone: function (t) {            // 衛兵回到巡邏：長長吐一口氣＋低吟和聲
+        CUES.breathOut(t);
+        tone(cueBus, t + 0.1, 'sine', 146.8, 0, 0, 0.07, 0.3, 1.4);
+        tone(cueBus, t + 0.1, 'sine', 220, 0, 0, 0.05, 0.3, 1.4);
+      },
+      checkpoint: function (t) {          // 檢查點：一聲撥弦（像里拉琴），很輕
+        [293.7, 440].forEach(function (f, i) {
+          tone(cueBus, t + i * 0.12, 'triangle', f, 0, 0, 0.09, 0.002, 1.1);
+          tone(cueBus, t + i * 0.12, 'sine', f * 2, 0, 0, 0.03, 0.002, 0.6);
+        });
+      },
+      dash: function (t) {                // 衝刺：一陣風聲＋兩步
+        var f = noise(cueBus, t, 'bandpass', 500, 0.8, 0.3, 0.06, 0.25); f.frequency.exponentialRampToValueAtTime(1600, t + 0.25);
+        CUES.step(t + 0.05); CUES.step(t + 0.2);
+      },
+      escape: function (t) {              // 甩掉追兵：喘一口氣，節奏退去後的空
+        var f = noise(cueBus, t, 'bandpass', 1200, 0.8, 0.3, 0.1, 0.8); f.frequency.exponentialRampToValueAtTime(450, t + 0.9);
+        tone(cueBus, t, 'sine', 73.4, 0, 0, 0.08, 0.4, 1.8);
+      },
+      trapdoor: function (t) {            // 木馬暗門：木頭吱呀＋落地
+        CUES._creak(t, 0.3); CUES._creak(t + 0.35, 0.22);
+        tone(cueBus, t + 0.8, 'sine', 130, 90, 0.1, 0.4, 0.002, 0.25);
+        noise(cueBus, t + 0.8, 'lowpass', 500, 0.8, 0.35, 0.002, 0.1);
+      },
+      _creak: function (t, g) {           // 木頭摩擦一聲
+        var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), gg = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(70 + Math.random() * 30, t); o.frequency.linearRampToValueAtTime(110 + Math.random() * 40, t + 0.3);
+        lfo.frequency.value = 18 + Math.random() * 10; lg.gain.value = 20; lfo.connect(lg); lg.connect(o.frequency);
+        f.type = 'bandpass'; f.frequency.value = 700; f.Q.value = 4;
+        gg.gain.setValueAtTime(0.0001, t); gg.gain.exponentialRampToValueAtTime(g, t + 0.05); gg.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+        o.connect(f); f.connect(gg); gg.connect(cueBus); o.start(t); lfo.start(t); o.stop(t + 0.35); lfo.stop(t + 0.35);
+      },
       _drum: function (t, g) { INST[0](cueBus, t, 0.8 * g); }
     };
 
@@ -417,7 +484,31 @@
         }
         if (s.bass) {
           if (isFinite(s.bass.period) && s.bass.period > 0) st.bassPeriod = s.bass.period;
-          if (isFinite(s.bass.nextBeat)) st.bassAnchor = s.bass.nextBeat;
+          // 只看規則給的 nextBeat（起疑時規則會重新對齊：0.5 秒後第一拍），不自己算固定網格
+          var nb = isFinite(s.bass.nextBeat) ? s.bass.nextBeat : (isFinite(s.bass.anchor) ? s.bass.anchor : null);
+          if (nb != null && Math.abs(nb - st.bassAnchor) > 1e-4) {
+            var per = st.bassPeriod, off = (nb - st.bassAnchor) / per;
+            var moved = Math.abs(off - Math.round(off)) * per > 0.01;   // 換了網格（不是單純往下一拍走）
+            st.bassAnchor = nb;
+            if (moved) {
+              // 取消舊網格上已預排、還沒響的拍；並允許新網格第一拍
+              bassPending = bassPending.filter(function (b) {
+                if (b.t > now && Math.abs((b.t - nb) / per - Math.round((b.t - nb) / per)) * per > 0.01) {
+                  b.out.gain.cancelScheduledValues(now); b.out.gain.setValueAtTime(0, now); return false;
+                }
+                return true;
+              });
+              if (st.lastBass > now) st.lastBass = -1e9;
+            }
+          }
+          bassPending = bassPending.filter(function (b) { return b.t > now - 2; });
+        }
+        st.panic = clamp(+s.panic || 0, 0, 1);
+        // 推門閂：推的時候每 0.45 秒一聲木頭摩擦（越接近完成越響），高頻時鬆手就不會有聲音
+        if (s.gate && s.gate.pushing && !s.gate.open && now - st.lastCreak > 0.45) {
+          st.lastCreak = now;
+          var prog = s.gate.need ? clamp(s.gate.progress / s.gate.need, 0, 1) : 0.5;
+          CUES._creak(now + 0.01, 0.12 + 0.18 * prog);
         }
         var al = clamp(+s.alarm || 0, 0, 1), hu = !!s.hunted;
         if (Math.abs(al - st.alarm) > 1e-4 || hu !== st.hunted) {
@@ -437,7 +528,8 @@
         fn(when != null ? when : ctx.currentTime + 0.005);
         return true;
       },
-      cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'latch', 'down', 'bell', 'blind', 'win'],
+      cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'latch', 'down', 'bell', 'blind', 'win',
+                 'alert', 'caught', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
       resume: function () { return (ctx.resume ? ctx.resume() : Promise.resolve()).then(function () { tick(); }); },

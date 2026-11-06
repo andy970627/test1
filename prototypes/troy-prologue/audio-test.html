@@ -40,7 +40,8 @@ input[type=range] { flex:1; }
 (function () {
   var ctx = null, audio = null, hunted = false;
   var $ = function (id) { return document.getElementById(id); };
-  var LABEL = { breathIn: '屏息吸氣', breathOut: '憋氣結束', gasp: '喘氣', step: '腳步', latch: '門閂', down: '倒地', bell: '警鐘', blind: '盲區提示', win: '勝利' };
+  var LABEL = { breathIn: '屏息吸氣', breathOut: '憋氣結束', gasp: '喘氣', step: '腳步', latch: '門閂', down: '倒地', bell: '警鐘', blind: '盲區提示', win: '勝利',
+    alert: '起疑', caught: '被抓', takedownFail: '暗殺失手', calmOk: '安撫成功', calmBad: '安撫失敗', calmDone: '安撫完成', checkpoint: '檢查點', dash: '衝刺', escape: '甩掉追兵', trapdoor: '暗門' };
 
   function state() {
     var T = audio.T, t0 = audio.t0, now = audio.now(), per = audio.CONST.BASS_PERIOD;
