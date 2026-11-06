@@ -28,7 +28,9 @@ const sfx = (g) => g.drain().filter((e) => e.type === 'sfx').map((e) => e.a);
 
 // ---------------- 相位、盲區、感知半徑、低音 ----------------
 
-test('相位與盲區：p = ((t − t0)/T) mod 1，每個循環開頭 0.5 秒是盲區', () => {
+test('相位與盲區：p = ((t − t0)/T) mod 1，每個循環開頭 BLIND_LEN（0.6）秒是盲區', () => {
+  assert.equal(K.BLIND_LEN, 0.6);
+  assert.equal(K.BLIND, K.BLIND_LEN, '舊名 BLIND 跟著 BLIND_LEN');
   assert.ok(near(R.phaseAt(0, 0, K), 0));
   assert.ok(near(R.phaseAt(7.5, 0, K), 0.75));
   assert.ok(near(R.phaseAt(12.5, 2.5, K), 0));
@@ -37,7 +39,8 @@ test('相位與盲區：p = ((t − t0)/T) mod 1，每個循環開頭 0.5 秒是
   assert.equal(R.cycleIndex(-1, 0, K), -1);
   assert.equal(R.inBlind(10.2, 0, K), true);
   assert.equal(R.inBlind(10.49, 0, K), true);
-  assert.equal(R.inBlind(10.51, 0, K), false);
+  assert.equal(R.inBlind(10.59, 0, K), true);
+  assert.equal(R.inBlind(10.61, 0, K), false);
   assert.equal(R.inBlind(9.99, 0, K), false, '最快的尾端不是盲區');
   const g = R.createLevel({ t0: 1.5, startZone: 2 });
   g.step(13.7, {});
@@ -72,6 +75,30 @@ test('低音拍點：最近一拍、±0.15 秒、下一拍', () => {
   assert.equal(g.bass.period, 2.4);
 });
 
+test('BLIND_LEN 可調：createLevel 的 opts.T 改了，盲區長度跟著改', () => {
+  const g = R.createLevel({ startZone: 2, T: { BLIND_LEN: 1.0 } });
+  g.step(10.9, {});
+  assert.equal(g.cycle.blind, true);
+  assert.equal(g.T.BLIND, 1.0);
+  g.step(11.1, {});
+  assert.equal(g.cycle.blind, false);
+});
+
+test('盲區預告：盲區前 0.4 秒發一次 sfx pre_blind，每個循環一次', () => {
+  assert.equal(K.PRE_BLIND, 0.4);
+  const g = R.createLevel({ startZone: 2 });
+  for (const q of g.guards) { q.state = 'down'; q.active = false; }
+  g.step(9, {});
+  run(g, 9, 9.58, () => ({}));
+  assert.ok(!sfx(g).includes('pre_blind'), '9.6 秒前不預告');
+  run(g, 9.58, 9.62, () => ({}));
+  assert.deepEqual(sfx(g).filter((x) => x === 'pre_blind'), ['pre_blind']);
+  run(g, 9.62, 10.5, () => ({}));
+  assert.ok(!sfx(g).includes('pre_blind'), '同一個盲區只預告一次');
+  run(g, 10.5, 20.2, () => ({}));
+  assert.equal(sfx(g).filter((x) => x === 'pre_blind').length, 1, '下一個循環再預告一次');
+});
+
 test('step 用絕對時間，每次最多推進 0.1 秒', () => {
   const g = R.createLevel({ startZone: 2 });
   for (const q of g.guards) { q.state = 'down'; q.active = false; }
@@ -92,6 +119,28 @@ test('開場字卡 → start 進入區 1', () => {
   const out = g.drain();
   assert.ok(out.some((e) => e.type === 'hint' && /屏住呼吸/.test(e.a)));
   assert.ok(out.some((e) => e.type === 'msg' && e.a === '木馬腹中'));
+});
+
+test('開場：屏息提示和盲區提示不同時出；盲區提示等到下一個循環以後', () => {
+  for (const startT of [0.2, 9.0]) { // 9.0：開始後 1 秒就是盲區，也不能馬上出
+    const g = R.createLevel();
+    g.step(startT, {}); g.step(startT, { start: true });
+    const blindHints = [];
+    const t0 = startT;
+    let t = t0;
+    g.guards.forEach((q) => { q.state = 'down'; q.active = false; });
+    let breathAt = null;
+    for (const e of g.drain()) if (e.type === 'hint' && /屏住呼吸/.test(e.a)) breathAt = t0;
+    assert.equal(breathAt, t0);
+    while (t < 40) {
+      t += DT; g.step(t, {});
+      for (const e of g.drain()) if (e.type === 'hint' && e.a === R.HINTS.blind) blindHints.push(t);
+    }
+    assert.equal(blindHints.length, 1, '盲區提示出一次');
+    assert.ok(blindHints[0] - t0 >= K.HINT_GAP, `start ${startT}：盲區提示在 ${blindHints[0]}`);
+    assert.ok(R.cycleIndex(blindHints[0], 0, K) > R.cycleIndex(t0, 0, K));
+    assert.ok(R.inBlind(blindHints[0], 0, K));
+  }
 });
 
 // ---------------- 機制 A：屏息、移動、盲區、衝刺 ----------------
@@ -249,7 +298,8 @@ test('致命一擊：盲區外按 → 那名衛兵立刻起疑（進入恐慌共
   g.step(3 + DT, { takedown: true });
   assert.equal(q.state, 'suspicious');
   assert.equal(g.panic.active, true);
-  assert.ok(near(g.bass.anchor, 3 + DT + K.BASS_LEAD), '低音重新對齊，第一拍 0.5 秒後');
+  assert.ok(near(g.bass.anchor, 3 + DT + K.BASS_LEAD), '低音重新對齊，第一拍 1.5 秒後');
+  assert.ok(near(g.bass.nextBeat, g.bass.anchor), '起疑那一幀 nextBeat 就換成新網格');
   const s = sfx(g);
   assert.ok(s.includes('takedown_fail') && s.includes('alert'));
 });
@@ -282,9 +332,23 @@ function panicSetup() {
   return { g, q, beats: [a, a + 2.4, a + 4.8, a + 7.2] };
 }
 
+test('機制 B：第一拍在起疑後 1.5 秒；起疑那一幀 nextBeat 就是新網格', () => {
+  assert.equal(K.BASS_LEAD, 1.5);
+  assert.equal(K.CALM_TIMEOUT, 12);
+  const g = R.createLevel({ startZone: 3 });
+  solo(g, 'g3a', 38, 23, 0);
+  place(g, 38, 24.2);
+  g.step(3.3, {});
+  const old = g.bass.nextBeat;
+  assert.ok(near(old, 4.8), '起疑前：舊網格（t0 = 0）');
+  g.step(3.3, { takedown: true });
+  assert.ok(near(g.bass.nextBeat, 3.3 + K.BASS_LEAD));
+  assert.ok(near(g.bass.anchor, 3.3 + K.BASS_LEAD));
+});
+
 test('機制 B：在低音拍點 ±0.15 秒內按 4 次 → 回到巡邏', () => {
   const { g, q, beats } = panicSetup();
-  assert.ok(near(beats[0], 3.5));
+  assert.ok(near(beats[0], 4.5));
   const offs = [0, 0.14, -0.14, 0.05];
   beats.forEach((b, i) => {
     g.step(b + offs[i] - 0.05, {});
@@ -317,23 +381,102 @@ test('機制 B：兩次間隔不到 1 秒（被高頻帶著按太快）→ 追�
   assert.equal(g.panic.active, false);
 });
 
-test('機制 B：偏離拍點 → 追殺', () => {
+test('機制 B：偏離拍點 → 追殺（早 0.15 秒內、晚 0.15 + LATENCY_GRACE 秒內才算對）', () => {
+  assert.equal(K.LATENCY_GRACE, 0.05);
   const { g, q, beats } = panicSetup();
   g.step(beats[0] + 1.2, { calm: true });
   assert.equal(q.state, 'hunted');
+  assert.match(g.drain().filter((e) => e.type === 'msg').map((e) => e.a).join(), /亂了節拍/);
   const h = panicSetup();
-  h.g.step(h.beats[0] + 0.16, { calm: true });
-  assert.equal(h.q.state, 'hunted', '0.16 秒就算偏了');
+  h.g.step(h.beats[0] - 0.16, { calm: true });
+  assert.equal(h.q.state, 'hunted', '早 0.16 秒就算偏了');
+  const k = panicSetup();
+  k.g.step(k.beats[0] + 0.19, { calm: true });
+  assert.equal(k.q.calm, 1, '晚 0.19 秒還算（偏晚那側多給 0.05）');
+  const m = panicSetup();
+  m.g.step(m.beats[0] + 0.21, { calm: true });
+  assert.equal(m.q.state, 'hunted', '晚 0.21 秒就偏了');
 });
 
-test('機制 B：8 秒內沒安撫完 → 追殺', () => {
+test('機制 B：漏拍不歸零，12 秒內累積 4 次對拍就成功', () => {
+  const { g, q, beats } = panicSetup();
+  const b4 = beats[3] + 2.4; // 第 5 拍：起疑後 1.5 + 4 × 2.4 = 11.1 秒
+  for (const b of [beats[0], beats[2], beats[3], b4]) { // 漏掉第 2 拍
+    run(g, g.time, b - 0.01, () => ({}));
+    g.step(b, { calm: true });
+  }
+  assert.ok(b4 - 3 < K.CALM_TIMEOUT);
+  assert.equal(q.state, 'patrol');
+  assert.equal(g.hunted, false);
+});
+
+test('機制 B：12 秒內沒安撫完 → 追殺', () => {
   const { g, q, beats } = panicSetup();
   g.step(beats[0], { calm: true });
   g.step(beats[1], { calm: true });
-  run(g, beats[1], 3 + 7.9, () => ({}));
+  run(g, beats[1], 3 + 11.9, () => ({}));
   assert.equal(q.state, 'suspicious');
-  run(g, 3 + 7.9, 3 + 8.1, () => ({}));
+  run(g, 3 + 11.9, 3 + 12.1, () => ({}));
   assert.equal(q.state, 'hunted');
+});
+
+test('機制 B：判定用 input.calmAt（按鍵當下的音訊時間），沒有才用幀時間', () => {
+  // 幀晚了 0.3 秒才處理，但按鍵當下正好在拍點上 → 算對
+  const a = panicSetup();
+  a.g.step(a.beats[0] + 0.3, { calm: true, calmAt: a.beats[0] + 0.02 });
+  assert.equal(a.q.calm, 1);
+  assert.equal(a.g.panic.lastPress, a.beats[0] + 0.02, '間隔也用按鍵時間算');
+  // 幀時間在拍點上，但按鍵其實早了 0.2 秒 → 偏了
+  const b = panicSetup();
+  b.g.step(b.beats[0], { calm: true, calmAt: b.beats[0] - 0.2 });
+  assert.equal(b.q.state, 'hunted');
+  // calmAt 晚 0.19 秒（LATENCY_GRACE 內）還算
+  const c = panicSetup();
+  c.g.step(c.beats[0] + 0.25, { calm: true, calmAt: c.beats[0] + 0.19 });
+  assert.equal(c.q.calm, 1);
+  // 太急也用按鍵時間：兩次按鍵相隔 0.9 秒
+  const d = panicSetup();
+  d.g.step(d.beats[0] + 0.01, { calm: true, calmAt: d.beats[0] });
+  d.g.step(d.beats[0] + 1.5, { calm: true, calmAt: d.beats[0] + 0.9 });
+  assert.equal(d.q.state, 'hunted');
+  // 起疑之前就按下的鍵（同一幀才送到）不算
+  const e = R.createLevel({ startZone: 3 });
+  const qe = solo(e, 'g3a', 38, 23, 0);
+  place(e, 38, 24.2);
+  e.step(3, {});
+  e.step(3.02, { takedown: true, calm: true, calmAt: 2.99 });
+  assert.equal(qe.state, 'suspicious');
+  assert.equal(e.panic.count, 0);
+  // calmAt 不是數字 → 用幀時間
+  const f = panicSetup();
+  f.g.step(f.beats[0], { calm: true, calmAt: 'x' });
+  assert.equal(f.q.calm, 1);
+});
+
+test('失敗原因：failReason 是一句完整、看得懂的話', () => {
+  const { g, beats } = panicSetup();
+  g.step(beats[0], { calm: true });
+  g.step(beats[0] + 0.5, { calm: true }); // 太急
+  const b = g.guards.find((q) => q.id === 'g3a');
+  b.x = g.player.x + 0.5; b.z = g.player.z;
+  g.step(beats[0] + 0.6, {});
+  assert.equal(g.phase, 'fail');
+  assert.match(g.failReason, /安撫時按得太急/);
+  assert.match(g.failReason, /追上/);
+  assert.match(g.failReason, /。$/);
+  assert.equal(g.failCode, 'caught_calm_fast');
+  g.retry();
+  assert.equal(g.failReason, null); assert.equal(g.failCode, null);
+
+  const h = R.createLevel({ startZone: 2 });
+  solo(h, 'g2a', 25, 23, 0);
+  place(h, 25, 19);
+  h.step(7, {});
+  h.step(7 + DT, { mx: 0.1 }); // 高頻時動
+  run(h, 7 + DT, 10, () => ({}));
+  assert.equal(h.phase, 'fail');
+  assert.match(h.failReason, /節奏最快時你動了，衛兵聽見了/);
+  for (const v of Object.values(R.CAUSES)) assert.ok(/[一-鿿]/.test(v) && !/電影/.test(v));
 });
 
 test('機制 B：起疑時又有第二名衛兵起疑，一起算在同一輪安撫裡', () => {
@@ -404,7 +547,7 @@ test('追殺：被追到 1 公尺內 → 失敗', () => {
   assert.equal(g.hunted, true);
   run(g, 7 + DT, 10, () => ({}));
   assert.equal(g.phase, 'fail');
-  assert.match(g.failReason, /抓住/);
+  assert.match(g.failReason, /追上/);
 });
 
 test('追殺中不能離開這一區', () => {
@@ -521,6 +664,25 @@ test('retry：失敗後從這一區開頭重來，這一區衛兵復原，前一
   assert.equal(g.guards.find((q) => q.id === 'g2a').state, 'down', '前一區放倒的維持');
   assert.equal(g.retries, 1);
   assert.ok(g.drain().some((e) => e.type === 'msg' && /重新開始/.test(e.a)));
+});
+
+test('從區 3 走進區 4：玩家移到區 4 的起點（暗處），和重來時的起點一致', () => {
+  const g = R.createLevel({ startZone: 3 });
+  g.step(0, {});
+  place(g, 46.6, 24);
+  g.step(0.05, {});
+  assert.equal(g.zone, 4);
+  const s = g.level.zones[4].start;
+  assert.equal(g.player.x, s.x); assert.equal(g.player.z, s.z);
+  assert.equal(g.player.hidden, true, '起點在暗處');
+  const enterAt = { x: g.player.x, z: g.player.z };
+  g.phase = 'fail';
+  g.retry();
+  assert.deepEqual({ x: g.player.x, z: g.player.z }, enterAt);
+  // 離巡邏線夠遠：低頻時（p ≤ 0.5）每名區 4 衛兵的路線點都在 r(0.5) 外
+  for (const d of g.level.guards.filter((q) => q.zone === 4)) {
+    for (const pt of d.route) assert.ok(Math.hypot(pt.x - s.x, pt.z - s.z) > R.radiusAt(0.5), d.id);
+  }
 });
 
 test('retry：在城門重來，門閂進度歸零', () => {

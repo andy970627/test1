@@ -14,9 +14,12 @@
  * 時間：一律用音訊時鐘的絕對時間（AudioContext.currentTime）。step() 內部自己算 dt，最多 0.1 秒。
  *   循環相位 p = ((t − t0) / CYCLE) mod 1；盲區 = 每個循環開頭的 BLIND 秒。
  *   聲音模組要用同一組 t0 與 CYCLE，相位才會一致。
+ *   盲區前 PRE_BLIND 秒發一次 sfx 'pre_blind'（預告，給聲音做很輕的預備音）。
  *   低音拍點：anchor + k × BASS_PERIOD（k 為整數）。平常 anchor = t0；
- *   每次「新的一次起疑」開始時，anchor 重設為「當下 + BASS_LEAD」，讓第一拍在 0.5 秒後響，
- *   8 秒內剛好放得進 4 拍。聲音模組每幀讀 bass.nextBeat／bass.anchor 排程即可。
+ *   每次「新的一次起疑」開始時，anchor 重設為「當下 + BASS_LEAD」，讓第一拍在 1.5 秒後響
+ *   （先讓玩家讀完提示）；CALM_TIMEOUT 12 秒內有 5 拍，對準 4 拍就成功，可以漏一拍。
+ *   起疑那一幀 bass.nextBeat 就會更新。聲音模組每幀讀 bass.nextBeat／bass.anchor 排程即可。
+ *   安撫判定時間：有 input.calmAt（按鍵當下的音訊時間減輸出延遲）就用它，沒有才用幀時間。
  *
  * 出處（CLAUDE.md：大眾熟知的經典段落為主、自由改編、電影輔助）：
  *   木馬、特洛伊陷落之夜、從木馬裡出來打開城門【經典】（電影的演法與配樂〈Troy〉當參考，細節待確認）
@@ -38,7 +41,9 @@
   // ---------- 常數（第 6.2 節，全部可調） ----------
   const T = Object.freeze({
     CYCLE: 10,            // 一個加速循環的秒數
-    BLIND: 0.5,           // 循環開頭的盲區秒數（感知 = 0）
+    BLIND_LEN: 0.6,       // 循環開頭的盲區秒數（感知 = 0）
+    BLIND: 0.6,           // 舊名，等於 BLIND_LEN（畫面、聲音還在讀）；只改 BLIND_LEN 時會跟著改
+    PRE_BLIND: 0.4,       // 盲區前幾秒發出 sfx 'pre_blind'（預告）
     R_BASE: 2,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²
     R_GAIN: 8,
     ALERT_MUL: 1.3,       // 警戒（起疑）與追殺時感知 ×1.3
@@ -58,10 +63,11 @@
     TAKEDOWN_R: 1.5,      // 致命一擊：背後 1.5 m 內
     BASS_PERIOD: 2.4,     // 底層低音週期
     BASS_WIN: 0.15,       // 拍點容許 ±0.15 秒
-    BASS_LEAD: 0.5,       // 起疑後第一拍在幾秒後
+    LATENCY_GRACE: 0.05,  // 偏晚那側多給的秒數（按鍵到判定的延遲），晚按容許 +0.20
+    BASS_LEAD: 1.5,       // 起疑後第一拍在幾秒後（先讓玩家讀提示）
     CALM_GAP: 1.0,        // 兩次安撫間隔小於 1 秒 = 太急 → 追殺
-    CALM_NEED: 4,         // 連續成功幾次回到巡邏
-    CALM_TIMEOUT: 8,      // 幾秒內沒安撫完 → 追殺
+    CALM_NEED: 4,         // 累積幾次對拍回到巡邏（漏拍不歸零，只有按錯或太急才失敗）
+    CALM_TIMEOUT: 12,     // 幾秒內沒安撫完 → 追殺
     CALM_GRACE: 3,        // 安撫或擺脫後，衛兵幾秒內不累積疑心
     HUNT_SPEED: 3.0,      // 追殺時衛兵速度
     CATCH_R: 1.0,         // 被追到 1 m 內 = 失敗
@@ -77,6 +83,7 @@
     BELLY_Y: 2.5,         // 木馬腹中離地高度
     DESYNC_P: 0.8,        // p > 0.8：畫面刻意延遲加雜訊
     DESYNC_LAG: 0.15,
+    HINT_GAP: 4,          // 開場屏息提示之後，至少隔幾秒才出盲區提示
     MAX_DT: 0.1           // step 每次最多推進 0.1 秒
   });
 
@@ -88,9 +95,14 @@
   function phaseAt(t, t0, K) { const P = per(K); return pmod(t - t0, P) / P; }
   /** 第幾個循環（整數，可為負）。 */
   function cycleIndex(t, t0, K) { return Math.floor((t - t0) / per(K)); }
-  /** 是否在盲區（每個循環開頭 BLIND 秒）。 */
+  /** 盲區長度（秒）：BLIND_LEN，沒有才用舊名 BLIND。 */
+  function blindLen(K) {
+    if (typeof K !== 'object' || !K) return T.BLIND_LEN;
+    return K.BLIND_LEN != null ? K.BLIND_LEN : (K.BLIND != null ? K.BLIND : T.BLIND_LEN);
+  }
+  /** 是否在盲區（每個循環開頭 BLIND_LEN 秒）。 */
   function inBlind(t, t0, K) {
-    const P = per(K), b = typeof K === 'object' && K ? K.BLIND : T.BLIND;
+    const P = per(K), b = blindLen(K);
     return pmod(t - t0, P) < b;
   }
   /** 感知半徑 r(p)，alert 為真時 ×ALERT_MUL。 */
@@ -98,14 +110,17 @@
     K = K || T;
     return (K.R_BASE + K.R_GAIN * p * p) * (alert ? K.ALERT_MUL : 1);
   }
-  /** 離 t 最近的低音拍點：{beat, off（t − beat，正 = 晚按）, ok, next（≥ t 的下一拍）}。 */
-  function bassBeatNear(t, anchor, period, win) {
-    period = period || T.BASS_PERIOD; win = win == null ? T.BASS_WIN : win;
+  /**
+   * 離 t 最近的低音拍點：{beat, off（t − beat，正 = 晚按）, ok, next（≥ t 的下一拍）}。
+   * ok：−win ≤ off ≤ win + late（late = 偏晚那側多給的秒數，預設 0）。
+   */
+  function bassBeatNear(t, anchor, period, win, late) {
+    period = period || T.BASS_PERIOD; win = win == null ? T.BASS_WIN : win; late = late || 0;
     const k = Math.round((t - anchor) / period);
     const beat = anchor + k * period;
     const off = t - beat;
     const next = anchor + Math.ceil((t - anchor) / period - 1e-9) * period;
-    return { beat, off, ok: Math.abs(off) <= win + 1e-9, next };
+    return { beat, off, ok: off >= -win - 1e-9 && off <= win + late + 1e-9, next };
   }
   function forward(yaw) { return { x: -Math.sin(yaw), z: -Math.cos(yaw) }; }
   function yawTo(dx, dz) { return Math.atan2(-dx, -dz); }
@@ -139,6 +154,15 @@
     takedown: '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
     gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
     lockedExit: '還在被追，先甩掉追兵才能往前走。'
+  };
+  // 失敗原因（g.failReason 是一句完整的話，畫面層直接顯示；g.failCode 是代號）
+  const CAUSES = {
+    move_high: '節奏最快時你動了，衛兵聽見了',
+    loud: '你發出的聲音太大，衛兵聽見了',
+    calm_fast: '安撫時按得太急',
+    calm_off: '安撫時沒對準那聲慢慢的低音',
+    calm_slow: '安撫得太慢，衛兵喊了人',
+    seen: '衛兵發現了你'
   };
   const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
 
@@ -181,8 +205,9 @@
         exit: { kind: 'trapdoor', x: 11, z: 15, to: 2 } },
       { id: 2, name: ZONE_NAMES[2], start: { x: 13, z: 18.5, y: 0, yaw: -Math.PI / 2 },
         exit: { kind: 'rect', rect: R(30, 18, 31.5, 27), to: 3 } },
+      // place：走進下一區時把玩家移到下一區的起點（＝重來時的起點，城門南側廊下的暗處）
       { id: 3, name: ZONE_NAMES[3], start: { x: 32, z: 25.5, y: 0, yaw: -Math.PI / 2 },
-        exit: { kind: 'rect', rect: R(46, 17, 47.5, 28), to: 4 } },
+        exit: { kind: 'rect', rect: R(46, 17, 47.5, 28), to: 4, place: true } },
       { id: 4, name: ZONE_NAMES[4], start: { x: 48, z: 25, y: 0, yaw: -Math.PI / 2 },
         exit: { kind: 'gate', to: null } }
     ];
@@ -209,6 +234,9 @@
   function createLevel(opts) {
     opts = opts || {};
     const K = Object.assign({}, T, opts.T || {});
+    const oT = opts.T || {};
+    if (oT.BLIND_LEN == null && oT.BLIND != null) K.BLIND_LEN = oT.BLIND;
+    K.BLIND = K.BLIND_LEN;
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
     const level = opts.level || buildLevel();
     const t0 = opts.t0 || 0;
@@ -229,6 +257,7 @@
       hunted: false,
       stillT: 0,
       failReason: null,
+      failCode: null,
       retries: 0,
       level,
       out: [],
@@ -237,6 +266,9 @@
     let last = null;
     let latchNoiseAt = -1e9;
     let dashCycle = null; // 每個盲區只能衝刺一次
+    let preBlindCycle = null; // 每個循環只預告一次
+    let blindHintGate = null; // {i, t}：進區 1 時的循環與時間；盲區提示要等到下一個循環以後
+    let huntCause = null;
 
     const emit = (type, a) => g.out.push({ type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HINTS[key]); } };
@@ -262,7 +294,11 @@
       });
     }
     function setActive() { g.guards.forEach((q) => { q.active = q.zone === g.zone && q.state !== 'down'; }); }
-    function clearPanic() { g.panic.active = false; g.panic.count = 0; g.panic.lastPress = null; g.bass.anchor = g.cycle.t0; }
+    function refreshBass(t) {
+      if (t == null) t = g.time;
+      g.bass.nextBeat = t == null ? g.bass.anchor : bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN).next;
+    }
+    function clearPanic() { g.panic.active = false; g.panic.count = 0; g.panic.lastPress = null; g.bass.anchor = g.cycle.t0; refreshBass(); }
 
     function enterZone(z, quiet) {
       g.zone = z;
@@ -270,7 +306,7 @@
       clearPanic();
       g.player.inBelly = !!level.zones[z].belly;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
-      if (z === 1) { hint('breath'); }
+      if (z === 1) { hint('breath'); blindHintGate = null; }
       if (z === 2) hint('dash');
       if (z === 3) hint('takedown');
       if (z === 4) hint('gate');
@@ -313,9 +349,9 @@
     const dist2 = (q, pl) => Math.hypot(q.x - pl.x, q.z - pl.z);
 
     // ----- 狀態轉換 -----
-    function fail(reason) {
+    function fail(reason, code) {
       if (g.phase !== 'play') return;
-      g.phase = 'fail'; g.failReason = reason;
+      g.phase = 'fail'; g.failReason = reason; g.failCode = code || null;
       emit('sfx', 'caught'); emit('msg', reason);
     }
     function makeSuspicious(q, t) {
@@ -325,13 +361,17 @@
       if (!g.panic.active) {
         g.panic.active = true; g.panic.start = t; g.panic.count = 0; g.panic.lastPress = null;
         g.bass.anchor = t + K.BASS_LEAD;
+        refreshBass(t); // 同一幀就換成新網格的下一拍
         emit('sfx', 'alert');
       }
       q.calm = g.panic.count;
       hint('panic');
     }
-    function startHunt(q, reason) {
-      if (g.player.inBelly) { fail('木馬裡有動靜——你被發現了。'); return; }
+    /** cause：CAUSES 的代號；reason：當下的訊息。 */
+    function startHunt(q, cause, reason) {
+      cause = cause || 'seen';
+      if (g.player.inBelly) { fail(CAUSES[cause] + '——你在木馬裡被發現了。', 'belly_' + cause); return; }
+      if (!g.hunted) huntCause = cause;
       const pl = g.player;
       const wasHunted = g.hunted;
       for (const o of g.guards) {
@@ -347,7 +387,7 @@
     }
     function endHunt() {
       for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; }
-      g.hunted = false; g.stillT = 0;
+      g.hunted = false; g.stillT = 0; huntCause = null;
       emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
     }
 
@@ -358,6 +398,7 @@
         yaw: Number.isFinite(i.yaw) ? i.yaw : null,
         mx: +i.mx || 0, mz: +i.mz || 0,
         breath: !!i.breath, dash: !!i.dash, takedown: !!i.takedown, calm: !!i.calm,
+        calmAt: Number.isFinite(i.calmAt) ? i.calmAt : null,
         interact: !!i.interact, start: !!i.start
       };
     }
@@ -367,7 +408,7 @@
       c.blind = inBlind(t, c.t0, K);
       c.index = cycleIndex(t, c.t0, K);
       c.desync = c.p > K.DESYNC_P;
-      g.bass.nextBeat = bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN).next;
+      refreshBass(t);
     }
 
     g.step = function (t, input) {
@@ -380,6 +421,10 @@
 
       const pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
       if (inp.yaw != null) pl.yaw = inp.yaw;
+      // 盲區預告：循環最後 PRE_BLIND 秒發一次
+      if (pmod(t - c.t0, K.CYCLE) >= K.CYCLE - K.PRE_BLIND && preBlindCycle !== c.index) {
+        preBlindCycle = c.index; emit('sfx', 'pre_blind');
+      }
       let loud = false;
 
       // 屏息
@@ -459,15 +504,17 @@
       }
 
       // 安撫（機制 B）
-      if (inp.calm && g.panic.active) {
+      // 判定時間：按鍵當下的音訊時間（calmAt），沒有才用幀時間；比起疑還早的按鍵不算
+      const calmT = inp.calmAt != null ? Math.min(inp.calmAt, t) : t;
+      if (inp.calm && g.panic.active && calmT >= g.panic.start) {
         const P = g.panic;
-        const b = bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN);
-        if (P.lastPress != null && t - P.lastPress < K.CALM_GAP) {
-          emit('sfx', 'calm_bad'); startHunt(null, '太急了——衛兵聽出不對勁。');
+        const b = bassBeatNear(calmT, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN, K.LATENCY_GRACE);
+        if (P.lastPress != null && calmT - P.lastPress < K.CALM_GAP) {
+          emit('sfx', 'calm_bad'); startHunt(null, 'calm_fast', '太急了——衛兵聽出不對勁。');
         } else if (!b.ok) {
-          emit('sfx', 'calm_bad'); startHunt(null, '亂了節拍——衛兵聽出不對勁。');
+          emit('sfx', 'calm_bad'); startHunt(null, 'calm_off', '亂了節拍——衛兵聽出不對勁。');
         } else {
-          P.lastPress = t; P.count++;
+          P.lastPress = calmT; P.count++;
           emit('sfx', 'calm_ok');
           for (const q of g.guards) if (q.active && q.state === 'suspicious') q.calm = P.count;
           if (P.count >= K.CALM_NEED) {
@@ -480,11 +527,14 @@
         }
       }
       if (g.phase !== 'play') return g;
-      if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, '安撫得太慢——衛兵大喊有人！');
+      if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
       if (g.phase !== 'play') return g;
 
-      // 第一次碰到盲區
-      if (blind && g.zone === 1) hint('blind');
+      // 盲區提示：不和開場的屏息提示同時出，等到進區 1 之後的下一個循環、而且隔 HINT_GAP 秒以上
+      if (g.zone === 1) {
+        if (!blindHintGate) blindHintGate = { i: c.index, t };
+        if (blind && c.index > blindHintGate.i && t - blindHintGate.t >= K.HINT_GAP) hint('blind');
+      }
 
       // 感知
       for (const q of g.guards) {
@@ -508,12 +558,12 @@
           continue;
         }
         if (heardLoud) {
-          if (p > K.HIGH_P) startHunt(q, '那聲音太大了——衛兵衝過來！');
+          if (p > K.HIGH_P) startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
           else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
           continue;
         }
         if (moved && (heardMove || seen)) {
-          if (p > K.HIGH_P) { startHunt(q, '節奏最快的時候亂動——被發現了！'); continue; }
+          if (p > K.HIGH_P) { startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！'); continue; }
           if (q.grace <= 0) q.susp += K.SUSP_MOVE * dt;
           if (q.state === 'suspicious') q.lookAt = { x: pl.x, z: pl.z };
         } else if (seen || heardBreath) {
@@ -551,7 +601,7 @@
           const L = q.lastKnown || { x: pl.x, z: pl.z };
           if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, K.HUNT_SPEED, dt);
           else q.yaw += K.SEARCH_TURN * dt;
-          if (dist2(q, pl) < K.CATCH_R) { fail('你被衛兵抓住了。'); return g; }
+          if (dist2(q, pl) < K.CATCH_R) { fail(CAUSES[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
         }
       }
 
@@ -572,10 +622,11 @@
         if (reached) {
           if (g.hunted) hint('lockedExit');
           else {
-            if (Z.exit.kind === 'trapdoor') {
-              const s = level.zones[2].start;
-              pl.x = s.x; pl.z = s.z; pl.y = 0; pl.yaw = s.yaw; pl.inBelly = false;
-              emit('sfx', 'trapdoor');
+            if (Z.exit.kind === 'trapdoor' || Z.exit.place) {
+              const s = level.zones[Z.exit.to].start;
+              pl.x = s.x; pl.z = s.z; pl.y = s.y || 0; pl.yaw = s.yaw || 0; pl.inBelly = false;
+              pl.hidden = isHidden(pl);
+              if (Z.exit.kind === 'trapdoor') emit('sfx', 'trapdoor');
             }
             enterZone(Z.exit.to);
           }
@@ -611,7 +662,7 @@
       const z = Math.max(1, g.zone);
       g.player = makePlayer(z);
       resetGuards(z);
-      g.hunted = false; g.stillT = 0; g.failReason = null;
+      g.hunted = false; g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
       g.gate.progress = 0; g.gate.pushing = false; g.gate.open = false;
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
@@ -628,9 +679,9 @@
   }
 
   return {
-    T, HINTS, ZONE_NAMES,
+    T, HINTS, ZONE_NAMES, CAUSES,
     createLevel, buildLevel,
-    phaseAt, cycleIndex, inBlind, radiusAt, bassBeatNear,
+    phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     forward, yawTo, angDiff, inRect, mulberry32
   };
 });
