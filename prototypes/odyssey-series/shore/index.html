@@ -1,0 +1,539 @@
+<title>岸邊的抉擇</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 岸邊的抉擇：第一人稱夜晚海岸，8 秒三選一（主線規格第 20 節 C 的網頁版）。單一夜色主題。
+ * 出處（不上畫面）：
+ *   跟著羊進洞、巨人瞎了、出洞後射箭招來追殺、巨人向波塞頓禱告【電影】
+ *   喊出名字「奧德修斯，拉厄爾忒斯之子，家在伊薩卡」、巨人丟岩石砸船【原典 第 9 卷】
+ *   默默離開、每名同伴 1/3 被砸死、同伴站在沙灘上等船【改編】
+ *   巨人的外形、洞口細節【電影細節待確認，這裡用剪影處理】
+ */
+:root {
+  --night: #07090d;
+  --line: #2b323d;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #d9d2c3;
+  --dim: #8f96a0;
+  --blood: #d0694d;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--night); overflow: hidden; }
+body { color: var(--ash); font-family: var(--body); }
+.stage { position: relative; width: 100%; height: 100svh; min-height: 360px; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+canvas#cv { display: block; width: 100%; height: 100%; }
+.fade { position: absolute; inset: 0; background: #000; pointer-events: none; transition: opacity .5s; }
+.hud { position: absolute; inset: 0; pointer-events: none; }
+.title { position: absolute; top: 12px; left: var(--gutter-l); font-family: var(--display); font-weight: 900; font-size: clamp(18px, 2.6vw, 24px); color: var(--lamp); letter-spacing: .08em; text-shadow: 0 2px 8px #000; }
+.home { position: absolute; top: 14px; right: var(--gutter-r); font-size: 13px; color: var(--dim); text-decoration: none; pointer-events: auto; text-shadow: 0 1px 4px #000; }
+.home:hover { color: var(--ash); }
+.say {
+  position: absolute; left: 0; right: 0; top: 22%; margin: 0; text-align: center; padding: 0 var(--gutter-r) 0 var(--gutter-l);
+  font-family: var(--display); font-size: clamp(18px, 2.6vw, 26px); line-height: 1.7; color: var(--ash);
+  text-shadow: 0 2px 10px #000, 0 0 2px #000; transition: opacity .6s; text-wrap: balance;
+}
+.say.shout { color: var(--lamp); font-size: clamp(22px, 3.4vw, 34px); letter-spacing: .06em; }
+.choice {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(760px, calc(100% - 32px));
+  display: grid; gap: 10px;
+}
+.opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.opt {
+  background: rgba(8, 10, 14, .74); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; text-align: center;
+  font-size: 16px; line-height: 1.5;
+}
+.opt kbd { display: block; font: 500 12px var(--body); color: var(--bronze); letter-spacing: .12em; margin-bottom: 2px; }
+.opt.pick { border-color: var(--lamp); color: var(--lamp); }
+.timer { height: 4px; background: rgba(43, 50, 61, .8); }
+.timer i { display: block; height: 100%; width: 100%; background: var(--lamp); transform-origin: left; }
+@media (max-width: 520px) { .opt { font-size: 14px; padding: 8px 6px; } }
+.panel { background: rgba(8, 10, 14, .82); border: 1px solid var(--line); border-radius: 3px; }
+.start, .result {
+  position: absolute; left: 50%; transform: translateX(-50%); width: min(540px, calc(100% - 32px)); box-sizing: border-box;
+  padding: 22px 20px; text-align: center; pointer-events: auto;
+}
+.start { top: 50%; transform: translate(-50%, -50%); cursor: pointer; }
+.start h1 { margin: 0 0 8px; font-family: var(--display); font-weight: 900; color: var(--lamp); font-size: clamp(28px, 5vw, 40px); letter-spacing: .1em; }
+.start p { margin: 0 0 6px; line-height: 1.7; }
+.start .small, .result .small { color: var(--dim); font-size: 13px; }
+.result { bottom: 8%; }
+.result h2 { margin: 0 0 10px; font-family: var(--display); font-weight: 900; font-size: clamp(20px, 2.8vw, 26px); color: var(--lamp); letter-spacing: .04em; text-wrap: balance; }
+.result p { margin: 0 0 8px; line-height: 1.7; }
+.result .lost { color: var(--blood); }
+.btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; margin: 6px 4px 0; }
+.btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="cv" aria-label="月光下的海岸：洞口的巨石被推開，巨人睡在裡面，船在海上等著"></canvas>
+  <div class="fade" id="fade"></div>
+  <div class="hud">
+    <span class="title">岸邊</span>
+    <a class="home" href="../index.html">回首頁</a>
+    <p class="say" id="say"></p>
+    <div class="choice" id="choice" hidden>
+      <div class="opts">
+        <div class="opt" id="optShoot"><kbd>左鍵</kbd>拉弓射他</div>
+        <div class="opt" id="optName"><kbd>空白鍵</kbd>喊出你的名字</div>
+        <div class="opt" id="optLeave"><kbd>不動</kbd>默默離開</div>
+      </div>
+      <div class="timer"><i id="timerBar"></i></div>
+    </div>
+    <div class="start panel" id="start">
+      <h1>岸邊</h1>
+      <p>你們從巨石的縫裡鑽了出來。<br>海浪聲，月光，船還在等。</p>
+      <p class="small">移動滑鼠看四周。點一下開始。</p>
+    </div>
+    <div class="result panel" id="result" hidden>
+      <h2 id="resTitle"></h2>
+      <p id="resLine"></p>
+      <p class="lost" id="resLost" hidden></p>
+      <p class="small" id="resNote"></p>
+      <div id="resBtns"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="../series.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = window.OdysseySeries;
+  const $ = id => document.getElementById(id);
+  const solo = new URLSearchParams(location.search).has('solo');
+  const save = solo ? S.fresh() : S.load();
+  const crew = S.crewNames(save.crewOut);
+
+  // ================================================================ 聲音（全部合成）
+  let ac = null, master = null, noiseBuf = null, waveGain = null;
+  function audio() {
+    if (!ac) {
+      try {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        master = ac.createGain(); master.gain.value = .8; master.connect(ac.destination);
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate);
+        const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        startWaves();
+      } catch (e) { ac = null; }
+    }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function noise(dur, t0) { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.start(t0); s.stop(t0 + dur); return s; }
+  function env(g, t0, a, peak, dur) { g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur); }
+  function startWaves() {
+    const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 520;
+    waveGain = ac.createGain(); waveGain.gain.value = .12;
+    const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = .12; lg.gain.value = .09; lfo.connect(lg); lg.connect(waveGain.gain);
+    s.connect(f); f.connect(waveGain); waveGain.connect(master); s.start(); lfo.start();
+  }
+  function sfxWhoosh() {
+    if (!audio()) return; const t = ac.currentTime;
+    const s = noise(.6, t), f = ac.createBiquadFilter(), g = ac.createGain();
+    f.type = 'bandpass'; f.Q.value = 3; f.frequency.setValueAtTime(2400, t); f.frequency.exponentialRampToValueAtTime(500, t + .6);
+    env(g, t, .03, .35, .6); s.connect(f); f.connect(g); g.connect(master);
+    // 弓弦
+    const o = ac.createOscillator(), og = ac.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(180, t); o.frequency.exponentialRampToValueAtTime(90, t + .25);
+    env(og, t, .005, .3, .3); o.connect(og); og.connect(master); o.start(t); o.stop(t + .3);
+  }
+  function sfxThud(delay = 0, big = 1) {
+    if (!audio()) return; const t = ac.currentTime + delay;
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(110 * big, t); o.frequency.exponentialRampToValueAtTime(38, t + .35);
+    env(g, t, .005, .7, .45); o.connect(g); g.connect(master); o.start(t); o.stop(t + .5);
+    const s = noise(.3, t), f = ac.createBiquadFilter(), ng = ac.createGain(); f.type = 'lowpass'; f.frequency.value = 900; env(ng, t, .005, .4, .3);
+    s.connect(f); f.connect(ng); ng.connect(master);
+  }
+  function sfxSplash(delay = 0) {
+    if (!audio()) return; const t = ac.currentTime + delay;
+    const s = noise(1.2, t), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'highpass'; f.frequency.value = 700;
+    env(g, t, .01, .45, 1.1); s.connect(f); f.connect(g); g.connect(master);
+  }
+  function sfxRoar(delay = 0) {
+    if (!audio()) return; const t = ac.currentTime + delay, d = 2.2;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.linearRampToValueAtTime(900, t + .5); f.frequency.linearRampToValueAtTime(200, t + d);
+    const g = ac.createGain(); env(g, t, .25, .8, d); f.connect(g); g.connect(master);
+    [55, 58.5, 82].forEach((fr, i) => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(fr, t); o.frequency.linearRampToValueAtTime(fr * 1.25, t + .6); o.frequency.linearRampToValueAtTime(fr * .8, t + d); o.connect(f); o.start(t); o.stop(t + d); });
+    const s = noise(d, t), ng = ac.createGain(); ng.gain.value = .5; s.connect(ng); ng.connect(f);
+  }
+  function sfxShout() {
+    if (!audio()) return; const t = ac.currentTime, d = 1.6;
+    const dl = ac.createDelay(1.5), fb = ac.createGain(); dl.delayTime.value = .42; fb.gain.value = .45; dl.connect(fb); fb.connect(dl);
+    const out = ac.createGain(); out.gain.value = .9; dl.connect(out); out.connect(master);
+    const g = ac.createGain(); env(g, t, .08, .5, d); g.connect(master); g.connect(dl);
+    const src = ac.createOscillator(); src.type = 'sawtooth'; src.frequency.setValueAtTime(150, t); src.frequency.linearRampToValueAtTime(175, t + .5); src.frequency.linearRampToValueAtTime(120, t + d);
+    [[700, 8], [1150, 10], [2600, 12]].forEach(([fr, q]) => { const b = ac.createBiquadFilter(); b.type = 'bandpass'; b.frequency.setValueAtTime(fr, t); b.frequency.linearRampToValueAtTime(fr * .75, t + d); b.Q.value = q; src.connect(b); b.connect(g); });
+    src.start(t); src.stop(t + d);
+  }
+
+  // ================================================================ three.js 場景
+  const cv = $('cv');
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x070a12);
+  scene.fog = new THREE.FogExp2(0x0a0f1a, 0.018);
+  const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 400);
+  camera.rotation.order = 'YXZ';
+  const CAM = new THREE.Vector3(0, 1.6, 0);
+  camera.position.copy(CAM);
+
+  scene.add(new THREE.HemisphereLight(0x3a4a66, 0x0c0a08, 0.55));
+  const moonLight = new THREE.DirectionalLight(0xb9c8e6, 0.75);
+  moonLight.position.set(-30, 40, 25); scene.add(moonLight);
+
+  const M = (c, o) => new THREE.MeshLambertMaterial(Object.assign({ color: c, flatShading: true }, o || {}));
+  function mesh(geo, mat, x, y, z, parent) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); (parent || scene).add(m); return m; }
+  function roughen(geo, amt, seed) {
+    const p = geo.attributes.position, r = S.createRng(seed);
+    const key = new Map();
+    for (let i = 0; i < p.count; i++) {
+      const k = p.getX(i).toFixed(3) + p.getY(i).toFixed(3) + p.getZ(i).toFixed(3);
+      if (!key.has(k)) key.set(k, [(r() - .5) * amt, (r() - .5) * amt, (r() - .5) * amt]);
+      const d = key.get(k); p.setXYZ(i, p.getX(i) + d[0], p.getY(i) + d[1], p.getZ(i) + d[2]);
+    }
+    geo.computeVertexNormals(); return geo;
+  }
+
+  // 天空：星與月
+  {
+    const n = 700, pos = new Float32Array(n * 3), r = S.createRng(7);
+    for (let i = 0; i < n; i++) {
+      const th = r() * Math.PI * 2, ph = r() * 1.2, R = 300;
+      pos[i * 3] = R * Math.cos(th) * Math.cos(ph); pos[i * 3 + 1] = R * Math.sin(ph) + 10; pos[i * 3 + 2] = R * Math.sin(th) * Math.cos(ph);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xe8e2d0, size: 1.1, sizeAttenuation: false, fog: false })));
+  }
+  const MOON = new THREE.Vector3(-120, 70, -160);
+  {
+    const moon = mesh(new THREE.SphereGeometry(7, 24, 16), new THREE.MeshBasicMaterial({ color: 0xf2e8cc, fog: false }), MOON.x, MOON.y, MOON.z);
+    const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+    const gr = x.createRadialGradient(64, 64, 8, 64, 64, 64); gr.addColorStop(0, 'rgba(240,225,190,.5)'); gr.addColorStop(1, 'rgba(240,225,190,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), fog: false, depthWrite: false, transparent: true }));
+    sp.scale.set(70, 70, 1); sp.position.copy(moon.position); scene.add(sp);
+  }
+
+  // 海：頂點起伏
+  const seaGeo = new THREE.PlaneGeometry(400, 400, 90, 90); seaGeo.rotateX(-Math.PI / 2);
+  const seaBase = Float32Array.from(seaGeo.attributes.position.array);
+  const sea = mesh(seaGeo, new THREE.MeshPhongMaterial({ color: 0x0d1a2a, specular: 0x8899bb, shininess: 60, flatShading: true }), -206, 0, -60);
+  // 月光在海上的一條路
+  const glint = mesh(new THREE.PlaneGeometry(6, 120), new THREE.MeshBasicMaterial({ color: 0xd8cfb4, transparent: true, opacity: .1, depthWrite: false, fog: false }), 0, .05, 0);
+  glint.rotation.x = -Math.PI / 2;
+  {
+    const dir = new THREE.Vector3(MOON.x, 0, MOON.z).normalize();
+    glint.position.set(dir.x * 70, .06, dir.z * 70); glint.rotation.z = Math.atan2(dir.x, dir.z) + Math.PI;
+  }
+
+  // 沙灘
+  const sand = M(0x3a3427);
+  {
+    const g = roughen(new THREE.PlaneGeometry(60, 60, 30, 30).rotateX(-Math.PI / 2), .35, 3);
+    const m = mesh(g, sand, 22, .4, -10);
+    const edge = mesh(roughen(new THREE.BoxGeometry(5, .9, 60, 2, 1, 20), .5, 4), sand, -7.5, .1, -10);
+    edge.rotation.z = .12;
+    // 浪花
+    const foam = mesh(new THREE.PlaneGeometry(1.2, 60), new THREE.MeshBasicMaterial({ color: 0xb8c4cc, transparent: true, opacity: .25, depthWrite: false }), -9.6, .12, -10);
+    foam.rotation.x = -Math.PI / 2; foam.userData.foam = true; scene.userData.foam = foam;
+  }
+
+  // 懸崖與洞口（洞口中心 x = 0，z = -15，寬 5、高 4.5）
+  const rock = M(0x2a2c30), rockDark = M(0x1a1b1e);
+  const CAVE_X = 0, CAVE_Z = -15;
+  [[-4.3, 6, CAVE_Z, 3.6, 12, 6, 11], [6, 6.5, CAVE_Z, 7, 13, 6, 12], [CAVE_X, 9, CAVE_Z, 6.5, 9, 6, 13], [13, 8, CAVE_Z - 1, 8, 16, 7, 14],
+   [20, 9, CAVE_Z - 2, 8, 18, 8, 16], [CAVE_X + 2, 15, CAVE_Z - 3, 26, 8, 8, 17]].forEach(([x, y, z, w, h, d, s]) => {
+    mesh(roughen(new THREE.BoxGeometry(w, h, d, 3, 3, 2), .9, s), rock, x, y, z);
+  });
+  // 洞裡：側牆、地、最深處微光的壁（讓巨人變成剪影）
+  mesh(roughen(new THREE.BoxGeometry(2, 7, 12, 1, 2, 4), .5, 21), rockDark, CAVE_X - 3.6, 3.5, CAVE_Z - 8);
+  mesh(roughen(new THREE.BoxGeometry(2, 7, 12, 1, 2, 4), .5, 22), rockDark, CAVE_X + 3.6, 3.5, CAVE_Z - 8);
+  mesh(new THREE.BoxGeometry(8, 1, 12), rockDark, CAVE_X, -.3, CAVE_Z - 8);
+  mesh(new THREE.BoxGeometry(8, 1, 12), rockDark, CAVE_X, 6.4, CAVE_Z - 8);
+  mesh(new THREE.PlaneGeometry(8, 7), new THREE.MeshBasicMaterial({ color: 0x2c3a52 }), CAVE_X, 2.8, CAVE_Z - 13.5);
+  const caveGlow = new THREE.PointLight(0x5a6c8c, .9, 14, 2); caveGlow.position.set(CAVE_X, 3, CAVE_Z - 8); scene.add(caveGlow);
+  // 推開的巨石
+  const boulder = mesh(roughen(new THREE.IcosahedronGeometry(2.1, 1), .5, 31), M(0x3a3b40), CAVE_X + 4, 1.9, CAVE_Z + 2.2);
+  boulder.scale.set(1, .95, .8);
+
+  // 巨人：站姿模型，原點在腳底；躺下時繞 z 轉 90°
+  const giantMat = M(0x0b0c0e);
+  const giant = new THREE.Group();
+  const torso = mesh(new THREE.SphereGeometry(1, 10, 8), giantMat, 0, 3.2, 0, giant); torso.scale.set(1.25, 1.55, .9);
+  const head = mesh(new THREE.SphereGeometry(.62, 10, 8), giantMat, 0, 5.15, .05, giant);
+  const armL = mesh(new THREE.CylinderGeometry(.32, .26, 2.6, 6), giantMat, -1.35, 3.1, 0, giant); armL.rotation.z = -.15;
+  const armR = new THREE.Group(); armR.position.set(1.35, 4.2, 0); giant.add(armR);
+  mesh(new THREE.CylinderGeometry(.32, .26, 2.6, 6), giantMat, 0, -1.1, 0, armR);
+  mesh(new THREE.CylinderGeometry(.42, .34, 2.2, 6), giantMat, -.5, 1.1, 0, giant);
+  mesh(new THREE.CylinderGeometry(.42, .34, 2.2, 6), giantMat, .5, 1.1, 0, giant);
+  giant.position.set(CAVE_X + 2.6, .9, CAVE_Z - 6);
+  giant.rotation.set(0, -.25, Math.PI / 2 - .05);
+  scene.add(giant);
+  const GIANT_LIE = { x: giant.position.x, y: giant.position.y, rz: giant.rotation.z };
+
+  // 船：在海上等
+  const ship = new THREE.Group();
+  const wood = M(0x1e1712), sail = M(0x6a5f4c, { side: THREE.DoubleSide });
+  { const hull = mesh(new THREE.BoxGeometry(2.2, .9, 9, 1, 1, 4), wood, 0, .3, 0, ship); const p = hull.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) { const z = p.getZ(i), y = p.getY(i); const k = Math.abs(z) / 4.5; p.setX(i, p.getX(i) * (1 - k * k * .85)); if (y > 0) p.setY(i, y + k * k * .7); }
+    hull.geometry.computeVertexNormals(); }
+  mesh(new THREE.CylinderGeometry(.08, .1, 7, 6), wood, 0, 3.8, -.4, ship);
+  const sailM = mesh(new THREE.PlaneGeometry(4.2, 3.2, 4, 3), sail, 0, 4.6, -.35, ship); sailM.rotation.y = Math.PI / 2 + .1;
+  for (let i = -3; i <= 3; i++) { const o = mesh(new THREE.CylinderGeometry(.03, .03, 2.6, 4), wood, 1.4, .3, i * 1.1, ship); o.rotation.z = 1.1; const o2 = o.clone(); o2.position.x = -1.4; o2.rotation.z = -1.1; ship.add(o2); }
+  ship.position.set(-13, 0, -17); ship.rotation.y = .5; scene.add(ship);
+
+  // 同伴：沙灘上走向船的人影
+  const crewMat = M(0x101114);
+  const crewMen = crew.map((name, i) => {
+    const g = new THREE.Group();
+    mesh(new THREE.CylinderGeometry(.18, .22, 1.2, 6), crewMat, 0, .75, 0, g);
+    mesh(new THREE.SphereGeometry(.15, 8, 6), crewMat, 0, 1.52, 0, g);
+    const a = i / Math.max(1, crew.length - 1);
+    g.position.set(-1.6 - a * 2.6 + (i % 2) * .4, .45, -5.5 - a * 3.5);
+    g.userData = { name, home: g.position.clone(), fall: 0, lost: false };
+    scene.add(g); return g;
+  });
+
+  // 岩石、水花、箭
+  const rocks = [], splashes = [];
+  const rockGeo = roughen(new THREE.IcosahedronGeometry(.9, 0), .3, 41);
+  const splashMat = new THREE.PointsMaterial({ color: 0xc8d2da, size: .18, transparent: true, opacity: .9, depthWrite: false });
+  function throwRock(from, to, dur, onLand) {
+    const m = mesh(rockGeo, M(0x2e2f33), from.x, from.y, from.z);
+    rocks.push({ m, from: from.clone(), to: to.clone(), t: 0, dur, onLand, spin: new THREE.Vector3(Math.random() * 6, Math.random() * 6, 0) });
+  }
+  function splash(p, water) {
+    const n = 60, pos = new Float32Array(n * 3), vel = [];
+    for (let i = 0; i < n; i++) { pos[i * 3] = p.x; pos[i * 3 + 1] = p.y + .2; pos[i * 3 + 2] = p.z; vel.push(new THREE.Vector3((Math.random() - .5) * 4, 3 + Math.random() * 6, (Math.random() - .5) * 4)); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const pts = new THREE.Points(g, splashMat.clone()); if (!water) pts.material.color.set(0x6b6150);
+    scene.add(pts); splashes.push({ pts, vel, t: 0 });
+  }
+  const arrow = new THREE.Group();
+  mesh(new THREE.CylinderGeometry(.015, .015, 1, 4), M(0x8a6a44), 0, 0, 0, arrow).rotation.x = Math.PI / 2;
+  mesh(new THREE.ConeGeometry(.04, .12, 4), M(0x9a9a9a), 0, 0, -.55, arrow).rotation.x = -Math.PI / 2;
+  arrow.visible = false; scene.add(arrow);
+
+  // ================================================================ 流程
+  let phase = 'start', phaseT = 0, choice = null, lost = [], shake = 0;
+  let look = { yaw: .2, pitch: .04 }, lookTarget = { yaw: .2, pitch: .04 }, autoLook = null;
+  const events = [];
+  function at(t, fn) { events.push({ t, fn }); }
+  function say(text, cls) { const el = $('say'); el.className = 'say' + (cls ? ' ' + cls : ''); el.textContent = text; el.style.opacity = text ? 1 : 0; }
+
+  function begin() {
+    if (phase !== 'start') return;
+    audio();
+    $('start').hidden = true;
+    phase = 'intro'; phaseT = 0;
+    $('fade').style.opacity = 0;
+    say('巨人睡在巨石裡面。他看不見你。');
+  }
+  function openChoice() {
+    phase = 'choose'; phaseT = 0;
+    say('');
+    $('choice').hidden = false;
+  }
+  function pick(c) {
+    if (phase !== 'choose') return;
+    choice = c;
+    ['Shoot', 'Name', 'Leave'].forEach(k => $('opt' + k).classList.toggle('pick', k.toLowerCase() === c));
+    setTimeout(() => { $('choice').hidden = true; }, 500);
+    lost = S.resolveShore(c, save.crewOut, Math.random);
+    phase = 'act'; phaseT = 0; events.length = 0;
+    if (c === 'shoot') playShoot(); else if (c === 'name') playName(); else playLeave();
+  }
+
+  const giantHead = () => head.getWorldPosition(new THREE.Vector3());
+  function wakeAndThrow(t0) {
+    at(t0, () => { sfxRoar(); shake = .5; giant.userData.rise = 0; say('他醒了。'); });
+    // 岩石：每個失去的同伴一塊，另外幾塊落海
+    const targets = lost.map(n => crewMen.find(m => m.userData.name === n));
+    const extra = Math.max(2, 4 - targets.length);
+    const list = targets.map(m => ({ man: m })).concat(Array.from({ length: extra }, (_, i) => ({ sea: new THREE.Vector3(-8 - Math.random() * 10, 0, -8 - Math.random() * 8) })));
+    list.sort(() => Math.random() - .5);
+    list.forEach((it, i) => {
+      at(t0 + 1.8 + i * .75, () => {
+        giant.userData.throwT = 0;
+        const from = new THREE.Vector3(CAVE_X + .6, 4, CAVE_Z + .5);
+        const to = it.man ? it.man.position.clone() : it.sea;
+        throwRock(from, to, 1.1, () => {
+          if (it.man) { it.man.userData.lost = true; sfxThud(0, 1); splash(to, false); shake = .35; }
+          else { sfxSplash(); splash(to, true); shake = .15; }
+        });
+      });
+    });
+    return t0 + 1.8 + list.length * .75 + 1.6;
+  }
+  function playShoot() {
+    autoLook = { yaw: .0, pitch: .03 };
+    at(.3, () => {
+      sfxWhoosh();
+      arrow.visible = true; arrow.userData = { t: 0, from: camera.position.clone().add(new THREE.Vector3(.15, -.2, -.4)), to: giantHead() };
+      arrow.lookAt(arrow.userData.to);
+    });
+    at(.9, () => { arrow.visible = false; sfxThud(0, 1.4); say('你射中了沉睡的巨人。'); });
+    const end = wakeAndThrow(1.6);
+    at(2.6, () => say('他追了出來。'));
+    at(end, finish);
+  }
+  function playName() {
+    autoLook = { yaw: .0, pitch: .05 };
+    at(.2, () => { sfxShout(); say('「我是奧德修斯，拉厄爾忒斯的兒子，家在伊薩卡！」', 'shout'); });
+    const end = wakeAndThrow(2.4);
+    at(3.4, () => say('名字在崖壁之間來回撞。'));
+    at(end, finish);
+  }
+  function playLeave() {
+    autoLook = { yaw: .55, pitch: .0 };
+    at(.4, () => say('你沒有回頭。'));
+    at(1.2, () => crewMen.forEach(m => { m.userData.walk = 0; }));
+    at(5, finish);
+  }
+
+  function finish() {
+    phase = 'result'; say('');
+    const out = save.crewOut, kept = out - lost.length;
+    const T = {
+      shoot: ['你射中了沉睡的巨人。他追了出來。', `帶出 ${out} 名同伴，路上又失去 ${lost.length} 名。波塞頓聽見了兒子的禱告。`],
+      name: ['你對著巨人喊出了自己的名字。', `帶出 ${out} 名同伴，路上又失去 ${lost.length} 名。波塞頓記住了你的名字。`],
+      leave: ['你沒有回頭。', `帶出 ${out} 名同伴。`]
+    }[choice];
+    $('resTitle').textContent = T[0];
+    $('resLine').textContent = T[1];
+    if (lost.length) { $('resLost').hidden = false; $('resLost').textContent = lost.join('、') + (lost.length > 1 ? '，都' : '') + '沒能上船。'; }
+    else $('resLost').hidden = true;
+    const wrath = S.wrathFromShore(choice);
+    $('resNote').textContent = wrath === 0 ? '海很安靜。也許安靜得太久了。' : wrath === 1 ? '海神記住了一個名字。往後的路會更長。' : '海神的兒子在洞口流血。往後的路會很長。';
+    const btns = $('resBtns'); btns.innerHTML = '';
+    if (solo) {
+      btns.append(btnEl('再選一次', () => location.reload(), true), btnEl('回首頁', () => { location.href = '../index.html'; }));
+    } else {
+      S.save(null, S.advance(save, 'ogygia', { shore: choice, crewLost: lost.slice() }));
+      btns.append(btnEl(kept > 0 ? '上船（Enter）' : '獨自上船（Enter）', goNext, true));
+    }
+    $('result').hidden = false;
+    const b = btns.querySelector('button'); if (b) b.focus();
+  }
+  function goNext() { location.href = S.nextUrl('ogygia', '../'); }
+  function btnEl(text, fn, main) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (main ? ' main' : ''); b.textContent = text; b.onclick = fn; return b; }
+
+  // ================================================================ 輸入
+  $('start').addEventListener('click', begin);
+  cv.addEventListener('mousedown', e => { if (e.button !== 0) return; if (phase === 'start') begin(); else pick('shoot'); });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); if (phase === 'start') begin(); else pick('name'); }
+    if (e.code === 'Enter' && phase === 'start') begin();
+  });
+  window.addEventListener('mousemove', e => {
+    const r = cv.getBoundingClientRect();
+    const nx = (e.clientX - r.left) / r.width - .5, ny = (e.clientY - r.top) / r.height - .5;
+    lookTarget.yaw = .2 - nx * 1.1; lookTarget.pitch = .04 - ny * .35;
+  });
+  // 手機：輕點＝射、雙指＝喊（展示目標是電腦，這裡只保證不壞）
+  cv.addEventListener('touchstart', e => { if (phase === 'start') begin(); else if (e.touches.length >= 2) pick('name'); else pick('shoot'); }, { passive: true });
+
+  // ================================================================ 迴圈
+  function resize() {
+    const w = cv.clientWidth, h = cv.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    camera.fov = w / h < .9 ? 78 : 62; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize); resize();
+
+  let last = performance.now(), clock = 0;
+  function tick(now) {
+    const real = Math.min(.25, (now - last) / 1000), dt = Math.min(.05, real); last = now; clock += dt; phaseT += real; // 限時用真實秒數
+
+    if (phase === 'intro' && phaseT > 2.6) openChoice();
+    if (phase === 'choose') {
+      const left = Math.max(0, 1 - phaseT / S.SHORE_TIME);
+      $('timerBar').style.transform = `scaleX(${left})`;
+      if (phaseT >= S.SHORE_TIME) pick('leave');
+    }
+    while (events.length && phase === 'act') {
+      events.sort((a, b) => a.t - b.t);
+      if (events[0].t > phaseT) break;
+      events.shift().fn();
+    }
+
+    // 海浪
+    const p = seaGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = seaBase[i * 3], z = seaBase[i * 3 + 2];
+      p.setY(i, Math.sin(x * .15 + clock * .9) * .18 + Math.sin(z * .22 + clock * 1.3) * .12 + Math.sin((x + z) * .4 + clock * 2) * .04);
+    }
+    p.needsUpdate = true; seaGeo.computeVertexNormals();
+    const foam = scene.userData.foam; foam.position.x = -9.6 + Math.sin(clock * .8) * .5; foam.material.opacity = .18 + Math.sin(clock * .8) * .08;
+    ship.position.y = Math.sin(clock * .9) * .12 - .05; ship.rotation.z = Math.sin(clock * .7) * .03;
+
+    // 巨人：睡著時呼吸；醒來站起、丟石頭
+    if (giant.userData.rise == null) { torso.scale.y = 1.55 + Math.sin(clock * 1.1) * .05; }
+    else {
+      giant.userData.rise = Math.min(1, giant.userData.rise + dt / 1.3);
+      const k = 1 - Math.pow(1 - giant.userData.rise, 3);
+      giant.rotation.z = GIANT_LIE.rz * (1 - k);
+      giant.position.x = GIANT_LIE.x + (CAVE_X + .4 - GIANT_LIE.x) * k;
+      giant.position.z = CAVE_Z - 6 + 3.5 * k; giant.position.y = GIANT_LIE.y * (1 - k);
+      giant.rotation.y = -.25 * (1 - k);
+      if (giant.userData.throwT != null) {
+        giant.userData.throwT += dt;
+        const th = giant.userData.throwT; armR.rotation.x = th < .3 ? -2.6 * th / .3 : -2.6 + Math.min(1, (th - .3) / .3) * 2.6;
+      }
+    }
+    // 箭
+    if (arrow.visible) {
+      const u = arrow.userData; u.t = Math.min(1, u.t + dt / .6);
+      arrow.position.lerpVectors(u.from, u.to, u.t); arrow.position.y += Math.sin(u.t * Math.PI) * .4;
+    }
+    // 岩石
+    for (let i = rocks.length - 1; i >= 0; i--) {
+      const r = rocks[i]; r.t += dt / r.dur; const t = Math.min(1, r.t);
+      r.m.position.lerpVectors(r.from, r.to, t); r.m.position.y += Math.sin(t * Math.PI) * 9 * (1 - t * .2);
+      r.m.rotation.x += r.spin.x * dt; r.m.rotation.y += r.spin.y * dt;
+      if (t >= 1) { r.onLand(); if (r.to.y < .2 && r.to.x < -8) scene.remove(r.m); rocks.splice(i, 1); }
+    }
+    for (let i = splashes.length - 1; i >= 0; i--) {
+      const s = splashes[i]; s.t += dt; const a = s.pts.geometry.attributes.position;
+      for (let j = 0; j < s.vel.length; j++) { s.vel[j].y -= 9.8 * dt; a.setXYZ(j, a.getX(j) + s.vel[j].x * dt, Math.max(0, a.getY(j) + s.vel[j].y * dt), a.getZ(j) + s.vel[j].z * dt); }
+      a.needsUpdate = true; s.pts.material.opacity = Math.max(0, .9 - s.t * .7);
+      if (s.t > 1.4) { scene.remove(s.pts); splashes.splice(i, 1); }
+    }
+    // 同伴：被砸到的倒下；默默離開時走向船
+    for (const m of crewMen) {
+      const u = m.userData;
+      if (u.lost) { u.fall = Math.min(1, u.fall + dt * 2.5); m.rotation.x = -u.fall * 1.45; m.position.y = .45 - u.fall * .15; }
+      else if (u.walk != null) {
+        u.walk += dt; const k = Math.min(1, u.walk / 3.8);
+        m.position.x = u.home.x + (-9.6 - u.home.x) * k; m.position.z = u.home.z + (-14.5 - u.home.z) * k;
+        m.position.y = .45 - k * .45 + Math.abs(Math.sin(u.walk * 6)) * .05;
+      }
+    }
+
+    // 鏡頭
+    const target = autoLook && phase !== 'choose' ? autoLook : lookTarget;
+    look.yaw += (target.yaw - look.yaw) * Math.min(1, dt * (autoLook ? 1.6 : 4));
+    look.pitch += (target.pitch - look.pitch) * Math.min(1, dt * (autoLook ? 1.6 : 4));
+    shake = Math.max(0, shake - dt * .8);
+    camera.position.set(CAM.x + (Math.random() - .5) * shake * .2, CAM.y + Math.sin(clock * .6) * .015 + (Math.random() - .5) * shake * .2, CAM.z);
+    camera.rotation.set(look.pitch, look.yaw, 0);
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  window.addEventListener('keydown', e => { if (e.code === 'Enter' && phase === 'result') { const b = $('resBtns').querySelector('button'); if (b && document.activeElement !== b) b.click(); } });
+  // 給測試用：不影響遊玩
+  window.__shore = { pick: c => pick(c), begin, get phase() { return phase; } };
+})();
+</script>

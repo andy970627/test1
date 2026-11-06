@@ -1,0 +1,432 @@
+<title>奧吉吉亞</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 第二章 奧吉吉亞（過場，約 50～60 秒，空白鍵或點擊跳過）。單一夜色主題，畫面用 2D 畫布畫剪影。
+ * 出處（不上畫面）：
+ *   卡呂普索的島、困住奧德修斯【電影；原典 第 5 卷】
+ *   七年【原典 第 7 卷】；多出來的一、兩年（海神的怒氣）【改編】
+ *   「留下來就不會老、不會死」【原典 第 5 卷】
+ *   失去的同伴站在礁石上、低聲唸名字【改編】
+ *   眾神讓她放人、造木筏、她給帆布清水和順風【原典 第 5 卷】
+ *   波塞頓的風暴打碎木筏【原典 第 5 卷；電影是否有演待確認】
+ *   漂到伊薩卡【改編：原典是先到費埃克斯人的島，再被送回伊薩卡】
+ *   手裡的雅典娜小像【電影】
+ */
+:root {
+  --night: #05070b;
+  --line: #2b323d;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #e2dccd;
+  --dim: #8f96a0;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--night); overflow: hidden; }
+body { color: var(--ash); font-family: var(--body); }
+.stage { position: relative; width: 100%; height: 100svh; min-height: 360px; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; cursor: pointer; }
+canvas#cv { display: block; width: 100%; height: 100%; }
+.big {
+  position: absolute; left: 0; right: 0; top: 34%; text-align: center; margin: 0; pointer-events: none;
+  font-family: var(--display); font-weight: 900; color: var(--lamp); letter-spacing: .3em; padding-left: .3em;
+  font-size: clamp(36px, 7vw, 72px); text-shadow: 0 4px 24px rgba(0,0,0,.85); transition: opacity 1.2s;
+}
+.big small { display: block; font-size: clamp(15px, 2vw, 20px); color: var(--ash); letter-spacing: .4em; margin-top: 10px; font-weight: 600; }
+.sub {
+  position: absolute; left: 0; right: 0; bottom: 12%; margin: 0; text-align: center; padding: 0 var(--gutter-r) 0 var(--gutter-l);
+  font-family: var(--display); font-size: clamp(17px, 2.4vw, 24px); line-height: 1.7; color: var(--ash);
+  text-shadow: 0 2px 10px #000, 0 0 3px #000; transition: opacity .7s; pointer-events: none; text-wrap: balance;
+}
+.sub.whisper { font-style: normal; color: #b8c6d4; letter-spacing: .25em; }
+.skip { position: absolute; right: var(--gutter-r); bottom: 14px; font-size: 13px; color: var(--dim); margin: 0; text-shadow: 0 1px 4px #000; pointer-events: none; }
+.home { position: absolute; top: 14px; right: var(--gutter-r); font-size: 13px; color: var(--dim); text-decoration: none; text-shadow: 0 1px 4px #000; }
+.home:hover { color: var(--ash); }
+.panel { background: rgba(8, 10, 14, .84); border: 1px solid var(--line); border-radius: 3px; }
+.start, .end {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); box-sizing: border-box;
+  padding: 24px 20px; text-align: center; cursor: default;
+}
+.start { cursor: pointer; }
+.start h1, .end h2 { margin: 0 0 8px; font-family: var(--display); font-weight: 900; color: var(--lamp); font-size: clamp(26px, 4.6vw, 36px); letter-spacing: .12em; }
+.start p, .end p { margin: 0 0 8px; line-height: 1.7; }
+.small { color: var(--dim); font-size: 13px; }
+.btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; margin: 8px 4px 0; }
+.btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="cv" aria-label="奧吉吉亞：卡呂普索的島"></canvas>
+  <p class="big" id="big"></p>
+  <p class="sub" id="sub"></p>
+  <p class="skip" id="skip" hidden>空白鍵或點一下：跳過</p>
+  <a class="home" href="../index.html">回首頁</a>
+  <div class="start panel" id="start">
+    <h1>奧吉吉亞</h1>
+    <p>海把你推到了一座島上。</p>
+    <p class="small">過場，約一分鐘。點一下開始。</p>
+  </div>
+  <div class="end panel" id="end" hidden>
+    <h2>伊薩卡</h2>
+    <p id="endLine"></p>
+    <p class="small" id="endNote"></p>
+    <div id="endBtns"></div>
+  </div>
+</div>
+
+<script src="../series.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = window.OdysseySeries;
+  const $ = id => document.getElementById(id);
+  const solo = new URLSearchParams(location.search).has('solo');
+  const save = solo ? S.fresh() : S.load();
+  const years = save.years, lost = save.crewLost.slice(), wrath = save.wrath;
+  const NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+  // ================================================================ 聲音
+  let ac = null, master = null, noiseBuf = null, seaGain = null, seaFilter = null;
+  function audio() {
+    if (!ac) {
+      try {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        master = ac.createGain(); master.gain.value = .8; master.connect(ac.destination);
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate);
+        const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+        seaFilter = ac.createBiquadFilter(); seaFilter.type = 'lowpass'; seaFilter.frequency.value = 450;
+        seaGain = ac.createGain(); seaGain.gain.value = .1;
+        const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = .1; lg.gain.value = .06; lfo.connect(lg); lg.connect(seaGain.gain); lfo.start();
+        s.connect(seaFilter); seaFilter.connect(seaGain); seaGain.connect(master); s.start();
+      } catch (e) { ac = null; }
+    }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function noise(dur, t0) { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.loopStart = Math.random(); s.start(t0, Math.random() * 2); s.stop(t0 + dur); return s; }
+  function env(g, t0, a, peak, dur) { g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur); }
+  function sea(gain, freq, ramp) { if (!ac) return; const t = ac.currentTime; seaGain.gain.setTargetAtTime(gain, t, ramp || .8); seaFilter.frequency.setTargetAtTime(freq, t, ramp || .8); }
+  function sfxScratch() {
+    if (!ac) return; const t = ac.currentTime;
+    for (let i = 0; i < 3; i++) {
+      const s = noise(.12, t + i * .09), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'bandpass'; f.frequency.value = 2600 + i * 400; f.Q.value = 2;
+      env(g, t + i * .09, .01, .25, .12); s.connect(f); f.connect(g); g.connect(master);
+    }
+  }
+  function sfxWhisper(dur = 1.4) {
+    if (!ac) return; const t = ac.currentTime;
+    const s = noise(dur, t), g = ac.createGain(); env(g, t, .25, .22, dur);
+    const dl = ac.createDelay(1); dl.delayTime.value = .23; const fb = ac.createGain(); fb.gain.value = .35; dl.connect(fb); fb.connect(dl); dl.connect(master);
+    [[900, 1400], [2300, 1800]].forEach(([a, b]) => { const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 6; f.frequency.setValueAtTime(a, t); f.frequency.linearRampToValueAtTime(b, t + dur * .5); f.frequency.linearRampToValueAtTime(a * .8, t + dur); s.connect(f); f.connect(g); });
+    g.connect(master); g.connect(dl);
+  }
+  function sfxChop() {
+    if (!ac) return; const t = ac.currentTime;
+    const o = ac.createOscillator(), g = ac.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(320, t); o.frequency.exponentialRampToValueAtTime(90, t + .12);
+    env(g, t, .002, .45, .18); o.connect(g); g.connect(master); o.start(t); o.stop(t + .2);
+    const s = noise(.08, t), f = ac.createBiquadFilter(), ng = ac.createGain(); f.type = 'bandpass'; f.frequency.value = 1500; env(ng, t, .002, .3, .08); s.connect(f); f.connect(ng); ng.connect(master);
+  }
+  function sfxThunder() {
+    if (!ac) return; const t = ac.currentTime;
+    const s = noise(3, t), f = ac.createBiquadFilter(), g = ac.createGain(); f.type = 'lowpass'; f.frequency.setValueAtTime(1200, t); f.frequency.exponentialRampToValueAtTime(120, t + 2.5);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(.9, t + .03); g.gain.exponentialRampToValueAtTime(.3, t + .5); g.gain.exponentialRampToValueAtTime(0.0001, t + 3);
+    s.connect(f); f.connect(g); g.connect(master);
+  }
+  function pad(freqs, dur, peak = .06) {
+    if (!ac) return; const t = ac.currentTime;
+    freqs.forEach(fr => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = fr; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + dur * .3); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); o.connect(g); g.connect(master); o.start(t); o.stop(t + dur); });
+  }
+
+  // ================================================================ 畫布
+  const cv = $('cv'), cx = cv.getContext('2d');
+  let W = 0, H = 0;
+  function resize() {
+    const dpr = Math.min(2, devicePixelRatio || 1); W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize); resize();
+  const rng = S.createRng(11);
+  const STARS = Array.from({ length: 120 }, () => [rng(), rng() * .55, rng() * 1.3 + .3, rng() * 6]);
+  const GRAIN = Array.from({ length: 900 }, () => [rng(), rng(), rng()]);
+  const RAIN = Array.from({ length: 160 }, () => [rng(), rng(), .6 + rng() * .6]);
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const ease = v => v * v * (3 - 2 * v);
+
+  function sky(stops) { const g = cx.createLinearGradient(0, 0, 0, H); stops.forEach(([o, c]) => g.addColorStop(o, c)); cx.fillStyle = g; cx.fillRect(0, 0, W, H); }
+  function stars(a, t) { for (const s of STARS) { cx.globalAlpha = a * (.4 + .35 * Math.sin(t * 1.3 + s[3])); cx.fillStyle = '#efe8d6'; cx.fillRect(s[0] * W, s[1] * H, s[2], s[2]); } cx.globalAlpha = 1; }
+  function disc(x, y, r, col, glow) {
+    if (glow) { const g = cx.createRadialGradient(x, y, r * .5, x, y, r * 5); g.addColorStop(0, glow); g.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = g; cx.fillRect(x - r * 5, y - r * 5, r * 10, r * 10); }
+    cx.fillStyle = col; cx.beginPath(); cx.arc(x, y, r, 0, Math.PI * 2); cx.fill();
+  }
+  function seaBand(y0, col, t, amp, freq, speed) {
+    cx.fillStyle = col; cx.beginPath(); cx.moveTo(0, H);
+    for (let x = 0; x <= W + 10; x += 10) cx.lineTo(x, y0 + Math.sin(x * freq + t * speed) * amp + Math.sin(x * freq * 2.3 - t * speed * 1.4) * amp * .4);
+    cx.lineTo(W, H); cx.closePath(); cx.fill();
+  }
+  function shimmer(x, y0, t, col) { for (let i = 0; i < 22; i++) { const y = y0 + (i / 22) ** 1.5 * (H - y0), len = 14 + i * 5; cx.fillStyle = col.replace('A', (.22 * (1 - i / 22)).toFixed(3)); cx.fillRect(x - len / 2 + Math.sin(t * 1.4 + i * 1.7) * 6, y, len, 1.4); } }
+  function island(cxp, base, w, h, col) {
+    cx.fillStyle = col; cx.beginPath(); cx.moveTo(cxp - w / 2, base);
+    for (let i = 0; i <= 24; i++) { const u = i / 24, x = cxp - w / 2 + u * w; const y = base - Math.sin(u * Math.PI) ** .7 * h * (1 + .12 * Math.sin(u * 17) + .08 * Math.sin(u * 41)); cx.lineTo(x, y); }
+    cx.lineTo(cxp + w / 2, base); cx.closePath(); cx.fill();
+  }
+  function cypress(x, base, h, col) { cx.fillStyle = col; cx.beginPath(); cx.ellipse(x, base - h / 2, h * .09, h / 2, 0, 0, Math.PI * 2); cx.fill(); cx.fillRect(x - 1, base - 4, 2, 4); }
+  function figure(x, base, h, col, rim) {
+    cx.fillStyle = col; cx.beginPath();
+    cx.moveTo(x - h * .13, base); cx.lineTo(x - h * .16, base - h * .55); cx.quadraticCurveTo(x - h * .17, base - h * .78, x, base - h * .8);
+    cx.quadraticCurveTo(x + h * .17, base - h * .78, x + h * .16, base - h * .55); cx.lineTo(x + h * .13, base); cx.closePath(); cx.fill();
+    cx.beginPath(); cx.arc(x, base - h * .89, h * .09, 0, Math.PI * 2); cx.fill();
+    if (rim) { cx.strokeStyle = rim; cx.lineWidth = 1.2; cx.beginPath(); cx.moveTo(x + h * .16, base - h * .55); cx.quadraticCurveTo(x + h * .17, base - h * .78, x, base - h * .8); cx.stroke(); cx.beginPath(); cx.arc(x, base - h * .89, h * .09, -1.4, .4); cx.stroke(); }
+  }
+  function reef(x, base, w, h, col) { cx.fillStyle = col; cx.beginPath(); cx.moveTo(x - w / 2, base); cx.lineTo(x - w * .35, base - h * .7); cx.lineTo(x - w * .1, base - h); cx.lineTo(x + w * .2, base - h * .85); cx.lineTo(x + w * .42, base - h * .4); cx.lineTo(x + w / 2, base); cx.closePath(); cx.fill(); }
+
+  // ---------------------------------------------------------------- 各場景
+  function drawTitle(t) { // 夕陽下的島
+    sky([[0, '#1a1426'], [.45, '#5a3a3a'], [.62, '#c07a4a'], [.64, '#2a2a3a'], [1, '#0c1018']]);
+    disc(W * .62, H * .6, Math.min(W, H) * .06, '#f2c27a', 'rgba(240,170,100,.35)');
+    island(W * .4, H * .64, W * .55, H * .14, '#140f14');
+    for (let i = 0; i < 9; i++) cypress(W * (.22 + i * .04), H * (.6 - Math.sin(i / 8 * Math.PI) * .09), H * (.07 + (i % 3) * .015), '#100c10');
+    seaBand(H * .64, '#1b1a26', t, 2, .02, 1.2);
+    shimmer(W * .62, H * .645, t, 'rgba(240,190,120,A)');
+  }
+  function drawBeach(t, scene) { // 沙灘上刻年數
+    const g = cx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#6b5a43'); g.addColorStop(1, '#3d3226'); cx.fillStyle = g; cx.fillRect(0, 0, W, H);
+    for (const p of GRAIN) { cx.fillStyle = p[2] > .5 ? 'rgba(255,240,210,.12)' : 'rgba(0,0,0,.14)'; cx.fillRect(p[0] * W, p[1] * H, 1.5, 1.5); }
+    // 浪沫從上緣進來
+    const foamY = H * (.1 + .04 * Math.sin(t * .8));
+    cx.fillStyle = 'rgba(30,50,62,.85)'; cx.fillRect(0, 0, W, foamY);
+    cx.fillStyle = 'rgba(220,230,232,.35)'; for (let x = 0; x < W; x += 6) cx.fillRect(x, foamY + Math.sin(x * .05 + t) * 3, 6, 2);
+    // 刻痕
+    const n = scene.marks, unit = Math.min(W / (years * 1.6 + 4), H * .07), x0 = W / 2 - (years + Math.floor(years / 5)) * unit * .75, y0 = H * .5;
+    for (let i = 0; i < years; i++) {
+      const k = clamp01(n - i); if (k <= 0) break;
+      const grp = Math.floor(i / 5), inG = i % 5;
+      let ax, ay, bx, by;
+      if (inG < 4) { ax = x0 + (grp * 5.6 + inG) * unit * 1.25; ay = y0 - unit * 1.6; bx = ax + unit * .15; by = y0 + unit * 1.6; }
+      else { const sx = x0 + grp * 5.6 * unit * 1.25; ax = sx - unit * .5; ay = y0 + unit * 1.2; bx = sx + unit * 4.3; by = y0 - unit * 1.1; }
+      const ex = ax + (bx - ax) * k, ey = ay + (by - ay) * k;
+      cx.lineCap = 'round';
+      cx.strokeStyle = 'rgba(25,18,10,.75)'; cx.lineWidth = unit * .28; cx.beginPath(); cx.moveTo(ax, ay); cx.lineTo(ex, ey); cx.stroke();
+      cx.strokeStyle = 'rgba(255,236,200,.22)'; cx.lineWidth = unit * .08; cx.beginPath(); cx.moveTo(ax + unit * .12, ay); cx.lineTo(ex + unit * .12, ey); cx.stroke();
+    }
+    // 一根木棍（正在刻）
+    if (n < years) {
+      const i = Math.floor(n), grp = Math.floor(i / 5), inG = i % 5, k = n - i;
+      const sx = inG < 4 ? x0 + (grp * 5.6 + inG) * unit * 1.25 + unit * .15 * k : x0 + grp * 5.6 * unit * 1.25 - unit * .5 + unit * 4.8 * k;
+      const sy = inG < 4 ? y0 - unit * 1.6 + unit * 3.2 * k : y0 + unit * 1.2 - unit * 2.3 * k;
+      cx.strokeStyle = '#2a1d12'; cx.lineWidth = unit * .22; cx.beginPath(); cx.moveTo(sx, sy); cx.lineTo(sx + unit * 3, sy - unit * 5); cx.stroke();
+    }
+    // 光從右邊斜進來，畫面四角暗
+    vignette(.55);
+  }
+  function drawReefs(t, scene) { // 夜海、礁石上的人影
+    sky([[0, '#05070d'], [.55, '#121a28'], [.58, '#0a0f17'], [1, '#05070b']]);
+    stars(1, t);
+    disc(W * .8, H * .18, Math.min(W, H) * .035, '#efe4c8', 'rgba(220,210,180,.2)');
+    seaBand(H * .58, '#0b1220', t, 2, .015, .8);
+    shimmer(W * .8, H * .59, t, 'rgba(230,220,190,A)');
+    const n = Math.max(lost.length, 0), shown = scene.shown;
+    const spots = n ? lost.map((_, i) => (i + .5) / n) : [.3, .62];
+    spots.forEach((u, i) => {
+      const x = W * (.12 + u * .76), depth = .62 + (i % 2) * .08, base = H * depth, s = H * (.12 + (i % 2) * .03);
+      reef(x, base, s * 1.1, s * .35, '#06080c');
+      if (n && i < shown) {
+        const a = clamp01((scene.t - scene.at[i]) / 1.6) * (.85 + .15 * Math.sin(t * 2 + i));
+        cx.globalAlpha = a; figure(x, base - s * .3, s, '#121722', 'rgba(210,220,235,.8)'); cx.globalAlpha = 1;
+      }
+    });
+    seaBand(H * .74, '#070b13', t * 1.2, 4, .012, 1);
+    vignette(.6);
+  }
+  function drawRaft(t, scene) { // 樹林邊造筏
+    sky([[0, '#2a3346'], [.5, '#8a7a62'], [.62, '#b49a72'], [.64, '#2e3a48'], [1, '#1d2430']]);
+    seaBand(H * .64, '#2c3a4a', t, 2, .02, 1);
+    const g = cx.createLinearGradient(0, H * .7, 0, H); g.addColorStop(0, '#6b5a43'); g.addColorStop(1, '#3a2f22'); cx.fillStyle = g;
+    cx.beginPath(); cx.moveTo(0, H * .72); cx.quadraticCurveTo(W * .5, H * .66, W, H * .74); cx.lineTo(W, H); cx.lineTo(0, H); cx.closePath(); cx.fill();
+    for (let i = 0; i < 6; i++) cypress(W * (.04 + i * .035), H * .72, H * (.28 + (i % 3) * .06), '#1a1712');
+    // 樹樁
+    for (let i = 0; i < 4; i++) { cx.fillStyle = '#4a3a28'; cx.fillRect(W * (.08 + i * .05), H * .7, 10, 8); cx.fillStyle = '#8a7050'; cx.beginPath(); cx.ellipse(W * (.08 + i * .05) + 5, H * .7, 6, 2.5, 0, 0, Math.PI * 2); cx.fill(); }
+    const logs = Math.min(10, scene.logs), lw = Math.min(W * .045, 34), rx = W * .58 - 5 * lw, ry = H * .8;
+    for (let i = 0; i < logs; i++) {
+      cx.fillStyle = i % 2 ? '#6a5236' : '#5a442c'; roundRect(rx + i * lw, ry - lw * 3.2, lw * .92, lw * 6.4, lw * .45); cx.fill();
+      cx.fillStyle = 'rgba(255,230,190,.15)'; cx.fillRect(rx + i * lw + lw * .2, ry - lw * 3, lw * .12, lw * 6);
+    }
+    if (logs >= 10) { cx.strokeStyle = '#2a2118'; cx.lineWidth = 3; [-.5, .5].forEach(v => { cx.beginPath(); cx.moveTo(rx - 4, ry + v * lw * 4); cx.lineTo(rx + 10 * lw, ry + v * lw * 4); cx.stroke(); }); }
+    if (scene.mast) { cx.fillStyle = '#3a2c1e'; cx.fillRect(rx + 5 * lw - 3, ry - lw * 9, 6, lw * 7); cx.fillStyle = 'rgba(214,200,170,.85)'; cx.beginPath(); cx.moveTo(rx + 5 * lw + 3, ry - lw * 8.6); cx.lineTo(rx + 5 * lw + lw * 3.6, ry - lw * 5); cx.lineTo(rx + 5 * lw + 3, ry - lw * 2.6); cx.closePath(); cx.fill(); }
+    // 遠處，洞口前一個女人的身影
+    cx.globalAlpha = .9; figure(W * .86, H * .72, H * .14, '#221a16', 'rgba(240,200,150,.35)'); cx.globalAlpha = 1;
+    vignette(.5);
+  }
+  function drawStorm(t, scene) { // 波塞頓的風暴
+    const flash = scene.flash > 0 ? scene.flash : 0;
+    sky([[0, '#06080c'], [.5, '#141a22'], [1, '#05070a']]);
+    const amp = H * (.05 + .025 * wrath), y0 = H * .55;
+    seaBand(y0 - amp * .6, '#0d141c', t * 1.3, amp * 1.2, .006, 1.6);
+    // 木筏在浪上
+    const rx = W * .5 + Math.sin(t * .7) * W * .06, ry = y0 + Math.sin(rx * .006 + t * 1.3 * 1.6) * amp * .9 - amp * .3;
+    const ang = Math.cos(rx * .006 + t * 2.1) * (.35 + .1 * wrath);
+    cx.save(); cx.translate(rx, ry); cx.rotate(ang);
+    cx.fillStyle = '#2a2116'; cx.fillRect(-W * .07, -8, W * .14, 12);
+    if (!scene.broken) { cx.fillRect(-2, -H * .12, 4, H * .12); cx.fillStyle = 'rgba(140,130,110,.7)'; cx.beginPath(); cx.moveTo(2, -H * .11); cx.lineTo(W * .04, -H * .07); cx.lineTo(2, -H * .03); cx.closePath(); cx.fill(); }
+    figure(-W * .02, -6, H * .05, '#0a0806');
+    cx.restore();
+    seaBand(y0 + amp * .4, '#080d13', t * 1.7, amp * 1.4, .008, 2.1);
+    seaBand(y0 + amp * 1.8, '#05080c', t * 2.2, amp, .011, 2.6);
+    // 雨
+    cx.strokeStyle = 'rgba(170,185,200,.25)'; cx.lineWidth = 1;
+    for (const r of RAIN) { const x = ((r[0] + t * .3 * r[2]) % 1) * W, y = ((r[1] + t * 1.6 * r[2]) % 1) * H; cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x - 8, y + 22); cx.stroke(); }
+    if (flash) {
+      cx.fillStyle = `rgba(220,230,255,${flash * .5})`; cx.fillRect(0, 0, W, H);
+      cx.strokeStyle = `rgba(255,255,255,${flash})`; cx.lineWidth = 2.5; cx.beginPath();
+      let x = scene.boltX * W, y = 0; cx.moveTo(x, y); const br = S.createRng(scene.boltSeed);
+      while (y < y0 - amp) { x += (br() - .5) * 60; y += 20 + br() * 30; cx.lineTo(x, y); }
+      cx.stroke();
+    }
+    vignette(.7);
+  }
+  function drawIthaca(t, scene) { // 伊薩卡的黎明，手裡的雅典娜小像
+    sky([[0, '#2b3550'], [.4, '#9a7a8a'], [.58, '#e8b48a'], [.6, '#5a6a7a'], [1, '#2a2a2a']]);
+    disc(W * .3, H * .58, Math.min(W, H) * .05, '#fbe3b8', 'rgba(250,210,160,.3)');
+    island(W * .72, H * .6, W * .7, H * .2, '#2a2830');
+    island(W * .9, H * .6, W * .4, H * .12, '#221f26');
+    seaBand(H * .6, '#4a5566', t, 1.5, .02, .7);
+    shimmer(W * .3, H * .605, t, 'rgba(255,220,170,A)');
+    const g = cx.createLinearGradient(0, H * .72, 0, H); g.addColorStop(0, '#8a7458'); g.addColorStop(1, '#4a3c2c'); cx.fillStyle = g;
+    cx.beginPath(); cx.moveTo(0, H * .76); cx.quadraticCurveTo(W * .5, H * .7, W, H * .78); cx.lineTo(W, H); cx.lineTo(0, H); cx.closePath(); cx.fill();
+    // 橄欖樹
+    cx.fillStyle = '#2a2a22'; cx.fillRect(W * .12, H * .55, 8, H * .2);
+    cx.fillStyle = '#3a4032'; [[0, 0, 70], [-40, 18, 50], [40, 14, 55], [10, -30, 45]].forEach(([dx, dy, r]) => { cx.beginPath(); cx.ellipse(W * .12 + 4 + dx, H * .52 + dy, r, r * .55, 0, 0, Math.PI * 2); cx.fill(); });
+    // 前景：手與小像
+    const k = ease(clamp01(scene.t / 3)), hx = W * .64, hy = H * (1.1 - .16 * k), s = Math.min(W, H) * .5;
+    drawHandStatue(hx, hy, s);
+    vignette(.45);
+  }
+  function drawHandStatue(x, y, s) {
+    // 小像：戴羽冠頭盔、持矛與圓盾的女神（青銅）
+    const b = '#7a5a30', hi = 'rgba(255,220,160,.45)';
+    const sx = x, sy = y - s * .48;
+    cx.fillStyle = b;
+    cx.beginPath(); cx.moveTo(sx - s * .07, sy + s * .2); cx.lineTo(sx - s * .045, sy - s * .12); cx.lineTo(sx + s * .045, sy - s * .12); cx.lineTo(sx + s * .07, sy + s * .2); cx.closePath(); cx.fill();
+    cx.beginPath(); cx.arc(sx, sy - s * .16, s * .035, 0, Math.PI * 2); cx.fill();
+    cx.beginPath(); cx.moveTo(sx - s * .04, sy - s * .18); cx.quadraticCurveTo(sx, sy - s * .3, sx + s * .05, sy - s * .19); cx.lineTo(sx + s * .02, sy - s * .2); cx.closePath(); cx.fill();
+    cx.fillRect(sx + s * .055, sy - s * .3, s * .012, s * .5);
+    cx.beginPath(); cx.ellipse(sx - s * .07, sy + s * .03, s * .045, s * .06, 0, 0, Math.PI * 2); cx.fill();
+    cx.strokeStyle = hi; cx.lineWidth = 1.5; cx.beginPath(); cx.moveTo(sx + s * .045, sy - s * .12); cx.lineTo(sx + s * .07, sy + s * .2); cx.stroke();
+    cx.beginPath(); cx.arc(sx - s * .07, sy + s * .03, s * .04, -.9, .9); cx.stroke();
+    // 手（握著底座）
+    cx.fillStyle = '#5a4030';
+    cx.beginPath(); cx.moveTo(x - s * .32, y + s * .4); cx.quadraticCurveTo(x - s * .26, y - s * .05, x - s * .12, y - s * .22);
+    cx.quadraticCurveTo(x, y - s * .3, x + s * .13, y - s * .2); cx.quadraticCurveTo(x + s * .2, y - s * .1, x + s * .16, y + s * .02);
+    cx.quadraticCurveTo(x + s * .3, y + s * .2, x + s * .36, y + s * .4); cx.closePath(); cx.fill();
+    cx.strokeStyle = 'rgba(30,20,14,.6)'; cx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) { cx.beginPath(); cx.moveTo(x - s * .1 + i * s * .07, y - s * .26 + Math.abs(i - 1) * s * .02); cx.quadraticCurveTo(x - s * .08 + i * s * .07, y - s * .1, x - s * .12 + i * s * .07, y); cx.stroke(); }
+    cx.strokeStyle = 'rgba(255,210,170,.25)'; cx.beginPath(); cx.moveTo(x - s * .12, y - s * .22); cx.quadraticCurveTo(x, y - s * .3, x + s * .13, y - s * .2); cx.stroke();
+  }
+  function roundRect(x, y, w, h, r) { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + h, r); cx.arcTo(x + w, y + h, x, y + h, r); cx.arcTo(x, y + h, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); }
+  function vignette(a) { const g = cx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .3, W / 2, H / 2, Math.max(W, H) * .75); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${a})`); cx.fillStyle = g; cx.fillRect(0, 0, W, H); }
+
+  // ================================================================ 時間軸
+  let subTimer = 0;
+  function sub(text, whisper) { const el = $('sub'); el.className = 'sub' + (whisper ? ' whisper' : ''); el.textContent = text; el.style.opacity = text ? 1 : 0; }
+  function big(html) { const el = $('big'); el.innerHTML = html || ''; el.style.opacity = html ? 1 : 0; }
+
+  const markEvery = 1.25;
+  const SCENES = [
+    { id: 'title', dur: 5, draw: drawTitle, cues: [
+      [0, () => { big('奧吉吉亞<small>卡呂普索的島</small>'); sea(.12, 500); }], [3.8, () => big('')] ] },
+    { id: 'beach', dur: 4.5 + years * markEvery + 3, draw: drawBeach, init: s => { s.marks = 0; }, cues: [
+      [0, () => sub('她把你留在這裡。你每過一年，就在沙上刻一道。')],
+      ...Array.from({ length: years }, (_, i) => [2.5 + i * markEvery, s => { s.markStart = s.t; sfxScratch(); sub(`第${NUM[i]}年`); }]),
+      [2.5 + years * markEvery + .2, () => sub(years > 7 ? `本該是七年。海神的怒氣，又多留了你${NUM[years - 8]}年。` : '她說：留下來，你就不會老，也不會死。')]
+    ], tick: s => { s.marks = Math.min(years, Math.max(0, (s.t - 2.5) / markEvery + .02)); } },
+    { id: 'reefs', dur: 4 + Math.max(1, lost.length) * 2.4 + 1.5, draw: drawReefs, init: s => { s.shown = 0; s.at = []; }, cues: [
+      [0, () => { sub(lost.length ? '夜裡，你看見他們站在礁石上。' : '夜裡，你望著海上的礁石。'); sea(.08, 380); }],
+      ...(lost.length ? lost.map((name, i) => [3 + i * 2.4, s => { s.shown = i + 1; s.at[i] = s.t; sfxWhisper(); sub('……' + name, true); }])
+        : [[3.2, () => sub('礁石上沒有人。這一次，你沒有讓任何人留在岸上。')]])
+    ] },
+    { id: 'raft', dur: 8.5, draw: drawRaft, init: s => { s.logs = 0; s.mast = false; }, cues: [
+      [0, () => { sub('眾神終於讓她放你走。你砍下樹，一根一根綁成木筏。'); sea(.1, 520); }],
+      ...Array.from({ length: 10 }, (_, i) => [.4 + i * .5, s => { s.logs = i + 1; sfxChop(); }]),
+      [5.6, s => { s.mast = true; sub('她給了你帆布、清水，和一陣順風。'); }]
+    ] },
+    { id: 'storm', dur: 8 + wrath * 1.5, draw: drawStorm, init: s => { s.flash = 0; s.broken = false; }, cues: [
+      [0, () => { sub('第十八天，波塞頓看見了你。'); sea(.4, 1400, .5); }],
+      [1.2, s => strike(s)], [3.6, s => strike(s)],
+      [4.6, () => sub(wrath ? '他記得洞口那一夜。浪把天整個翻了過來。' : '海神沒有忘記他的兒子。浪把天整個翻了過來。')],
+      [5.8, s => { strike(s); s.broken = true; }],
+      ...(wrath >= 2 ? [[7.6, s => strike(s)]] : [])
+    ], tick: s => { s.flash = Math.max(0, s.flash - .05); } },
+    { id: 'ithaca', dur: 9, draw: drawIthaca, cues: [
+      [0, () => { sub(''); sea(.08, 420, 1.5); pad([146.8, 220, 293.7], 8); }],
+      [1, () => sub('你醒在一片沙灘上。手裡還握著雅典娜的小像。')],
+      [5, () => sub('橄欖樹，山的形狀，海灣的口子——這裡是伊薩卡。')]
+    ] }
+  ];
+  function strike(s) { s.flash = 1; s.boltX = .2 + Math.random() * .6; s.boltSeed = (Math.random() * 1e9) | 0; sfxThunder(); }
+  let total = 0; SCENES.forEach(s => { s.start = total; total += s.dur; });
+
+  let state = 'start', T = 0, cur = -1, last = 0;
+  function begin() {
+    if (state !== 'start') return;
+    audio(); $('start').hidden = true; $('skip').hidden = false; state = 'play'; T = 0; last = performance.now();
+  }
+  function skip() {
+    if (state !== 'play') return;
+    finish();
+  }
+  function finish() {
+    state = 'end'; T = total - .01; big(''); sub(''); $('skip').hidden = true;
+    cur = SCENES.length - 1; const sc = SCENES[cur]; sc.t = sc.dur; sc.fired = sc.cues.length;
+    $('endLine').textContent = `離家二十年。最後${NUM[years - 1]}年，你在一座島上數日子。`;
+    $('endNote').textContent = lost.length ? `你沒有忘記：${lost.join('、')}。` : '宮門就在山上。先別讓任何人認出你。';
+    const btns = $('endBtns'); btns.innerHTML = '';
+    const a = document.createElement('a'); a.className = 'btn main'; a.id = 'toBeggar';
+    a.href = S.nextUrl('beggar-gate', '../'); a.textContent = solo ? '去看第三章：門檻上的乞丐' : '走向宮門（Enter）';
+    if (solo) a.href = '../beggar/index.html';
+    else S.save(null, S.advance(save, 'beggar-gate'));
+    btns.appendChild(a);
+    if (solo) { const r = document.createElement('a'); r.className = 'btn'; r.href = '../index.html'; r.textContent = '回首頁'; btns.appendChild(r); }
+    $('end').hidden = false; a.focus();
+    pad([110, 165, 220], 5, .05);
+  }
+
+  function frame(now) {
+    const real = Math.min(.25, (now - last) / 1000); last = now;
+    if (state === 'play') {
+      T += real;
+      if (T >= total) finish();
+    }
+    let idx = state === 'start' ? 0 : SCENES.findIndex(s => T < s.start + s.dur);
+    if (idx < 0) idx = SCENES.length - 1;
+    const sc = SCENES[idx];
+    if (idx !== cur && state === 'play') { cur = idx; sc.fired = 0; sc.t = 0; if (sc.init) sc.init(sc); if (idx > 0) big(''); }
+    if (state === 'start' && sc.t == null) { sc.t = 0; }
+    if (state === 'play') {
+      sc.t = T - sc.start;
+      while (sc.fired < sc.cues.length && sc.cues[sc.fired][0] <= sc.t) sc.cues[sc.fired++][1](sc);
+      if (sc.tick) sc.tick(sc);
+    }
+    // 換場淡入淡出
+    sc.draw(state === 'start' ? now / 1000 : T, sc);
+    const tin = sc.t, tout = sc.dur - sc.t;
+    const fade = state === 'start' ? .35 : state === 'end' ? .55 : 1 - Math.min(1, Math.min(tin, tout) / .6);
+    if (fade > 0) { cx.fillStyle = `rgba(0,0,0,${Math.min(1, fade)})`; cx.fillRect(0, 0, W, H); }
+    requestAnimationFrame(frame);
+  }
+  SCENES[0].t = 0;
+  requestAnimationFrame(t => { last = t; frame(t); });
+
+  $('start').addEventListener('click', e => { e.stopPropagation(); begin(); });
+  $('stage').addEventListener('click', e => { if (e.target.closest('a, button, .end')) return; if (state === 'start') begin(); else skip(); });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); if (state === 'start') begin(); else skip(); }
+    else if (e.code === 'Enter') { if (state === 'start') begin(); else if (state === 'end' && document.activeElement !== $('toBeggar')) $('toBeggar').click(); }
+  });
+  window.__ogygia = { get state() { return state; }, get scene() { return SCENES[Math.max(0, cur)].id; }, seek: t => { T = t; }, total };
+})();
+</script>

@@ -59,6 +59,15 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); margin: 0; font-size: 13px; color: var(--dim);
   text-shadow: 0 1px 4px #000; text-align: center; width: max-content; max-width: calc(100% - 260px);
 }
+.series-line { display: block; font-size: 13px; color: var(--bronze); text-shadow: 0 1px 4px #000; margin-top: 2px; letter-spacing: .04em; }
+.breath {
+  position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
+  border: 1.5px solid rgba(154, 139, 117, .45); box-sizing: border-box; transition: border-color .25s; will-change: transform;
+}
+.breath.win { border-color: rgba(240, 194, 122, .85); }
+.cue { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); margin: 0; font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--blood); text-shadow: 0 1px 6px #000, 0 0 3px #000; opacity: 0; transition: opacity .15s; }
+.cue.on { opacity: 1; }
+.skip { position: absolute; right: var(--gutter-r); bottom: 18px; margin: 0; font-size: 13px; color: var(--dim); text-shadow: 0 1px 4px #000; }
 .hold {
   position: absolute; right: var(--gutter-r); bottom: 18px; width: 96px; height: 96px; border-radius: 50%;
   border: 2px solid var(--bronze); background: rgba(42, 32, 24, .78); color: var(--lamp); font: 500 16px var(--body);
@@ -73,6 +82,8 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .result.win h2 { color: var(--lamp); }
 .result p { margin: 0 0 8px; line-height: 1.6; }
 .result .count { color: var(--dim); font-size: 14px; }
+.result button + button { margin-left: 8px; }
+.result button.alt { background: transparent; color: var(--lamp); border: 1px solid var(--bronze); }
 .result button {
   margin-top: 8px; font: 500 15px var(--body); color: var(--night); background: var(--lamp); border: 0; padding: 8px 18px; border-radius: 3px; cursor: pointer;
 }
@@ -97,8 +108,11 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 <div class="stage" id="stage">
   <canvas id="cv" aria-label="奧德修斯的大廳：十二把斧頭排成一列"></canvas>
   <div class="hud">
-    <div class="top"><span class="title">伊薩卡比箭</span><span class="score" id="score"></span></div>
+    <div class="top"><span><span class="title">伊薩卡比箭</span><span class="series-line" id="seriesLine" hidden></span></span><span class="score" id="score"></span></div>
     <p class="msg" id="msg"></p>
+    <div class="breath" id="breathRing" hidden></div>
+    <p class="cue" id="cue" aria-live="polite"></p>
+    <p class="skip" id="skipHint" hidden>空白鍵跳過</p>
     <div class="stringui panel" id="stringUI" hidden>
       <p id="stringTip">上弦：按住滑鼠，左右移動，讓指針留在亮區</p>
       <div class="bar"><div class="zone"></div><div class="needle" id="needle"></div></div>
@@ -111,7 +125,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       <h2 id="resTitle"></h2>
       <p id="resText"></p>
       <p class="count" id="resCount"></p>
-      <button type="button" id="retryBtn">再來一次（R）</button>
+      <button type="button" id="retryBtn">再來一次（R）</button><button type="button" id="endBtn" class="alt" hidden>走向終局</button>
     </div>
   </div>
 </div>
@@ -119,13 +133,20 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 <div class="below">
   <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠。<br>
   <b>上弦</b>：按住滑鼠左右移動，讓指針待在亮區，直到弓彎滿。<b>射箭</b>：按住拉弓（或空白鍵），放開射出。拉滿後有一小段最穩，撐太久手會抖。<b>R</b>：再來一次。<br>
-  手機上：上弦時手指按住畫面任何地方左右拖；瞄準時手指拖曳畫面，按住右下的圓鈕拉弓。</p>
+  手機上：上弦時手指按住畫面任何地方左右拖；瞄準時手指拖曳畫面，按住右下的圓鈕拉弓。<br>
+  <b>呼吸</b>：拉弓時吸氣，拉滿後呼氣；畫面中間的圈縮到最小、變亮時（呼到底）放箭最穩。
+  <b>起鬨</b>：求婚者會拍桌、噓你、丟骨頭——先看到、聽到，半秒後才撞到你的手，可以搶先放，或等它過去。
+  <b>先看求婚者</b>：看清楚他們的箭釘在孔的哪一邊（空白鍵跳過）。</p>
   <fieldset>
     <legend>實驗開關</legend>
     <label><input type="checkbox" id="optString" checked> 上弦階段</label>
     <label><input type="checkbox" id="optFatigue" checked> 撐久手會抖</label>
     <label><input type="checkbox" id="optGuide"> 彈道輔助線</label>
     <label>斧孔 <select id="optHole"><option value="normal">普通</option><option value="easy">寬鬆</option><option value="hard">嚴格</option></select></label>
+    <label><input type="checkbox" id="optBreath" checked> 呼吸判定</label>
+    <label><input type="checkbox" id="optHeckle" checked> 起鬨干擾</label>
+    <label><input type="checkbox" id="optWatch" checked> 先看求婚者失敗（斧列偏一點）</label>
+    <label title="在大廳裡忍下的羞辱：越多，手越穩、越不怕起鬨">帳 <select id="optLedger"><option value="0">0</option><option value="3">3</option><option value="6">6</option><option value="10">10</option><option value="15">15</option></select></label>
   </fieldset>
   <p class="note">改開關會從頭開始比試。</p>
 </div>
@@ -141,8 +162,24 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     score: $('score'), msg: $('msg'), stringUI: $('stringUI'), stringTip: $('stringTip'), needle: $('needle'), tension: $('tensionBar'),
     drawUI: $('drawUI'), drawLabel: $('drawLabel'), power: $('powerBar'), hint: $('hint'), hold: $('holdBtn'),
     result: $('result'), resTitle: $('resTitle'), resText: $('resText'), resCount: $('resCount'), retry: $('retryBtn'),
+    end: $('endBtn'), seriesLine: $('seriesLine'), breath: $('breathRing'), cue: $('cue'), skip: $('skipHint'),
   };
-  const opt = { string: $('optString'), fatigue: $('optFatigue'), guide: $('optGuide'), hole: $('optHole') };
+  const opt = { string: $('optString'), fatigue: $('optFatigue'), guide: $('optGuide'), hole: $('optHole'),
+                breath: $('optBreath'), heckle: $('optHeckle'), watch: $('optWatch'), ledger: $('optLedger') };
+
+  // ---------------------------------------------------------------- 系列模式（網址帶 ?series=1、存檔讀得到）
+  // 讀不到就和單獨遊玩完全一樣。規則（讀、合併寫入）在 rules.js 的 readSeries / writeSeries。
+  function store() { try { return window.localStorage; } catch (e) { return null; } }
+  const series = R.readSeries(location.search, store());
+  let record = null;            // 這場比試的最好紀錄 { win, passed }
+  if (series.on) {
+    const v = String(series.ledger);
+    if (![...opt.ledger.options].some(o => o.value === v)) opt.ledger.add(new Option(v, v));
+    opt.ledger.value = v; opt.ledger.disabled = true;
+    ui.seriesLine.textContent = `你在大廳裡忍下了 ${series.ledger} 次羞辱`;
+    ui.seriesLine.hidden = false;
+    ui.end.hidden = false;
+  }
   const DEBUG = /(^|[?#&])debug\b/.test(location.search + location.hash);
   const NOLOCK = DEBUG && /nolock/.test(location.search + location.hash);   // 測試用：不鎖滑鼠
   if (!window.THREE) { ui.msg.textContent = '畫面無法載入。'; return; }
@@ -208,7 +245,32 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     },
     win() { if (!audio()) return; const t = ac.currentTime + .3; [392, 523, 659].forEach((f, i) => osc('sine', f, t + i * .2, 1.6, .06)); },
     crackle() { if (!ac) return; noise(ac.currentTime, .02 + Math.random() * .03, .03 + Math.random() * .04, 'highpass', 1500 + Math.random() * 2000); },
+    // 起鬨：預告（半秒前）與撞上
+    cue(kind) {
+      if (!audio()) return; const t = ac.currentTime;
+      if (kind === 'pound') { noise(t, .35, .12, 'bandpass', 380, 3); osc('sawtooth', 120, t, .3, .03, 90); }   // 椅子刮地、有人站起來
+      else if (kind === 'jeer') { const f = noise(t, .5, .1, 'bandpass', 2500, 4); f.frequency.setValueAtTime(1800, t); f.frequency.exponentialRampToValueAtTime(3600, t + .45); }  // 噓聲漸強
+      else { const f = noise(t, .5, .14, 'bandpass', 500, 2); f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(1400, t + .48); }  // 有東西飛過來
+    },
+    hit(kind) {
+      if (!audio()) return; const t = ac.currentTime;
+      if (kind === 'pound') { for (let i = 0; i < 2; i++) { noise(t + i * .16, .22, .5, 'lowpass', 220); osc('sine', 70, t + i * .16, .2, .2, 45); } osc('sine', 1300, t + .02, .4, .02, 1250); }
+      else if (kind === 'jeer') { noise(t, .5, .18, 'bandpass', 3000, 3); this.laugh(); }
+      else { for (let i = 0; i < 5; i++) { const k = t + i * (.07 + Math.random() * .05); osc('square', 900 + Math.random() * 600, k, .05, .05, 500); noise(k, .04, .2, 'highpass', 2500); } }
+    },
   };
+  // 呼吸聲：一條一直在跑的濾波噪音，音量跟著肺量的變化（吸氣高一點、呼氣低一點）
+  let breathSnd = null;
+  function setBreath(level, inhale) {
+    if (!ac) return;
+    if (!breathSnd) {
+      const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+      s.buffer = noiseBuf; s.loop = true; f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.value = 700; g.gain.value = 0;
+      s.connect(f).connect(g).connect(master); s.start(); breathSnd = { g, f };
+    }
+    breathSnd.g.gain.setTargetAtTime(level * .09, ac.currentTime, .08);
+    breathSnd.f.frequency.setTargetAtTime(inhale ? 1100 : 520, ac.currentTime, .15);
+  }
   function setCreak(level) {
     if (!ac) return;
     if (!creak) {
@@ -341,7 +403,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   // ---------------------------------------------------------------- 斧頭
   const axeGroup = new THREE.Group(); scene.add(axeGroup);
   let axes = [];
-  function buildAxes(diff) {
+  function buildAxes(diff, offset) {
     axeGroup.children.slice().forEach(o => { axeGroup.remove(o); o.traverse(m => { if (m.geometry) m.geometry.dispose(); }); });
     axes = [];
     const r = R.holeRadius(diff), R0 = r + .065, bw = T.plateHalf - .02, bh = .17;
@@ -361,11 +423,11 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     headGeo.translate(0, 0, -.011);
     const rimGeo = new THREE.TorusGeometry(r + .004, .009, 8, 48);
     const haftLen = H - R0 + .02;
-    R.axePositions().forEach((p, i) => {
+    R.axePositions(offset).forEach((p, i) => {
       const g = new THREE.Group(); g.position.set(p.x, 0, p.z);
-      const head = new THREE.Mesh(headGeo, M.bronze); head.position.y = H; g.add(head);
+      const head = new THREE.Mesh(headGeo, M.bronze); head.position.y = p.y; g.add(head);
       const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9a35a, metalness: .5, roughness: .3, emissive: 0xffc070, emissiveIntensity: 0 });
-      const rim = new THREE.Mesh(rimGeo, rimMat); rim.position.y = H; g.add(rim);
+      const rim = new THREE.Mesh(rimGeo, rimMat); rim.position.y = p.y; g.add(rim);
       const haft = cyl(.022, .026, haftLen, M.haft, 8); haft.position.y = haftLen / 2 - .05; g.add(haft);
       axeGroup.add(g);
       axes.push({ g, rimMat, lit: 0 });
@@ -437,6 +499,37 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   const worldArrow = makeArrow(1); worldArrow.visible = false; scene.add(worldArrow);
   // 箭頭朝 -z：用 lookAt 時要讓 -z 對準速度方向
   const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
+  function placeArrow(obj, shot, t, sink) {
+    const p = R.positionAt(shot, t), v = R.velocityAt(shot, t), sp = Math.hypot(v.x, v.y, v.z) || 1;
+    const k = (sink || 0) / sp;
+    obj.position.set(p.x + v.x * k, p.y + v.y * k, p.z + v.z * k);
+    tmpV.set(obj.position.x - v.x, obj.position.y - v.y, obj.position.z - v.z); obj.lookAt(tmpV);
+  }
+
+  // ---------------------------------------------------------------- 先看求婚者：站上門檻試弓的人、他們釘在斧頭上的箭
+  const SHOOTER_CLOAK = { leodes: 0x8a7a5a, eury: 0x6b2a3a, anti: 0x5c1e1e };
+  const sBowGeo = new THREE.TorusGeometry(.42, .012, 6, 24, Math.PI * .9), sBowM = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: .5 });
+  const shooters = {};
+  for (const id in SHOOTER_CLOAK) {
+    const p = person(SHOOTER_CLOAK[id], true);
+    p.g.position.set(-.85, 0, -2.3); p.g.rotation.y = .3; p.g.visible = false; scene.add(p.g);
+    const b = new THREE.Mesh(sBowGeo, sBowM); b.position.set(.05, 1.25, -.35); b.rotation.set(0, Math.PI / 2, Math.PI / 2 + Math.PI * .05); p.g.add(b);
+    shooters[id] = p;
+  }
+  const suitorArrow = makeArrow(1); suitorArrow.visible = false; scene.add(suitorArrow);
+  const stuckGroup = new THREE.Group(); scene.add(stuckGroup);
+  function clearStuck() { stuckGroup.children.slice().forEach(o => stuckGroup.remove(o)); }
+  function stickArrow(b) {
+    if (b.stuck) return; b.stuck = true;
+    const a = makeArrow(1); placeArrow(a, b.shot, b.res.stop.t, .05); stuckGroup.add(a);
+  }
+
+  // 起鬨丟過來的骨頭
+  const bone = new THREE.Group(); bone.visible = false; scene.add(bone);
+  { const bm = new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: .8 });
+    const shaft = cyl(.018, .018, .22, bm, 6); shaft.rotation.z = Math.PI / 2; bone.add(shaft);
+    for (const sx of [-1, 1]) { const k = new THREE.Mesh(new THREE.SphereGeometry(.03, 8, 6), bm); k.position.x = sx * .11; bone.add(k); } }
+  const boneFly = { on: false, t: 0, dur: .5, from: new THREE.Vector3(), to: new THREE.Vector3() };
 
   // 彈道輔助線
   // 箭到每一把斧頭時的位置畫成小點：點都落在孔裡就會過
@@ -525,24 +618,37 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   let pendingEnd = null;        // 結果出來後，等一下再讓求婚者笑、跳出結果面板
   let resultShowAt = 0;
   // 送進 stepRound 的輸入：stringDx 以指針單位累計，look 以弧度累計
-  const input = { down: false, stringDx: 0, look: { yaw: 0, pitch: 0 } };
+  const input = { down: false, stringDx: 0, look: { yaw: 0, pitch: 0 }, skip: false };
   let locked = false, touchUI = false;
 
   function diff() { return opt.hole.value; }
+  function roundOptions() {
+    return { difficulty: diff(), stringPhase: opt.string.checked, fatigue: opt.fatigue.checked,
+             breath: opt.breath.checked, heckle: opt.heckle.checked, watch: opt.watch.checked,
+             ledger: Number(opt.ledger.value) || 0, knowers: series.on ? series.knowers : null };
+  }
   function newRound(full) {
-    if (full) { attempts = 0; best = 0; buildAxes(diff()); }
-    round = R.createRound({ difficulty: diff(), stringPhase: opt.string.checked, fatigue: opt.fatigue.checked },
-                          Math.random, { strungOnce: !full && round ? round.strungOnce : false });
+    const prev = !full && round ? { strungOnce: round.strungOnce, watched: round.watched, axeOffset: round.axeOffset } : {};
+    round = R.createRound(roundOptions(), Math.random, prev);
+    if (full) { attempts = 0; best = 0; buildAxes(diff(), round.axeOffset); clearStuck(); }
+    // 同一場比試重來：求婚者的箭還釘在斧頭上
     resultAt = 0; flightDoneAt = 0; pendingEnd = null; resultShowAt = 0;
-    input.down = false; input.stringDx = 0; input.look.yaw = input.look.pitch = 0;
+    input.down = false; input.stringDx = 0; input.look.yaw = input.look.pitch = 0; input.skip = false;
+    for (const id in shooters) shooters[id].g.visible = false;
+    suitorArrow.visible = false; bone.visible = false; boneFly.on = false; cueTimer = 0; ui.cue.classList.remove('on');
+    suitors.forEach(p => { p.stand = 0; });
     holdT.id = null; touch.id = null; touch.pressed = false; ui.hold.classList.remove('on');
     axes.forEach(a => { a.lit = 0; });
     worldArrow.visible = false;
     ui.result.hidden = true;
-    say(round.intro);
-    setCreak(0);
+    // 系列模式：開場說一次帳和知情的人（有求婚者那段的話，等那段結束再說）
+    seriesIntro = full && series.on ? [`你在大廳裡忍下了 ${series.ledger} 次羞辱。`, ...round.knowerLines].join('') : '';
+    if (round.phase !== 'watch') { say(seriesIntro + round.intro, seriesIntro ? 8 : 5); seriesIntro = ''; }
+    setCreak(0); setBreath(0);
     refreshHud();
   }
+  let cueTimer = 0, seriesIntro = '';
+  function cue(text, sec) { ui.cue.textContent = text; ui.cue.classList.add('on'); cueTimer = sec; }
   let msgTimer = 0;
   function say(text, hold) { ui.msg.textContent = text; ui.msg.style.opacity = 1; msgTimer = hold || 5; }
 
@@ -552,12 +658,16 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     ui.score.textContent = `第 ${attempts + (round.flight ? 0 : 1)} 箭　最好 ${best} / 12`;
     ui.stringUI.hidden = ph !== 'string';
     ui.drawUI.hidden = ph !== 'aim';
+    ui.breath.hidden = ph !== 'aim' || !round.breath;
+    ui.skip.hidden = ph !== 'watch';
+    ui.skip.textContent = touchUI ? '點一下畫面跳過' : '空白鍵跳過';
     // 上弦時手指直接在畫面上拖，不用圓鈕
     ui.hold.hidden = !touchUI || ph !== 'aim';
     ui.hold.textContent = '拉弓';
     ui.stringTip.textContent = touchUI ? '上弦：手指按住畫面左右拖，讓指針留在亮區' : '上弦：按住滑鼠，左右移動，讓指針留在亮區';
     let hint = '';
-    if (ph === 'string' || ph === 'aim') {
+    if (ph === 'watch') hint = '';
+    else if (ph === 'string' || ph === 'aim') {
       if (!touchUI && !locked) hint = '點一下畫面鎖住滑鼠（Esc 放開）';
       else if (ph === 'aim') hint = touchUI ? '拖曳瞄準，按住圓鈕拉弓，放開射出' : '按住拉弓，放開射出';
     }
@@ -571,7 +681,8 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     ui.resTitle.textContent = r.title; ui.resText.textContent = r.text;
     ui.resCount.textContent = round.flight ? `穿過 ${r.passed} / 12 個孔　最好 ${best} / 12` : '';
     resultAt = time;
-    input.down = false; setCreak(0);
+    input.down = false; setCreak(0); setBreath(0);
+    if (series.on) { record = R.bowRecord(record, r); R.writeSeries(store(), record); }
     if (!r.win) { suitors.forEach(s => { s.laugh = 1; }); sfx.laugh(); }
     else sfx.win();
     if (document.pointerLockElement) document.exitPointerLock();
@@ -582,7 +693,33 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
   function onEvents(evs) {
     for (const e of evs) {
-      if (e.type === 'strung') { setCreak(0); sfx.swallow(); sfx.thunder(); say(e.text, 6); refreshHud(); }
+      if (e.type === 'beat') {
+        const b = e.beat;
+        for (const id in shooters) shooters[id].g.visible = id === b.id;
+        say(b.text, 9);
+        if (b.id === 'leodes') { sfx.slip(); setTimeout(() => sfx.laugh(), 1400); }
+      }
+      else if (e.type === 'suitorFire') { sfx.twang(); suitorArrow.visible = true; }
+      else if (e.type === 'suitorStop') {
+        stickArrow(e.beat); suitorArrow.visible = false; sfx.thunk();
+        if (!round.watch.skipped && !input.skip) say(e.text, 4);
+      }
+      else if (e.type === 'watchEnd') {
+        for (const id in shooters) shooters[id].g.visible = false;
+        round.watch.beats.forEach(b => { if (b.shoot) stickArrow(b); });
+        say((e.summary ? e.summary : '') + seriesIntro + e.text, seriesIntro ? 9 : 7); seriesIntro = ''; refreshHud();
+      }
+      else if (e.type === 'heckleCue') {
+        const p = suitors[e.who % suitors.length]; p.stand = 1;
+        cue(e.label + '——', .9); sfx.cue(e.kind);
+        if (e.kind === 'bone') {
+          boneFly.on = true; boneFly.t = 0; boneFly.dur = e.lead;
+          p.g.getWorldPosition(boneFly.from); boneFly.from.y = 1.4;
+          boneFly.to.set((Math.random() - .5) * .8, .05, -.6 - Math.random() * .5); bone.visible = true;
+        }
+      }
+      else if (e.type === 'heckleHit') { sfx.hit(e.kind); const p = suitors[e.who % suitors.length]; p.laugh = Math.max(p.laugh, .8); }
+      else if (e.type === 'strung') { setCreak(0); sfx.swallow(); sfx.thunder(); say(e.text, 6); refreshHud(); }
       else if (e.type === 'slip') sfx.slip();
       else if (e.type === 'cancel') say(e.text);
       else if (e.type === 'fire') { attempts++; sfx.twang(); worldArrow.visible = true; guide.visible = false; refreshHud(); }
@@ -597,6 +734,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
   function press() {
     audio();
+    if (round.phase === 'watch') { input.skip = true; return; }
     if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); return; }
     if (round.phase === 'flight') return;
     input.down = true;
@@ -621,10 +759,12 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       audio();
       if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); }
+      else if (round.phase === 'watch') input.skip = true;
       else if (round.phase === 'string') { press(); touch.pressed = input.down; }    // 上弦：在畫面任何地方按住拖
       refreshHud(); return;
     }
     if (e.button !== 0) return;
+    if (round.phase === 'watch') { input.skip = true; return; }
     if (!locked && !NOLOCK && cv.requestPointerLock && !round.result) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
     press();
   });
@@ -675,6 +815,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   });
   window.addEventListener('keyup', e => { if (e.code === 'Space') release(); });
   ui.retry.addEventListener('click', () => { audio(); newRound(false); });
+  ui.end.addEventListener('click', () => { location.href = '../ending/index.html'; });   // 打包後 bow/ 和 ending/ 是同層資料夾
   for (const k in opt) opt[k].addEventListener('change', () => { if (k === 'guide') return; newRound(true); });
 
   function resize() {
@@ -687,6 +828,35 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   }
   new ResizeObserver(resize).observe(stage); resize();
 
+  // 看求婚者的鏡頭：從你的凳子看過去；箭飛的時候跟著箭；釘住之後走到那把斧頭前面，看箭釘在孔的哪一邊
+  // （從凳子看，第一把斧頭會擋住後面的斧面）
+  const SEAT = new THREE.Vector3(0, H, 0);
+  const watchTgt = new THREE.Vector3(), watchTgtPos = new THREE.Vector3();
+  const watchLook = new THREE.Vector3(-.25, H - .1, -7), watchPos = SEAT.clone();
+  let watchFov = 36;
+  function updateWatchCam(dt) {
+    const w = round.watch, b = w.beats[Math.max(0, w.i - 1)];
+    let tf = 36, k = Math.min(1, dt * 3);
+    watchTgt.set(-.25, H - .1, -7); watchTgtPos.copy(SEAT);
+    suitorArrow.visible = false;
+    if (b && b.shoot && w.t >= b.fireAt) {
+      if (w.t < b.stopAt) {
+        const at = Math.min(b.res.endT, (w.t - b.fireAt) * T.watch.flightScale);
+        placeArrow(suitorArrow, b.shot, at); suitorArrow.visible = true;
+        const p = R.positionAt(b.shot, at); watchTgt.set(p.x, p.y, p.z - 3); tf = 24;
+      } else {
+        const z = R.axeZ(b.res.stop.axe), ox = round.axeOffset.x, sg = ox >= 0 ? 1 : -1;
+        watchTgt.set(ox - .03 * sg, H - .03, z);
+        watchTgtPos.set(ox + .18 * sg, H + .14, z + .62); tf = 52; k = Math.min(1, dt * 4);
+      }
+    }
+    if (b && shooters[b.id]) {
+      const sh = shooters[b.id], straining = !b.shoot || w.t < b.fireAt;
+      sh.body.rotation.z = straining ? Math.sin(time * 26) * .03 : 0;
+      sh.body.rotation.x = straining ? -.1 - .05 * Math.sin(time * 3) : 0;
+    }
+    watchLook.lerp(watchTgt, k); watchPos.lerp(watchTgtPos, k); watchFov += (tf - watchFov) * k;
+  }
   // ================================================================ 更新
   const easeOut = x => 1 - (1 - x) * (1 - x);
   let poseT = 0;
@@ -696,28 +866,42 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     if (resultShowAt && time >= resultShowAt) { resultShowAt = 0; ui.result.hidden = false; refreshHud(); }
     if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) ui.msg.style.opacity = 0; }
 
-    const evs = R.stepRound(round, dt, { down: input.down, stringDx: input.stringDx, look: input.look });
+    const evs = R.stepRound(round, dt, { down: input.down, stringDx: input.stringDx, look: input.look, skip: input.skip });
     input.stringDx = 0; input.look.yaw = input.look.pitch = 0;
     onEvents(evs);
+    input.skip = false;
+    if (cueTimer > 0) { cueTimer -= dt; if (cueTimer <= 0) ui.cue.classList.remove('on'); }
+    if (boneFly.on) {
+      boneFly.t += dt; const u = Math.min(1, boneFly.t / boneFly.dur);
+      bone.position.lerpVectors(boneFly.from, boneFly.to, u); bone.position.y += Math.sin(u * Math.PI) * .6;
+      bone.rotation.set(u * 9, u * 5, 0);
+      if (u >= 1) { boneFly.on = false; }
+    }
 
     const ph = round.phase, d = round.draw, f = round.flight;
+    if (ph === 'watch') updateWatchCam(dt);
     if (ph === 'string') setCreak(input.down ? .3 + round.str.tension * .7 : 0);
     else if (ph === 'aim') setCreak(d.drawing && d.power < 1 ? .4 : 0);
+    if (ph === 'aim' && round.breath) {
+      const dl = d.lung - (d.prevLung === undefined ? d.lung : d.prevLung); d.prevLung = d.lung;
+      setBreath(Math.min(1, Math.abs(dl) / dt * .7), dl > 0);
+    } else setBreath(0);
 
     // 視角：拉弓時視線集中（拉近）
     let targetFov = 55;
     if (ph === 'aim') targetFov = 55 - 37 * easeOut(d.drawing ? d.power : 0);
     if (f) targetFov = 50;
     fov += (targetFov - fov) * Math.min(1, dt * (f ? 3 : 8));
-    poseT += ((ph === 'string' ? 0 : 1) - poseT) * Math.min(1, dt * 4);
+    poseT += ((ph === 'string' || ph === 'watch' ? 0 : 1) - poseT) * Math.min(1, dt * 4);
 
     // 斧孔發光、求婚者
     axes.forEach(a => { a.rimMat.emissiveIntensity = a.lit * 2.2; a.lit = Math.max(f && f.res.win && f.done ? .35 : 0, a.lit - dt * .35); });
     suitors.forEach(p => {
       p.laugh = Math.max(0, p.laugh - dt * .3);
+      p.stand = Math.max(0, (p.stand || 0) - dt * .5);
       const l = p.laugh, b = Math.abs(Math.sin(time * p.rate + p.ph));
       p.headG.rotation.x = -.45 * l * b + Math.sin(time * .7 + p.ph) * .04;
-      p.body.position.y = p.seatY + .03 * l * b;
+      p.body.position.y = p.seatY + .03 * l * b + .3 * Math.min(1, p.stand * 1.6);   // 起鬨的人站起來
       p.body.rotation.x = -.12 * l;
     });
     flames.forEach(fl => {
@@ -735,7 +919,11 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     camera.fov = fov; camera.updateProjectionMatrix();
 
     const winView = f && f.done && f.res.win && time - flightDoneAt > .35;
-    if (winView) {
+    if (ph === 'watch') {
+      // 鏡頭在 update() 的 updateWatchCam 算好；這裡只套用
+      camera.position.copy(watchPos); camera.lookAt(watchLook);
+      camera.fov = watchFov; camera.updateProjectionMatrix();
+    } else if (winView) {
       // 射穿之後切回奧德修斯的眼睛：十二個亮起的孔排成一線
       camera.position.set(0, H, 0);
       camera.rotation.set(aim.pitch * .3, 0, 0, 'YXZ');
@@ -775,7 +963,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
     renderer.clear();
     renderer.render(scene, camera);
-    if (!f) { renderer.clearDepth(); renderer.render(vScene, vCam); }
+    if (!f && ph !== 'watch') { renderer.clearDepth(); renderer.render(vScene, vCam); }
 
     // HUD
     if (ph === 'string') {
@@ -788,7 +976,13 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       const shake = d.stage === 'tremble';
       ui.power.style.width = (d.power * 100) + '%';
       ui.power.className = d.stage === 'steady' ? 'steady' : shake ? 'shake' : '';
-      ui.drawLabel.textContent = !d.drawing ? '拉弓' : d.stage === 'drawing' ? '拉弓…' : d.stage === 'settling' ? '拉滿了，穩住…' : d.stage === 'steady' ? '最穩的時候' : '手在抖';
+      ui.drawLabel.textContent = !d.drawing ? '拉弓' : d.stage === 'drawing' ? (round.breath ? '拉弓，吸氣…' : '拉弓…')
+        : d.stage === 'settling' ? (round.breath ? '拉滿了，呼氣…' : '拉滿了，穩住…')
+        : d.stage === 'steady' ? (round.breath && d.breathWin ? '呼到底——最穩' : '最穩的時候') : '手在抖';
+      if (round.breath) {
+        ui.breath.style.transform = `scale(${(.55 + .9 * d.lung).toFixed(3)})`;
+        ui.breath.classList.toggle('win', d.breathWin);
+      }
     }
   }
 
@@ -812,15 +1006,18 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       // 固定步長推進遊戲時間（慢機器上測試用）
       advance(sec) { for (let t = 0; t < sec - 1e-9; t += 1 / 60) update(1 / 60); render(1 / 60); return round.phase; },
       pause(on) { paused = !!on; },
+      skipWatch() { if (round.phase === 'watch') onEvents(R.stepRound(round, 0, { skip: true })); return round.phase; },
+      get series() { return series; },
       skipString() { if (round.phase === 'string') { round.str.tension = 1; round.str.done = true; round.phase = 'aim'; round.strungOnce = true; refreshHud(); } },
-      window(power) { return R.solveWindow(power === undefined ? 1 : power, diff()); },
+      window(power) { return R.solveWindow(power === undefined ? 1 : power, diff(), { offset: round.axeOffset }); },
       perfectShot() {
-        const w = R.solveWindow(1, diff());
+        if (round.phase === 'watch') onEvents(R.stepRound(round, 0, { skip: true }));
+        const w = R.solveWindow(1, diff(), { offset: round.axeOffset });
         round.phase = 'aim'; round.strungOnce = true;
         round.aim.yaw = w.yawMid; round.aim.pitch = w.pitchMid;
         return debugFire(1);
       },
-      shoot(yaw, pitch, power) { round.phase = 'aim'; round.aim.yaw = yaw; round.aim.pitch = pitch; return debugFire(power); },
+      shoot(yaw, pitch, power) { if (round.phase === 'watch') onEvents(R.stepRound(round, 0, { skip: true })); round.phase = 'aim'; round.aim.yaw = yaw; round.aim.pitch = pitch; return debugFire(power); },
     };
   }
 })();

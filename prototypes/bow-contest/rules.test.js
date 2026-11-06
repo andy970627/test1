@@ -233,3 +233,262 @@ test('一輪：沒過的結果說明原因', () => {
   assert.equal(r.result.reason, 'short');
   assert.match(r.result.text, /弓沒拉滿/);
 });
+
+// ---------------------------------------------------------------- 系列模式：帳 → 手穩
+test('帳的晃動倍率：max(0.6, 1 − 0.04 × 帳)；亂填當 0', () => {
+  assert.equal(R.ledgerSwayMul(0), 1);
+  assert.ok(Math.abs(R.ledgerSwayMul(5) - 0.8) < 1e-12);
+  assert.ok(Math.abs(R.ledgerSwayMul(10) - 0.6) < 1e-12);
+  assert.equal(R.ledgerSwayMul(30), 0.6);
+  assert.equal(R.ledgerSwayMul(-3), 1);
+  assert.equal(R.ledgerSwayMul('壞'), 1);
+  // 同一個亂數種子：帳 10 的晃動正好是帳 0 的 0.6 倍
+  const rms = mul => {
+    const s = R.createDrawState(R.createRng(9)); let sum = 0, n = 0;
+    for (let i = 0; i < 180; i++) { R.stepDraw(s, DT, { down: true, swayMul: mul }); sum += s.sway.yaw ** 2 + s.sway.pitch ** 2; n++; }
+    return Math.sqrt(sum / n);
+  };
+  assert.ok(Math.abs(rms(0.6) / rms(1) - 0.6) < 1e-9);
+  const r = R.createRound({ stringPhase: false, ledger: 10 }, R.createRng(1));
+  assert.ok(Math.abs(r.swayMul - 0.6) < 1e-12);
+});
+
+// ---------------------------------------------------------------- 起鬨
+test('起鬨：先預告、lead 秒後才推手；尖峰大小隨帳變小（有下限）', () => {
+  const K = R.TUNING.heckle;
+  assert.equal(R.heckleScale(0), 1);
+  assert.ok(R.heckleScale(5) < R.heckleScale(0) && R.heckleScale(10) < R.heckleScale(5));
+  assert.equal(R.heckleScale(100), K.minScale);
+  // 一次起鬨的尖峰：和 heckleScale 成正比
+  const peak = scale => {
+    const h = R.createHeckleState();
+    let ev = R.stepHeckle(h, DT, true, true, () => 0, 1);   // rng 0：一定起鬨、第一次在 firstMin
+    let cueT = null, hitT = null, max = 0;
+    for (let i = 0; i < 60 * 6; i++) {
+      ev = R.stepHeckle(h, DT, true, false, () => 0, 1);
+      for (const e of ev) { if (e.type === 'heckleCue' && cueT === null) cueT = h.t; if (e.type === 'heckleHit' && hitT === null) hitT = h.t; }
+      const o = R.heckleOffset(h, scale);
+      if (hitT === null) assert.equal(Math.hypot(o.yaw, o.pitch), 0, '預告期間不能推手');
+      max = Math.max(max, Math.hypot(o.yaw, o.pitch));
+    }
+    assert.ok(cueT !== null && hitT !== null);
+    assert.ok(Math.abs(hitT - cueT - K.lead) < DT * 1.5, `lead ${hitT - cueT}`);
+    assert.ok(cueT >= K.firstMin - DT && cueT <= K.firstMax + DT);
+    return max;
+  };
+  const p0 = peak(R.heckleScale(0)), p10 = peak(R.heckleScale(10));
+  assert.ok(Math.abs(p10 / p0 - R.heckleScale(10)) < 1e-9);
+  assert.ok(p0 > 0.006, `帳 0 的尖峰要大到推出瞄準窗：${p0}`);
+});
+
+test('起鬨：不拉弓就不起鬨；拉弓中的尖峰真的會讓窗中心的箭失手，等它過去就沒事', () => {
+  const run = (opts, policy) => {
+    let wins = 0;
+    for (let seed = 1; seed <= 120; seed++) {
+      const r = R.createRound(Object.assign({ stringPhase: false, difficulty: 'normal', heckle: true }, opts), R.createRng(seed));
+      const w = R.solveWindow(1, 'normal', { step: 0.0001 }); r.aim.yaw = w.yawMid; r.aim.pitch = w.pitchMid;
+      for (let k = 0; k < 60 * 12 && r.phase === 'aim'; k++) R.stepRound(r, DT, { down: !(r.draw.power >= 1 && policy(r)) });
+      if (r.flight && r.flight.res.win) wins++;
+    }
+    return wins;
+  };
+  const blind = r => r.draw.fullTime >= 1.8;
+  const patient = r => {   // 看到預告就等，等尖峰退了再放
+    const h = r.heckle, busy = h.list.some(e => h.t >= e.cueAt && h.t < e.hitAt + 1.0);
+    return r.draw.fullTime >= 0.8 && !busy;
+  };
+  const b0 = run({ ledger: 0 }, blind), b10 = run({ ledger: 10 }, blind), p0 = run({ ledger: 0 }, patient);
+  assert.ok(b0 < 110, `帳 0 不看預告：${b0}/120`);
+  assert.ok(b10 > b0, `帳多手穩：${b10} > ${b0}`);
+  assert.ok(p0 >= 117, `會等的人：${p0}/120`);
+  const idle = R.createRound({ stringPhase: false, heckle: true }, R.createRng(3));
+  const ev = []; for (let i = 0; i < 600; i++) ev.push(...R.stepRound(idle, DT, { down: false }));
+  assert.equal(ev.filter(e => e.type === 'heckleCue').length, 0);
+});
+
+test('知情的人：忒勒馬科斯知道 → 起鬨機率變低', () => {
+  assert.equal(R.knowersEffect(null).heckleChance, R.TUNING.heckle.chance);
+  assert.ok(R.knowersEffect({ tele: 'knows' }).heckleChance < R.knowersEffect({ tele: 'suspects' }).heckleChance);
+  assert.ok(R.knowersEffect({ tele: 'suspects' }).heckleChance < R.TUNING.heckle.chance);
+  assert.equal(R.knowersEffect({ eum: 'knows', pen: 'knows' }).lines.length, 2);
+});
+
+// ---------------------------------------------------------------- 呼吸
+test('呼吸：一個循環 3.5 秒；從拉弓起算，拉滿時吸滿，拉滿後 0.9 … 2.5 秒是呼氣窗（和最穩重疊）', () => {
+  const B = R.TUNING.breath;
+  assert.equal(B.period, 3.5);
+  assert.ok(R.breathLung(B.inhale) > 0.99);
+  assert.equal(R.breathLung(B.inhale + B.exhale + 0.1), 0);
+  assert.equal(R.inBreathWindow(0.05), false);                 // 吸氣開頭肺量也低，但不算
+  assert.equal(R.inBreathWindow(B.period - 0.01), true);
+  const s = R.createDrawState(R.createRng(2)), win = [];
+  for (let i = 0; i < 60 * 5; i++) { R.stepDraw(s, DT, { down: true, breath: true }); if (s.power >= 1) win.push([s.fullTime, s.breathWin]); }
+  for (const [ft, w] of win) {
+    if (ft > 0.95 && ft < 2.45) assert.equal(w, true, `拉滿後 ${ft.toFixed(2)} 秒應在窗裡`);
+    if (ft < 0.6 || (ft > 2.55 && ft < 3.4)) assert.equal(w, false, `拉滿後 ${ft.toFixed(2)} 秒不該在窗裡`);
+  }
+  // 呼吸開時，最穩延到 2.5 秒才開始累
+  assert.equal(R.swayAmplitude(true, 1, 2.3, true, B.steadyEnd).stage, 'steady');
+  assert.equal(R.swayAmplitude(true, 1, 2.3, true).stage, 'tremble');
+});
+
+test('呼吸：呼氣窗裡晃得最少；在窗裡放箭比吸滿時放更穩', () => {
+  // 同樣在「最穩」階段比：窗裡（拉滿後 1.0 … 2.4）對上關掉呼吸的同一段
+  const rms = (breath, from, to) => {
+    let sum = 0, n = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = R.createDrawState(R.createRng(seed));
+      for (let i = 0; i < 60 * 4; i++) {
+        R.stepDraw(s, DT, { down: true, breath, fatigue: false });
+        if (s.power >= 1 && s.fullTime >= from && s.fullTime < to) { sum += s.sway.yaw ** 2 + s.sway.pitch ** 2; n++; }
+      }
+    }
+    return Math.sqrt(sum / n);
+  };
+  const inWin = rms(true, 1.0, 2.4), off = rms(false, 1.0, 2.4), early = rms(true, 0, 0.2);
+  assert.ok(inWin < off * 0.7, `窗裡 ${inWin} 關掉呼吸 ${off}`);
+  assert.ok(early > inWin * 2, `剛拉滿（還吸著）${early}`);
+  // 嚴格難度：拉滿就放（吸滿）對上在窗裡放
+  const rate = when => {
+    let wins = 0; const w = R.solveWindow(1, 'hard');
+    for (let seed = 1; seed <= 150; seed++) {
+      const s = R.createDrawState(R.createRng(seed));
+      while (!(s.power >= 1 && when(s))) R.stepDraw(s, DT, { down: true, breath: true });
+      const rel = R.releaseDraw(s);
+      if (R.simulate(R.makeShot({ yaw: w.yawMid, pitch: w.pitchMid, power: rel.power, sway: rel.sway }), 'hard').win) wins++;
+    }
+    return wins;
+  };
+  const atInhale = rate(s => true), inWindow = rate(s => s.breathWin && s.fullTime >= 1.0);
+  assert.ok(inWindow > atInhale + 20, `窗裡 ${inWindow} 吸滿 ${atInhale}`);
+});
+
+// ---------------------------------------------------------------- 先看求婚者、斧列偏移
+test('斧列偏移：求婚者的箭釘在孔的哪一邊，就能推回斧列偏向（每種難度、每個種子都一致）', () => {
+  for (const d of ['easy', 'normal', 'hard']) {
+    const r = R.holeRadius(d);
+    for (let seed = 1; seed <= 60; seed++) {
+      const rng = R.createRng(seed), off = R.makeAxeOffset(rng, d), w = R.createWatch(d, off, rng);
+      assert.ok(Math.abs(off.x) >= r * 0.55 - 1e-12 && Math.abs(off.x) <= r * 0.95 + 1e-12);
+      const shots = w.beats.filter(b => b.shoot);
+      assert.equal(shots.length, 2);
+      for (const b of shots) {
+        assert.equal(b.res.win, false, '求婚者不能贏');
+        assert.equal(b.res.stop.kind, 'hit', `${d} ${seed}`);
+        assert.match(b.hitText, off.x > 0 ? /孔的左/ : /孔的右/);
+      }
+      const inf = R.inferOffset(w);
+      assert.equal(Math.sign(inf.x), Math.sign(off.x));
+      assert.ok(Math.abs(inf.x - off.x) < 0.02, `${d} ${seed} 推估 ${inf.x} 實際 ${off.x}`);
+      // 偏了也一定有窗，而且窗往偏的那邊移
+      const win = R.solveWindow(1, d, { offset: off, step: 0.00005 });
+      assert.ok(win, `${d} ${seed} 沒有窗`);
+      assert.equal(Math.sign(-win.yawMid), Math.sign(off.x));
+    }
+  }
+});
+
+test('斧列偏移：看懂了才射得準——照不偏的窗瞄，嚴格難度一定失手；照偏過的窗瞄，穿過十二孔', () => {
+  let nominalWins = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const off = R.makeAxeOffset(R.createRng(seed), 'hard');
+    const nom = R.nominalAim('hard');
+    if (R.simulate(R.makeShot({ yaw: 0, pitch: nom.pitch, power: 1 }), 'hard', off).win) nominalWins++;
+    const w = R.solveWindow(1, 'hard', { offset: off, step: 0.00005 });
+    assert.equal(R.simulate(R.makeShot({ yaw: w.yawMid, pitch: w.pitchMid, power: 1 }), 'hard', off).win, true);
+  }
+  assert.equal(nominalWins, 0);
+});
+
+test('一輪：先看求婚者 → 兩支箭 → 上弦；空白鍵跳過也拿得到資訊；重來不再看、斧列不變', () => {
+  const r = R.createRound({ watch: true, difficulty: 'normal' }, R.createRng(11));
+  assert.equal(r.phase, 'watch');
+  assert.notEqual(r.axeOffset.x, 0);
+  const ev = [];
+  for (let i = 0; i < 60 * 40 && r.phase === 'watch'; i++) ev.push(...R.stepRound(r, DT, {}));
+  assert.equal(ev.filter(e => e.type === 'beat').length, R.WATCH_SCRIPT.length);
+  assert.equal(ev.filter(e => e.type === 'suitorFire').length, 2);
+  assert.equal(ev.filter(e => e.type === 'suitorStop').length, 2);
+  const end = ev.find(e => e.type === 'watchEnd');
+  assert.ok(end && !end.skipped);
+  assert.match(end.summary, /孔的(左|右)邊/);
+  assert.equal(r.phase, 'string');
+  assert.equal(r.watched, true);
+
+  const s = R.createRound({ watch: true, stringPhase: false }, R.createRng(12));
+  R.stepRound(s, DT, {});
+  const sev = R.stepRound(s, DT, { skip: true });
+  assert.equal(s.phase, 'aim');
+  assert.equal(sev.filter(e => e.type === 'suitorStop').length, 2, '跳過時兩支箭也要落定（畫面照樣釘上去）');
+  assert.ok(sev.find(e => e.type === 'watchEnd').skipped);
+
+  const again = R.createRound({ watch: true }, R.createRng(13), { watched: s.watched, axeOffset: s.axeOffset, strungOnce: true });
+  assert.equal(again.phase, 'aim');
+  assert.deepEqual(again.axeOffset, s.axeOffset);
+  // 不開這個開關：斧列不偏、不看
+  const plain = R.createRound({}, R.createRng(14));
+  assert.equal(plain.phase, 'string');
+  assert.deepEqual(plain.axeOffset, { x: 0, y: 0 });
+});
+
+test('一輪：全部開關都開（呼吸、起鬨、斧列偏移、帳 0），瞄偏過的窗、在呼氣窗裡避開起鬨放手，一樣穿過十二孔', () => {
+  let wins = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const r = R.createRound({ watch: true, stringPhase: false, breath: true, heckle: true, difficulty: 'normal' }, R.createRng(seed));
+    R.stepRound(r, DT, { skip: true });
+    const w = R.solveWindow(1, 'normal', { offset: r.axeOffset, step: 0.00005 });
+    r.aim.yaw = w.yawMid; r.aim.pitch = w.pitchMid;
+    for (let k = 0; k < 60 * 12 && r.phase === 'aim'; k++) {
+      const d = r.draw, h = r.heckle, busy = h.list.some(e => h.t >= e.cueAt && h.t < e.hitAt + 1.0);
+      R.stepRound(r, DT, { down: !(d.power >= 1 && d.breathWin && !busy) });
+    }
+    for (let k = 0; k < 60 * 30 && r.phase === 'flight'; k++) R.stepRound(r, DT, {});
+    if (r.result && r.result.win) wins++;
+  }
+  assert.ok(wins >= 39, `${wins}/40`);
+});
+
+// ---------------------------------------------------------------- 系列存檔
+function memStore(init) {
+  const m = Object.assign({}, init);
+  return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, data: m };
+}
+
+test('系列：沒有 ?series=1、或存檔讀不到，就是單獨遊玩', () => {
+  const KEY = 'odyssey-series-v1';
+  assert.equal(R.TUNING.series.key, KEY);
+  const store = memStore({ [KEY]: JSON.stringify({ ledger: 7 }) });
+  assert.equal(R.readSeries('', store).on, false);
+  assert.equal(R.readSeries('?series=12', store).on, false);
+  const boom = { getItem() { throw new Error('blocked'); } };
+  assert.equal(R.readSeries('?series=1', boom).on, false);
+  assert.equal(R.readSeries('?series=1', null).on, false);
+  const s = R.readSeries('?debug&series=1', memStore({ [KEY]: JSON.stringify({ ledger: 7, knowers: { tele: 'knows', eum: 'x' } }) }));
+  assert.equal(s.on, true);
+  assert.equal(s.ledger, 7);
+  assert.deepEqual(s.knowers, { tele: 'knows', eum: 'unknown', pen: 'unknown' });
+  // 壞掉的存檔＝讀不到 → 單獨遊玩；沒有存檔（空的）→ 系列模式、帳 0
+  const bad = R.readSeries('?series=1', memStore({ [KEY]: '{壞' }));
+  assert.equal(bad.on, false);
+  const empty = R.readSeries('?series=1', memStore({}));
+  assert.equal(empty.on, true); assert.equal(empty.ledger, 0);
+});
+
+test('系列：結果寫進存檔——合併、不丟其他章的欄位，bow 取這場最好，step 改成 ending', () => {
+  const KEY = 'odyssey-series-v1';
+  const store = memStore({ [KEY]: JSON.stringify({ step: 'bow', ledger: 7, years: 8, crewLost: ['波利忒斯'] }) });
+  let rec = R.bowRecord(null, { win: false, passed: 5 });
+  rec = R.bowRecord(rec, { win: false, passed: 3 });
+  assert.deepEqual(rec, { win: false, passed: 5 });
+  R.writeSeries(store, rec);
+  let saved = JSON.parse(store.data[KEY]);
+  assert.deepEqual(saved.bow, { win: false, passed: 5 });
+  assert.equal(saved.step, 'ending');
+  assert.equal(saved.ledger, 7); assert.equal(saved.years, 8); assert.deepEqual(saved.crewLost, ['波利忒斯']);
+  rec = R.bowRecord(rec, { win: true, passed: 12 });
+  R.writeSeries(store, rec);
+  saved = JSON.parse(store.data[KEY]);
+  assert.deepEqual(saved.bow, { win: true, passed: 12 });
+  // 寫不進去不會丟例外
+  assert.equal(R.writeSeries({ getItem() { return null; }, setItem() { throw new Error('full'); } }, rec), null);
+});
