@@ -40,6 +40,16 @@ jobs:
         if: env.HAS_UNITY != 'true'
         run: echo "::notice::還沒設定 UNITY_LICENSE／UNITY_EMAIL／UNITY_PASSWORD，略過 Unity 測試（見 docs/ci-setup.md）。"
 
+      # Unity 6 的 Docker 映像很大，GitHub 預設的執行機磁碟放不下（no space left on device）：
+      # 先刪掉這個工作用不到的預裝工具（Android SDK、.NET、Haskell、CodeQL 與舊 Docker 映像）。
+      - name: 騰出磁碟空間
+        if: env.HAS_UNITY == 'true'
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
       - uses: actions/checkout@v4
         if: env.HAS_UNITY == 'true'
 
@@ -82,6 +92,16 @@ jobs:
       - name: 檢查 Unity 授權
         if: env.HAS_UNITY != 'true'
         run: echo "::notice::還沒設定 UNITY_LICENSE／UNITY_EMAIL／UNITY_PASSWORD，略過網頁版建置（見 docs/ci-setup.md）。"
+
+      # Unity 6 的 Docker 映像很大，GitHub 預設的執行機磁碟放不下（no space left on device）：
+      # 先刪掉這個工作用不到的預裝工具（Android SDK、.NET、Haskell、CodeQL 與舊 Docker 映像）。
+      - name: 騰出磁碟空間
+        if: env.HAS_UNITY == 'true'
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
 
       - uses: actions/checkout@v4
         if: env.HAS_UNITY == 'true'
