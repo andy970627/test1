@@ -37,7 +37,7 @@
     LOOKAHEAD: 0.15,   // 預先排程長度（秒）
     TICK_MS: 25,       // 補排程間隔
     BASS_PERIOD: 2.4,  // 低音週期，規則同值
-    BASS_BASE: 0.32,   // 巡邏時低音增益
+    BASS_BASE: 0.22,   // 巡邏時低音增益
     HUNT_FLOOR: 0.55   // 追殺時每層最低增益（所有層疊加）
   };
 
@@ -192,7 +192,7 @@
 
     function bassHit(t) {                 // 極慢重低音：深鼓 + 一聲低吟般的嗡
       var d = bassBus;
-      tone(d, t, 'sine', 64, 43, 0.45, 0.95, 0.004, 1.6);
+      tone(d, t, 'sine', 64, 43, 0.45, 0.95, 0.004, 1.15);
       tone(d, t, 'sine', 128, 88, 0.3, 0.25, 0.004, 0.5);
       noise(d, t, 'lowpass', 140, 0.8, 0.4, 0.003, 0.12);
       var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
@@ -209,13 +209,13 @@
       var wf = ctx.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 420; wf.Q.value = 0.8;
       var wl = ctx.createOscillator(); wl.frequency.value = 0.07; var wlg = ctx.createGain(); wlg.gain.value = 220;
       wl.connect(wlg); wlg.connect(wf.frequency);
-      var wg = ctx.createGain(); wg.gain.value = 0.05;
+      var wg = ctx.createGain(); wg.gain.value = 0.022;
       w.connect(wf); wf.connect(wg); wg.connect(ambient); w.start(); wl.start();
       // 低吟：D2、A2 兩條鋸齒，經低通共鳴成「嗯—」的人聲感，緩慢起伏像呼吸
-      var chant = ctx.createGain(); chant.gain.value = 0.02;
+      var chant = ctx.createGain(); chant.gain.value = 0.009;
       var cf = ctx.createBiquadFilter(); cf.type = 'lowpass'; cf.frequency.value = 420; cf.Q.value = 5;
       [73.42, 73.9, 110.0].forEach(function (fq) { var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fq; o.connect(cf); o.start(); });
-      var cl = ctx.createOscillator(); cl.frequency.value = 0.11; var clg = ctx.createGain(); clg.gain.value = 0.014;
+      var cl = ctx.createOscillator(); cl.frequency.value = 0.11; var clg = ctx.createGain(); clg.gain.value = 0.006;
       cl.connect(clg); clg.connect(chant.gain); cl.start();
       cf.connect(chant); chant.connect(ambient);
       ambient.gain.setValueAtTime(0, ctx.currentTime);

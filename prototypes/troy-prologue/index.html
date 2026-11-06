@@ -1,0 +1,869 @@
+<title>木馬之夜</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 畫面層：規則全在 risset.js（RissetRules），聲音全在 audio.js（RissetAudio）。
+   這裡只負責畫、讀輸入、把事件轉給聲音。介面極少：音樂是主角。單一深色主題（夜、火光） */
+:root {
+  --night: #07080c;
+  --panel: rgba(8, 9, 14, .82);
+  --line: #2a2c38;
+  --fire: #f0a85a;     /* 火光、強調 */
+  --ash: #d6cfc2;      /* 主要文字 */
+  --dim: #8a8478;      /* 次要文字 */
+  --warn: #e0b04a;     /* 警戒 */
+  --blood: #c23a2c;    /* 追殺 */
+  --moon: #9fb0d8;     /* 暗處、屏息 */
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --text: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px);
+  --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--night); color: var(--ash); font-family: var(--text); overflow: hidden; }
+body:not(.playing) .hud { display: none !important; }
+#stage { position: fixed; inset: 0; }
+canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.hud { position: fixed; pointer-events: none; }
+#noise { inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: 0; mix-blend-mode: screen; }
+#edge { inset: 0; box-shadow: inset 0 0 140px 30px var(--warn); opacity: 0; }
+#red { inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 20, 10, .75) 100%); opacity: 0; transition: opacity .3s; }
+#cross { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: var(--ash); opacity: .45; border-radius: 50%; }
+#zone { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-family: var(--display); font-size: 15px; letter-spacing: .14em; color: var(--dim); text-shadow: 0 1px 3px #000; }
+#zone b { display: block; color: var(--ash); font-size: 19px; font-weight: 600; }
+#breath { left: calc(18px + var(--sl)); bottom: calc(20px + var(--sb)); display: grid; gap: 6px; width: 180px; font-size: 12px; color: var(--dim); text-shadow: 0 1px 3px #000; }
+#breath i { display: block; height: 5px; background: var(--line); position: relative; overflow: hidden; }
+#breath i b { position: absolute; inset: 0 auto 0 0; width: 100%; background: var(--moon); }
+#breath.on span { color: var(--moon); }
+#breath.low i b { background: var(--blood); }
+#shade { color: var(--moon); font-size: 12px; }
+#hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 17px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(760px, calc(100vw - 32px)); transition: opacity .6s; }
+#hint .k { display: inline-block; border: 1px solid var(--dim); padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: 14px; }
+#msgs { left: 50%; top: calc(18px + var(--st)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(640px, calc(100vw - 32px)); }
+#msgs div { background: var(--panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 5s forwards; }
+@keyframes fade { 0%, 82% { opacity: 1 } 100% { opacity: 0 } }
+#phase { right: calc(18px + var(--sr)); top: calc(16px + var(--st)); width: 220px; font-size: 11px; color: var(--dim); display: grid; gap: 4px; }
+#phase .track { position: relative; height: 8px; background: var(--line); }
+#phase .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #4a6a9a, #c0803a 60%, #c23a2c); }
+#phase .blind { position: absolute; inset: 0 auto 0 0; background: #9fb0d8; opacity: .9; }
+#phase .mark { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--ash); left: 60%; }
+#phase .bass { position: absolute; top: -3px; width: 6px; height: 14px; margin-left: -3px; background: var(--warn); border-radius: 2px; }
+#gateBar { left: 50%; bottom: calc(70px + var(--sb)); transform: translateX(-50%); width: 160px; height: 3px; background: var(--line); }
+#gateBar b { display: block; height: 100%; width: 0; background: var(--fire); }
+
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 6, 10, .9); overflow-y: auto; padding: calc(24px + var(--st)) calc(16px + var(--sr)) calc(24px + var(--sb)) calc(16px + var(--sl)); z-index: 5; }
+.card { max-width: 640px; width: 100%; display: grid; gap: 14px; }
+.card h1 { font-family: var(--display); font-weight: 900; font-size: clamp(32px, 7vw, 52px); margin: 0; color: var(--fire); letter-spacing: .12em; }
+.card h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4.5vw, 34px); margin: 0; text-wrap: balance; }
+.card p { margin: 0; line-height: 1.8; max-width: 60ch; }
+.card .dim { color: var(--dim); font-size: 13px; }
+.card .lead { font-family: var(--display); font-size: 17px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
+.keys dt { color: var(--fire); white-space: nowrap; }
+.keys dd { margin: 0; min-width: 0; }
+fieldset { border: 1px solid var(--line); padding: 10px 14px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+legend { font-family: var(--display); color: var(--fire); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
+label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+input, select { accent-color: var(--fire); font: inherit; }
+select { background: #12131a; color: var(--ash); border: 1px solid var(--line); padding: 2px 6px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; }
+button { font: inherit; font-size: 16px; background: transparent; color: var(--ash); border: 1px solid var(--fire); padding: 9px 18px; cursor: pointer; }
+button.primary { background: var(--fire); color: #1a1008; font-weight: 500; }
+button:hover { filter: brightness(1.12); }
+:focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
+#fail h2 { color: var(--blood); }
+#win { background: transparent; transition: background 3s; }
+#win.dark { background: #000; }
+#win .card { opacity: 0; transition: opacity 2.5s; text-align: center; justify-items: center; }
+#win.dark .card { opacity: 1; }
+#win h2 { color: var(--fire); }
+#win .later { font-family: var(--display); font-size: clamp(22px, 4vw, 30px); letter-spacing: .3em; color: var(--ash); opacity: 0; transition: opacity 2s 2.5s; }
+#win.dark .later { opacity: 1; }
+@media (max-width: 640px) {
+  #breath { width: 140px; }
+  #phase { width: 150px; }
+  #hint { font-size: 15px; bottom: calc(60px + var(--sb)); }
+}
+@media (prefers-reduced-motion: reduce) { #msgs div { animation: none; } }
+</style>
+
+<div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
+<canvas class="hud" id="noise" width="160" height="90" aria-hidden="true"></canvas>
+<div class="hud" id="edge"></div>
+<div class="hud" id="red"></div>
+<div class="hud" id="cross"></div>
+<div class="hud" id="zone"><span id="zoneNo"></span><b id="zoneName"></b></div>
+<div class="hud" id="msgs" aria-live="polite"></div>
+<div class="hud" id="hint" aria-live="polite"></div>
+<div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
+<div class="hud" id="breath"><span id="breathText">屏息（空白鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
+<div class="hud" id="phase" hidden>
+  <span>相位 p（除錯）<span id="phaseNum"></span></span>
+  <div class="track"><div class="fill" id="phaseFill"></div><div class="blind" id="phaseBlind"></div><div class="mark"></div></div>
+  <div class="track" style="height:4px;background:transparent"><div class="bass" id="phaseBass"></div></div>
+</div>
+
+<!-- 開場字卡 -->
+<div class="screen" id="intro">
+  <div class="card">
+    <h1>木馬之夜</h1>
+    <p class="lead">十年了。希臘大軍圍攻特洛伊城整整十年，始終攻不進那道城牆。</p>
+    <p>今天，希臘人假裝撤退，在海灘上留下一匹巨大的木馬。特洛伊人以為那是戰利品，把它拖進城裡，喝酒慶祝到深夜。</p>
+    <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b style="color:var(--fire)">今晚，由你打開城門。</b></p>
+    <p class="dim">這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
+    <dl class="keys">
+      <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
+      <dt>按住 空白鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
+      <dt>Shift</dt><dd>衝刺，只在節奏重來的瞬間有用</dd>
+      <dt>E</dt><dd>點一下＝從背後暗殺；在城門按住＝推開門閂</dd>
+      <dt>Q</dt><dd>衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
+      <dt>Esc</dt><dd>暫停</dd>
+    </dl>
+    <div id="optSlotIntro"></div>
+    <div class="row"><button class="primary" id="btnStart">點一下開始</button></div>
+  </div>
+</div>
+
+<!-- 暫停 -->
+<div class="screen" id="pause" hidden>
+  <div class="card">
+    <h2>暫停</h2>
+    <div id="optSlotPause"></div>
+    <p class="dim">難度要「從頭開始」才會套用。</p>
+    <div class="row">
+      <button class="primary" id="btnResume">繼續</button>
+      <button id="btnRetryP">從這一區重來</button>
+      <button id="btnFromTop">從頭開始</button>
+    </div>
+  </div>
+</div>
+
+<!-- 實驗開關（在開場與暫停之間移動） -->
+<fieldset id="opts">
+  <legend>實驗開關</legend>
+  <label><input type="checkbox" id="oPhase"> 顯示相位條（除錯用）</label>
+  <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
+</fieldset>
+
+<!-- 失敗 -->
+<div class="screen" id="fail" hidden>
+  <div class="card">
+    <h2>你被發現了</h2>
+    <p id="failWhy"></p>
+    <p class="dim">按 R 從這一區重來。</p>
+    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button></div>
+  </div>
+</div>
+
+<!-- 勝利 -->
+<div class="screen" id="win" hidden>
+  <div class="card">
+    <h2>城門開了</h2>
+    <p>希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
+    <p class="later">十年後……</p>
+    <div class="row" style="margin-top:18px"><button id="btnAgain">再玩一次</button></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="audio.js"></script>
+<script src="risset.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
+
+const Rules = window.RissetRules, AudioMod = window.RissetAudio;
+if (!Rules || !AudioMod) {
+  $('btnStart').disabled = true;
+  $('btnStart').textContent = '載入失敗：找不到 ' + (!Rules ? 'risset.js' : 'audio.js');
+  return;
+}
+const K = () => (game && game.T) || Rules.T || {};
+const num = (...v) => v.find(x => Number.isFinite(x));
+
+// ============================================================
+// three.js 場景
+// ============================================================
+const canvas = $('cv');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const FOG = 0x080a12;
+scene.background = new THREE.Color(FOG);
+scene.fog = new THREE.FogExp2(FOG, .045);
+const camera = new THREE.PerspectiveCamera(72, 1, .05, 220);
+camera.rotation.order = 'YXZ';
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+let world = new THREE.Group(); scene.add(world);
+const matCache = {};
+const M = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({ color: c }));
+const MD = c => matCache['d' + c] || (matCache['d' + c] = new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide }));
+const MB = c => matCache['b' + c] || (matCache['b' + c] = new THREE.MeshBasicMaterial({ color: c }));
+function box(w, h, d, c, x, y, z, parent = world, mat) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || M(c)); m.position.set(x, y, z); parent.add(m); return m; }
+function cyl(rt, rb, h, c, x, y, z, parent = world, seg = 8) { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), M(c)); m.position.set(x, y, z); parent.add(m); return m; }
+// 關卡資料的矩形：接受 {x0,z0,x1,z1}、{x,z,w,d}、{x,z,r}、[x0,z0,x1,z1]
+function R(o) {
+  if (!o) return null;
+  if (Array.isArray(o)) return { x0: Math.min(o[0], o[2]), z0: Math.min(o[1], o[3]), x1: Math.max(o[0], o[2]), z1: Math.max(o[1], o[3]), h: o[4] };
+  if (Number.isFinite(o.x0)) return { x0: Math.min(o.x0, o.x1), z0: Math.min(o.z0, o.z1), x1: Math.max(o.x0, o.x1), z1: Math.max(o.z0, o.z1), h: o.h, kind: o.kind };
+  if (Number.isFinite(o.x) && (Number.isFinite(o.w) || Number.isFinite(o.d))) { const w = num(o.w, o.d), d = num(o.d, o.w); return { x0: o.x - w / 2, z0: o.z - d / 2, x1: o.x + w / 2, z1: o.z + d / 2, h: o.h, kind: o.kind }; }
+  if (Number.isFinite(o.x) && Number.isFinite(o.r)) return { x0: o.x - o.r, z0: o.z - o.r, x1: o.x + o.r, z1: o.z + o.r, h: o.h, kind: o.kind, round: true };
+  return null;
+}
+const inR = (r, x, z) => r && x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
+const arr = v => Array.isArray(v) ? v : v && typeof v === 'object' ? Object.values(v) : [];
+function flame(parent, x, y, z, s = 1) {
+  const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g);
+  [0xf0a85a, 0xd8602a, 0xffd890].forEach((c, i) => { const m = new THREE.Mesh(new THREE.ConeGeometry((.22 - i * .05) * s, (.7 - i * .12) * s, 6), MB(c)); m.position.set((i - 1) * .08 * s, .3 * s, 0); g.add(m); });
+  return g;
+}
+// 天空：星星與月亮（不隨場景重建）
+(() => {
+  const n = 600, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, e = Math.random() * 1.2 + .15, r = 180; pos[i * 3] = Math.cos(a) * Math.cos(e) * r; pos[i * 3 + 1] = Math.sin(e) * r; pos[i * 3 + 2] = Math.sin(a) * Math.cos(e) * r; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xc8d0e8, size: .8, fog: false })));
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 12), new THREE.MeshBasicMaterial({ color: 0xdfe4f0, fog: false }));
+  moon.position.set(-70, 95, 120); scene.add(moon);
+})();
+
+let S = null;          // 目前場景的物件
+let builtFor = null;   // 已經建好場景的 level 物件
+const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
+function build(L) {
+  scene.remove(world); world = new THREE.Group(); scene.add(world);
+  S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null };
+  builtFor = L;
+  world.add(new THREE.HemisphereLight(0x3a4870, 0x0a0806, .55));
+  const moonL = new THREE.DirectionalLight(0x8a9cd0, .35); moonL.position.set(-30, 50, 40); world.add(moonL);
+
+  const walls = arr(L.walls).map(w => Object.assign(R(w) || {}, { name: w.name })).filter(w => Number.isFinite(w.x0));
+  const shadows = arr(L.shadows).map(w => Object.assign(R(w) || {}, { name: w.name })).filter(w => Number.isFinite(w.x0));
+  const sz = L.size || { w: 60, h: 30 };
+  const B = { x0: 0, z0: 0, x1: sz.w, z1: sz.h }, cx = sz.w / 2, cz = sz.h / 2;
+  const gate = L.gate && R(L.gate);
+  // 地面：石板（隨機色塊做一點變化）
+  box(sz.w + 120, .1, sz.h + 120, 0x2a2622, cx, -.05, cz);
+  for (let x = 0; x < sz.w; x += 2) for (let z = 0; z < sz.h; z += 2) if (Math.random() < .35) box(1.9, .02, 1.9, Math.random() < .5 ? 0x322d28 : 0x24211d, x + 1, .005, z + 1);
+
+  for (const w of walls) {
+    const ww = w.x1 - w.x0, dd = w.z1 - w.z0, x = (w.x0 + w.x1) / 2, z = (w.z0 + w.z1) / 2;
+    if (has(w, '神殿')) { buildTemple(w, shadows.find(s => has(s, '柱廊'))); continue; }
+    if (has(w, '雕像')) { buildStatue(w); continue; }
+    if (has(w, '屋舍') || has(w, '倉庫')) { buildHouses(w); continue; }
+    if (has(w, '貨堆')) { for (let i = 0; i < 5; i++) { const s = rand(.8, 1.2); box(s, s, s, 0x4a3826, rand(w.x0 + .5, w.x1 - .5), s / 2 + (i > 2 ? 1 : 0), rand(w.z0 + .5, w.z1 - .5)).rotation.y = rand(0, 1); } box(ww * .9, 1, dd * .9, 0x3e2f20, x, .5, z); continue; }
+    if (has(w, '水缸')) { for (let i = 0; i < 4; i++) { const jx = w.x0 + .4 + (i % 2) * (ww - .8), jz = w.z0 + .5 + Math.floor(i / 2) * (dd - 1); cyl(.35, .25, .9, 0x7a4a30, jx, .45, jz, world, 10); cyl(.42, .35, .3, 0x7a4a30, jx, 1, jz, world, 10); } continue; }
+    if (has(w, '石墩')) { box(ww, 1.3, dd, 0x5a554c, x, .65, z); box(ww + .15, .15, dd + .15, 0x6a655a, x, 1.3, z); continue; }
+    // 城牆（外框）：高、帶城垛；城門那一面在門洞處斷開
+    const isCity = has(w, '界') || has(w, '城門牆');
+    const h = isCity ? (has(w, '城門牆') ? 11 : 8) : 4;
+    const segs = [];
+    if (has(w, '城門牆') && gate) {
+      const gz0 = gate.z0, gz1 = gate.z1;
+      if (gz0 > w.z0) segs.push([w.x0, w.z0, w.x1, gz0]);
+      if (gz1 < w.z1) segs.push([w.x0, gz1, w.x1, w.z1]);
+    } else segs.push([w.x0, w.z0, w.x1, w.z1]);
+    for (const [a0, b0, a1, b1] of segs) {
+      const sw = a1 - a0, sd = b1 - b0, sx = (a0 + a1) / 2, sz2 = (b0 + b1) / 2, th = isCity ? 1.6 : 0;
+      box(sw + th, h, sd + th, isCity ? 0x4c4740 : 0x3c3833, sx, h / 2, sz2);
+      for (let k = 1.1; k < h; k += 1.1) box(sw + th + .04, .05, sd + th + .04, 0x2a2724, sx, k, sz2);
+      if (isCity) {
+        const along = sw > sd, len = Math.max(sw, sd);
+        for (let k = 0; k < len; k += 1.4) box(along ? .7 : sw + th, .8, along ? sd + th : .7, 0x4c4740, along ? a0 + k + .35 : sx, h + .4, along ? sz2 : b0 + k + .35);
+      }
+    }
+  }
+  // 門洞上方的門樓
+  if (gate) {
+    const gx = (gate.x0 + gate.x1) / 2, gzc = (gate.z0 + gate.z1) / 2, gw = gate.z1 - gate.z0;
+    box(1.6, 2.5, gw + 1.6, 0x4c4740, gx, 9.75, gzc);
+  }
+  // 陰影區：地上的深色塊（火光照不到），有遮蔽物的地方加上屋簷或布篷
+  const shadeMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .6, depthWrite: false });
+  const shadeEdge = new THREE.MeshBasicMaterial({ color: 0x141c34, transparent: true, opacity: .55, depthWrite: false });
+  for (const r of shadows) {
+    if (has(r, '腹中')) continue;
+    const ww = r.x1 - r.x0, dd = r.z1 - r.z0, x = (r.x0 + r.x1) / 2, z = (r.z0 + r.z1) / 2;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(ww, dd), shadeMat); m.rotation.x = -Math.PI / 2; m.position.set(x, .03, z); world.add(m);
+    const e = new THREE.Mesh(new THREE.PlaneGeometry(ww + .6, dd + .6), shadeEdge); e.rotation.x = -Math.PI / 2; e.position.set(x, .02, z); world.add(e);
+    if (has(r, '拱道')) { box(ww, .5, dd + .4, 0x3c3833, x, 6, z); continue; }
+    if (has(r, '拱廊')) {                                                                          // 石造拱廊：屋頂與四角石柱
+      box(ww + .4, .4, dd + .4, 0x5a554c, x, 3.4, z);
+      for (const [px, pz] of [[r.x0, r.z0], [r.x1, r.z0], [r.x0, r.z1], [r.x1, r.z1]]) cyl(.22, .26, 3.2, 0x7a7262, px, 1.6, pz, world, 8);
+      continue;
+    }
+    if (has(r, '屋簷') || has(r, '廊下') || has(r, '角')) {                                        // 布篷、木屋簷
+      const awn = box(ww + .3, .06, dd + .3, 0, x, 2.6, z, world, MD(0x2a1f18)); awn.rotation.x = .05;
+      for (const [px, pz] of [[r.x0, r.z0], [r.x1, r.z0], [r.x0, r.z1], [r.x1, r.z1]]) box(.1, 2.6, .1, 0x2a2018, px, 1.3, pz);
+    }
+  }
+  // 火（純裝飾，規則裡沒有光照）：木馬兩側的火盆、祭壇火盆、牆上的火把
+  const fires = [
+    { x: 8.5, z: 19.8 }, { x: 8.5, z: 10.4 },               // 木馬旁的慶功火盆：木板縫透進來的火光
+    { x: 18.6, z: 11.2 }, { x: 27.4, z: 11.2 },             // 神殿前
+    { x: 21.4, z: 12.9, y: 1.45, small: true }, { x: 22.6, z: 12.9, y: 1.45, small: true },   // 祭壇（雕像台座）上的火盆
+    { x: 38.5, z: 17.25, torch: true }, { x: 43, z: 27.75, torch: true },                     // 窄巷牆上的火把
+    { x: 59.1, z: 9.5, torch: true }, { x: 59.1, z: 20.5, torch: true },                      // 城門兩側
+  ];
+  for (const b of fires) {
+    let y;
+    if (b.torch) { y = 2.9; cyl(.05, .05, .9, 0x3a2a1a, b.x, 2.5, b.z, world, 5); }
+    else if (b.small) { y = b.y; cyl(.22, .12, .14, 0x6a4a22, b.x, y, b.z); }
+    else { y = 1.2; for (let k = 0; k < 3; k++) { const a = k * 2.1; const leg = box(.05, 1.1, .05, 0x2a221a, b.x + Math.sin(a) * .25, .55, b.z + Math.cos(a) * .25); leg.rotation.z = Math.sin(a) * .2; } cyl(.45, .22, .25, 0x6a4a22, b.x, 1.1, b.z); }
+    const s = b.torch ? .5 : b.small ? .5 : 1.1, base = b.torch ? 1.4 : b.small ? .9 : 2;
+    const light = new THREE.PointLight(0xff9040, base, b.torch ? 10 : 14, 2); light.position.set(b.x, y + .7, b.z); world.add(light);
+    S.fires.push({ f: flame(world, b.x, y, b.z, s), light, base });
+  }
+  // 遠處的城：牆外的屋子剪影，少數窗口還亮著（沉睡的城）
+  for (let i = 0; i < 60; i++) {
+    const side = i % 3, w = rand(3, 6), h = rand(9, 14);
+    let x, z;
+    if (side === 0) { x = rand(-10, sz.w - 4); z = -rand(4, 25); } else if (side === 1) { x = rand(-10, sz.w - 4); z = sz.h + rand(4, 25); } else { x = -rand(5, 25); z = rand(-10, sz.h + 10); }
+    box(w, h, w, 0x15161b, x, h / 2, z);
+    if (Math.random() < .3) box(.5, .6, w + .05, 0, x, h * .7, z, world, MB(0x6a4018));
+  }
+  // 城外：希臘大軍的火把（勝利時才看得到，從城門外湧入）
+  if (gate) {
+    const gx = gate.x1, gzc = (gate.z0 + gate.z1) / 2;
+    const out = new THREE.Group(); out.visible = false; world.add(out);
+    const list = [];
+    for (let i = 0; i < 50; i++) { const f = flame(out, gx + rand(2, 40), rand(1.9, 2.3), gzc + rand(-3.5, 3.5), .35); list.push({ f, sp: rand(2.5, 4.5) }); }
+    const l1 = new THREE.PointLight(0xff8030, 0, 30, 2); l1.position.set(gx + 4, 3, gzc); world.add(l1);
+    S.invaders = { g: out, list, light: l1, gx };
+  }
+  if (L.horse) buildHorse(L.horse, L);
+  if (gate) buildGate(L.gate, gate);
+}
+
+function buildTemple(w, porch) {
+  const ww = w.x1 - w.x0, x = (w.x0 + w.x1) / 2, z = (w.z0 + w.z1) / 2, front = porch ? porch.z1 : w.z1 + 2;
+  for (let k = 0; k < 3; k++) box(ww + 1 - k * .4, .25, w.z1 - w.z0 + 1 - k * .4, 0x6a6458, x, .125 + k * .25, z);   // 台階
+  box(ww - 2, 6, w.z1 - w.z0 - 1.6, 0x4e4a42, x, 3.75, z - .4);                                                    // 內殿
+  const n = Math.round(ww / 1.6);
+  for (let i = 0; i <= n; i++) {                                                                                     // 正面柱列（在建築範圍內）
+    const cx = w.x0 + .4 + (ww - .8) * i / n;
+    cyl(.32, .36, 6.2, 0x8a8272, cx, 3.85, w.z1 - .4, world, 10);
+    box(.8, .25, .8, 0x7a7262, cx, 6.95, w.z1 - .4);
+  }
+  // 屋頂：往前延伸蓋住柱廊（陰影區）
+  const rz0 = w.z0 - .3, rz1 = front, rd = rz1 - rz0, rzc = (rz0 + rz1) / 2;
+  box(ww + 1, .5, rd, 0x6e6658, x, 7.3, rzc);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, rd, 3), M(0x7a7262)); ped.scale.set((ww + 1) / 1.73, 1, .9); ped.position.set(x, 7.95, rzc);
+  ped.rotation.set(-Math.PI / 2, 0, 0); world.add(ped);
+  box(ww + 1, 1.2, .1, 0, x, 8.1, rz1 + .05, world, M(0x7a7262));                                                   // 山牆正面
+}
+function buildStatue(w) {
+  const x = (w.x0 + w.x1) / 2, z = (w.z0 + w.z1) / 2, ww = w.x1 - w.x0, dd = w.z1 - w.z0;
+  box(ww, 1.4, dd, 0x6a6052, x, .7, z); box(ww + .2, .14, dd + .2, 0x7a7060, x, 1.4, z);
+  // 持矛與盾的神像（青銅）【改編】
+  const g = new THREE.Group(); g.position.set(x, 1.47, z + .2); g.rotation.y = 0; world.add(g);
+  const br = 0x6a6a52;
+  cyl(.3, .45, 1.8, br, 0, .9, 0, g); cyl(.22, .22, .7, br, 0, 2.15, 0, g);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.24, 8, 6), M(br)); head.position.y = 2.7; g.add(head);
+  box(.06, .4, .6, 0, 0, 3, -.05, g, M(br));
+  cyl(.04, .04, 3.6, br, .5, 1.9, 0, g, 5);
+  const sh = cyl(.55, .55, .08, br, -.5, 1.6, .2, g, 14); sh.rotation.x = Math.PI / 2;
+}
+function buildHouses(w) {
+  const ww = w.x1 - w.x0, dd = w.z1 - w.z0;
+  const alongX = ww >= dd, len = alongX ? ww : dd;
+  let k = 0;
+  while (k < len - .5) {
+    const u = Math.min(rand(3, 5), len - k), h = rand(4, 6.5);
+    const x0 = alongX ? w.x0 + k : w.x0, x1 = alongX ? x0 + u : w.x1, z0 = alongX ? w.z0 : w.z0 + k, z1 = alongX ? w.z1 : z0 + u;
+    const x = (x0 + x1) / 2, z = (z0 + z1) / 2;
+    box(x1 - x0, h, z1 - z0, Math.random() < .5 ? 0x3e3831 : 0x463f36, x, h / 2, z);
+    box(x1 - x0 + .2, .25, z1 - z0 + .2, 0x2e2924, x, h, z);
+    // 臨巷那一面的門（暗）
+    if (alongX) { const fz = w.z1 > 20 ? z0 - .01 : z1 + .01; box(1, 2, .05, 0, x + rand(-.8, .8), 1, fz, world, M(0x1a1410)); }
+    k += u;
+  }
+}
+
+function buildHorse(H, L) {
+  const g = new THREE.Group(); world.add(g);
+  const r = R(H), fy = num(H.bellyY, H.floor, H.y, 2.5);
+  const zb = L.zones && L.zones[1] && L.zones[1].belly ? R(L.zones[1].belly) : { x0: r.x0 + .8, x1: r.x1 - 1, z0: (r.z0 + r.z1) / 2 - .5, z1: (r.z0 + r.z1) / 2 + .5 };
+  // 木馬身體（中空）：比腹中走道每邊寬一些
+  const bx0 = zb.x0 - .4, bx1 = zb.x1 + .4, bz0 = zb.z0 - .6, bz1 = zb.z1 + .6, top = fy + 2.3;
+  const bxc = (bx0 + bx1) / 2, bzc = (bz0 + bz1) / 2, bw = bx1 - bx0, bd = bz1 - bz0;
+  const plank = MD(0x5a4028), dark = MD(0x3e2c1a);
+  // 輪子與兩側底樑（衛兵從腹下走過，中間不擋）
+  for (const sz of [r.z0 + .2, r.z1 - .2]) {
+    box(r.x1 - r.x0, .3, .3, 0x3a2a1a, (r.x0 + r.x1) / 2, .75, sz, g);
+    for (const sx of [r.x0 + .6, r.x1 - .6]) { const wh = cyl(.6, .6, .25, 0x2e2216, sx, .6, sz, g, 12); wh.rotation.x = Math.PI / 2; }
+  }
+  // 四條腿
+  for (const sx of [bx0 + .5, bx1 - .5]) for (const sz of [r.z0 + .5, r.z1 - .5]) {
+    const leg = cyl(.22, .28, fy - .5, 0x4a3420, sx, .9 + (fy - .9) / 2, sz, g);
+    leg.scale.y = (fy - .9) / (fy - .5);
+    leg.rotation.x = (sz < bzc ? 1 : -1) * Math.atan2(bzc - sz + (sz < bzc ? -.8 : .8), fy) * .0;
+    box(.25, .3, Math.abs(bzc - sz) + .3, 0x4a3420, sx, fy - .1, (sz + bzc) / 2, g);          // 腿和身體接起來
+  }
+  // 地板：沿 x 的木條，中間有縫；暗門那裡挖空
+  const td = H.trapdoor || (L.zones && L.zones[1] && L.zones[1].exit);
+  const n = Math.round(bd / .32);
+  for (let i = 0; i < n; i++) {
+    const z = bz0 + (i + .5) * bd / n, wdt = bd / n - .09;
+    if (td && Math.abs(z - td.z) < .45) {
+      box(td.x - .45 - bx0, .08, wdt, 0, (bx0 + td.x - .45) / 2, fy, z, g, plank);
+      if (bx1 > td.x + .45) box(bx1 - td.x - .45, .08, wdt, 0, (td.x + .45 + bx1) / 2, fy, z, g, plank);
+    } else box(bw, .08, wdt, 0, bxc, fy, z, g, plank);
+  }
+  if (td) {
+    for (const [ox, oz, ww, dd] of [[0, -.45, .95, .06], [0, .45, .95, .06], [-.45, 0, .06, .95], [.45, 0, .06, .95]]) box(ww, .1, dd, 0, td.x + ox, fy + .05, td.z + oz, g, MB(0x7a5a30));
+    cyl(.03, .03, fy, 0x8a7a50, td.x + .25, fy / 2, td.z, g, 5);                                  // 垂下的繩子
+    const lid = box(.9, .06, .9, 0, td.x - .55, fy + .3, td.z, g, plank); lid.rotation.z = 1.2;   // 掀開的暗門蓋
+    const glow = new THREE.PointLight(0xff9040, .7, 3, 2); glow.position.set(td.x, fy - .5, td.z); g.add(glow);
+  }
+  // 側板：豎著的木條，縫隙透出外面的火光
+  for (const sz of [bz0, bz1]) for (let x = bx0; x < bx1 - .05; x += .34) { const p = box(.28, top - fy, .08, 0, x + .14, (fy + top) / 2, sz, g, plank); if (Math.random() < .3) p.material = dark; }
+  for (const sx of [bx0, bx1]) for (let z = bz0; z < bz1 - .05; z += .34) box(.08, top - fy, .28, 0, sx, (fy + top) / 2, z + .14, g, plank);
+  for (let x = bx0; x < bx1 - .05; x += .34) box(.28, .08, bd + .1, 0, x + .14, top, bzc, g, plank);       // 頂
+  for (const sx of [bx0 + 1, bxc, bx1 - 1]) box(.14, .14, bd, 0, sx, top - .2, bzc, g, M(0x3a2818));     // 橫樑
+  // 從地板縫往上透的火光
+  const shaftMat = new THREE.MeshBasicMaterial({ color: 0xff9a50, transparent: true, opacity: .07, blending: THREE.AdditiveBlending, depthWrite: false });
+  for (let i = 0; i < 9; i++) { const s = box(rand(.3, 1.2), 1.7, .05, 0, rand(bx0 + .4, bx1 - .4), fy + .85, bz0 + (Math.floor(rand(1, n)) * bd / n), g, shaftMat); s.rotation.x = rand(-.25, .25); S.shafts.push(s); }
+  for (let i = 0; i < 6; i++) { const s = box(.05, rand(.6, 1.6), .26, 0, rand(bx0 + .3, bx1 - .3), fy + 1.2, rand(0, 1) < .5 ? bz0 + .05 : bz1 - .05, g, shaftMat); S.shafts.push(s); }
+  const inner = new THREE.PointLight(0xff8a40, .5, 4, 2); inner.position.set(bxc, fy + .4, bzc); g.add(inner); S.horseLight = inner;
+  // 脖子、頭、尾巴（頭朝東，玩家前進的方向）
+  const wood = M(0x5a4028);
+  const neck = box(1.6, 3.4, 1.4, 0, bx1 + .3, top + 1, bzc, g, wood); neck.rotation.z = -.5;
+  box(2.6, 1.1, 1.1, 0, bx1 + 1.6, top + 2.6, bzc, g, wood);
+  for (const oz of [-.3, .3]) box(.15, .5, .15, 0, bx1 + .9, top + 3.3, bzc + oz, g, M(0x4a3420));
+  const mane = box(.3, 2.2, .3, 0, bx1 - .1, top + 1.5, bzc, g, M(0x2a1e12)); mane.rotation.z = -.5;
+  const tail = box(.3, 2.2, .3, 0, bx0 - .4, top - .7, bzc, g, M(0x2a1e12)); tail.rotation.z = -.4;
+  // 腹中的同伴：靠著兩側坐著（剪影）
+  for (const [ox, side] of [[.9, -1], [2.3, 1], [3.8, -1], [4.6, 1]]) {
+    const px = zb.x0 + ox; if (px > zb.x1 - 1.2) continue;
+    const p = new THREE.Group(); p.position.set(px, fy, bzc + side * (bd / 2 - .35)); g.add(p);
+    cyl(.2, .26, .75, 0x2a2a2e, 0, .4, 0, p); const hm = cyl(.14, .15, .2, 0x6a5a30, 0, 1.0, 0, p); hm.scale.y = 1.2;
+    box(.3, .15, .6, 0, 0, .1, -side * .35, p, M(0x2a2a2e));
+    const sp = cyl(.02, .02, 2, 0x5a5040, .2, 1, 0, p, 4); sp.rotation.x = side * .25;
+  }
+}
+
+function buildGate(G, gr) {
+  // 門在 x = gate.x 那面牆上，沿 z 展開；城內在門閂那一側
+  const alongZ = (gr.x1 - gr.x0) < (gr.z1 - gr.z0);
+  const gw = alongZ ? gr.z1 - gr.z0 : gr.x1 - gr.x0, h = 8.5;
+  const root = new THREE.Group(); world.add(root);
+  const cxw = (gr.x0 + gr.x1) / 2, czw = (gr.z0 + gr.z1) / 2;
+  root.position.set(cxw, 0, czw);
+  // 本地座標：x 沿門寬，+z 指向城內
+  const latch = G.latch || { x: cxw - 1, z: czw };
+  if (alongZ) root.rotation.y = (latch.x < cxw) ? -Math.PI / 2 : Math.PI / 2;
+  else root.rotation.y = (latch.z > czw) ? 0 : Math.PI;
+  const doors = [];
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(side * gw / 2, 0, 0); root.add(pivot);
+    const leaf = new THREE.Group(); leaf.position.x = -side * gw / 4; pivot.add(leaf);
+    for (let i = 0; i < 6; i++) box(gw / 12 - .03, h, .35, 0, (i + .5) * gw / 12 - gw / 4, h / 2, 0, leaf, M(i % 2 ? 0x4a3220 : 0x553a24));
+    for (const y of [1.2, h / 2, h - 1.2]) box(gw / 2, .25, .1, 0, 0, y, .22, leaf, M(0x5a5a60));     // 鐵箍（內側）
+    for (let k = 0; k < 6; k++) box(.12, .12, .1, 0, -gw / 4 + .3 + k * gw / 12, h / 2 + .3, .28, leaf, M(0x8a8a90));
+    doors.push({ pivot, side });
+  }
+  // 門閂：粗大的橫木，架在內側的鐵托架上
+  const bar = new THREE.Group(); bar.position.set(0, 2.4, .6); root.add(bar);
+  box(gw + 1.2, .45, .45, 0, 0, 0, 0, bar, M(0x6a4a2a));
+  for (const sx of [-gw / 2 + .3, -.2, gw / 2 - .3]) box(.3, .8, .7, 0, sx, 2.4, .5, root, M(0x3a3a3e));
+  S.gate = { doors, bar, gw, open: 0 };
+}
+
+// ---------- 衛兵 ----------
+function makeGuard() {
+  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
+  const cloak = 0x6a2420, skin = 0x9a7458, bronze = 0x9a7a3a;
+  const legs = [-1, 1].map(s => { const p = new THREE.Group(); p.position.set(s * .12, .8, 0); up.add(p); box(.14, .8, .14, 0, 0, -.4, 0, p, M(0x3a2a20)); return p; });
+  cyl(.26, .32, .8, cloak, 0, 1.2, 0, up);                                       // 身體
+  box(.6, .3, .32, 0, 0, 1.48, 0, up, M(bronze));                                 // 胸甲
+  const head = new THREE.Group(); head.position.set(0, 1.78, 0); up.add(head);
+  const hm = new THREE.Mesh(new THREE.SphereGeometry(.17, 8, 6), M(bronze)); head.add(hm);
+  box(.08, .1, .1, 0, 0, -.02, .17, head, M(skin));                               // 臉（看得出朝向）
+  box(.04, .22, .42, 0, 0, .2, -.02, head, M(0xa02a20));                         // 盔冠
+  // 拿火把的手（右）與長矛（左）
+  const armR = new THREE.Group(); armR.position.set(.32, 1.5, 0); up.add(armR);
+  box(.1, .55, .1, 0, 0, -.25, 0, armR, M(cloak));
+  const torch = new THREE.Group(); torch.position.set(0, -.5, .12); armR.add(torch);
+  cyl(.03, .04, .7, 0x3a2a1a, 0, .2, 0, torch, 5);
+  const tf = flame(torch, 0, .52, 0, .45);
+  const armL = new THREE.Group(); armL.position.set(-.32, 1.5, 0); up.add(armL);
+  box(.1, .55, .1, 0, 0, -.25, 0, armL, M(cloak));
+  cyl(.025, .025, 2.6, 0x5a4a30, 0, .2, .1, armL, 4);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(.05, .25, 4), M(0xa0a0a0)); tip.position.set(0, 1.6, .1); armL.add(tip);
+  const light = new THREE.PointLight(0xff8a3a, 1.6, 11, 2); light.position.set(0, 0, 0); tf.add(light); light.position.y = .4;
+  // 頭上的微光：警戒（黃）、追殺（紅）
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xe0b04a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+  glow.position.y = 2.3; up.add(glow);
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(.25, 10, 8), new THREE.MeshBasicMaterial({ color: 0xe0b04a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  halo.position.y = 2.3; up.add(halo);
+  // 除錯：感知範圍圈
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.96, 1, 48), new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: .35, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .04; ring.visible = false; world.add(ring);
+  world.add(g);
+  return { g, up, legs, armR, armL, head, tf, light, glow, halo, ring, fall: 0, run: 0, px: null, pz: null, walk: 0 };
+}
+
+// ============================================================
+// 遊戲狀態與每幀流程
+// ============================================================
+let actx = null, audio = null, game = null, t0 = 0, curT = 10;
+let paused = true, overShown = false, startedOnce = false;
+const V = { yaw: Math.PI, pitch: -.1, eye: 1.6, bob: 0 };
+const keys = {};
+let pend = {};
+let hintTimer = null, lastHintAt = -1e9, winT = 0;
+
+function makeAudio(T) {
+  if (audio && typeof audio.stop === 'function') { try { audio.stop(); } catch (e) {} }
+  if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
+  if (actx.state === 'suspended') actx.resume();
+  t0 = actx.currentTime + .1;
+  const a = AudioMod.createAudio(actx, { T, t0 });
+  // 介面允許模組自己持有狀態：回傳物件缺的方法改用模組上的
+  audio = {
+    now: () => (a && a.now ? a.now() : AudioMod.now ? AudioMod.now() : actx.currentTime),
+    update: s => (a && a.update ? a.update(s) : AudioMod.update && AudioMod.update(s)),
+    cue: n => (a && a.cue ? a.cue(n) : AudioMod.cue && AudioMod.cue(n)),
+    stop: () => (a && a.stop ? a.stop() : a && a.dispose ? a.dispose() : null),
+  };
+}
+function newGame(zone) {
+  const g = Rules.createLevel({ T: curT, t0, zone });
+  if (zone && g.zone !== zone && typeof g.gotoZone === 'function') g.gotoZone(zone);
+  if (g.phase === 'intro' && typeof g.start === 'function') g.start(audio.now());
+  game = g; overShown = false; winT = 0;
+  if (game.level !== builtFor) build(game.level);
+  V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
+  for (const G of S.guards.values()) { G.px = null; }
+  $('msgs').innerHTML = ''; $('hint').textContent = ''; lastHintAt = -1e9;
+  $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
+}
+function startFromTop() {
+  curT = +$('oT').value || 10;
+  makeAudio(curT);
+  newGame(1);
+  startedOnce = true;
+  resume();
+}
+function retryZone() {
+  if (!game) return startFromTop();
+  if (!actx) makeAudio(curT);
+  const z = clamp(game.zone || 1, 1, 4);
+  if (typeof game.retry === 'function' && game.retry.length === 0 && Rules.stub !== true) { game.retry(); overShown = false; $('fail').hidden = true; }
+  else newGame(z);
+  resume();
+}
+
+// 介面延遲：p>0.8 時刻意慢 0.15 秒（視聽不協調）
+function curP() { return game && game.cycle ? game.cycle.p || 0 : 0; }
+function lag(fn) { if (curP() > .8) setTimeout(fn, 150); else fn(); }
+
+const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'Shift': 'Shift', '空白鍵': '空白鍵' };
+function showHint(text) {
+  if (!text) return;
+  const h = $('hint');
+  h.innerHTML = '';
+  // 把「按 Q」「按住 E」裡的鍵名框起來
+  String(text).split(/(空白鍵|Shift|\bE\b|\bQ\b)/).forEach(part => {
+    if (KEYNAMES[part]) { const k = document.createElement('span'); k.className = 'k'; k.textContent = part; h.appendChild(k); }
+    else h.appendChild(document.createTextNode(part));
+  });
+  h.style.opacity = 1;
+  clearTimeout(hintTimer); hintTimer = setTimeout(() => { h.style.opacity = 0; }, 7000);
+}
+function showMsg(text, color) {
+  const d = document.createElement('div'); d.textContent = text; if (color) d.style.color = color;
+  $('msgs').appendChild(d); setTimeout(() => d.remove(), 5100);
+  while ($('msgs').children.length > 3) $('msgs').firstChild.remove();
+}
+function drain() {
+  const out = game.out; if (!out || !out.length) return;
+  const evs = out.splice(0, out.length);
+  for (const e of evs) {
+    if (!e) continue;
+    if (e.type === 'sfx') { audio.cue(e.a); if (e.a === 'takedown' || e.a === 'down') lag(() => flash(.25)); }
+    else if (e.type === 'hint') lag(() => showHint(e.a));
+    else if (e.type === 'msg') lag(() => showMsg(e.a));
+  }
+}
+let flashV = 0; const flash = v => { flashV = Math.max(flashV, v); };
+
+function readInput() {
+  const k = c => !!keys[c];
+  const I = {
+    yaw: V.yaw,
+    mx: (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0),
+    mz: (k('KeyS') ? 1 : 0) - (k('KeyW') ? 1 : 0),
+    breath: k('Space'),
+    dash: !!pend.dash, takedown: !!pend.takedown, calm: !!pend.calm,
+    interact: k('KeyE'),
+  };
+  if (game && game.phase === 'intro') I.start = true;
+  pend = {};
+  return I;
+}
+
+let lastFrame = performance.now();
+function loop() {
+  const nowMs = performance.now(), dt = Math.min(.1, (nowMs - lastFrame) / 1000); lastFrame = nowMs;
+  const playing = !!(game && !paused && (game.phase === 'play' || game.phase === 'intro'));
+  document.body.classList.toggle('playing', playing);
+  if (playing) {
+    const t = audio.now();
+    game.step(t, readInput());
+    audio.update(game);
+    drain();
+  }
+  if (game && !paused && (game.phase === 'fail' || game.phase === 'win')) {
+    if (game.out && game.out.length) drain();
+    audio.update(game);
+    if (!overShown) showOver();
+  }
+  if (game && S) { sync(dt, nowMs / 1000); renderer.render(scene, camera); if (playing) hud(dt); }
+  requestAnimationFrame(loop);
+}
+
+// ---------- 畫面同步 ----------
+function guardColor(state) { return state === 'hunted' ? 0xd23a2a : 0xe0b04a; }
+function sync(dt, now) {
+  const g = game, P = g.player, L = g.level;
+  const p = curP(), blind = g.cycle && g.cycle.blind;
+  // 鏡頭高度：木馬腹中在高處；屏息時壓低一點
+  const hr = L.horse && R(L.horse);
+  const inHorse = P.inHorse != null ? !!P.inHorse : (g.zone <= 1 && inR(hr, P.x, P.z));
+  const fy = L.horse ? num(L.horse.floor, L.horse.y, L.horse.floorY, 3.2) : 0;
+  const eyeT = (inHorse ? fy + 1.05 : 1.62) - (P.breathing ? .12 : 0);
+  V.eye += (eyeT - V.eye) * Math.min(1, dt * (Math.abs(eyeT - V.eye) > 1 ? 2.5 : 8));
+  // 走路的晃動
+  const mv = S.lastP ? Math.hypot(P.x - S.lastP.x, P.z - S.lastP.z) : 0; S.lastP = { x: P.x, z: P.z };
+  if (mv > .001 && mv < 1) V.bob += mv * 5;
+  const bob = Math.sin(V.bob) * .035;
+  const shake = g.hunted ? .02 : 0;
+  camera.position.set(P.x + rand(-shake, shake), V.eye + bob, P.z);
+  camera.rotation.set(V.pitch, V.yaw, 0);
+
+  // 火光閃動
+  const fl = () => 1 + Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08;
+  for (const F of S.fires) { F.f.scale.set(1, fl(), 1); F.light.intensity = F.base * (.88 + Math.random() * .2); }
+  for (const s of S.shafts) s.material.opacity = .05 + Math.random() * .03;
+  if (S.horseLight) S.horseLight.intensity = .35 + Math.random() * .2;
+
+  // 衛兵
+  const seen = new Set();
+  const rp = 2 + 8 * p * p;
+  arr(g.guards).forEach((G, i) => {
+    const key = G.id != null ? G.id : i; seen.add(key);
+    let F = S.guards.get(key); if (!F) { F = makeGuard(); S.guards.set(key, F); }
+    const down = G.state === 'down', hunted = G.state === 'hunted', susp = G.state === 'suspicious';
+    const sp = F.px == null ? 0 : Math.hypot(G.x - F.px, G.z - F.pz) / Math.max(dt, 1e-3);
+    F.px = G.x; F.pz = G.z;
+    F.g.position.set(G.x, 0, G.z);
+    if (!down) F.g.rotation.y = num(G.yaw, 0);
+    // 走／跑的動作
+    F.run += ((hunted ? 1 : 0) - F.run) * Math.min(1, dt * 4);
+    if (sp > .05 && !down) F.walk += dt * (6 + F.run * 8);
+    const sw = sp > .05 && !down ? Math.sin(F.walk) : 0;
+    F.legs[0].rotation.x = sw * (.4 + F.run * .5); F.legs[1].rotation.x = -sw * (.4 + F.run * .5);
+    F.armL.rotation.x = -sw * .3 * F.run; F.armR.rotation.x = hunted ? -1.2 : sw * .15 - .2;
+    F.up.rotation.x = F.run * .25;
+    F.up.position.y = Math.abs(sw) * (.03 + F.run * .06);
+    // 倒下
+    F.fall += ((down ? 1 : 0) - F.fall) * Math.min(1, dt * 5);
+    F.up.rotation.z = F.fall * 1.5; F.up.position.y -= F.fall * .2;
+    F.light.intensity = (down ? .5 : 1.6) * (.85 + Math.random() * .25);
+    F.tf.scale.set(1, fl() * (down ? .6 : 1), 1);
+    // 頭上的微光：起疑時黃、追殺時紅，跟著低音拍輕輕脈動
+    const on = hunted || susp;
+    const beat = g.bass && Number.isFinite(g.bass.nextBeat) ? 1 - clamp((g.bass.nextBeat - audio.now()) / (g.bass.period || 2.4), 0, 1) : 0;
+    const pulse = hunted ? .9 : .5 + .5 * Math.exp(-beat * 6) ;
+    const col = guardColor(G.state);
+    F.glow.material.color.setHex(col); F.halo.material.color.setHex(col);
+    F.glow.material.opacity += ((on && !down ? .95 : 0) - F.glow.material.opacity) * Math.min(1, dt * 8);
+    F.halo.material.opacity = F.glow.material.opacity * .45 * pulse;
+    F.halo.scale.setScalar(1 + (1 - pulse) * .4);
+    if (!on && G.susp > 0) { F.glow.material.color.setHex(0xe0b04a); F.glow.material.opacity = Math.max(F.glow.material.opacity, clamp(G.susp, 0, 1) * .35); }
+    // 除錯圈：感知範圍 r(p)
+    const dbg = $('oPhase').checked && !down;
+    F.ring.visible = dbg; if (dbg) { const r = blind ? .01 : rp * (susp || hunted ? 1.3 : 1); F.ring.scale.set(r, r, r); F.ring.position.set(G.x, .04, G.z); }
+  });
+  for (const [k, F] of S.guards) if (!seen.has(k)) { world.remove(F.g); world.remove(F.ring); S.guards.delete(k); }
+
+  // 城門：門閂隨進度滑開；勝利時門往外打開
+  if (S.gate) {
+    const prog = clamp(num(g.gate && g.gate.progress, g.gateProgress, L.gate && L.gate.progress, 0), 0, 1);
+    S.gate.bar.position.x = S.gate.gx - prog * (S.gate.gw * .55);
+    const won = g.phase === 'win';
+    if (won) winT += dt;
+    S.gate.open += ((won ? 1 : 0) - S.gate.open) * Math.min(1, dt * .6);
+    for (const D of S.gate.doors) D.pivot.rotation.y = -D.side * S.gate.open * 1.35;
+    if (won) S.gate.bar.position.y = Math.max(.25, 2.4 - winT * 3);
+  }
+  if (S.invaders) {
+    const won = g.phase === 'win';
+    S.invaders.g.visible = won;
+    S.invaders.light.intensity = won ? Math.min(3, winT * 1.2) : 0;
+    if (won) for (const v of S.invaders.list) { v.f.position.z -= v.sp * dt; if (v.f.position.z < S.invaders.gz - 12) v.f.position.z += 30; v.f.scale.y = fl(); }
+  }
+}
+
+// ---------- 介面 ----------
+let noiseT = 0;
+const nctx = $('noise').getContext('2d'), nimg = nctx.createImageData(160, 90);
+function hud(dt) {
+  const g = game, P = g.player, p = curP();
+  // 區名
+  const z = clamp(g.zone | 0, 0, 4);
+  $('zoneNo').textContent = z ? `第 ${z} 區` : '';
+  $('zoneName').textContent = ZONE_NAMES[z];
+  // 屏息計量
+  const used = clamp(num(P.breathT, 0) / BREATH_MAX, 0, 1);
+  $('breathFill').style.width = ((1 - used) * 100).toFixed(1) + '%';
+  $('breath').classList.toggle('on', !!P.breathing);
+  $('breath').classList.toggle('low', used > .7);
+  $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵）';
+  $('shade').hidden = !P.hidden;
+  // 城門進度（只在城門那一區、開始推之後出現）
+  const prog = num(g.gate && g.gate.progress, g.gateProgress, 0);
+  $('gateBar').hidden = !(z === 4 && prog > 0);
+  $('gateFill').style.width = (clamp(prog, 0, 1) * 100) + '%';
+  // 警戒：畫面邊緣跟著低音拍脈動
+  const alertOn = arr(g.guards).some(G => G.state === 'suspicious');
+  const alarm = clamp(num(g.alarm, alertOn ? .6 : 0), 0, 1);
+  let beat = 0;
+  if (g.bass && Number.isFinite(g.bass.nextBeat)) beat = 1 - clamp((g.bass.nextBeat - audio.now()) / (g.bass.period || 2.4), 0, 1);
+  const edge = (alertOn || alarm > .05) && !g.hunted ? Math.max(alarm, .4) * (.25 + .75 * Math.exp(-beat * 7)) : 0;
+  const setEdge = () => { $('edge').style.opacity = edge.toFixed(3); };
+  lag(setEdge);
+  // 追殺：紅色暈影
+  $('red').style.opacity = g.hunted ? (.75 + Math.sin(performance.now() / 160) * .15).toFixed(2) : flashV.toFixed(2);
+  flashV = Math.max(0, flashV - dt * 1.5);
+  // p>0.8：畫面雜訊
+  const nz = p > .8 ? (p - .8) / .2 : 0;
+  $('noise').style.opacity = (nz * .22).toFixed(3);
+  if (nz > 0 && (noiseT += dt) > .04) {
+    noiseT = 0; const d = nimg.data;
+    for (let i = 0; i < d.length; i += 4) { const v = Math.random() < .5 ? 0 : Math.random() * 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+    nctx.putImageData(nimg, 0, 0);
+  }
+  // 相位條（除錯）
+  const showPhase = $('oPhase').checked; $('phase').hidden = !showPhase;
+  if (showPhase && g.cycle) {
+    const T = g.cycle.T || curT;
+    $('phaseNum').textContent = `　p=${p.toFixed(2)}${g.cycle.blind ? '・盲區' : ''}　alarm=${alarm.toFixed(2)}`;
+    $('phaseFill').style.width = (p * 100) + '%';
+    $('phaseBlind').style.width = (num(C.blind, C.BLIND, .5) / T * 100) + '%';
+    $('phaseBlind').style.opacity = g.cycle.blind ? 1 : .35;
+    $('phaseBass').style.left = (beat * 100) + '%';
+  }
+}
+
+function showOver() {
+  overShown = true; unlockPointer();
+  if (game.phase === 'fail') {
+    const why = game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';
+    $('failWhy').textContent = why;
+    setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
+  } else {
+    $('win').hidden = false;
+    // 先看城門打開、火把湧入，再轉黑畫面
+    setTimeout(() => { if (game && game.phase === 'win') $('win').classList.add('dark'); }, 5500);
+  }
+}
+
+// ============================================================
+// 輸入
+// ============================================================
+let locked = false, lockFailed = false, drag = null;
+function lockPointer() {
+  if (lockFailed) return;
+  try {
+    if (!canvas.requestPointerLock) { lockFailed = true; return; }
+    const r = canvas.requestPointerLock();
+    if (r && r.catch) r.catch(() => { lockFailed = true; });
+  } catch (e) { lockFailed = true; }
+}
+function unlockPointer() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {} }
+document.addEventListener('pointerlockerror', () => { lockFailed = true; });
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (!locked && active()) pause();
+});
+const active = () => game && !paused && (game.phase === 'play' || game.phase === 'intro');
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', e => {
+  if (!active()) return;
+  if (locked) return;
+  drag = { x: e.clientX, y: e.clientY };
+  lockPointer();
+});
+window.addEventListener('mouseup', () => { drag = null; });
+window.addEventListener('mousemove', e => {
+  if (!active()) return;
+  let dx = 0, dy = 0;
+  if (locked) { dx = e.movementX; dy = e.movementY; }
+  else if (drag) { dx = e.clientX - drag.x; dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; }
+  V.yaw -= dx * .0024;
+  V.pitch = clamp(V.pitch - dy * .0024, -1.45, 1.2);
+});
+window.addEventListener('keydown', e => {
+  if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  const was = keys[e.code]; keys[e.code] = true;
+  if (!game) return;
+  if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
+  if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
+  if (paused || e.repeat || was) return;
+  if (e.code === 'KeyE') pend.takedown = true;          // 點一下＝暗殺事件；按住的狀態另外以 interact 送出
+  if (e.code === 'KeyQ') pend.calm = true;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') pend.dash = true;
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function pause() {
+  if (!game || paused) return;
+  paused = true; unlockPointer();
+  $('optSlotPause').appendChild($('opts'));
+  $('pause').hidden = false;
+  try { if (actx && actx.state === 'running') actx.suspend(); } catch (e) {}   // 暫停＝音訊時鐘也停，規則的時間不會跳
+}
+function resume() {
+  paused = false;
+  $('intro').hidden = true; $('pause').hidden = true;
+  try { if (actx && actx.state === 'suspended') actx.resume(); } catch (e) {}
+  lockPointer();
+}
+$('optSlotIntro').appendChild($('opts'));
+$('btnStart').onclick = startFromTop;
+$('btnResume').onclick = resume;
+$('btnRetryP').onclick = () => { $('pause').hidden = true; retryZone(); };
+$('btnFromTop').onclick = () => { $('pause').hidden = true; startFromTop(); };
+$('btnFromTop2').onclick = startFromTop;
+$('btnRetry').onclick = retryZone;
+$('btnAgain').onclick = startFromTop;
+
+// 開場前先建好場景當背景（看得到木馬腹中）
+try {
+  t0 = 0; curT = +$('oT').value || 10;
+  const g0 = Rules.createLevel({ T: curT, t0: 0, zone: 1 });
+  build(g0.level);
+  const P = g0.player; camera.position.set(P.x, 4.2, P.z); camera.rotation.set(-.35, num(P.yaw, Math.PI), 0);
+  renderer.render(scene, camera);
+} catch (e) { console.warn('預覽場景失敗', e); }
+
+window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, V, keys, scene };
+requestAnimationFrame(loop);
+})();
+</script>

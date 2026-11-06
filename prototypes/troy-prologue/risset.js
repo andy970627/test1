@@ -1,0 +1,634 @@
+/*
+ * 序章《特洛伊的迴響》木馬之夜：規則模組（純邏輯）
+ *
+ * 不碰 DOM、不碰 Web Audio，只有數字進、數字出，之後可以一對一翻成 C#（Unity，用 dspTime 推進）。
+ * 瀏覽器：全域 RissetRules；Node：module.exports。
+ * 規格：docs/design/2026-11-06-risset-troy-prologue.md 第 2、6 節（6.3 是介面）。
+ *
+ * 座標（公尺、秒、弧度）：
+ *   地面是 x（向右，0…60）× z（向下／向南，0…30），y 向上。整關由西（木馬）往東（城門）走。
+ *   朝向 yaw：正前方 forward(yaw) = (−sin yaw, −cos yaw)，和 three.js 物件 rotation.y、相機一致
+ *   （yaw = 0 面向 −z）。yawTo(dx, dz) 是反函數。
+ *   輸入 mx、mz 是「世界座標」的移動方向（−1…1，長度超過 1 會被壓成 1）；畫面層自己依鏡頭轉換。
+ *
+ * 時間：一律用音訊時鐘的絕對時間（AudioContext.currentTime）。step() 內部自己算 dt，最多 0.1 秒。
+ *   循環相位 p = ((t − t0) / CYCLE) mod 1；盲區 = 每個循環開頭的 BLIND 秒。
+ *   聲音模組要用同一組 t0 與 CYCLE，相位才會一致。
+ *   低音拍點：anchor + k × BASS_PERIOD（k 為整數）。平常 anchor = t0；
+ *   每次「新的一次起疑」開始時，anchor 重設為「當下 + BASS_LEAD」，讓第一拍在 0.5 秒後響，
+ *   8 秒內剛好放得進 4 拍。聲音模組每幀讀 bass.nextBeat／bass.anchor 排程即可。
+ *
+ * 出處（CLAUDE.md：電影為主、原典補充、可適度改編）：
+ *   木馬、特洛伊陷落之夜、從木馬裡出來打開城門【電影】（場景細節待確認）；木馬計【原典：《奧德賽》第 4、8 卷】
+ *   Risset 節奏驅動衛兵感知、屏息、盲區、衝刺、恐慌共振、低音安撫【改編：交接包】
+ *   致命一擊只在特洛伊戰場允許【改編：專案決定】
+ *   木馬暗門、城門門閂、陰影區、衛兵巡邏路線【改編】
+ *
+ * 簡化（原型階段）：
+ *   聽覺與視覺都不被牆擋（只算距離與視角）；木馬腹中的玩家高度 BELLY_Y，距離用 3D 算。
+ *   在木馬腹中被發現（進入追殺）＝立刻失敗（衛兵爬不上來，但會叫人）。
+ *   追殺中不能離開這一區，要先擺脫。
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.RissetRules = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------- 常數（第 6.2 節，全部可調） ----------
+  const T = Object.freeze({
+    CYCLE: 10,            // 一個加速循環的秒數
+    BLIND: 0.5,           // 循環開頭的盲區秒數（感知 = 0）
+    R_BASE: 2,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²
+    R_GAIN: 8,
+    ALERT_MUL: 1.3,       // 警戒（起疑）與追殺時感知 ×1.3
+    FOV: Math.PI / 3,     // 視野半角 ±60°
+    HIGH_P: 0.6,          // p > 0.6：範圍內移動 = 立即追殺
+    BREATH_HEAR: 0.6,     // 沒屏息、站著不動的呼吸聲，在 r × 0.6 內聽得到
+    BREATH_MAX: 6,        // 屏息上限秒數，超過 = 喘氣（大聲）
+    BREATH_RECOVER: 1.2,  // 不屏息時，屏息計量每秒恢復幾秒
+    LOUD_R: 8,            // 大聲（喘氣、門閂聲）傳多遠（至少這麼遠，或 r 較大時用 r）
+    WALK: 2.6,            // 潛行速度 m/s
+    DASH: 3,              // 衝刺距離 m（只在盲區，每個盲區一次）
+    BODY_R: 0.3,          // 玩家與衛兵的碰撞半徑
+    SUSP_MOVE: 0.9,       // p ≤ 0.6 時，範圍內移動每秒增加的疑心
+    SUSP_SEEN_HIGH: 1.5,  // 站著被看到／聽到呼吸：p > 0.6 時每秒疑心
+    SUSP_SEEN_LOW: 0.4,   //                       p ≤ 0.6 時每秒疑心
+    SUSP_DECAY: 0.2,      // 沒察覺時每秒退的疑心
+    TAKEDOWN_R: 1.5,      // 致命一擊：背後 1.5 m 內
+    BASS_PERIOD: 2.4,     // 底層低音週期
+    BASS_WIN: 0.15,       // 拍點容許 ±0.15 秒
+    BASS_LEAD: 0.5,       // 起疑後第一拍在幾秒後
+    CALM_GAP: 1.0,        // 兩次安撫間隔小於 1 秒 = 太急 → 追殺
+    CALM_NEED: 4,         // 連續成功幾次回到巡邏
+    CALM_TIMEOUT: 8,      // 幾秒內沒安撫完 → 追殺
+    CALM_GRACE: 3,        // 安撫或擺脫後，衛兵幾秒內不累積疑心
+    HUNT_SPEED: 3.0,      // 追殺時衛兵速度
+    CATCH_R: 1.0,         // 被追到 1 m 內 = 失敗
+    ESCAPE_STILL: 10,     // 躲在陰影裡不動多久擺脫（= 一整個循環）
+    PATROL_SPEED: 1.2,    // 巡邏速度
+    PATROL_PAUSE: 1.0,    // 到路線點停多久（×0.8～1.2 隨機）
+    SEARCH_TURN: 2.0,     // 追到最後位置後原地張望的轉速 rad/s
+    GATE_LOW_P: 0.5,      // 城門：p ≤ 0.5 時推門閂才安靜
+    GATE_NEED: 15,        // 需要累積的低頻推門秒數（約 3 個循環 × 5 秒）
+    LATCH_R: 1.6,         // 離門閂多近才推得到
+    LATCH_NOISE_GAP: 0.5, // 高頻時按住，每隔幾秒響一次門閂聲
+    TRAPDOOR_R: 0.6,      // 木馬暗門觸發半徑
+    BELLY_Y: 2.5,         // 木馬腹中離地高度
+    DESYNC_P: 0.8,        // p > 0.8：畫面刻意延遲加雜訊
+    DESYNC_LAG: 0.15,
+    MAX_DT: 0.1           // step 每次最多推進 0.1 秒
+  });
+
+  // ---------- 純函式 ----------
+  const per = (K) => (typeof K === 'number' ? K : (K || T).CYCLE);
+  const pmod = (a, b) => ((a % b) + b) % b;
+
+  /** 循環相位 p（0…1）。K 可以是常數物件或週期秒數。 */
+  function phaseAt(t, t0, K) { const P = per(K); return pmod(t - t0, P) / P; }
+  /** 第幾個循環（整數，可為負）。 */
+  function cycleIndex(t, t0, K) { return Math.floor((t - t0) / per(K)); }
+  /** 是否在盲區（每個循環開頭 BLIND 秒）。 */
+  function inBlind(t, t0, K) {
+    const P = per(K), b = typeof K === 'object' && K ? K.BLIND : T.BLIND;
+    return pmod(t - t0, P) < b;
+  }
+  /** 感知半徑 r(p)，alert 為真時 ×ALERT_MUL。 */
+  function radiusAt(p, alert, K) {
+    K = K || T;
+    return (K.R_BASE + K.R_GAIN * p * p) * (alert ? K.ALERT_MUL : 1);
+  }
+  /** 離 t 最近的低音拍點：{beat, off（t − beat，正 = 晚按）, ok, next（≥ t 的下一拍）}。 */
+  function bassBeatNear(t, anchor, period, win) {
+    period = period || T.BASS_PERIOD; win = win == null ? T.BASS_WIN : win;
+    const k = Math.round((t - anchor) / period);
+    const beat = anchor + k * period;
+    const off = t - beat;
+    const next = anchor + Math.ceil((t - anchor) / period - 1e-9) * period;
+    return { beat, off, ok: Math.abs(off) <= win + 1e-9, next };
+  }
+  function forward(yaw) { return { x: -Math.sin(yaw), z: -Math.cos(yaw) }; }
+  function yawTo(dx, dz) { return Math.atan2(-dx, -dz); }
+  function angDiff(a, b) { return Math.abs(pmod(a - b + Math.PI, 2 * Math.PI) - Math.PI); }
+  function inRect(x, z, r) { return x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1; }
+  function circleHitsRect(x, z, rad, r) {
+    const cx = Math.max(r.x0, Math.min(x, r.x1)), cz = Math.max(r.z0, Math.min(z, r.z1));
+    return (x - cx) * (x - cx) + (z - cz) * (z - cz) < rad * rad;
+  }
+  /** 預設亂數（固定種子，結果可重現）。 */
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- 提示（每個機制第一次出現時一行；畫面層可以覆寫 HINTS 改按鍵說法） ----------
+  const HINTS = {
+    breath: '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
+    blind: '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
+    trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
+    gasp: '憋太久，喘出聲了！屏息最多約 6 秒，節奏慢下來時記得換氣。',
+    dash: '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
+    panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，連續四次。',
+    hunted: '被發現了！快躲進陰影裡，一動也不動撐過一整個循環（約 10 秒）。被追到身邊就失敗。',
+    takedown: '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
+    gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
+    lockedExit: '還在被追，先甩掉追兵才能往前走。'
+  };
+  const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
+
+  // ---------- 關卡資料：木馬之夜（整關 60 × 30 m） ----------
+  function buildLevel() {
+    const R = (x0, z0, x1, z1, name) => ({ x0, z0, x1, z1, name });
+    const walls = [
+      // 外框
+      R(-1, -1, 61, 0, '北界'), R(-1, 30, 61, 31, '南界'), R(-1, 0, 0, 30, '西界'), R(60, 0, 61, 30, '城門牆'),
+      // 區 1／2 之間：木馬停在廣場西緣
+      // 區 2 神殿廣場
+      R(19, 2, 27, 8, '神殿'),
+      R(21, 12.5, 23, 14.5, '雕像台座'),
+      R(30, 0, 31, 18, '廣場東牆（北段）'), R(30, 27, 31, 30, '廣場東牆（南段）'),
+      // 區 3 窄巷：北邊是城牆根的屋舍，南邊是倉庫
+      R(31, 0, 46, 17, '屋舍'), R(31, 28, 46, 30, '倉庫'),
+      R(35, 24.5, 37, 28, '貨堆'), R(40, 18, 41.5, 21, '水缸'),
+      R(46, 0, 47, 17, '巷口北牆'), R(46, 28, 47, 30, '巷口南牆'),
+      // 區 4 城門
+      R(52, 13, 53.5, 17, '石墩')
+    ];
+    const shadows = [
+      R(5, 14.2, 11.8, 15.8, '木馬腹中'),
+      R(11, 16, 15, 20, '木馬的影子'),
+      R(18, 8, 28, 10.5, '神殿柱廊'),
+      R(20, 14.5, 24, 18, '雕像的影子'),
+      R(14, 24, 20, 29, '南側拱廊'),
+      R(26.5, 23.5, 30, 27, '廣場東南角'),
+      R(31, 23.5, 35, 28, '巷口屋簷'),
+      R(37, 24.5, 40, 28, '貨堆後'),
+      R(41.5, 17, 44, 21, '水缸旁'),
+      R(47, 23, 51, 28, '城門南側廊下'),
+      R(53.5, 12, 59.8, 18, '城門拱道')
+    ];
+    const P = (x, z) => ({ x, z });
+    const zones = [
+      { id: 0, name: ZONE_NAMES[0], start: { x: 6, z: 15, y: T.BELLY_Y, yaw: -Math.PI / 2 } },
+      { id: 1, name: ZONE_NAMES[1], start: { x: 5.8, z: 15, y: T.BELLY_Y, yaw: -Math.PI / 2 },
+        belly: R(5.3, 14.5, 11.5, 15.5, '木馬腹中'),
+        exit: { kind: 'trapdoor', x: 11, z: 15, to: 2 } },
+      { id: 2, name: ZONE_NAMES[2], start: { x: 13, z: 18.5, y: 0, yaw: -Math.PI / 2 },
+        exit: { kind: 'rect', rect: R(30, 18, 31.5, 27), to: 3 } },
+      { id: 3, name: ZONE_NAMES[3], start: { x: 32, z: 25.5, y: 0, yaw: -Math.PI / 2 },
+        exit: { kind: 'rect', rect: R(46, 17, 47.5, 28), to: 4 } },
+      { id: 4, name: ZONE_NAMES[4], start: { x: 48, z: 25, y: 0, yaw: -Math.PI / 2 },
+        exit: { kind: 'gate', to: null } }
+    ];
+    // 衛兵：route 是巡邏點（迴圈）；只有一點 = 站崗，朝 yaw。
+    const guards = [
+      { id: 'g1', zone: 1, route: [P(9, 15), P(1.5, 15), P(15.5, 15)], note: '木馬下來回巡的衛兵' },
+      { id: 'g2a', zone: 2, route: [P(15, 12), P(29, 12), P(29, 15.5), P(15, 15.5)], note: '繞廣場的衛兵' },
+      { id: 'g2b', zone: 2, route: [P(28, 21), P(16, 21)], note: '橫越廣場南側、會起疑的衛兵' },
+      { id: 'g3a', zone: 3, route: [P(39, 23)], yaw: yawTo(1, 0), note: '背對巷口站崗（可暗殺）' },
+      { id: 'g3b', zone: 3, route: [P(44.5, 18.5), P(44.5, 27)], note: '巷尾南北巡' },
+      { id: 'g3c', zone: 3, route: [P(42, 22.5), P(45.5, 22.5)], note: '巷尾東西巡，與南北巡交錯' },
+      { id: 'g4a', zone: 4, route: [P(49, 5), P(57, 5)], note: '城門北側守衛' },
+      { id: 'g4b', zone: 4, route: [P(48, 20), P(51, 20), P(51, 9)], note: '城門西側守衛' }
+    ];
+    return {
+      size: { w: 60, h: 30 },
+      walls, shadows, zones, guards,
+      horse: { x0: 4.5, z0: 13, x1: 12.5, z1: 17, bellyY: T.BELLY_Y, trapdoor: { x: 11, z: 15 }, drop: { x: 13, z: 18.5 } },
+      gate: { x0: 59.8, z0: 11, x1: 60, z1: 19, latch: { x: 58.6, z: 15 } }
+    };
+  }
+
+  // ---------- 遊戲 ----------
+  function createLevel(opts) {
+    opts = opts || {};
+    const K = Object.assign({}, T, opts.T || {});
+    const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
+    const level = opts.level || buildLevel();
+    const t0 = opts.t0 || 0;
+    const startZone = Math.max(0, Math.min(4, opts.startZone | 0));
+
+    const g = {
+      T: K,
+      phase: startZone === 0 ? 'intro' : 'play',
+      zone: startZone,
+      time: null,
+      cycle: { T: K.CYCLE, t0, p: 0, blind: false, index: 0, desync: false },
+      bass: { period: K.BASS_PERIOD, anchor: t0, nextBeat: t0 },
+      player: null,
+      guards: [],
+      panic: { active: false, start: 0, count: 0, lastPress: null },
+      gate: { progress: 0, need: K.GATE_NEED, pushing: false, open: false },
+      alarm: 0,
+      hunted: false,
+      stillT: 0,
+      failReason: null,
+      retries: 0,
+      level,
+      out: [],
+      hintsShown: {}
+    };
+    let last = null;
+    let latchNoiseAt = -1e9;
+    let dashCycle = null; // 每個盲區只能衝刺一次
+
+    const emit = (type, a) => g.out.push({ type, a });
+    const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HINTS[key]); } };
+
+    function makePlayer(z) {
+      const s = level.zones[z].start;
+      return { x: s.x, z: s.z, y: s.y || 0, yaw: s.yaw || 0, breathing: false, breathT: 0, breathLock: false,
+        hidden: false, moving: false, inBelly: !!level.zones[z].belly };
+    }
+    function makeGuard(d) {
+      const p0 = d.route[0], p1 = d.route[1] || p0;
+      return {
+        id: d.id, zone: d.zone, x: p0.x, z: p0.z,
+        yaw: d.yaw != null ? d.yaw : yawTo(p1.x - p0.x, p1.z - p0.z),
+        baseYaw: d.yaw, state: 'patrol', susp: 0, calm: 0,
+        route: d.route, wp: d.route.length > 1 ? 1 : 0, pause: 0, grace: 0,
+        lookAt: null, lastKnown: null, active: false
+      };
+    }
+    function resetGuards(fromZone) {
+      level.guards.forEach((d, i) => {
+        if (d.zone >= fromZone || !g.guards[i]) g.guards[i] = makeGuard(d);
+      });
+    }
+    function setActive() { g.guards.forEach((q) => { q.active = q.zone === g.zone && q.state !== 'down'; }); }
+    function clearPanic() { g.panic.active = false; g.panic.count = 0; g.panic.lastPress = null; g.bass.anchor = g.cycle.t0; }
+
+    function enterZone(z, quiet) {
+      g.zone = z;
+      setActive();
+      clearPanic();
+      g.player.inBelly = !!level.zones[z].belly;
+      if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
+      if (z === 1) { hint('breath'); }
+      if (z === 2) hint('dash');
+      if (z === 3) hint('takedown');
+      if (z === 4) hint('gate');
+    }
+
+    g.player = makePlayer(Math.max(1, startZone));
+    resetGuards(0);
+    setActive();
+    if (startZone > 0) enterZone(startZone, true);
+
+    // ----- 移動與碰撞 -----
+    function blocked(x, z, rad) {
+      for (const w of level.walls) if (circleHitsRect(x, z, rad, w)) return true;
+      return false;
+    }
+    function moveBody(b, dx, dz) {
+      if (b === g.player && b.inBelly) {
+        const r = level.zones[1].belly;
+        b.x = Math.max(r.x0, Math.min(r.x1, b.x + dx));
+        b.z = Math.max(r.z0, Math.min(r.z1, b.z + dz));
+        return;
+      }
+      if (!blocked(b.x + dx, b.z, K.BODY_R)) b.x += dx;
+      if (!blocked(b.x, b.z + dz, K.BODY_R)) b.z += dz;
+    }
+    function moveToward(b, tx, tz, speed, dt) {
+      const dx = tx - b.x, dz = tz - b.z, d = Math.hypot(dx, dz);
+      if (d < 1e-6) return 0;
+      const s = Math.min(d, speed * dt);
+      b.yaw = yawTo(dx, dz);
+      moveBody(b, dx / d * s, dz / d * s);
+      return d - s;
+    }
+    function isHidden(pl) {
+      if (pl.inBelly) return true;
+      for (const s of level.shadows) if (inRect(pl.x, pl.z, s)) return true;
+      return false;
+    }
+    const dist3 = (q, pl) => Math.hypot(q.x - pl.x, q.z - pl.z, pl.y || 0);
+    const dist2 = (q, pl) => Math.hypot(q.x - pl.x, q.z - pl.z);
+
+    // ----- 狀態轉換 -----
+    function fail(reason) {
+      if (g.phase !== 'play') return;
+      g.phase = 'fail'; g.failReason = reason;
+      emit('sfx', 'caught'); emit('msg', reason);
+    }
+    function makeSuspicious(q, t) {
+      if (q.state !== 'patrol') return;
+      q.state = 'suspicious'; q.susp = 1;
+      q.lookAt = { x: g.player.x, z: g.player.z };
+      if (!g.panic.active) {
+        g.panic.active = true; g.panic.start = t; g.panic.count = 0; g.panic.lastPress = null;
+        g.bass.anchor = t + K.BASS_LEAD;
+        emit('sfx', 'alert');
+      }
+      q.calm = g.panic.count;
+      hint('panic');
+    }
+    function startHunt(q, reason) {
+      if (g.player.inBelly) { fail('木馬裡有動靜——你被發現了。'); return; }
+      const pl = g.player;
+      const wasHunted = g.hunted;
+      for (const o of g.guards) {
+        if (!o.active) continue;
+        if (o === q || o.state === 'suspicious') {
+          o.state = 'hunted'; o.susp = 1; o.lastKnown = { x: pl.x, z: pl.z }; o.calm = 0;
+        }
+      }
+      clearPanic();
+      g.hunted = true; g.stillT = 0;
+      if (!wasHunted) { emit('sfx', 'hunt'); if (reason) emit('msg', reason); }
+      hint('hunted');
+    }
+    function endHunt() {
+      for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; }
+      g.hunted = false; g.stillT = 0;
+      emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
+    }
+
+    // ----- 每幀 -----
+    function normInput(i) {
+      i = i || {};
+      return {
+        yaw: Number.isFinite(i.yaw) ? i.yaw : null,
+        mx: +i.mx || 0, mz: +i.mz || 0,
+        breath: !!i.breath, dash: !!i.dash, takedown: !!i.takedown, calm: !!i.calm,
+        interact: !!i.interact, start: !!i.start
+      };
+    }
+    function updateClock(t) {
+      const c = g.cycle;
+      c.p = phaseAt(t, c.t0, K);
+      c.blind = inBlind(t, c.t0, K);
+      c.index = cycleIndex(t, c.t0, K);
+      c.desync = c.p > K.DESYNC_P;
+      g.bass.nextBeat = bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN).next;
+    }
+
+    g.step = function (t, input) {
+      const inp = normInput(input);
+      const dt = last == null ? 0 : Math.max(0, Math.min(K.MAX_DT, t - last));
+      last = t; g.time = t;
+      updateClock(t);
+      if (g.phase === 'intro') { if (inp.start) g.start(); return g; }
+      if (g.phase !== 'play') { g.alarm = g.phase === 'fail' ? 1 : 0; return g; }
+
+      const pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
+      if (inp.yaw != null) pl.yaw = inp.yaw;
+      let loud = false;
+
+      // 屏息
+      if (inp.breath && !pl.breathLock) {
+        if (!pl.breathing) emit('sfx', 'breath_in');
+        pl.breathing = true;
+        pl.breathT += dt;
+        if (pl.breathT >= K.BREATH_MAX) {
+          pl.breathT = K.BREATH_MAX; pl.breathing = false; pl.breathLock = true; loud = true;
+          emit('sfx', 'gasp'); hint('gasp');
+        }
+      } else {
+        if (pl.breathing) emit('sfx', 'breath_out');
+        pl.breathing = false;
+        pl.breathT = Math.max(0, pl.breathT - K.BREATH_RECOVER * dt);
+        if (!inp.breath) pl.breathLock = false;
+      }
+
+      // 移動與衝刺（屏息時不能動）
+      const ox = pl.x, oz = pl.z;
+      if (!pl.breathing) {
+        let mx = inp.mx, mz = inp.mz;
+        const len = Math.hypot(mx, mz);
+        if (len > 1) { mx /= len; mz /= len; }
+        if (len > 1e-6) moveBody(pl, mx * K.WALK * dt, mz * K.WALK * dt);
+        if (inp.dash) {
+          if (blind && dashCycle !== c.index) {
+            dashCycle = c.index;
+            let dx = mx, dz = mz;
+            const l = Math.hypot(dx, dz);
+            if (l < 1e-6) { const f = forward(pl.yaw); dx = f.x; dz = f.z; } else { dx /= l; dz /= l; }
+            const n = Math.ceil(K.DASH / 0.1);
+            for (let k = 0; k < n; k++) moveBody(pl, dx * K.DASH / n, dz * K.DASH / n);
+            emit('sfx', 'dash');
+          } else if (!blind) hint('dash');
+        }
+      }
+      const moved = Math.hypot(pl.x - ox, pl.z - oz) > 1e-4;
+      pl.moving = moved;
+      pl.hidden = isHidden(pl);
+
+      // 致命一擊
+      if (inp.takedown && !pl.inBelly) {
+        let best = null, bd = Infinity;
+        for (const q of g.guards) {
+          if (!q.active) continue;
+          const d = dist2(q, pl);
+          if (d <= K.TAKEDOWN_R && d < bd) { best = q; bd = d; }
+        }
+        if (best) {
+          const f = forward(best.yaw);
+          const behind = f.x * (pl.x - best.x) + f.z * (pl.z - best.z) < 0;
+          if (blind && behind) {
+            best.state = 'down'; best.active = false; best.susp = 0;
+            emit('sfx', 'takedown');
+          } else {
+            emit('sfx', 'takedown_fail');
+            if (best.state === 'patrol') makeSuspicious(best, t);
+          }
+        }
+      }
+
+      // 城門門閂（按住 interact）
+      g.gate.pushing = false;
+      if (g.zone === 4 && inp.interact && !g.gate.open) {
+        const L = level.gate.latch;
+        if (Math.hypot(pl.x - L.x, pl.z - L.z) <= K.LATCH_R) {
+          if (p <= K.GATE_LOW_P) {
+            g.gate.pushing = true;
+            g.gate.progress = Math.min(K.GATE_NEED, g.gate.progress + dt);
+          } else if (t - latchNoiseAt >= K.LATCH_NOISE_GAP) {
+            latchNoiseAt = t; loud = true; emit('sfx', 'latch');
+          }
+        }
+      }
+
+      // 安撫（機制 B）
+      if (inp.calm && g.panic.active) {
+        const P = g.panic;
+        const b = bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN);
+        if (P.lastPress != null && t - P.lastPress < K.CALM_GAP) {
+          emit('sfx', 'calm_bad'); startHunt(null, '太急了——衛兵聽出不對勁。');
+        } else if (!b.ok) {
+          emit('sfx', 'calm_bad'); startHunt(null, '亂了節拍——衛兵聽出不對勁。');
+        } else {
+          P.lastPress = t; P.count++;
+          emit('sfx', 'calm_ok');
+          for (const q of g.guards) if (q.active && q.state === 'suspicious') q.calm = P.count;
+          if (P.count >= K.CALM_NEED) {
+            for (const q of g.guards) if (q.active && q.state === 'suspicious') {
+              q.state = 'patrol'; q.susp = 0; q.calm = 0; q.grace = K.CALM_GRACE; q.lookAt = null;
+            }
+            clearPanic();
+            emit('sfx', 'calm_done'); emit('msg', '衛兵搖搖頭，走回原路。');
+          }
+        }
+      }
+      if (g.phase !== 'play') return g;
+      if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, '安撫得太慢——衛兵大喊有人！');
+      if (g.phase !== 'play') return g;
+
+      // 第一次碰到盲區
+      if (blind && g.zone === 1) hint('blind');
+
+      // 感知
+      for (const q of g.guards) {
+        if (!q.active || g.phase !== 'play') continue;
+        if (q.grace > 0) q.grace = Math.max(0, q.grace - dt);
+        if (blind) continue; // 盲區：感知 = 0
+        const alert = q.state === 'suspicious' || q.state === 'hunted';
+        const r = radiusAt(p, alert, K);
+        const d = dist3(q, pl);
+        const f = forward(q.yaw);
+        const toward = Math.atan2(pl.x - q.x, pl.z - q.z); // 與 forward 同一參考：比較方向向量夾角
+        const fa = Math.atan2(f.x, f.z);
+        const inFov = d < 1e-6 || angDiff(toward, fa) <= K.FOV;
+        const seen = !pl.hidden && d <= r && inFov;
+        const heardMove = moved && d <= r;
+        const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
+        const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
+
+        if (q.state === 'hunted') {
+          if (seen || heardMove || heardLoud || (!pl.hidden && !blind)) q.lastKnown = { x: pl.x, z: pl.z };
+          continue;
+        }
+        if (heardLoud) {
+          if (p > K.HIGH_P) startHunt(q, '那聲音太大了——衛兵衝過來！');
+          else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
+          continue;
+        }
+        if (moved && (heardMove || seen)) {
+          if (p > K.HIGH_P) { startHunt(q, '節奏最快的時候亂動——被發現了！'); continue; }
+          if (q.grace <= 0) q.susp += K.SUSP_MOVE * dt;
+          if (q.state === 'suspicious') q.lookAt = { x: pl.x, z: pl.z };
+        } else if (seen || heardBreath) {
+          if (q.grace <= 0) q.susp += (p > K.HIGH_P ? K.SUSP_SEEN_HIGH : K.SUSP_SEEN_LOW) * dt;
+        } else if (q.state === 'patrol') {
+          q.susp = Math.max(0, q.susp - K.SUSP_DECAY * dt);
+        }
+        q.susp = Math.min(1, q.susp);
+        if (q.susp >= 1 && q.state === 'patrol') makeSuspicious(q, t);
+      }
+      if (g.phase !== 'play') return g;
+
+      // 衛兵行動
+      for (const q of g.guards) {
+        if (!q.active) continue;
+        if (q.state === 'patrol') {
+          if (q.route.length === 1) {
+            const s = q.route[0];
+            if (Math.hypot(s.x - q.x, s.z - q.z) > 0.05) moveToward(q, s.x, s.z, K.PATROL_SPEED, dt);
+            else if (q.baseYaw != null) q.yaw = q.baseYaw;
+          } else if (q.pause > 0) {
+            q.pause -= dt;
+            if (q.pause <= 0) { const n = q.route[q.wp]; q.yaw = yawTo(n.x - q.x, n.z - q.z); }
+          } else {
+            const w = q.route[q.wp];
+            const rest = moveToward(q, w.x, w.z, K.PATROL_SPEED, dt);
+            if (rest < 0.05) {
+              q.wp = (q.wp + 1) % q.route.length;
+              q.pause = K.PATROL_PAUSE * (0.8 + 0.4 * rng());
+            }
+          }
+        } else if (q.state === 'suspicious') {
+          if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
+        } else if (q.state === 'hunted') {
+          const L = q.lastKnown || { x: pl.x, z: pl.z };
+          if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, K.HUNT_SPEED, dt);
+          else q.yaw += K.SEARCH_TURN * dt;
+          if (dist2(q, pl) < K.CATCH_R) { fail('你被衛兵抓住了。'); return g; }
+        }
+      }
+
+      // 擺脫追殺
+      if (g.hunted) {
+        if (pl.hidden && !moved) g.stillT += dt; else g.stillT = 0;
+        if (g.stillT >= K.ESCAPE_STILL) endHunt();
+      }
+
+      // 區域出口
+      const Z = level.zones[g.zone];
+      if (Z.exit) {
+        let reached = false;
+        if (Z.exit.kind === 'trapdoor') {
+          reached = Math.hypot(pl.x - Z.exit.x, pl.z - Z.exit.z) <= K.TRAPDOOR_R;
+          if (pl.x > Z.belly.x0 + 2) hint('trapdoor');
+        } else if (Z.exit.kind === 'rect') reached = inRect(pl.x, pl.z, Z.exit.rect);
+        if (reached) {
+          if (g.hunted) hint('lockedExit');
+          else {
+            if (Z.exit.kind === 'trapdoor') {
+              const s = level.zones[2].start;
+              pl.x = s.x; pl.z = s.z; pl.y = 0; pl.yaw = s.yaw; pl.inBelly = false;
+              emit('sfx', 'trapdoor');
+            }
+            enterZone(Z.exit.to);
+          }
+        }
+      }
+      if (g.zone === 4 && g.gate.progress >= K.GATE_NEED && !g.gate.open) {
+        g.gate.open = true; g.phase = 'win';
+        emit('sfx', 'gate_open'); emit('msg', '門閂落地，城門開了。火把的光從城外湧進來。');
+      }
+
+      // 給音訊的失控程度
+      if (g.hunted) g.alarm = 1;
+      else if (g.panic.active) g.alarm = Math.min(1, 0.5 + 0.5 * (t - g.panic.start) / K.CALM_TIMEOUT);
+      else {
+        let m = 0;
+        for (const q of g.guards) if (q.active) m = Math.max(m, q.susp);
+        g.alarm = 0.4 * m;
+      }
+      return g;
+    };
+
+    /** 從開場字卡進入區 1。 */
+    g.start = function () {
+      if (g.phase !== 'intro') return g;
+      g.phase = 'play';
+      g.player = makePlayer(1);
+      enterZone(1);
+      return g;
+    };
+
+    /** 失敗後從這一區開頭重來（這一區與之後的衛兵復原；已放倒的前區衛兵維持）。 */
+    g.retry = function () {
+      const z = Math.max(1, g.zone);
+      g.player = makePlayer(z);
+      resetGuards(z);
+      g.hunted = false; g.stillT = 0; g.failReason = null;
+      g.gate.progress = 0; g.gate.pushing = false; g.gate.open = false;
+      g.phase = 'play'; g.retries++;
+      latchNoiseAt = -1e9;
+      enterZone(z, true);
+      emit('msg', '從「' + level.zones[z].name + '」重新開始。');
+      g.alarm = 0;
+      return g;
+    };
+
+    /** 畫面層每幀取走事件。 */
+    g.drain = function () { return g.out.splice(0, g.out.length); };
+
+    return g;
+  }
+
+  return {
+    T, HINTS, ZONE_NAMES,
+    createLevel, buildLevel,
+    phaseAt, cycleIndex, inBlind, radiusAt, bassBeatNear,
+    forward, yawTo, angDiff, inRect, mulberry32
+  };
+});
