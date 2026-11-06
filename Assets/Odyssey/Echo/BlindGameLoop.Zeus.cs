@@ -191,7 +191,7 @@ public partial class BlindGameLoop
     {
         sounds.PlayThunder();
         music.PauseDrone(3f);
-        thunderScene.Play(body.transform.position, strike.LightsCave);
+        thunderScene.Play(body.transform.position, body.CameraTransform.forward, strike.LightsCave);
     }
 
     /// <summary>岸邊射向睡著的巨人＝偷襲（規格第 31 節 B3 #4）：雅典娜在洞口旁轉身、木馬燒成灰；不扣同伴（照第 20 節的代價）。</summary>

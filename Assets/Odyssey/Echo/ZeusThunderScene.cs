@@ -15,8 +15,8 @@ public class ZeusThunderScene : MonoBehaviour
     const float RadiusX = 15f, RadiusZ = 10f;
 
     static readonly Color Robe = new(0.16f, 0.17f, 0.2f);
-    static readonly Color RobeGlow = new(0.05f, 0.055f, 0.07f);
-    static readonly Color EyeGlow = new(0.75f, 0.78f, 0.85f);
+    static readonly Color RobeGlow = new(0.14f, 0.15f, 0.2f);
+    static readonly Color EyeGlow = new(1.6f, 1.65f, 1.8f);
     static readonly Color Ember = new(1f, 0.38f, 0.08f);
 
     FirstPersonPlayer body;
@@ -45,11 +45,35 @@ public class ZeusThunderScene : MonoBehaviour
         Hide();
     }
 
-    /// <summary>洞裡的偷襲：雅典娜站在離玩家最遠的岩壁前。lightsCave＝這一夜第一次偷襲（雷光照亮全洞）。</summary>
-    public void Play(Vector3 playerPos, bool lightsCave)
+    /// <summary>雅典娜站在玩家視線前方這麼遠（公尺）；原本放在最遠的岩壁（約 25 m），畫面上幾乎看不到（自動畫面測試發現）。</summary>
+    const float ShowDistance = 9f;
+
+    /// <summary>
+    /// 洞裡的偷襲：雅典娜站在玩家看著的方向約 9 m 處（太靠近岩壁時往回拉，留在洞裡）。
+    /// lightsCave＝這一夜第一次偷襲（雷光照亮全洞）。
+    /// </summary>
+    public void Play(Vector3 playerPos, Vector3 lookForward, bool lightsCave)
     {
-        Vector3 wall = FarWall(playerPos);
-        Begin(wall, playerPos, lightsCave);
+        Begin(InFront(playerPos, lookForward), playerPos, lightsCave);
+    }
+
+    static Vector3 InFront(Vector3 player, Vector3 forward)
+    {
+        var dir = new Vector3(forward.x, 0f, forward.z);
+        if (dir.sqrMagnitude < 1e-4f)
+            return FarWall(player);
+        dir.Normalize();
+        for (float d = ShowDistance; d >= 3f; d -= 1f)
+        {
+            Vector3 p = player + dir * d;
+            float x = p.x / (RadiusX * WallScale), z = p.z / (RadiusZ * WallScale);
+            if (x * x + z * z <= 1f)
+            {
+                p.y = CaveBuilder.GroundHeight(p);
+                return p;
+            }
+        }
+        return FarWall(player);
     }
 
     /// <summary>岸邊射向睡著的巨人：雅典娜站在海面上，木馬的影子映在水面。</summary>
@@ -140,7 +164,7 @@ public class ZeusThunderScene : MonoBehaviour
                 }
                 float burn = Mathf.InverseLerp(1f, 2.2f, t);
                 float flicker = 0.75f + 0.25f * Mathf.PerlinNoise(t * 14f, 0.5f);
-                OdysseyMaterials.SetEmission(horseMaterial, Ember * flicker * (1f - burn) * 1.4f);
+                OdysseyMaterials.SetEmission(horseMaterial, Ember * flicker * (1f - burn) * 2.5f);
                 horse.localScale = new Vector3(1f, Mathf.Lerp(1f, 0.15f, burn * burn), 1f);
                 if (burn >= 1f)
                     horse.gameObject.SetActive(false);
@@ -206,7 +230,7 @@ public class ZeusThunderScene : MonoBehaviour
     {
         horse = new GameObject("BurningHorse").transform;
         horse.SetParent(transform, false);
-        horseMaterial = OdysseyMaterials.Create(new Color(0.08f, 0.04f, 0.02f), Ember);
+        horseMaterial = OdysseyMaterials.Create(new Color(0.08f, 0.04f, 0.02f), Ember * 2f);
         Part(PrimitiveType.Cube, horse, new Vector3(0f, 1.6f, 0f), new Vector3(2.4f, 1f, 0.9f), Quaternion.identity, horseMaterial);           // 身體
         Part(PrimitiveType.Cube, horse, new Vector3(1.25f, 2.35f, 0f), new Vector3(0.45f, 1.2f, 0.45f), Quaternion.Euler(0f, 0f, -25f), horseMaterial); // 脖子
         Part(PrimitiveType.Cube, horse, new Vector3(1.65f, 2.95f, 0f), new Vector3(0.75f, 0.35f, 0.35f), Quaternion.identity, horseMaterial);  // 頭
