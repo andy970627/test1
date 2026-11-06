@@ -97,9 +97,14 @@
     }
 
     // ---------- 匯流排 ----------
-    var comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -10; comp.knee.value = 8; comp.ratio.value = 4;
-    comp.attack.value = 0.004; comp.release.value = 0.2;
+    // 輸出保護用柔性削峰（WaveShaper），不用 DynamicsCompressor：後者內建約 6 ms 前視延遲，會讓拍點整體晚到
+    var comp = ctx.createWaveShaper();
+    comp.curve = (function () {          // ±0.6 以內完全線性，以上柔性壓到 1
+      var n = 2048, c = new Float32Array(n);
+      for (var i = 0; i < n; i++) { var x = i / (n - 1) * 2 - 1, ax = Math.abs(x);
+        c[i] = ax <= 0.6 ? x : (x > 0 ? 1 : -1) * (0.6 + 0.4 * Math.tanh((ax - 0.6) / 0.4)); }
+      return c;
+    })();
     comp.connect(ctx.destination);
     var master = ctx.createGain(); master.gain.value = (opts.master != null) ? opts.master : 0.8;
     master.connect(comp);

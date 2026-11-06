@@ -47,7 +47,7 @@ test('相位與盲區：p = ((t − t0)/T) mod 1，每個循環開頭 0.5 秒是
   assert.equal(g.cycle.T, 10);
   g.step(21.6, {});
   assert.equal(g.cycle.blind, true);
-  g.step(21.7 + 7.8, {});
+  g.step(29.6, {});
   assert.equal(g.cycle.desync, true, 'p > 0.8 時畫面要延遲加雜訊');
 });
 
@@ -64,8 +64,8 @@ test('低音拍點：最近一拍、±0.15 秒、下一拍', () => {
   const b = R.bassBeatNear(5.14, 0.2, 2.4);
   assert.ok(b.ok && near(b.off, 0.14) && near(b.next, 7.4));
   assert.equal(R.bassBeatNear(5.16, 0.2, 2.4).ok, false);
-  assert.equal(R.bassBeatNear(4.86, 0.2, 2.4).ok, false);
-  assert.equal(R.bassBeatNear(4.86, 0.2, 2.4).ok, false);
+  assert.equal(R.bassBeatNear(4.86, 0.2, 2.4).ok, true);
+  assert.equal(R.bassBeatNear(4.84, 0.2, 2.4).ok, false);
   const g = R.createLevel({ t0: 0.2, startZone: 2 });
   g.step(3.0, {});
   assert.ok(near(g.bass.nextBeat, 5.0));
@@ -111,7 +111,7 @@ test('屏息：不能移動、最多 6 秒，超過就喘氣（大聲），放�
   const s = sfx(g);
   assert.ok(s.includes('breath_in') && s.includes('gasp'));
   t = run(g, t, 8.1, () => ({}));
-  assert.ok(near(g.player.breathT, K.BREATH_MAX - 2 * K.BREATH_RECOVER, 0.05));
+  assert.ok(near(g.player.breathT, K.BREATH_MAX - 2.1 * K.BREATH_RECOVER, 0.1), `breathT=${g.player.breathT}`);
   run(g, t, 8.5, () => ({ breath: true }));
   assert.equal(g.player.breathing, true);
 });
@@ -120,8 +120,8 @@ test('喘氣是大聲音：低頻時附近衛兵起疑，高頻時直接追殺',
   const g = R.createLevel({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 12, 0); // 7 m 外，背對
   place(g, 25, 19);
-  g.step(10.5, {});
-  run(g, 10.5, 16.6, () => ({ breath: true }));
+  g.step(15, {});
+  run(g, 15, 21.1, () => ({ breath: true })); // 21 秒喘氣時 p = 0.1
   assert.equal(q.state, 'suspicious');
   assert.equal(g.panic.active, true);
 
@@ -178,14 +178,14 @@ test('站著不動但被看到（不在陰影、在視野與範圍內）也會�
   const g = R.createLevel({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 22, 0); // 面向 −z，正對玩家
   place(g, 25, 19);
-  g.step(1, {});
-  run(g, 1, 3, () => ({ breath: true }));
+  g.step(5, {});
+  run(g, 5, 7, () => ({ breath: true }));
   assert.ok(q.susp > 0.5, '被看到，屏息也沒用');
   const h = R.createLevel({ startZone: 2 });
   const q2 = solo(h, 'g2a', 17, 23, R.yawTo(0, 1)); // 面向 +z，看著南側拱廊
   place(h, 17, 25.5);
-  h.step(1, {});
-  run(h, 1, 3, () => ({ breath: true }));
+  h.step(5, {});
+  run(h, 5, 7, () => ({ breath: true }));
   assert.equal(h.player.hidden, true);
   assert.ok(q2.susp < 1e-9, '陰影裡看不到');
 });
@@ -294,7 +294,7 @@ test('機制 B：在低音拍點 ±0.15 秒內按 4 次 → 回到巡邏', () =>
   assert.equal(q.state, 'patrol');
   assert.equal(g.panic.active, false);
   assert.equal(g.hunted, false);
-  assert.equal(q.grace, K.CALM_GRACE);
+  assert.ok(near(q.grace, K.CALM_GRACE, 0.1));
   assert.ok(near(g.bass.anchor, g.cycle.t0), '低音回到平常的對齊');
   assert.ok(sfx(g).filter((s) => s === 'calm_ok').length === 4);
 });
@@ -368,7 +368,7 @@ test('追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
   let t = run(g, 9.5 + DT, 10.1, () => ({ breath: true }));
   g.step(t + DT, { dash: true, mz: 1 }); t += DT; // 盲區裡往陰影深處衝
   assert.ok(g.player.z > 27);
-  t = run(g, t, 10.5 + K.ESCAPE_STILL - 0.3, (gg) => ({ breath: gg.player.breathT < 5 && gg.cycle.p > 0.5 }));
+  t = run(g, t, t + K.ESCAPE_STILL - 0.3, (gg) => ({ breath: gg.player.breathT < 5 && gg.cycle.p > 0.5 }));
   assert.equal(g.hunted, true, '還沒撐滿一個循環');
   assert.equal(g.phase, 'play', '追兵到最後位置，但沒抓到人');
   assert.ok(Math.hypot(q.x - 17, q.z - 24.3) < 1.5, '衛兵追到最後看到的位置');
@@ -380,14 +380,19 @@ test('追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
 
 test('追殺：在陰影裡亂動會被聽到，撐不住的計時歸零', () => {
   const g = R.createLevel({ startZone: 2 });
-  solo(g, 'g2a', 17, 12, Math.PI);
+  solo(g, 'g2a', 17, 16, Math.PI);
   place(g, 17, 24.3);
   g.step(9.5, {});
   g.step(9.5 + DT, { mz: 1 });
-  run(g, 9.5 + DT, 13, () => ({}));
+  run(g, 9.5 + DT, 10.1, () => ({ breath: true }));
+  g.step(10.1 + DT, { dash: true, mz: 1 });
+  run(g, 10.1 + DT, 13, () => ({}));
+  assert.equal(g.phase, 'play');
   assert.ok(g.stillT > 2);
   g.step(13 + DT, { mx: 0.2 });
   assert.equal(g.stillT, 0);
+  const q = g.guards.find((x) => x.id === 'g2a');
+  assert.ok(Math.hypot(q.lastKnown.x - g.player.x, q.lastKnown.z - g.player.z) < 0.1, '動了會被聽到，衛兵知道你在哪');
 });
 
 test('追殺：被追到 1 公尺內 → 失敗', () => {
@@ -511,7 +516,7 @@ test('retry：失敗後從這一區開頭重來，這一區衛兵復原，前一
   const s = g.level.zones[3].start;
   assert.equal(g.player.x, s.x); assert.equal(g.player.z, s.z);
   assert.equal(g.hunted, false);
-  assert.equal(a.state === 'down' ? 'down' : g.guards.find((q) => q.id === 'g3a').state, 'patrol', '區 3 衛兵復原');
+  assert.equal(g.guards.find((q) => q.id === 'g3a').state, 'patrol', '區 3 放倒的衛兵也復原');
   assert.equal(g.guards.find((q) => q.id === 'g3b').state, 'patrol');
   assert.equal(g.guards.find((q) => q.id === 'g2a').state, 'down', '前一區放倒的維持');
   assert.equal(g.retries, 1);

@@ -540,10 +540,10 @@ function makeAudio(T) {
     stop: () => (a && a.stop ? a.stop() : a && a.dispose ? a.dispose() : null),
   };
 }
-function newGame(zone) {
-  const g = Rules.createLevel({ T: curT, t0, zone });
-  if (zone && g.zone !== zone && typeof g.gotoZone === 'function') g.gotoZone(zone);
-  if (g.phase === 'intro' && typeof g.start === 'function') g.start(audio.now());
+function newGame() {
+  // 規則：opts.T 是常數覆寫；從開場字卡（區 0）進入區 1，讓第一個提示照規則出現
+  const g = Rules.createLevel({ t0, startZone: 0, T: { CYCLE: curT } });
+  if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
   if (game.level !== builtFor) build(game.level);
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
@@ -554,16 +554,16 @@ function newGame(zone) {
 function startFromTop() {
   curT = +$('oT').value || 10;
   makeAudio(curT);
-  newGame(1);
+  newGame();
   startedOnce = true;
   resume();
 }
 function retryZone() {
   if (!game) return startFromTop();
   if (!actx) makeAudio(curT);
-  const z = clamp(game.zone || 1, 1, 4);
-  if (typeof game.retry === 'function' && game.retry.length === 0 && Rules.stub !== true) { game.retry(); overShown = false; $('fail').hidden = true; }
-  else newGame(z);
+  game.retry();                                  // 規則：從這一區開頭重來（前區已放倒的衛兵維持）
+  overShown = false; winT = 0; $('fail').hidden = true;
+  V.yaw = num(game.player.yaw, V.yaw); V.pitch = -.1;
   resume();
 }
 
@@ -605,12 +605,16 @@ function readInput() {
   const k = c => !!keys[c];
   const I = {
     yaw: V.yaw,
-    mx: (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0),
-    mz: (k('KeyS') ? 1 : 0) - (k('KeyW') ? 1 : 0),
+    mx: 0, mz: 0,
     breath: k('Space'),
     dash: !!pend.dash, takedown: !!pend.takedown, calm: !!pend.calm,
     interact: k('KeyE'),
   };
+  // 規則要世界座標的移動方向：前方 (−sin yaw, −cos yaw)、右方 (cos yaw, −sin yaw)
+  const fwd = (k('KeyW') || k('ArrowUp') ? 1 : 0) - (k('KeyS') || k('ArrowDown') ? 1 : 0);
+  const str = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
+  const sy = Math.sin(V.yaw), cy = Math.cos(V.yaw);
+  I.mx = str * cy - fwd * sy; I.mz = -str * sy - fwd * cy;
   if (game && game.phase === 'intro') I.start = true;
   pend = {};
   return I;
@@ -642,10 +646,9 @@ function sync(dt, now) {
   const g = game, P = g.player, L = g.level;
   const p = curP(), blind = g.cycle && g.cycle.blind;
   // 鏡頭高度：木馬腹中在高處；屏息時壓低一點
-  const hr = L.horse && R(L.horse);
-  const inHorse = P.inHorse != null ? !!P.inHorse : (g.zone <= 1 && inR(hr, P.x, P.z));
-  const fy = L.horse ? num(L.horse.floor, L.horse.y, L.horse.floorY, 3.2) : 0;
-  const eyeT = (inHorse ? fy + 1.05 : 1.62) - (P.breathing ? .12 : 0);
+  const inHorse = !!P.inBelly;
+  const fy = inHorse ? num(P.y, L.horse && L.horse.bellyY, 2.5) : 0;
+  const eyeT = (inHorse ? fy + 1.0 : 1.62) - (P.breathing ? .12 : 0);
   V.eye += (eyeT - V.eye) * Math.min(1, dt * (Math.abs(eyeT - V.eye) > 1 ? 2.5 : 8));
   // 走路的晃動
   const mv = S.lastP ? Math.hypot(P.x - S.lastP.x, P.z - S.lastP.z) : 0; S.lastP = { x: P.x, z: P.z };
@@ -663,7 +666,7 @@ function sync(dt, now) {
 
   // 衛兵
   const seen = new Set();
-  const rp = 2 + 8 * p * p;
+  const KK = K(), rp = num(KK.R_BASE, 2) + num(KK.R_GAIN, 8) * p * p;
   arr(g.guards).forEach((G, i) => {
     const key = G.id != null ? G.id : i; seen.add(key);
     let F = S.guards.get(key); if (!F) { F = makeGuard(); S.guards.set(key, F); }
@@ -671,7 +674,7 @@ function sync(dt, now) {
     const sp = F.px == null ? 0 : Math.hypot(G.x - F.px, G.z - F.pz) / Math.max(dt, 1e-3);
     F.px = G.x; F.pz = G.z;
     F.g.position.set(G.x, 0, G.z);
-    if (!down) F.g.rotation.y = num(G.yaw, 0);
+    if (!down) F.g.rotation.y = num(G.yaw, 0) + Math.PI;   // 規則的前方是 −z（three.js 慣例）；模型的臉朝 +z
     // 走／跑的動作
     F.run += ((hunted ? 1 : 0) - F.run) * Math.min(1, dt * 4);
     if (sp > .05 && !down) F.walk += dt * (6 + F.run * 8);
@@ -697,14 +700,14 @@ function sync(dt, now) {
     if (!on && G.susp > 0) { F.glow.material.color.setHex(0xe0b04a); F.glow.material.opacity = Math.max(F.glow.material.opacity, clamp(G.susp, 0, 1) * .35); }
     // 除錯圈：感知範圍 r(p)
     const dbg = $('oPhase').checked && !down;
-    F.ring.visible = dbg; if (dbg) { const r = blind ? .01 : rp * (susp || hunted ? 1.3 : 1); F.ring.scale.set(r, r, r); F.ring.position.set(G.x, .04, G.z); }
+    F.ring.visible = dbg; if (dbg) { const r = blind ? .01 : rp * (susp || hunted ? num(KK.ALERT_MUL, 1.3) : 1); F.ring.scale.set(r, r, r * 0 + r); F.ring.position.set(G.x, .04, G.z); }
   });
   for (const [k, F] of S.guards) if (!seen.has(k)) { world.remove(F.g); world.remove(F.ring); S.guards.delete(k); }
 
   // 城門：門閂隨進度滑開；勝利時門往外打開
   if (S.gate) {
-    const prog = clamp(num(g.gate && g.gate.progress, g.gateProgress, L.gate && L.gate.progress, 0), 0, 1);
-    S.gate.bar.position.x = S.gate.gx - prog * (S.gate.gw * .55);
+    const prog = gateProg(g);
+    S.gate.bar.position.x = -prog * (S.gate.gw * .55);
     const won = g.phase === 'win';
     if (won) winT += dt;
     S.gate.open += ((won ? 1 : 0) - S.gate.open) * Math.min(1, dt * .6);
@@ -715,11 +718,12 @@ function sync(dt, now) {
     const won = g.phase === 'win';
     S.invaders.g.visible = won;
     S.invaders.light.intensity = won ? Math.min(3, winT * 1.2) : 0;
-    if (won) for (const v of S.invaders.list) { v.f.position.z -= v.sp * dt; if (v.f.position.z < S.invaders.gz - 12) v.f.position.z += 30; v.f.scale.y = fl(); }
+    if (won) for (const v of S.invaders.list) { v.f.position.x -= v.sp * dt; if (v.f.position.x < S.invaders.gx - 14) v.f.position.x += 42; v.f.scale.y = fl(); }
   }
 }
 
 // ---------- 介面 ----------
+const gateProg = g => g.gate ? clamp(num(g.gate.progress, 0) / num(g.gate.need, K().GATE_NEED, 15), 0, 1) : 0;
 let noiseT = 0;
 const nctx = $('noise').getContext('2d'), nimg = nctx.createImageData(160, 90);
 function hud(dt) {
@@ -729,14 +733,14 @@ function hud(dt) {
   $('zoneNo').textContent = z ? `第 ${z} 區` : '';
   $('zoneName').textContent = ZONE_NAMES[z];
   // 屏息計量
-  const used = clamp(num(P.breathT, 0) / BREATH_MAX, 0, 1);
+  const used = clamp(num(P.breathT, 0) / num(K().BREATH_MAX, 6), 0, 1);
   $('breathFill').style.width = ((1 - used) * 100).toFixed(1) + '%';
   $('breath').classList.toggle('on', !!P.breathing);
   $('breath').classList.toggle('low', used > .7);
   $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵）';
   $('shade').hidden = !P.hidden;
   // 城門進度（只在城門那一區、開始推之後出現）
-  const prog = num(g.gate && g.gate.progress, g.gateProgress, 0);
+  const prog = gateProg(g);
   $('gateBar').hidden = !(z === 4 && prog > 0);
   $('gateFill').style.width = (clamp(prog, 0, 1) * 100) + '%';
   // 警戒：畫面邊緣跟著低音拍脈動
@@ -764,7 +768,7 @@ function hud(dt) {
     const T = g.cycle.T || curT;
     $('phaseNum').textContent = `　p=${p.toFixed(2)}${g.cycle.blind ? '・盲區' : ''}　alarm=${alarm.toFixed(2)}`;
     $('phaseFill').style.width = (p * 100) + '%';
-    $('phaseBlind').style.width = (num(C.blind, C.BLIND, .5) / T * 100) + '%';
+    $('phaseBlind').style.width = (num(K().BLIND, .5) / T * 100) + '%';
     $('phaseBlind').style.opacity = g.cycle.blind ? 1 : .35;
     $('phaseBass').style.left = (beat * 100) + '%';
   }
@@ -857,9 +861,9 @@ $('btnAgain').onclick = startFromTop;
 // 開場前先建好場景當背景（看得到木馬腹中）
 try {
   t0 = 0; curT = +$('oT').value || 10;
-  const g0 = Rules.createLevel({ T: curT, t0: 0, zone: 1 });
+  const g0 = Rules.createLevel({ t0: 0, startZone: 0 });
   build(g0.level);
-  const P = g0.player; camera.position.set(P.x, 4.2, P.z); camera.rotation.set(-.35, num(P.yaw, Math.PI), 0);
+  const P = g0.player; camera.position.set(P.x, num(P.y, 2.5) + 1, P.z); camera.rotation.set(-.35, num(P.yaw, Math.PI), 0);
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
