@@ -61,7 +61,9 @@ jobs:
           restore-keys: |
             Library-EditMode-
 
-      - uses: game-ci/unity-test-runner@v4
+      # 釘在 v4.3.2：浮動的 @v4 已移到 v4.4.0，改用新的 game-ci CLI 後 .ulf 授權啟用會失敗
+      # （Code 400 TimeStamp validation failed，game-ci/unity-test-runner#336）。
+      - uses: game-ci/unity-test-runner@v4.3.2
         id: unity-tests
         if: env.HAS_UNITY == 'true'
         env:
@@ -114,7 +116,8 @@ jobs:
           restore-keys: |
             Library-WebGL-
 
-      - uses: game-ci/unity-builder@v4
+      # 釘在確切版本，避免浮動的 @v4 像 unity-test-runner 一樣突然換成新 CLI。
+      - uses: game-ci/unity-builder@v4.8.2
         if: env.HAS_UNITY == 'true'
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
