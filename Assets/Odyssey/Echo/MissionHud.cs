@@ -47,6 +47,18 @@ public class MissionHud : MonoBehaviour
 
     bool CanStart => Time.time - briefingSince >= BriefingLockSeconds;
 
+    /// <summary>直接關掉開場卡片並開始夜晚（實測捷徑用）。</summary>
+    public void SkipBriefing()
+    {
+        if (!BriefingOpen)
+            return;
+        BriefingOpen = false;
+        fadingSince = Time.time;
+        var start = onStart;
+        onStart = null;
+        start?.Invoke();
+    }
+
     void Update()
     {
         var keyboard = Keyboard.current;

@@ -264,6 +264,7 @@ public partial class BlindGameLoop : MonoBehaviour
         feedback.Init(this, body);
         body.gameObject.AddComponent<BumpSensor>().Init(feedback);
         menus.ShowMain(Difficulty);
+        gameObject.AddComponent<PlaytestDriver>().Init(this);
     }
 
     void BeginIntro()

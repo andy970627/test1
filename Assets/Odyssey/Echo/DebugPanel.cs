@@ -29,6 +29,15 @@ public class DebugPanel : MonoBehaviour
 
     BlindGameLoop loop;
     GUIStyle cachedStyle, cachedLegend;
+    string shortcutText;
+
+    static string BuildShortcutText()
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        foreach (var sc in PlaytestDriver.Shortcuts)
+            parts.Add($"{sc.Key} {sc.Label}");
+        return "實測捷徑：" + string.Join("・", parts);
+    }
     int cachedFontSize = -1;
 
     public void Init(BlindGameLoop loop) => this.loop = loop;
@@ -130,6 +139,13 @@ public class DebugPanel : MonoBehaviour
         Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, new Color(0.75f, 0.6f, 0.4f), ref y, line, barW, style);
         DrawBoulderMarks(boulderRow, line, barW, style);
         Bar("天亮", loop.Dawn.Fraction, 0, new Color(0.7f, 0.75f, 0.95f), ref y, line, barW, style);
+        // 實測捷徑（編輯器與開發版）：F2～F10 直接跳到要測的情況。
+        if (PlaytestDriver.ManualEnabled)
+        {
+            shortcutText ??= BuildShortcutText();
+            GUI.Label(new Rect(20, y, panelW, legend.fontSize * 2.8f), shortcutText, legend);
+            y += legend.fontSize * 2.8f;
+        }
         // 「丟岩石冷卻」「箭的引誘力」暫放在洞中紀事的巨人頁（使用者指定，規格第 25 節 F）。
 
         int following = loop.Crew.Followers.Count;

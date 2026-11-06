@@ -65,6 +65,15 @@ public class GameMenus : MonoBehaviour
     }
 
     /// <summary>紀事第一次多了一則：小字 3 秒。</summary>
+    /// <summary>直接關掉選單（實測捷徑用）；暫停中則照「繼續」恢復。</summary>
+    public void Close()
+    {
+        bool paused = view is View.Pause or View.Confirm or View.Chronicle or View.Lab;
+        view = View.None;
+        if (paused)
+            loop.Resume();
+    }
+
     public void NotifyNewEntry() => toastUntil = Time.unscaledTime + ToastSeconds;
 
     void Go(View next, int at = 0)

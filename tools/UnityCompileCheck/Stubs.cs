@@ -15,8 +15,10 @@ namespace UnityEngine.InputSystem
         }
         public class AnyKeyControl : ButtonControl { }
     }
+    public enum Key { None, Space, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12 }
     public class Keyboard
     {
+        public Controls.ButtonControl this[Key key] => new();
         public static Keyboard current => null;
         public Controls.AnyKeyControl anyKey => new();
         public Controls.ButtonControl spaceKey => new();
@@ -43,6 +45,14 @@ namespace UnityEngine.InputSystem
         public Controls.ButtonControl rightArrowKey => new();
         public Controls.ButtonControl f1Key => new();
         public Controls.ButtonControl f2Key => new();
+        public Controls.ButtonControl f10Key => new();
+        public Controls.ButtonControl f9Key => new();
+        public Controls.ButtonControl f8Key => new();
+        public Controls.ButtonControl f7Key => new();
+        public Controls.ButtonControl f6Key => new();
+        public Controls.ButtonControl f5Key => new();
+        public Controls.ButtonControl f4Key => new();
+        public Controls.ButtonControl f3Key => new();
         public Controls.ButtonControl ctrlKey => new();
         public Controls.ButtonControl altKey => new();
         public Controls.ButtonControl digit1Key => new();
