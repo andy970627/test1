@@ -155,7 +155,7 @@ button:hover { filter: brightness(1.12); }
       <dt>Q</dt><dd>對知情者示意（看著他按），讓他冷靜</dd>
     </dl>
     <p class="dim">頭上的「？」是有人在留意你，「！」是有人起了疑心、要過來查看。畫面周圍的弧線指出誰從哪個方向在看你。左下的油燈是你所在處的明暗：亮處人看得遠、也看得清。</p>
-    <fieldset>
+    <fieldset id="fsOptions">
       <legend>實驗開關</legend>
       <label><input type="checkbox" id="oKnowers" checked> 知情者機制</label>
       <label><input type="checkbox" id="oTell" checked> 知情者會露出破綻</label>
@@ -164,7 +164,7 @@ button:hover { filter: brightness(1.12); }
       <label><input type="checkbox" id="oBars" checked> 顯示狀態條</label>
       <label>閃避時機 <select id="oDodge"><option value="normal">普通</option><option value="loose">寬鬆</option></select></label>
     </fieldset>
-    <fieldset>
+    <fieldset id="fsPreKnow">
       <legend>直接進大廳時，誰已經知情</legend>
       <label><input type="checkbox" id="pTele"> 忒勒馬科斯</label>
       <label><input type="checkbox" id="pEum"> 歐邁俄斯</label>
@@ -188,7 +188,7 @@ button:hover { filter: brightness(1.12); }
     <div class="row">
       <button class="primary" id="btnRetry">再試這一段（R）</button>
       <button id="btnNext" hidden>進大廳</button>
-      <button class="primary" id="btnBow" hidden>帶著弓的事去比箭</button>
+      <button class="primary" id="btnBow" hidden>前往比箭</button>
       <button id="btnMenu">回選單</button>
     </div>
   </div>
@@ -225,7 +225,13 @@ const series = (() => {
   }
   return { years: Number.isFinite(save.years) ? Math.max(7, Math.min(9, Math.round(save.years))) : 7, nameless: save.nameless === true, resume };
 })();
-if (series) { $('seriesYears').textContent = `在卡呂普索的島上困了 ${series.years} 年` + (series.nameless ? '・以無名之人回家' : '') + (series.resume ? '・接著上次：大廳' : ''); $('seriesYears').hidden = false; }
+if (series) { $('seriesYears').textContent = `在卡呂普索的島上困了 ${series.years} 年` + (series.nameless ? '・記得阿伽門農的話：別以國王的身分回家，要以無名之人的身分回去' : '') + (series.resume ? '・接著上次：大廳' : ''); $('seriesYears').hidden = false; }
+// 系列模式：不給「直接進大廳」（會以空白進度蓋掉宮門留下的帳與知情者），實驗開關一律用預設值
+if (series) {
+  for (const id of ['btnHall', 'fsPreKnow', 'fsOptions']) $(id).hidden = true;
+  for (const k of ['knowers', 'tell', 'statue', 'ledger', 'bars']) opt[k].checked = true;
+  opt.dodge.value = 'normal';
+}
 const options = () => Object.assign({ knowers: opt.knowers.checked, tell: opt.tell.checked, statue: opt.statue.checked, ledger: opt.ledger.checked, loose: opt.dodge.value === 'loose' }, series ? { years: series.years, nameless: series.nameless } : {});
 
 // ---------- three.js ----------

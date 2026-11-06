@@ -639,7 +639,7 @@ test('nameless：預設 false，同一個種子的結果和加入這個選項之
 test('nameless：開場有一句阿伽門農的話；所有疑心增加 ×0.85', () => {
   for (const seg of ['gate', 'hall']) {
     const g = mk(seg, {}, { options: { nameless: true } });
-    assert.ok(g.out.some(e => e.type === 'msg' && e.a === '你想起阿伽門農的話：別以國王的身分回家。'), seg);
+    assert.ok(g.out.some(e => e.type === 'msg' && e.a === '你想起阿伽門農的話：別以國王的身分回家，要以無名之人的身分回去。'), seg);
   }
   const a = mk('hall'), b = mk('hall', {}, { options: { nameless: true } });
   const na = byName(a, '安提諾俄斯'), nb = byName(b, '安提諾俄斯');

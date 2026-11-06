@@ -197,7 +197,7 @@
       g.msg('大廳裡全是求婚者。走到爐火邊坐下，但別被看穿。');
       g.later(4.2, () => g.msg('乞討、照看火盆是乞丐的差事；無端走動、站直張望都會引人注意。'));
     }
-    if (O.nameless) g.msg('你想起阿伽門農的話：別以國王的身分回家。', 'fire');
+    if (O.nameless) g.msg('你想起阿伽門農的話：別以國王的身分回家，要以無名之人的身分回去。', 'fire');
     for (const k in g.knowers) { const n = g.knowers[k]; n.kstate = g.carry[k]; n.tell = 0; }
     if (g.knowers.pen && g.carry.pen === 'knows') g.permission = true;
 
