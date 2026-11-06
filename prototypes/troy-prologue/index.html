@@ -580,7 +580,9 @@ function makeAudio(T) {
   if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
   if (actx.state === 'suspended') actx.resume();
   t0 = actx.currentTime + .1;
-  const a = AudioMod.createAudio(actx, { T, t0 });
+  // 盲區長度跟規則同一個常數（BLIND_LEN），開局後 audio.update(game) 也會再讀 game.T 對齊
+  const blind = typeof Rules.blindLen === 'function' ? Rules.blindLen() : undefined;
+  const a = AudioMod.createAudio(actx, { T, t0, blind });
   // 介面允許模組自己持有狀態：回傳物件缺的方法改用模組上的
   audio = {
     now: () => (a && a.now ? a.now() : AudioMod.now ? AudioMod.now() : actx.currentTime),
@@ -924,7 +926,7 @@ function hud(dt) {
     const T = g.cycle.T || curT;
     $('phaseNum').textContent = `　p=${p.toFixed(2)}${g.cycle.blind ? '・盲區' : ''}　alarm=${alarm.toFixed(2)}`;
     $('phaseFill').style.width = (p * 100) + '%';
-    $('phaseBlind').style.width = (num(K().BLIND, .5) / T * 100) + '%';
+    $('phaseBlind').style.width = (num(K().BLIND_LEN, K().BLIND, .6) / T * 100) + '%';
     $('phaseBlind').style.opacity = g.cycle.blind ? 1 : .35;
     $('phaseBass').style.left = (beat * 100) + '%';
   }

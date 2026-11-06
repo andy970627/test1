@@ -16,7 +16,7 @@
  *     所以每層每個循環剛好整數拍，p = 1 時第 k 層的速度、拍點和下一循環第 k+1 層 p = 0 完全接上。
  *   - 增益是「速度位置」x = (k + p) ÷ 4 的鐘形曲線：最慢的從無聲淡入、最快的淡出到無聲。
  *   - 音色跟著 x 走（低鼓 → 框鼓 → 手拍 → 金屬敲擊），交接時音色也連續，聽起來一直加速卻不會變快。
- *   - 例外（遊戲要的）：p 從接近 1 跳回 0 的 0.5 秒是盲區：不排拍、節奏匯流排（含殘響）壓到幾乎無聲，
+ *   - 例外（遊戲要的）：p 從接近 1 跳回 0 的盲區（長度跟規則 BLIND_LEN 同值，目前 0.6 秒）：不排拍、節奏匯流排（含殘響）壓到幾乎無聲，
  *     音樂層（夜風、低吟或自備音檔）也一起壓到約 −40 dB，聽得出「斷掉、空掉 → 現在可以動」。
  *   - p 越大，節奏匯流排越響（0.7 → 1.0），讓「越來越危險」聽得出來。
  *
@@ -33,7 +33,7 @@
 
   var C = {
     T: 10,             // 循環週期（秒），規則同值
-    BLIND: 0.5,        // 盲區（秒）
+    BLIND: 0.6,        // 盲區預設（秒）；實際值以規則為準：createAudio 的 opts.blind，或 update(state) 讀 state.T.BLIND_LEN
     LAYERS: 4,         // 打擊層數
     M: 7,              // 最慢層每循環拍數；f0 = M·ln2 ÷ T ≈ 0.485 拍/秒（29→58 BPM），最快層 233→466 BPM
     BELL_SIGMA: 0.22,  // 鐘形曲線寬度（x 為 0..1）
@@ -102,6 +102,7 @@
     var mute = opts.mute || {};          // {rhythm, bass, ambient}：測試用
     var solo = (opts.solo != null) ? opts.solo : null;  // 只放某一層（測試用）
     var log = opts.log ? [] : null;      // 排程紀錄（測試用）
+    var BL = isFinite(opts.blind) && opts.blind >= 0 ? +opts.blind : C.BLIND;   // 盲區長度（秒），跟規則 BLIND_LEN 對齊
     var sr = ctx.sampleRate;
 
     // ---------- 共用素材 ----------
@@ -293,15 +294,15 @@
     function cycleIndex(t) { return Math.floor((t - t0) / T); }
     function gateValue(t) {                  // 只用於中途起始時算目前值
       var local = (t - t0) - cycleIndex(t) * T;
-      if (local < C.BLIND) return C.GATE_FLOOR;
-      if (local < C.BLIND + C.GATE_RISE) return C.GATE_FLOOR + (C.TENSION_LO - C.GATE_FLOOR) * (local - C.BLIND) / C.GATE_RISE;
-      if (local < T - C.GATE_FALL) return C.TENSION_LO + (C.TENSION_HI - C.TENSION_LO) * (local - C.BLIND - C.GATE_RISE) / (T - C.GATE_FALL - C.BLIND - C.GATE_RISE);
+      if (local < BL) return C.GATE_FLOOR;
+      if (local < BL + C.GATE_RISE) return C.GATE_FLOOR + (C.TENSION_LO - C.GATE_FLOOR) * (local - BL) / C.GATE_RISE;
+      if (local < T - C.GATE_FALL) return C.TENSION_LO + (C.TENSION_HI - C.TENSION_LO) * (local - BL - C.GATE_RISE) / (T - C.GATE_FALL - BL - C.GATE_RISE);
       return C.TENSION_HI + (C.GATE_FLOOR - C.TENSION_HI) * (local - (T - C.GATE_FALL)) / C.GATE_FALL;
     }
     function scheduleGate(c, from) {
       var cs = t0 + c * T, ev = [
-        ['set', cs, C.GATE_FLOOR], ['set', cs + C.BLIND, C.GATE_FLOOR],
-        ['lin', cs + C.BLIND + C.GATE_RISE, C.TENSION_LO],
+        ['set', cs, C.GATE_FLOOR], ['set', cs + BL, C.GATE_FLOOR],
+        ['lin', cs + BL + C.GATE_RISE, C.TENSION_LO],
         ['lin', cs + T - C.GATE_FALL, C.TENSION_HI],
         ['lin', cs + T, C.GATE_FLOOR]
       ];
@@ -318,15 +319,15 @@
     // 音樂層盲區：循環開始前 MUSIC_FALL 秒滑到 −40 dB，盲區結束後 MUSIC_RISE 秒拉回
     function musicGateValue(t) {
       var local = (t - t0) - cycleIndex(t) * T, F = C.MUSIC_BLIND_FLOOR;
-      if (local < C.BLIND) return F;
-      if (local < C.BLIND + C.MUSIC_RISE) return F + (1 - F) * (local - C.BLIND) / C.MUSIC_RISE;
+      if (local < BL) return F;
+      if (local < BL + C.MUSIC_RISE) return F + (1 - F) * (local - BL) / C.MUSIC_RISE;
       if (local > T - C.MUSIC_FALL) return 1 + (F - 1) * (local - (T - C.MUSIC_FALL)) / C.MUSIC_FALL;
       return 1;
     }
     function scheduleMusicGate(c, from) {
       var cs = t0 + c * T, F = C.MUSIC_BLIND_FLOOR, ev = [
-        ['set', cs, F], ['set', cs + C.BLIND, F],
-        ['lin', cs + C.BLIND + C.MUSIC_RISE, 1],
+        ['set', cs, F], ['set', cs + BL, F],
+        ['lin', cs + BL + C.MUSIC_RISE, 1],
         ['set', cs + T - C.MUSIC_FALL, 1],
         ['lin', cs + T, F]
       ];
@@ -362,7 +363,7 @@
           for (var n = nA; n <= nB; n++) {
             var p = log2(1 + n / Mk), t = cs + p * T;
             if (t < a || t >= b || t < nowT) continue;
-            if (p * T < C.BLIND) continue;                    // 盲區不排拍
+            if (p * T < BL) continue;                    // 盲區不排拍
             var x = (k + p) / C.LAYERS, g;
             if (k >= C.LAYERS) g = 0.4;                        // 追殺額外層
             else { g = bell(x); if (st.hunted) g = Math.max(g, C.HUNT_FLOOR); }
@@ -381,7 +382,7 @@
         while (st.alarmNext < b) {
           var ta = st.alarmNext, el = ta - st.alarmStart;
           var local = (ta - t0) - cycleIndex(ta) * T;
-          if (local >= C.BLIND && ta >= nowT) {
+          if (local >= BL && ta >= nowT) {
             var xa = 0.45 + Math.random() * 0.5, ga = 0.5 + Math.random() * 0.5;
             playHit(alarmBus, xa, ta, ga);
             if (Math.random() < 0.25) playHit(alarmBus, xa, ta + 0.018 + Math.random() * 0.02, ga * 0.6);  // 亂拍、雙擊
@@ -572,10 +573,10 @@
     var api = {
       CONST: C,
       INSTRUMENTS: INST_NAME,
-      get T() { return T; }, get t0() { return t0; },
+      get T() { return T; }, get t0() { return t0; }, get blindLen() { return BL; },
       now: function () { return ctx.currentTime; },
       phase: function (t) { return phaseAt(t == null ? ctx.currentTime : t, T, t0); },
-      isBlind: function (t) { t = (t == null ? ctx.currentTime : t); return phaseAt(t, T, t0) * T < C.BLIND; },
+      isBlind: function (t) { t = (t == null ? ctx.currentTime : t); return phaseAt(t, T, t0) * T < BL; },
       // 讀規則狀態：cycle、alarm、hunted、bass（可以直接傳整個 game）
       update: function (s) {
         if (!s || dead) return;
@@ -584,6 +585,11 @@
             (Math.abs(s.cycle.T - T) > 1e-6 || Math.abs(s.cycle.t0 - t0) > 1e-6)) {
           T = s.cycle.T; t0 = s.cycle.t0; scheduleGate(cycleIndex(schedEnd), schedEnd);
           scheduleMusicGate(cycleIndex(schedEnd), schedEnd);
+        }
+        // 盲區長度：規則常數 BLIND_LEN（舊名 BLIND），改了就從已排到的地方重排 gate
+        var bl = s.T && typeof s.T === 'object' ? (s.T.BLIND_LEN != null ? +s.T.BLIND_LEN : +s.T.BLIND) : (isFinite(s.blindLen) ? +s.blindLen : NaN);
+        if (isFinite(bl) && bl >= 0 && Math.abs(bl - BL) > 1e-6) {
+          BL = bl; scheduleGate(cycleIndex(schedEnd), schedEnd); scheduleMusicGate(cycleIndex(schedEnd), schedEnd);
         }
         if (s.bass) {
           if (isFinite(s.bass.period) && s.bass.period > 0) st.bassPeriod = s.bass.period;
