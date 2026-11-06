@@ -1,0 +1,207 @@
+{
+  "tool": "playtest-recorder",
+  "version": 1,
+  "created": "2026-11-06T17:02:13.784Z",
+  "profile": "troy-prologue",
+  "profilePath": "../../profiles/troy-prologue.mjs",
+  "title": "木馬之夜",
+  "serveDir": "/home/user/test1/prototypes/troy-prologue",
+  "entry": "index.html",
+  "viewport": {
+    "width": 1280,
+    "height": 720
+  },
+  "durationRequested": 20,
+  "cycleOverride": null,
+  "bot": true,
+  "scenario": null,
+  "prepared": {
+    "audioConst": {
+      "M": 7,
+      "LAYERS": 4,
+      "BELL_SIGMA": 0.22,
+      "MIN_GAIN": 0.02,
+      "BLIND": 0.6
+    },
+    "rules": {
+      "CYCLE": 10,
+      "BLIND": 0.6,
+      "BASS_PERIOD": 2.4,
+      "BASS_WIN": 0.15
+    }
+  },
+  "wall": {
+    "videoStart": 1793984495831,
+    "start": 1793984507934,
+    "end": 1793984529446,
+    "close": 1793984530457
+  },
+  "audio": {
+    "file": "audio.wav",
+    "sampleRate": 44100,
+    "channels": 2,
+    "frames": 1174784,
+    "seconds": 26.639092970521542,
+    "startAudioTime": 1.1319727891156464,
+    "captureMode": "audioworklet",
+    "gapFrames": 70144,
+    "clipSamplesFloat": 0,
+    "peakFloat": 0.4983171224594116,
+    "audioStartWall": 1793984501734.773,
+    "wallJitterMs": 11.2138671875,
+    "outputLatency": 0.032,
+    "baseLatency": 0.01
+  },
+  "video": {
+    "webm": "video.webm",
+    "durationSec": 35.28,
+    "offsetSec": 5.904,
+    "offsetFromEndSec": 6.558,
+    "mp4": "playtest.mp4"
+  },
+  "shots": [
+    {
+      "file": "shots/shot-002s.png",
+      "wallSec": 2.1,
+      "audioT": 7.8803
+    },
+    {
+      "file": "shots/shot-012s.png",
+      "wallSec": 12.1,
+      "audioT": 18.6717
+    }
+  ],
+  "frames": {
+    "samples": 35,
+    "medianFps": 1.7,
+    "p95FrameMs": 1276,
+    "maxFrameMs": 1507
+  },
+  "scheduledStarts": 1434,
+  "scheduledStartsDropped": 0,
+  "errors": [],
+  "externals": [
+    {
+      "url": "https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap",
+      "status": 200
+    },
+    {
+      "url": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BtnAOSA.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9i1OCEK.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.119.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.121.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.122.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.123.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.122.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.121.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.123.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.120.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.113.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.117.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.116.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.119.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.120.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.116.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.115.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.111.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.115.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.112.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.111.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.110.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.118.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.114.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.108.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notosanstc/v40/-nF7OG829Oofr2wohFbTp9iFOkMQAewlpbGXhhyYs0QF3kPVyLylzU95vTq1Ltj5xQez1g.30.woff2",
+      "status": 200
+    },
+    {
+      "url": "https://fonts.gstatic.com/s/notoseriftc/v37/XLYgIZb5bJNDGYxLBibeHZ0BhnJsUnN3PrBufRbmGqUtcg4pzRPk5AEpzv6YzI9aTbOhf6M.113.woff2",
+      "status": 200
+    }
+  ],
+  "console": [
+    "[warning] [.WebGL-0x2c940018f200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[warning] [.WebGL-0x2c940018f200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[warning] [.WebGL-0x2c940018f200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+    "[warning] [.WebGL-0x2c940018f200]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ]
+}
