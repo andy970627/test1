@@ -351,12 +351,10 @@ public class CaveAtmosphere : MonoBehaviour
     {
         const int g = 128;
         grain = new Texture2D(g, g, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Repeat, filterMode = FilterMode.Point };
+        // 只會變暗的顆粒（黑色、透明度隨機）：全黑的地方維持全黑，只有被照亮的地方帶一點膠片質感。
         var noise = new Color32[g * g];
         for (int i = 0; i < noise.Length; i++)
-        {
-            byte v = (byte)rng.Next(256);
-            noise[i] = new Color32(v, v, v, 255);
-        }
+            noise[i] = new Color32(0, 0, 0, (byte)rng.Next(256));
         grain.SetPixels32(noise);
         grain.Apply();
 
@@ -384,7 +382,7 @@ public class CaveAtmosphere : MonoBehaviour
         GUI.color = new Color(1f, 1f, 1f, 0.45f);
         GUI.DrawTexture(screen, vignette);
         grainUv.position = new Vector2((float)rng.NextDouble(), (float)rng.NextDouble());
-        GUI.color = new Color(1f, 1f, 1f, 0.05f);
+        GUI.color = new Color(1f, 1f, 1f, 0.18f);
         GUI.DrawTextureWithTexCoords(screen, grain, grainUv);
         GUI.color = old;
     }

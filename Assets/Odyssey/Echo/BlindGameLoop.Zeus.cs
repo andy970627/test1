@@ -144,7 +144,10 @@ public partial class BlindGameLoop
     void Ambush(System.Numerics.Vector2 playerAt)
     {
         ThunderStrike strike = Thunder.Strike(Crew.Followers.Count);
-        Cyclops.Brain.Charge(playerAt);
+        // 雷鳴震住所有人：過場（雅典娜轉身、燃燒的木馬）播完之前巨人不動也聽不到，播完才衝過來。
+        // 否則他就在附近時，過場還沒播完玩家就被抓了（自動畫面測試抓到的問題）。
+        Cyclops.Brain.Stagger(playerAt);
+        StartCoroutine(ChargeAfterThunder(playerAt));
         if (strike.Penalty == ThunderPenalty.KillFollower && Crew.Followers.Count > 0)
         {
             CrewMember struck = Crew.Followers[Crew.Followers.Count - 1];
@@ -159,6 +162,13 @@ public partial class BlindGameLoop
         if (Favor.OnAmbush())
             OnFavorLost();
         OnAmbushPresentation(strike);
+    }
+
+    System.Collections.IEnumerator ChargeAfterThunder(System.Numerics.Vector2 playerAt)
+    {
+        yield return new WaitForSeconds(ZeusThunderScene.Duration);
+        if (State.Phase == LoopPhase.Night && Cyclops.Active)
+            Cyclops.Brain.Charge(playerAt);
     }
 
     void OnFavorLost() => OnFavorChanged(false);

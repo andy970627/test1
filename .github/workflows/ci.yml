@@ -154,7 +154,8 @@ jobs:
   playtest:
     name: 自動畫面測試
     needs: webgl
-    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    # 網頁版建好、只有 itch.io 上傳失敗時（例如帳號 email 還沒驗證），照樣測畫面。
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:

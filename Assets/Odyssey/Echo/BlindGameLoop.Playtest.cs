@@ -103,8 +103,12 @@ public partial class BlindGameLoop
         return State.Phase == LoopPhase.Night;
     }
 
+    /// <summary>巨人的座位離巨石只有約 3.5 m：空降到巨石前時先把他移到洞的另一頭，免得一落地就被抓。</summary>
+    void ParkGiantFar() => Cyclops.Brain.Reset(new System.Numerics.Vector2(-9f, -2f));
+
     void StandAtBoulder()
     {
+        ParkGiantFar();
         Vector3 face = Layout.Boulder.PushPoint;
         var at = new Vector3(face.x, 0f, face.z - 1f);
         at.y = CaveBuilder.GroundHeight(at);
