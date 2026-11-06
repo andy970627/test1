@@ -631,6 +631,10 @@ function loop() {
     const t = audio.now();
     game.step(t, readInput());
     audio.update(game);
+    // 盲區開始時一聲很輕的提示（鼓點斷掉的那一下）
+    const blindNow = !!(game.cycle && game.cycle.blind);
+    if (blindNow && !loop.wasBlind && game.phase === 'play') { try { audio.cue('blind'); } catch (e) {} }
+    loop.wasBlind = blindNow;
     drain();
   }
   if (game && !paused && (game.phase === 'fail' || game.phase === 'win')) {
