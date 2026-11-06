@@ -45,6 +45,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 .say.muster { top: 16%; }
 .say.muster .line { display: inline-block; max-width: min(720px, 100%); padding: 10px 18px 12px; background: rgba(4, 6, 10, .62); border-radius: 3px; box-sizing: border-box; }
 .say.muster .nm { display: block; font-size: clamp(24px, 3.6vw, 36px); font-weight: 900; letter-spacing: .12em; color: var(--lamp); margin-bottom: 2px; }
+.say.muster .tr { display: block; margin-top: 6px; font: 14px/1.5 var(--body); color: var(--dim); letter-spacing: .12em; }
 .trait { position: absolute; left: 0; right: 0; top: calc(16% + 6.6em); margin: 0; text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .12em; text-shadow: 0 1px 6px #000; transition: opacity .6s; padding: 0 var(--gutter-r) 0 var(--gutter-l); }
 .musterSkip { position: absolute; right: var(--gutter-r); bottom: 14px; margin: 0; font-size: 13px; color: var(--dim); text-shadow: 0 1px 4px #000; }
 .choice {
@@ -364,12 +365,14 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   const CAVE_MOUTH = new THREE.Vector3(CAVE_X - 1.2, .45, CAVE_Z + 2);
   let musterIdx = -1;
   function trait(text) { const el = $('trait'); el.textContent = text; el.style.opacity = text ? 1 : 0; }
-  function sayName(name, line, cls) {
+  function sayName(name, line, cls, sub) {
     const el = $('say'); el.className = 'say' + (cls ? ' ' + cls : ''); el.textContent = '';
     if (cls === 'muster') {
       const box = document.createElement('span'); box.className = 'line';
       const b = document.createElement('b'); b.className = 'nm'; b.textContent = name;
-      box.append(b, line); el.append(box);
+      box.append(b, line);
+      if (sub) { const t = document.createElement('small'); t.className = 'tr'; t.textContent = sub; box.append(t); }
+      el.append(box);
     } else {
       const b = document.createElement('b'); b.textContent = name + '：'; el.append(b, line);
     }
@@ -387,8 +390,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     musterIdx = i;
     const m = crewMen[i], u = m.userData, t = u.traits;
     m.visible = true; u.enter = 0; m.position.copy(CAVE_MOUTH);
-    sayName(u.name, '「' + t.said + '」', 'muster');
-    trait(t.stepLabel + '・' + t.voiceLabel);
+    sayName(u.name, '「' + t.said + '」', 'muster', t.stepLabel + '・' + t.voiceLabel);
     const v = crewVox();
     if (v) {
       const p0 = panOf(CAVE_MOUTH), p1 = panOf(u.home), now = ac.currentTime;
