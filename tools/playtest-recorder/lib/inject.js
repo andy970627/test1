@@ -152,10 +152,32 @@
     log(type, data) { rec.events.push({ t: rec.lastT, src: 'bot', type, data }); }
   };
 
+  // 影片同步標記：右下角 14×14 的黑方塊，擷取開始後每 5 秒（音訊時間）變白約 0.2 秒，
+  // 記下變白那一幀的 ctx.currentTime；record.mjs 再從影片找出變白的時間，算出聲音與畫面的精確位移。
+  rec.sync = { on: true, marks: [], next: null, el: null, offAt: 0 };
+  const syncTick = () => {
+    const S = rec.sync, e = rec.ctxs[0];
+    if (!S.on || !e || e.firstFrame == null || !rec.capturing || !document.body) return;
+    if (!S.el) {
+      S.el = document.createElement('div');
+      S.el.style.cssText = 'position:fixed;right:2px;bottom:2px;width:14px;height:14px;background:#000;z-index:2147483647;pointer-events:none';
+      document.documentElement.appendChild(S.el);
+      S.next = e.firstFrame / e.sampleRate + 1.0;
+    }
+    const t = e.ctx.currentTime;
+    if (S.offAt && t >= S.offAt) { S.el.style.background = '#000'; S.offAt = 0; }
+    if (t >= S.next && !S.offAt) {
+      S.el.style.background = '#fff'; S.offAt = t + 0.2;
+      S.marks.push({ t, wall: performance.timeOrigin + performance.now() });
+      S.next += 5;
+    }
+  };
+
   // 每幀取樣
   let lastWall = null;
   const tick = () => {
     rec.frames++;
+    try { syncTick(); } catch (err) {}
     const now = performance.now();
     if (rec.probe && rec.capturing) {
       try {
@@ -190,9 +212,9 @@
       const f0 = e.chunks[0].frame, last = e.chunks[e.chunks.length - 1];
       const total = last.frame + last.ch[0].length - f0;
       const pcm = new Int16Array(total * 2);
-      let gaps = 0, clip = 0, peak = 0, expect = f0;
+      let gaps = 0, clip = 0, peak = 0, expect = f0; const gapList = [];
       for (const c of e.chunks) {
-        if (c.frame > expect) gaps += c.frame - expect;
+        if (c.frame > expect) { gaps += c.frame - expect; if (gapList.length < 50) gapList.push([+(expect / e.sampleRate).toFixed(3), c.frame - expect]); }
         const off = c.frame - f0, L = c.ch[0], R = c.ch[1] || c.ch[0];
         for (let i = 0; i < L.length; i++) {
           const l = L[i], r = R[i];
@@ -206,7 +228,7 @@
       }
       e.pcm = pcm;
       out.push({ frames: total, firstFrame: f0, startTime: f0 / e.sampleRate, sampleRate: e.sampleRate,
-        gapFrames: gaps, clipSamplesFloat: clip, peakFloat: peak, mode: e.mode, stamps: e.stamps });
+        gapFrames: gaps, gapList, clipSamplesFloat: clip, peakFloat: peak, mode: e.mode, stamps: e.stamps });
     }
     return out;
   };

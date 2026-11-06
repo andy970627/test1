@@ -19,8 +19,11 @@
  *   --cycle <秒>             放慢遊戲循環（交給設定檔的 prepare；木馬之夜＝規則與聲音的 CYCLE）
  *   --out <資料夾>           輸出位置；預設 tools/playtest-recorder/out/<設定檔名>-<時間>
  *   --no-bot  --no-video  --no-analyze  --no-phase-bar
+ *   --no-sync-marker        不畫右下角的影片同步方塊（改用牆上時間估算對齊，誤差可能到 1 秒以上）
  *   --shots <秒>             每隔幾秒截一張圖（預設 10，0＝不截）
  *   --width/--height        視窗大小（預設取設定檔，否則 1280×720）
+ *   --antialias             保留遊戲的 WebGL 反鋸齒設定（預設強制關掉以提高無頭幀率）
+ *   --render-scale <0..1>   覆寫 devicePixelRatio 降低 WebGL 算圖解析度（預設取設定檔 renderScale）
  */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -121,7 +124,13 @@ function fetchExternal(url) {
 
 // ---------- 瀏覽器 ----------
 const { chromium } = loadPlaywright();
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+// 無 GPU：WebGL 走 SwiftShader（純 CPU）。這組旗標實測在 4 核雲端機器上讓 three.js 場景快約 1.5 倍
+// --in-process-gpu 省掉每個 GL 呼叫的跨行程往返；--disable-gpu-compositing 改用軟體合成，
+// 實測讓錄影（screencast）從約 2 fps、會凍結數秒，變成約 15 fps，遊戲幀的最長卡頓也從 1 秒多降到約 0.2 秒
+const LAUNCH_ARGS = ['--autoplay-policy=no-user-gesture-required', '--disable-accelerated-2d-canvas', '--use-angle=swiftshader',
+  '--disable-gpu-vsync', '--disable-frame-rate-limit', '--in-process-gpu', '--disable-gpu-compositing'];
+const browser = await chromium.launch({ args: LAUNCH_ARGS });
+const renderScale = opt.renderScale != null ? +opt.renderScale : (P.renderScale || null);
 const videoDir = path.join(outDir, '.video');
 const context = await browser.newContext({
   viewport: vp, deviceScaleFactor: 1,
@@ -139,6 +148,12 @@ await context.route('**/*', async (route) => {
   return route.fulfill({ status: r.meta.status, headers, body: r.body });
 });
 await context.addInitScript({ path: path.join(HERE, 'lib', 'inject.js') });
+// 降低內部算圖解析度：覆寫 devicePixelRatio（three.js 等以 setPixelRatio(devicePixelRatio) 算圖的遊戲會變快，HUD 文字不受影響）
+// 預設關掉 WebGL 反鋸齒（SwiftShader 的 MSAA 很貴）；--antialias 保留遊戲原設定
+const forceNoAA = opt.antialias !== true;
+if (forceNoAA) await context.addInitScript(`(() => { const o = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (t, a) { if (/webgl/.test(String(t))) a = Object.assign({}, a, { antialias: false }); return o.call(this, t, a); }; })();`);
+if (renderScale) await context.addInitScript(`Object.defineProperty(window, 'devicePixelRatio', { get: () => ${renderScale} });`);
 const consoleLog = [];
 const videoStartWall = Date.now();
 const page = await context.newPage();
@@ -149,6 +164,7 @@ await page.goto(base + entry, { waitUntil: 'load', timeout: 60000 });
 log('已載入', entry);
 let prepared = null;
 if (P.prepare) prepared = await P.prepare(page, opt);
+if (opt.syncMarker === false) await page.evaluate(() => { window.__rec.sync.on = false; });
 if (P.probe) await page.evaluate(`window.__rec.probe = (${P.probe.toString()});`);
 if (P.bot && opt.bot !== false) await page.evaluate(`window.__rec.bot = (${P.bot.toString()});`);
 const startWall = Date.now();
@@ -196,6 +212,7 @@ await page.evaluate(() => { window.__rec.bot = null; window.__rec.api.releaseAll
 
 // ---------- 收資料 ----------
 const stats = await page.evaluate(() => window.__rec.finish());
+const syncMarks = await page.evaluate(() => window.__rec.sync.marks);
 const recInfo = await page.evaluate(() => ({ timeline: window.__rec.timeline, events: window.__rec.events, starts: window.__rec.starts,
   startsDropped: window.__rec.startsDropped, errors: window.__rec.errors, frames: window.__rec.frames }));
 const endWall = Date.now();
@@ -226,7 +243,7 @@ if (main >= 0) {
   const wallAtAudio0 = offs.length ? offs[Math.floor(offs.length / 2)] : null;
   const audioStartWall = wallAtAudio0 != null ? wallAtAudio0 + s.startTime * 1000 : null;
   audioMeta = { file: 'audio.wav', sampleRate: s.sampleRate, channels: 2, frames: s.frames, seconds: s.frames / s.sampleRate,
-    startAudioTime: s.startTime, captureMode: s.mode, gapFrames: s.gapFrames, clipSamplesFloat: s.clipSamplesFloat,
+    startAudioTime: s.startTime, captureMode: s.mode, gapFrames: s.gapFrames, gapList: s.gapList, clipSamplesFloat: s.clipSamplesFloat,
     peakFloat: s.peakFloat, audioStartWall, wallJitterMs: offs.length ? offs[offs.length - 1] - offs[0] : null,
     outputLatency: s.stamps.length ? s.stamps[s.stamps.length - 1].out : null, baseLatency: s.stamps.length ? s.stamps[0].base : null };
   log('音訊', audioMeta.seconds.toFixed(1), '秒', s.sampleRate, 'Hz', s.mode, '缺塊樣本', s.gapFrames);
@@ -253,15 +270,37 @@ if (video) {
   } catch (e) {}
   const offStart = audioMeta && audioMeta.audioStartWall ? (audioMeta.audioStartWall - videoStartWall) / 1000 : 0;
   const offEnd = audioMeta && audioMeta.audioStartWall && vdur ? vdur - (closeWall - audioMeta.audioStartWall) / 1000 : null;
-  const offset = offStart;
-  videoMeta = { webm: 'video.webm', durationSec: vdur, offsetSec: +offset.toFixed(3), offsetFromEndSec: offEnd == null ? null : +offEnd.toFixed(3) };
+  // 同步標記：找出影片中右下角變白的時間（每個標記取第一個變亮的幀）
+  let offSync = null, syncFound = [];
+  if (audioMeta && syncMarks.length) {
+    const pr = spawnSync(FFMPEG, ['-hide_banner', '-i', webmOut, '-vf', `crop=10:10:${vp.width - 14}:${vp.height - 14},format=gray,showinfo`, '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 256 << 20 });
+    const fr = [];
+    for (const line of pr.stderr.split('\n')) {
+      const m = line.match(/pts_time:\s*([\d.]+).*?mean:\[(\d+)/);
+      if (m) fr.push({ t: +m[1], y: +m[2] });
+    }
+    const rises = [];
+    for (let i = 1; i < fr.length; i++) if (fr[i].y > 128 && fr[i - 1].y <= 128) rises.push(fr[i].t);
+    // 每個標記配對：影片中的變亮時間 − 標記在 WAV 中的時間；取與牆上時間預估最接近的變亮
+    for (const mk of syncMarks) {
+      const wavT = mk.t - audioMeta.startAudioTime;
+      const guess = (mk.wall - videoStartWall) / 1000;
+      let best = null; for (const r of rises) if (best == null || Math.abs(r - guess) < Math.abs(best - guess)) best = r;
+      if (best != null && Math.abs(best - guess) < 2.5) syncFound.push(+(best - wavT).toFixed(3));
+    }
+    if (syncFound.length) { const s2 = [...syncFound].sort((a, b) => a - b); offSync = s2[Math.floor(s2.length / 2)]; }
+  }
+  const offset = offSync != null ? offSync : offStart;
+  videoMeta = { webm: 'video.webm', durationSec: vdur, offsetSec: +offset.toFixed(3), offsetMethod: offSync != null ? 'sync-marker' : 'wall-clock',
+    offsetFromStartSec: +offStart.toFixed(3), offsetFromEndSec: offEnd == null ? null : +offEnd.toFixed(3),
+    syncMarks: syncMarks.length, syncOffsets: syncFound };
   if (audioMeta) {
     const mp4 = path.join(outDir, 'playtest.mp4');
     const af = offset >= 0 ? `adelay=${Math.round(offset * 1000)}:all=1` : `atrim=start=${(-offset).toFixed(3)},asetpts=PTS-STARTPTS`;
     const r = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', webmOut, '-i', wavPath, '-filter_complex', `[1:a]${af}[a]`,
       '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24', '-pix_fmt', 'yuv420p', '-r', '25',
       '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', mp4], { encoding: 'utf8' });
-    if (r.status === 0) { videoMeta.mp4 = 'playtest.mp4'; log('合成', mp4, `（聲音位移 ${offset.toFixed(3)} 秒；以結尾估 ${offEnd == null ? '?' : offEnd.toFixed(3)} 秒）`); }
+    if (r.status === 0) { videoMeta.mp4 = 'playtest.mp4'; log('合成', mp4, `（聲音位移 ${offset.toFixed(3)} 秒，依據 ${videoMeta.offsetMethod}；同步標記 ${syncFound.length}/${syncMarks.length} 個，分布 ${syncFound.length ? Math.min(...syncFound) + '～' + Math.max(...syncFound) : '—'}）`); }
     else log('ffmpeg 合成失敗', r.stderr);
   }
 }
@@ -274,6 +313,7 @@ const meta = {
   tool: 'playtest-recorder', version: 1, created: new Date().toISOString(),
   profile: P.name || null, profilePath: profilePath ? path.relative(outDir, profilePath) : null, title: P.title || null,
   serveDir, entry, viewport: vp, durationRequested: duration, cycleOverride: opt.cycle ? +opt.cycle : null,
+  renderScale, antialiasForcedOff: forceNoAA, launchArgs: LAUNCH_ARGS,
   bot: !!(P.bot && opt.bot !== false), scenario: opt.scenario || null, prepared,
   wall: { videoStart: videoStartWall, start: startWall, end: endWall, close: closeWall },
   audio: audioMeta, video: videoMeta, shots,

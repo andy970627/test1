@@ -33,6 +33,7 @@
 
   var C = {
     T: 10,             // 循環週期（秒），規則同值
+    BASS_TAIL: 1.1,    // 低音拍的餘音長度（秒）：巡邏時離盲區開始不到這麼久的拍不排
     BLIND: 0.6,        // 盲區預設（秒）；實際值以規則為準：createAudio 的 opts.blind，或 update(state) 讀 state.T.BLIND_LEN
     LAYERS: 4,         // 打擊層數
     M: 7,              // 最慢層每循環拍數；f0 = M·ln2 ÷ T ≈ 0.485 拍/秒（29→58 BPM），最快層 233→466 BPM
@@ -399,6 +400,12 @@
         var tb = an + m * per;
         if (tb >= b) break;
         if (tb < a || tb < nowT || tb < st.bassAnchor - 1e-4 || tb < st.lastBass + 0.25) continue;
+        // 巡邏時（沒有警戒、沒有追殺）：會落進盲區、或餘音拖進盲區的低音拍不排，讓盲區真的空掉。
+        // 警戒時保留：那時低音是安撫要跟的拍子。
+        if (st.alarm <= 0.01 && !st.hunted) {
+          var pt = phaseAt(tb, T, t0) * T;
+          if (pt < BL || T - pt < C.BASS_TAIL) continue;
+        }
         bassHit(tb); st.lastBass = tb;
         if (log) log.push({ type: 'bass', t: tb });
       }

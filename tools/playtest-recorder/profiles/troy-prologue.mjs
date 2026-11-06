@@ -14,7 +14,8 @@ export default {
   title: '木馬之夜',
   dir: '../../../prototypes/troy-prologue',
   page: 'index.html',
-  viewport: { width: 1280, height: 720 },
+  viewport: { width: 960, height: 540 },
+  renderScale: 0.5,                     // 無 GPU 的雲端：三維場景以半解析度算圖，幀率約 2 倍
   defaults: { duration: 80 },
 
   async prepare(page, o) {
@@ -37,7 +38,7 @@ export default {
       const C = window.RissetAudio.CONST || {};
       const g = window.TroyDebug.game;
       return { audioConst: { M: C.M, LAYERS: C.LAYERS, BELL_SIGMA: C.BELL_SIGMA, MIN_GAIN: C.MIN_GAIN, BLIND: C.BLIND },
-        rules: { CYCLE: g.T.CYCLE, BLIND: g.T.BLIND, BASS_PERIOD: g.T.BASS_PERIOD, BASS_WIN: g.T.BASS_WIN } };
+        rules: { CYCLE: g.T.CYCLE, BLIND: g.T.BLIND_LEN != null ? g.T.BLIND_LEN : g.T.BLIND, BASS_PERIOD: g.T.BASS_PERIOD, BASS_WIN: g.T.BASS_WIN } };
     });
   },
 
@@ -67,7 +68,7 @@ export default {
       if (d < nd) { nd = d; near = q; }
     }
     return {
-      t: +g.time.toFixed(4),
+      t: +a.now().toFixed(4), gt: +g.time.toFixed(4),   // t＝音訊時鐘（暫停、失敗畫面時也繼續走）；gt＝規則最後一次 step 的時間
       p: +g.cycle.p.toFixed(4), blind: !!g.cycle.blind, cyc: g.cycle.index,
       alert: now.panic, hunted: now.hunted, alarm: +(g.alarm || 0).toFixed(3),
       phase: g.phase, zone: g.zone, calm: now.calm,
@@ -83,7 +84,8 @@ export default {
   /* 程式玩家：
    *   區 1（木馬腹中）：低相位時朝木馬下的衛兵移動，故意讓他起疑 → 跟著低音 bass.nextBeat 按 Q 安撫 4 次
    *   → 安撫完的下一個盲區按住 W＋Shift 衝刺到暗門 → 區 2 躲在木馬的影子裡，高相位屏息。
-   *   相位 > 0.56 一律停下並屏息（p > 0.6 亂動會被立即追殺）；屏息快滿 6 秒就放開，避免喘氣。
+   *   相位 > 0.56 一律停下（p > 0.6 亂動會被立即追殺）；p > 0.62 到下一輪 p < 0.12 屏息（吐氣聲落在盲區之後）；
+   *   屏息快滿 6 秒就放開，避免喘氣。
    *   失敗時等 1.5 秒按 R 重來。 */
   bot: function (api, s, st) {
     const D = window.TroyDebug, g = D.game;
@@ -93,8 +95,11 @@ export default {
     st.fd = st.fd ? st.fd * 0.8 + fdt * 0.2 : fdt;     // 平滑後的幀間隔，預測「下一幀」的音訊時間
     if (g.phase === 'fail') {
       api.releaseAll();
-      if (!st.failAt) { st.failAt = t; api.log('fail', g.failReason); }
-      if (t - st.failAt > 1.5) { st.failAt = 0; api.press('KeyR'); api.log('retry'); }
+      if (!st.failAt) { st.failAt = s.wall; api.log('fail', g.failReason); }
+      if (s.wall - st.failAt > 1500) {   // 失敗畫面停 1.5 秒後按 R；程式玩家狀態歸零（重新引起注意、重新安撫）
+        for (const k of Object.keys(st)) delete st[k];
+        api.press('KeyR'); api.log('retry');
+      }
       return;
     }
     if (g.phase !== 'play') { api.releaseAll(); return; }
@@ -103,16 +108,23 @@ export default {
     let fwd = 0, breath = false;
     const highP = p > 0.56;
     const canBreath = P.breathT < 5.2 && !P.breathLock;
+    // 屏息時段跨過盲區（p > 0.62 或 p < 0.12），讓「吐氣」聲落在盲區之後，不污染盲區的音量量測
+    const holdWrap = (p > 0.62 || p < 0.12) && canBreath;
 
-    // 安撫：每一個低音拍按一次 Q（按下的效果在下一幀的 step 才生效，所以挑「下一幀最接近拍點」的那一幀按）
+    // 安撫：每一個低音拍按一次 Q。注入的取樣迴圈比遊戲的 rAF 先註冊，同一幀裡先跑 bot 再跑 game.step，
+    // 所以按下的效果就在「這一幀」的音訊時間生效。無頭環境常卡頓數百毫秒，所以不等「最準的那一幀」：
+    // 早 0.10～晚 0.12 秒內（規則容許 ±0.15）就按。
     if (g.panic.active) {
       st.sawPanic = true;
-      const b = g.bass.nextBeat;
-      const lead = b - t;
-      if (lead >= 0 && Math.abs(lead - st.fd) <= st.fd / 2 + 0.004 && (st.lastQ == null || t - st.lastQ > 1.6)) {
-        api.press('KeyQ'); st.lastQ = t; api.log('calm_press', { beat: +b.toFixed(4), predicted: +(t + st.fd).toFixed(4) });
+      const per = g.bass.period, an = g.bass.anchor;
+      const b = an + Math.round((t - an) / per) * per;
+      const off = t - b;
+      const fresh = st.pressedBeat == null || Math.abs(b - st.pressedBeat) > 0.5;
+      if (b >= an - 1e-6 && off >= -0.10 && off <= 0.12 && fresh && (st.lastQ == null || t - st.lastQ > 1.2)) {
+        api.press('KeyQ'); st.lastQ = t; st.pressedBeat = b;
+        api.log('calm_press', { beat: +b.toFixed(4), off: +off.toFixed(4) });
       }
-      breath = highP && canBreath;
+      breath = holdWrap;
     } else if (g.zone === 1) {
       if (!st.sawPanic) {               // 引起注意
         const q = g.guards.find(x => x.active);
@@ -122,20 +134,47 @@ export default {
           else fwd = (Math.floor(t * 4) % 2) ? 1 : -1;      // 已在正上方：小幅來回挪動
           if (P.x > 9.9 && fwd > 0) fwd = -1;
         }
-        breath = highP && canBreath;
+        breath = holdWrap;
       } else {                          // 安撫完：下一個盲區衝刺到暗門
         if (s.blind) {
           fwd = 1;
           if (st.dashCycle !== s.cyc) { st.dashCycle = s.cyc; api.press('ShiftLeft'); api.log('dash_press'); }
-        } else breath = highP && canBreath;
+        } else breath = p > 0.56 && p < 0.9 && canBreath;   // 要衝刺的那一輪：盲區前先換好氣
       }
     } else {                            // 區 2 之後：躲在影子裡不動，高相位屏息
-      breath = p > 0.5 && canBreath;
+      breath = holdWrap;
     }
     if (breath) fwd = 0;
     api.set('Space', breath);
     api.set('KeyW', fwd > 0);
     api.set('KeyS', fwd < 0);
+  },
+
+  /* 精確區段（給分析）：盲區由 (t0, CYCLE, BLIND) 算出；警戒＝panic.active、追殺＝hunted（以取樣幀為界，起點用 alert cue 的實際時間）。 */
+  intervals(timeline, meta, events) {
+    const B = ((meta.prepared || {}).rules || {}).BLIND || 0.5;
+    const blind = [];
+    const segs = [];
+    for (const s of timeline) {
+      const L = segs[segs.length - 1];
+      if (!L || L.t0 !== s.ct0 || L.T !== s.cT) segs.push({ t0: s.ct0, T: s.cT, a: s.t, b: s.t }); else L.b = s.t;
+    }
+    for (const S of segs) for (let c = Math.floor((S.a - S.t0) / S.T); S.t0 + c * S.T <= S.b; c++) {
+      const a = S.t0 + c * S.T; if (a + B >= S.a) blind.push([a, a + B]);
+    }
+    const run = (key) => {
+      const out = []; let cur = null;
+      for (const s of timeline) {
+        const on = s[key] && s.phase === 'play';     // 失敗畫面不算
+        if (on && !cur) cur = [s.t, s.t]; else if (on) cur[1] = s.t; else if (cur) { cur[1] = s.t; out.push(cur); cur = null; }
+      }
+      if (cur) out.push(cur);
+      return out;
+    };
+    const alert = run('alert');
+    const cues = (events || []).filter(e => e.type === 'cue' && /^alert$/i.test(e.name));
+    for (const iv of alert) { const c = cues.find(e => e.at <= iv[0] + 1e-3 && e.at > iv[0] - 1); if (c) iv[0] = c.at; }
+    return { blind, alert, hunted: run('hunted') };
   },
 
   /* 規則上的拍點（給分析比對）：Risset 4 層（盲區不排）＋低音網格。常數取自 prepare 回傳的 RissetAudio.CONST。 */
