@@ -8,6 +8,8 @@
  *   喊出名字「奧德修斯，拉厄爾忒斯之子，家在伊薩卡」、巨人丟岩石砸船【原典 第 9 卷】
  *   默默離開、每名同伴 1/3 被砸死、同伴站在沙灘上等船【改編】
  *   巨人的外形、洞口細節【電影細節待確認，這裡用剪影處理】
+ *   出洞後的點名：每個同伴的腳步、聲音、一句話；被砸中前喊的話【改編】
+ *     （資料在 series.js 的 CREW_TRAITS，冥府章只拿這些當線索；聲音在 crew-voice.js）
  */
 :root {
   --night: #07090d;
@@ -39,6 +41,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   text-shadow: 0 2px 10px #000, 0 0 2px #000; transition: opacity .6s; text-wrap: balance;
 }
 .say.shout { color: var(--lamp); font-size: clamp(22px, 3.4vw, 34px); letter-spacing: .06em; }
+.say b { color: var(--lamp); font-weight: 600; }
+.trait { position: absolute; left: 0; right: 0; top: calc(22% + 3.4em); margin: 0; text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .12em; text-shadow: 0 1px 6px #000; transition: opacity .6s; padding: 0 var(--gutter-r) 0 var(--gutter-l); }
+.musterSkip { position: absolute; right: var(--gutter-r); bottom: 14px; margin: 0; font-size: 13px; color: var(--dim); text-shadow: 0 1px 4px #000; }
 .choice {
   position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(760px, calc(100% - 32px));
   display: grid; gap: 10px;
@@ -78,6 +83,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     <span class="title">岸邊</span>
     <a class="home" href="../index.html">回首頁</a>
     <p class="say" id="say"></p>
+    <p class="trait" id="trait"></p>
+    <p class="musterSkip" id="musterSkip" hidden>Esc：跳過點名</p>
     <div class="choice" id="choice" hidden>
       <div class="opts">
         <div class="opt" id="optShoot"><kbd>左鍵</kbd>拉弓射他</div>
@@ -103,6 +110,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="../series.js"></script>
+<script src="../crew-voice.js"></script>
 <script>
 (function () {
   'use strict';
@@ -127,6 +135,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     if (ac && ac.state === 'suspended') ac.resume();
     return ac;
   }
+  let cvox = null;
+  function crewVox() { if (!audio()) return null; if (!cvox) cvox = window.CrewVoice.create(ac, master); return cvox; }
   function noise(dur, t0) { const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.start(t0); s.stop(t0 + dur); return s; }
   function env(g, t0, a, peak, dur) { g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur); }
   function startWaves() {
@@ -299,7 +309,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     mesh(new THREE.SphereGeometry(.15, 8, 6), crewMat, 0, 1.52, 0, g);
     const a = i / Math.max(1, crew.length - 1);
     g.position.set(-1.6 - a * 2.6 + (i % 2) * .4, .45, -5.5 - a * 3.5);
-    g.userData = { name, home: g.position.clone(), fall: 0, lost: false };
+    g.userData = { name, home: g.position.clone(), fall: 0, lost: false, traits: S.traitsOf(name) };
+    g.visible = false;
     scene.add(g); return g;
   });
 
@@ -338,6 +349,41 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     $('fade').style.opacity = 0;
     say('巨人睡在巨石裡面。他看不見你。');
   }
+  // 點名：一個一個從石縫裡走出來，走到沙灘上（腳步、聲音、一句話）
+  const MUSTER_EACH = 2.3, MUSTER_LEAD = 1.6;
+  const CAVE_MOUTH = new THREE.Vector3(CAVE_X - 1.2, .45, CAVE_Z + 2);
+  let musterIdx = -1;
+  function trait(text) { const el = $('trait'); el.textContent = text; el.style.opacity = text ? 1 : 0; }
+  function sayName(name, line, cls) {
+    const el = $('say'); el.className = 'say' + (cls ? ' ' + cls : ''); el.textContent = '';
+    const b = document.createElement('b'); b.textContent = name + '：'; el.append(b, line); el.style.opacity = 1;
+  }
+  function panOf(v) { const p = v.clone().project(camera); return Math.max(-1, Math.min(1, p.x)); }
+  function startMuster() {
+    if (!crewMen.length) { openChoice(); return; }
+    phase = 'muster'; phaseT = 0; musterIdx = -1;
+    say('他們一個一個從石縫裡鑽出來。');
+    $('musterSkip').hidden = false;
+    autoLook = { yaw: .05, pitch: .02 };
+  }
+  function musterStep(i) {
+    musterIdx = i;
+    const m = crewMen[i], u = m.userData, t = u.traits;
+    m.visible = true; u.enter = 0; m.position.copy(CAVE_MOUTH);
+    sayName(u.name, '「' + t.said + '」');
+    trait(t.stepLabel + '・' + t.voiceLabel);
+    const v = crewVox();
+    if (v) {
+      const p0 = panOf(CAVE_MOUTH), p1 = panOf(u.home), now = ac.currentTime;
+      v.walk(t.step, now, 1.8, k => p0 + (p1 - p0) * k, k => .55 + .3 * k);
+      v.voice(t.voice, now + .9, p1, .9);
+    }
+  }
+  function endMuster() {
+    crewMen.forEach(m => { m.visible = true; m.userData.enter = null; m.position.copy(m.userData.home); });
+    $('musterSkip').hidden = true; trait(''); autoLook = null;
+    openChoice();
+  }
   function openChoice() {
     phase = 'choose'; phaseT = 0;
     say('');
@@ -362,8 +408,12 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     const list = targets.map(m => ({ man: m })).concat(Array.from({ length: extra }, (_, i) => ({ sea: new THREE.Vector3(-8 - Math.random() * 10, 0, -8 - Math.random() * 8) })));
     list.sort(() => Math.random() - .5);
     list.forEach((it, i) => {
-      at(t0 + 1.8 + i * .75, () => {
+      at(t0 + 1.8 + i * 1.2, () => {
         giant.userData.throwT = 0;
+        if (it.man) {
+          const t = it.man.userData.traits; sayName(it.man.userData.name, '「' + t.last + '」', 'shout');
+          const v = crewVox(); if (v) v.voice(t.voice, ac.currentTime, panOf(it.man.position), 1);
+        }
         const from = new THREE.Vector3(CAVE_X + .6, 4, CAVE_Z + .5);
         const to = it.man ? it.man.position.clone() : it.sea;
         throwRock(from, to, 1.1, () => {
@@ -372,7 +422,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
         });
       });
     });
-    return t0 + 1.8 + list.length * .75 + 1.6;
+    return t0 + 1.8 + list.length * 1.2 + 1.6;
   }
   function playShoot() {
     autoLook = { yaw: .0, pitch: .03 };
@@ -418,13 +468,13 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     if (solo) {
       btns.append(btnEl('再選一次', () => location.reload(), true), btnEl('回首頁', () => { location.href = '../index.html'; }));
     } else {
-      S.save(null, S.advance(save, 'ogygia', { shore: choice, crewLost: lost.slice() }));
+      S.save(null, S.advance(save, 'underworld', { shore: choice, crewLost: lost.slice(), shadesNamed: null, shadesFollowing: null, nameless: false }));
       btns.append(btnEl(kept > 0 ? '上船（Enter）' : '獨自上船（Enter）', goNext, true));
     }
     $('result').hidden = false;
     const b = btns.querySelector('button'); if (b) b.focus();
   }
-  function goNext() { location.href = S.nextUrl('ogygia', '../'); }
+  function goNext() { location.href = S.nextUrl('underworld', '../'); }
   function btnEl(text, fn, main) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (main ? ' main' : ''); b.textContent = text; b.onclick = fn; return b; }
 
   // ================================================================ 輸入
@@ -433,6 +483,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); if (phase === 'start') begin(); else pick('name'); }
     if (e.code === 'Enter' && phase === 'start') begin();
+    if (e.code === 'Escape' && phase === 'muster') endMuster();
   });
   window.addEventListener('mousemove', e => {
     const r = cv.getBoundingClientRect();
@@ -454,7 +505,12 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   function tick(now) {
     const real = Math.min(.25, (now - last) / 1000), dt = Math.min(.05, real); last = now; clock += dt; phaseT += real; // 限時用真實秒數
 
-    if (phase === 'intro' && phaseT > 2.6) openChoice();
+    if (phase === 'intro' && phaseT > 2.6) startMuster();
+    if (phase === 'muster') {
+      const i = Math.floor((phaseT - MUSTER_LEAD) / MUSTER_EACH);
+      if (phaseT >= MUSTER_LEAD && i > musterIdx && i < crewMen.length) musterStep(i);
+      if (phaseT >= MUSTER_LEAD + crewMen.length * MUSTER_EACH) endMuster();
+    }
     if (phase === 'choose') {
       const left = Math.max(0, 1 - phaseT / S.SHORE_TIME);
       $('timerBar').style.transform = `scaleX(${left})`;
@@ -511,7 +567,11 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     // 同伴：被砸到的倒下；默默離開時走向船
     for (const m of crewMen) {
       const u = m.userData;
-      if (u.lost) { u.fall = Math.min(1, u.fall + dt * 2.5); m.rotation.x = -u.fall * 1.45; m.position.y = .45 - u.fall * .15; }
+      if (u.enter != null) {
+        u.enter = Math.min(1, u.enter + dt / 1.8);
+        m.position.lerpVectors(CAVE_MOUTH, u.home, u.enter); m.position.y = .45 + Math.abs(Math.sin(u.enter * 18)) * .05;
+        if (u.enter >= 1) u.enter = null;
+      } else if (u.lost) { u.fall = Math.min(1, u.fall + dt * 2.5); m.rotation.x = -u.fall * 1.45; m.position.y = .45 - u.fall * .15; }
       else if (u.walk != null) {
         u.walk += dt; const k = Math.min(1, u.walk / 3.8);
         m.position.x = u.home.x + (-9.6 - u.home.x) * k; m.position.z = u.home.z + (-14.5 - u.home.z) * k;
@@ -534,6 +594,6 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 
   window.addEventListener('keydown', e => { if (e.code === 'Enter' && phase === 'result') { const b = $('resBtns').querySelector('button'); if (b && document.activeElement !== b) b.click(); } });
   // 給測試用：不影響遊玩
-  window.__shore = { pick: c => pick(c), begin, get phase() { return phase; } };
+  window.__shore = { pick: c => pick(c), begin, skipMuster: () => { if (phase === 'muster') endMuster(); }, get phase() { return phase; } };
 })();
 </script>

@@ -11,12 +11,15 @@ function memStore(init) {
 
 test('fresh：預設存檔符合計畫第 3 節', () => {
   const s = S.fresh();
-  assert.deepEqual(Object.keys(s).sort(), ['bow', 'crewLost', 'crewOut', 'knowers', 'ledger', 'shore', 'step', 'wrath', 'years'].sort());
+  assert.deepEqual(Object.keys(s).sort(), ['bow', 'crewLost', 'crewOut', 'knowers', 'ledger', 'nameless', 'shadesFollowing', 'shadesNamed', 'shore', 'step', 'wrath', 'years'].sort());
   assert.equal(s.step, 'cave');
   assert.equal(s.crewOut, 6);
   assert.equal(s.years, 7);
   assert.deepEqual(s.knowers, { tele: 'unknown', eum: 'unknown', pen: 'unknown' });
   assert.equal(S.KEY, 'odyssey-series-v1');
+  assert.equal(s.shadesNamed, null);
+  assert.equal(s.shadesFollowing, null);
+  assert.equal(s.nameless, false);
 });
 
 test('wrath 與 years 換算', () => {
@@ -104,6 +107,9 @@ test('advance：不改原物件、拒絕未知步驟、重算衍生欄位', () =
 
 test('nextStep 與 nextUrl', () => {
   assert.equal(S.nextStep('cave'), 'shore');
+  assert.equal(S.nextStep('shore'), 'underworld');
+  assert.equal(S.nextStep('underworld'), 'ogygia');
+  assert.equal(S.nextUrl('underworld', '../'), '../underworld/index.html');
   assert.equal(S.nextStep('ogygia'), 'beggar-gate');
   assert.equal(S.nextStep('bow'), 'ending');
   assert.equal(S.nextStep('ending'), 'ending');
@@ -115,4 +121,41 @@ test('nextStep 與 nextUrl', () => {
   assert.equal(S.nextUrl('ending', '../'), '../ending/index.html');
   assert.equal(S.nextUrl('cave', '../'), '../index.html#cave');
   for (const st of S.STEPS) assert.ok(S.nextUrl(st).length > 0);
+});
+
+test('冥府欄位：normalize 保留合法陣列、丟掉壞資料', () => {
+  const n = S.normalize({ shadesNamed: ['波利忒斯', 3], shadesFollowing: 'x', nameless: 'yes' });
+  assert.deepEqual(n.shadesNamed, ['波利忒斯']);
+  assert.equal(n.shadesFollowing, null);
+  assert.equal(n.nameless, false);
+  assert.equal(S.normalize({ nameless: true }).nameless, true);
+  const st = memStore();
+  S.save(st, S.advance(S.fresh(), 'ogygia', { shadesNamed: ['塞翁'], shadesFollowing: [], nameless: true }));
+  const back = S.load(st);
+  assert.deepEqual(back.shadesNamed, ['塞翁']);
+  assert.deepEqual(back.shadesFollowing, []);
+  assert.equal(back.nameless, true);
+});
+
+test('礁石上的人影：走過冥府只放跟著的；沒走過放失去的同伴', () => {
+  assert.deepEqual(S.reefFigures({ crewLost: ['塞翁', '波利忒斯'] }), ['塞翁', '波利忒斯']);
+  assert.deepEqual(S.reefFigures({ crewLost: ['塞翁', '波利忒斯'], shadesFollowing: ['塞翁'] }), ['塞翁']);
+  assert.deepEqual(S.reefFigures({ crewLost: ['塞翁'], shadesFollowing: [] }), []);
+});
+
+test('同伴特徵：每人都有、腳步與聲音各不相同、句子不重複', () => {
+  const steps = new Set(), voices = new Set(), lines = new Set();
+  for (const name of S.CREW) {
+    const t = S.traitsOf(name);
+    assert.ok(t, name);
+    assert.ok(S.STEP_KINDS[t.step] && S.VOICE_KINDS[t.voice], name);
+    assert.ok(t.said.length > 4 && t.last.length > 2, name);
+    assert.ok(t.stepLabel && t.voiceLabel);
+    steps.add(t.step); voices.add(t.voice); lines.add(t.said); lines.add(t.last);
+  }
+  assert.equal(steps.size, S.CREW.length);
+  assert.equal(voices.size, S.CREW.length);
+  assert.equal(lines.size, S.CREW.length * 2);
+  assert.equal(S.traitsOf('阿基里斯'), null);
+  assert.deepEqual(S.rollCall({ crewOut: 3 }), S.CREW.slice(0, 3));
 });

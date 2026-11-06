@@ -10,6 +10,7 @@
  *   橄欖樹做的床（潘妮洛普的試探）【原典 第 23 卷；電影是否有演待確認】
  *   歐邁俄斯閂門【原典 第 21 卷】
  *   知情者、記帳、年數、同伴名單的變化【改編】
+ *   冥府裡叫出的名字、跟著的亡魂【改編】
  *   比箭失敗：求婚者大笑，可以再拉一次【改編】
  */
 :root {
@@ -109,6 +110,8 @@ dd { margin: 0; color: var(--ash); }
       : '潘妮洛普不肯相信。她要人把床搬出來。你說：搬不動——床腳是一棵還活著的橄欖樹。她哭了。');
     L(`你在卡呂普索的島上數過${NUM[save.years]}年，回來的時候，兒子已經是個男人了。`);
     L(save.crewLost.length ? `你沒有忘記：${save.crewLost.join('、')}。` : '從洞裡帶出來的人，你一個也沒有留在岸上。');
+    if (save.shadesNamed && save.shadesNamed.length) L(`在冥府的黑霧裡，你叫出了${save.shadesNamed.join('、')}的名字。`);
+    if (save.shadesFollowing && save.shadesFollowing.length) L(`${save.shadesFollowing.join('、')}沒有被叫到名字，一路跟著你的船。`);
     L('後來，你把王位交給了忒勒馬科斯。');
     L('你和潘妮洛普上了船，往西航行。這一次，不是為了回家。', 'last');
   }
@@ -137,6 +140,9 @@ dd { margin: 0; color: var(--ash); }
     ['海神', WRATH[save.wrath]],
     ['島上', `${save.years} 年`],
     ['失去的同伴', save.crewLost.length ? save.crewLost.join('、') : '沒有'],
+    ['冥府', !Array.isArray(save.shadesNamed) ? '沒有走過'
+      : (save.shadesNamed.length ? `叫出 ${save.shadesNamed.join('、')}` : (save.crewLost.length ? '一個名字也沒叫出' : '沒有同伴在那裡'))
+        + (save.shadesFollowing.length ? `；跟著你的：${save.shadesFollowing.join('、')}` : '') + (save.nameless ? '（無名之人）' : '')],
     ['記下的帳', `${save.ledger} 筆`],
     ['認出你的人', (knew.length ? knew.join('、') : '沒有人') + (sus.length ? `（起疑：${sus.join('、')}）` : '')],
     ['比箭', bow ? (bow.win ? '穿過十二把斧頭' : `穿過 ${bow.passed} 把，失手`) : '沒有比']

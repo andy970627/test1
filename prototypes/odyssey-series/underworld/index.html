@@ -1,0 +1,437 @@
+<title>冥府</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 冥府（銜接章）：第一人稱黑霧，亡魂一個一個靠近，叫出他的名字。單一夜色主題。
+ * 出處（不上畫面）：
+ *   冥府段落【電影；原典 第 11 卷】
+ *   西農的指責（開場）、阿伽門農的忠告（結尾）【電影，台詞細節待確認】
+ *   黑霧、只聽得到腳步與聲音、叫對名字才有光、叫錯的跟到海上、時限【改編】
+ *   線索只用岸邊點名時出現過的腳步、聲音、說過的話與死前的話【改編；資料在 series.js CREW_TRAITS】
+ *   叫對過半才聽到完整忠告 → 存檔 nameless【改編】
+ */
+:root {
+  --night: #06070a;
+  --line: #262b33;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #d6d3cb;
+  --dim: #868c96;
+  --ghost: #a9b8cc;
+  --frost: #bcd4ec;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--night); overflow: hidden; }
+body { color: var(--ash); font-family: var(--body); }
+.stage { position: relative; width: 100%; height: 100svh; min-height: 360px; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; }
+canvas#cv { display: block; width: 100%; height: 100%; }
+.frost { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .25s;
+  background: radial-gradient(ellipse at center, rgba(188,212,236,0) 35%, rgba(188,212,236,.32) 100%); }
+.fade { position: absolute; inset: 0; background: #000; pointer-events: none; transition: opacity 1s; }
+.hud { position: absolute; inset: 0; pointer-events: none; }
+.title { position: absolute; top: 12px; left: var(--gutter-l); font-family: var(--display); font-weight: 900; font-size: clamp(18px, 2.6vw, 24px); color: var(--lamp); letter-spacing: .08em; text-shadow: 0 2px 8px #000; }
+.home { position: absolute; top: 14px; right: var(--gutter-r); font-size: 13px; color: var(--dim); text-decoration: none; pointer-events: auto; text-shadow: 0 1px 4px #000; }
+.home:hover { color: var(--ash); }
+.count { position: absolute; top: 44px; left: var(--gutter-l); font-size: 13px; color: var(--dim); margin: 0; letter-spacing: .1em; }
+.say {
+  position: absolute; left: 0; right: 0; top: 20%; margin: 0; text-align: center; padding: 0 var(--gutter-r) 0 var(--gutter-l);
+  font-family: var(--display); font-size: clamp(18px, 2.6vw, 26px); line-height: 1.7; color: var(--ash);
+  text-shadow: 0 2px 10px #000, 0 0 2px #000; transition: opacity .6s; text-wrap: balance;
+}
+.say b { display: block; font-size: 14px; color: var(--bronze); letter-spacing: .3em; font-weight: 600; margin-bottom: 2px; }
+.say.ghost { color: var(--ghost); }
+.say.named { color: var(--lamp); letter-spacing: .2em; }
+.trait { position: absolute; left: 0; right: 0; top: calc(20% + 5em); margin: 0; text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .12em; text-shadow: 0 1px 6px #000; transition: opacity .6s; padding: 0 var(--gutter-r) 0 var(--gutter-l); }
+.ask { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(760px, calc(100% - 32px)); display: grid; gap: 10px; pointer-events: auto; }
+.opts { display: grid; grid-template-columns: repeat(var(--n, 4), 1fr); gap: 10px; }
+.opt {
+  font: 500 17px var(--display); color: var(--ash); background: rgba(8, 10, 14, .78); border: 1px solid var(--line); border-radius: 3px;
+  padding: 10px 8px; cursor: pointer; letter-spacing: .08em; line-height: 1.4;
+}
+.opt kbd { display: block; font: 500 12px var(--body); color: var(--bronze); letter-spacing: .12em; margin-bottom: 2px; }
+.opt:hover { border-color: var(--bronze); }
+.opt.pick { border-color: var(--lamp); color: var(--lamp); }
+.opt.right { border-color: var(--lamp); color: var(--lamp); }
+.opt:disabled { cursor: default; }
+.askRow { display: flex; align-items: center; gap: 10px; }
+.timer { flex: 1; height: 4px; background: rgba(38, 43, 51, .9); }
+.timer i { display: block; height: 100%; width: 100%; background: var(--ghost); transform-origin: left; }
+.replay { font: 500 13px var(--body); color: var(--dim); background: none; border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer; }
+.replay:hover { color: var(--ash); }
+@media (max-width: 560px) { .opts { grid-template-columns: repeat(2, 1fr); } .opt { font-size: 15px; } }
+.hint { position: absolute; right: var(--gutter-r); bottom: 14px; margin: 0; font-size: 13px; color: var(--dim); text-shadow: 0 1px 4px #000; }
+.panel { background: rgba(8, 10, 14, .86); border: 1px solid var(--line); border-radius: 3px; }
+.start, .result {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(540px, calc(100% - 32px)); box-sizing: border-box;
+  padding: 22px 20px; text-align: center; pointer-events: auto;
+}
+.start { cursor: pointer; }
+.start h1, .result h2 { margin: 0 0 8px; font-family: var(--display); font-weight: 900; color: var(--lamp); font-size: clamp(26px, 4.6vw, 36px); letter-spacing: .12em; }
+.start p, .result p { margin: 0 0 8px; line-height: 1.7; }
+.small { color: var(--dim); font-size: 13px; }
+.result .named { color: var(--lamp); }
+.result .following { color: var(--ghost); }
+.btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; margin: 8px 4px 0; }
+.btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="cv" aria-label="冥府：一片黑霧，人影從霧裡走過來"></canvas>
+  <div class="frost" id="frost"></div>
+  <div class="fade" id="fade"></div>
+  <div class="hud">
+    <span class="title">冥府</span>
+    <a class="home" href="../index.html">回首頁</a>
+    <p class="count" id="count"></p>
+    <p class="say" id="say"></p>
+    <p class="trait" id="trait"></p>
+    <div class="ask" id="ask" hidden>
+      <div class="opts" id="opts"></div>
+      <div class="askRow"><div class="timer"><i id="timerBar"></i></div><button class="replay" id="replay" type="button">再聽一次（R）</button></div>
+    </div>
+    <p class="hint" id="hint" hidden>點一下或空白鍵：下一句</p>
+    <div class="start panel" id="start">
+      <h1>冥府</h1>
+      <p>霧很濃，看不見臉。<br>只聽得到腳步，和他們的聲音。</p>
+      <p class="small">戴上耳機比較好。點一下開始。<br>亡魂靠近時，用滑鼠或數字鍵 1～4 叫出他的名字。</p>
+    </div>
+    <div class="result panel" id="result" hidden>
+      <h2 id="resTitle"></h2>
+      <p class="named" id="resNamed" hidden></p>
+      <p class="following" id="resFollow" hidden></p>
+      <p class="small" id="resNote"></p>
+      <div id="resBtns"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="../series.js"></script>
+<script src="../crew-voice.js"></script>
+<script src="../underworld.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = window.OdysseySeries, U = window.OdysseyUnderworld;
+  const $ = id => document.getElementById(id);
+  const solo = new URLSearchParams(location.search).has('solo');
+  // 單獨玩：示範存檔（岸邊射箭、失去三個人）；不寫存檔
+  const save = solo ? S.advance(S.fresh(), 'underworld', { crewOut: 6, shore: 'shoot', crewLost: ['波利忒斯', '珀里墨得斯', '克洛墨尼俄斯'] }) : S.load();
+  const shades = U.buildShades(save, Math.random);
+  const results = [];
+
+  // ================================================================ 聲音（全部合成）
+  let ac = null, master = null, noiseBuf = null, vox = null;
+  function audio() {
+    if (!ac) {
+      try {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        master = ac.createGain(); master.gain.value = .85; master.connect(ac.destination);
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate);
+        const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        vox = window.CrewVoice.create(ac, master);
+        startDrone();
+      } catch (e) { ac = null; }
+    }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function env(g, t0, a, peak, dur) { g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(peak, t0 + a); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur); }
+  function startDrone() {
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+    const g = ac.createGain(); g.gain.value = .14; lp.connect(g); g.connect(master);
+    [55, 55.6, 82.4].forEach(f => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(lp); o.start(); });
+    const s = ac.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 400; bp.Q.value = .7;
+    const wg = ac.createGain(); wg.gain.value = .05;
+    const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = .07; lg.gain.value = .035; lfo.connect(lg); lg.connect(wg.gain);
+    s.connect(bp); bp.connect(wg); wg.connect(master); s.start(); lfo.start();
+  }
+  function sfxWail(pan) {
+    if (!audio()) return; const t = ac.currentTime, d = 1.6;
+    const p = ac.createStereoPanner ? ac.createStereoPanner() : ac.createGain(); if (p.pan) { p.pan.setValueAtTime(pan, t); p.pan.linearRampToValueAtTime(pan * .3, t + .5); p.pan.linearRampToValueAtTime(pan, t + d); }
+    const g = ac.createGain(); env(g, t, .15, .45, d); g.connect(p); p.connect(master);
+    const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(180, t + d);
+    const vib = ac.createOscillator(), vg = ac.createGain(); vib.frequency.value = 6; vg.gain.value = 14; vib.connect(vg); vg.connect(o.frequency);
+    [[800, 6], [1300, 8]].forEach(([f, q]) => { const b = ac.createBiquadFilter(); b.type = 'bandpass'; b.frequency.setValueAtTime(f, t); b.frequency.linearRampToValueAtTime(f * .6, t + d); b.Q.value = q; o.connect(b); b.connect(g); });
+    o.start(t); o.stop(t + d); vib.start(t); vib.stop(t + d);
+    const s = ac.createBufferSource(); s.buffer = noiseBuf; const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+    const ng = ac.createGain(); env(ng, t, .05, .18, 1); s.connect(hp); hp.connect(ng); ng.connect(p); s.start(t); s.stop(t + 1.1);
+  }
+  function sfxChime() {
+    if (!audio()) return; const t = ac.currentTime;
+    [[392, 0], [587.3, .12], [784, .24]].forEach(([f, k]) => { const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f; env(g, t + k, .02, .16, 2.2); o.connect(g); g.connect(master); o.start(t + k); o.stop(t + k + 2.3); });
+  }
+  function sfxSpeaker() { // 西農、阿伽門農靠近：低沉的拖步
+    if (!audio()) return; vox.walk('heavy', ac.currentTime, 1.8, () => 0, k => .3 + .3 * k);
+  }
+
+  // ================================================================ three.js 場景
+  const cv = $('cv');
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const scene = new THREE.Scene();
+  const FOG = 0x15181e;
+  scene.background = new THREE.Color(FOG);
+  scene.fog = new THREE.FogExp2(FOG, 0.085);
+  const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 120);
+  camera.rotation.order = 'YXZ';
+  const CAM = new THREE.Vector3(0, 1.6, 0);
+  camera.position.copy(CAM);
+  scene.add(new THREE.HemisphereLight(0x3a4458, 0x050506, 0.35));
+  const M = (c, o) => new THREE.MeshLambertMaterial(Object.assign({ color: c, flatShading: true }, o || {}));
+  function mesh(geo, mat, x, y, z, parent) { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); (parent || scene).add(m); return m; }
+
+  // 地面：灰燼
+  {
+    const g = new THREE.PlaneGeometry(80, 80, 40, 40); g.rotateX(-Math.PI / 2);
+    const p = g.attributes.position, r = S.createRng(9);
+    for (let i = 0; i < p.count; i++) p.setY(i, (r() - .5) * .25);
+    g.computeVertexNormals();
+    mesh(g, M(0x1b1d22), 0, 0, -10);
+  }
+  // 遠處的石柱與枯樹（霧裡只剩輪廓）
+  {
+    const r = S.createRng(21), stone = M(0x0c0d10);
+    for (let i = 0; i < 26; i++) {
+      const a = r() * Math.PI * 2, d = 9 + r() * 20, h = 1.5 + r() * 5;
+      if (Math.abs(Math.sin(a)) < .2 && Math.cos(a) < 0) continue;
+      const m = mesh(new THREE.CylinderGeometry(.15 + r() * .4, .3 + r() * .6, h, 5), stone, Math.sin(a) * d, h / 2, -Math.abs(Math.cos(a)) * d - 2);
+      m.rotation.z = (r() - .5) * .3;
+    }
+  }
+  // 飄著的灰
+  const ash = (() => {
+    const n = 500, pos = new Float32Array(n * 3), r = S.createRng(31);
+    for (let i = 0; i < n; i++) { pos[i * 3] = (r() - .5) * 24; pos[i * 3 + 1] = r() * 6; pos[i * 3 + 2] = -r() * 22 + 2; }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x8c96a6, size: .035, transparent: true, opacity: .55, depthWrite: false }));
+    scene.add(pts); return pts;
+  })();
+  // 叫對名字時的微光
+  const faceLight = new THREE.PointLight(0xe8d6b0, 0, 6, 2);
+  scene.add(faceLight);
+
+  function makeShade(scale) {
+    const g = new THREE.Group();
+    const body = M(0x030304, { transparent: true, opacity: .95 });
+    const headMat = M(0x030304, { transparent: true, opacity: .95, emissive: 0x000000 });
+    mesh(new THREE.ConeGeometry(.42, 1.55, 7, 1, true), body, 0, .78, 0, g);
+    mesh(new THREE.CylinderGeometry(.14, .2, .5, 6), body, 0, 1.45, 0, g);
+    const head = mesh(new THREE.SphereGeometry(.17, 10, 8), headMat, 0, 1.82, 0, g);
+    mesh(new THREE.CylinderGeometry(.06, .05, .8, 5), body, -.3, 1.15, 0, g).rotation.z = .25;
+    mesh(new THREE.CylinderGeometry(.06, .05, .8, 5), body, .3, 1.15, 0, g).rotation.z = -.25;
+    g.scale.setScalar(scale || 1);
+    g.userData = { head, headMat, mats: [body, headMat] };
+    g.visible = false;
+    scene.add(g); return g;
+  }
+  const figure = makeShade(1);     // 同伴的亡魂（一次一個）
+  const speaker = makeShade(1.12); // 西農、阿伽門農
+  function setOpacity(g, a) { g.userData.mats.forEach(m => { m.opacity = a; }); }
+
+  // ================================================================ 流程
+  let phase = 'start', phaseT = 0, cur = -1, shake = 0;
+  // 每個人影各自的移動：g.userData.move = { from, to, dur, t, ease }
+  let lines = [], lineIdx = -1, lineT = 0, afterLines = null;
+  let look = { yaw: 0, pitch: 0 }, lookTarget = { yaw: 0, pitch: 0 };
+
+  function say(text, who, cls) {
+    const el = $('say'); el.className = 'say' + (cls ? ' ' + cls : ''); el.textContent = '';
+    if (who) { const b = document.createElement('b'); b.textContent = who; el.appendChild(b); }
+    el.append(text || ''); el.style.opacity = text ? 1 : 0;
+  }
+  function trait(text) { const el = $('trait'); el.textContent = text; el.style.opacity = text ? 1 : 0; }
+  function moveTo(g, to, dur, ease) { g.userData.move = { from: g.position.clone(), to: to.clone(), dur, t: 0, ease: ease || 'out' }; }
+  function count() { $('count').textContent = shades.length ? `${Math.min(cur + 1, shades.length)} / ${shades.length}` : ''; }
+
+  function begin() {
+    if (phase !== 'start') return;
+    audio();
+    $('start').hidden = true; $('fade').style.opacity = 0;
+    speaker.visible = true; setOpacity(speaker, .95); speaker.position.set(0, 0, -16);
+    moveTo(speaker, new THREE.Vector3(0, 0, -4.2), 2.4);
+    sfxSpeaker();
+    runLines(U.opening(save), () => { moveTo(speaker, new THREE.Vector3(.6, 0, -18), 2.2, 'in'); nextShade(); }, 2.2);
+  }
+  function runLines(list, done, delay) {
+    phase = 'lines'; lines = list; lineIdx = -1; lineT = -(delay || 0); afterLines = done;
+    $('hint').hidden = false;
+  }
+  function nextLine() {
+    lineIdx++; lineT = 0;
+    if (lineIdx >= lines.length) { $('hint').hidden = true; say(''); const f = afterLines; afterLines = null; if (f) f(); return; }
+    const l = lines[lineIdx]; say(l.text, l.who);
+  }
+
+  function nextShade() {
+    cur++; count();
+    if (cur >= shades.length) { endShades(); return; }
+    const sh = shades[cur];
+    phase = 'approach'; phaseT = 0;
+    say(''); trait('');
+    figure.visible = true; setOpacity(figure, .95);
+    figure.userData.headMat.emissive.setHex(0x000000);
+    figure.position.set(sh.side * 7, 0, -13); figure.rotation.y = 0;
+    moveTo(figure, new THREE.Vector3(sh.side * 1.1, 0, -2.8), 3.2);
+    playClue(sh, 3.2, true);
+  }
+  function playClue(sh, dur, approaching) {
+    if (!audio()) return;
+    const t = ac.currentTime, p0 = approaching ? sh.side * .95 : sh.side * .45, p1 = sh.side * .45;
+    vox.walk(sh.step, t, dur, k => p0 + (p1 - p0) * k, k => approaching ? .25 + .65 * k : .8);
+    vox.voice(sh.voice, t + dur * .55, p1, approaching ? .8 : .9);
+  }
+  function openAsk() {
+    const sh = shades[cur];
+    phase = 'ask'; phaseT = 0;
+    say(sh.line, '', 'ghost');
+    trait(sh.stepLabel + '・' + sh.voiceLabel);
+    const box = $('opts'); box.innerHTML = ''; box.style.setProperty('--n', sh.options.length);
+    sh.options.forEach((name, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'opt'; b.dataset.i = i;
+      b.innerHTML = `<kbd>${i + 1}</kbd>`; b.append(name);
+      b.addEventListener('click', e => { e.stopPropagation(); answer(i); });
+      box.appendChild(b);
+    });
+    $('ask').hidden = false;
+  }
+  function answer(i) {
+    if (phase !== 'ask') return;
+    const sh = shades[cur];
+    const res = U.judge(sh, i);
+    results.push({ name: sh.name, result: res });
+    [...$('opts').children].forEach((b, k) => { b.disabled = true; if (k === i) b.classList.add('pick'); if (sh.options[k] === sh.name && res === 'named') b.classList.add('right'); });
+    setTimeout(() => { $('ask').hidden = true; }, 450);
+    phase = 'resolve'; phaseT = 0; trait('');
+    if (res === 'named') {
+      sfxChime();
+      say(sh.name + '。', '', 'named');
+      figure.userData.headMat.emissive.setHex(0x8f8a7c);
+      faceLight.position.set(figure.position.x * .8, 1.9, figure.position.z + .9);
+      faceLight.userData.on = 1;
+      setTimeout(() => { say('他停下來，看了你一眼，走回黑暗裡。'); figure.rotation.y = Math.PI; moveTo(figure, new THREE.Vector3(sh.side * 4, 0, -16), 2.6, 'in'); }, 1300);
+      figure.userData.resolveEnd = 3.6;
+    } else {
+      sfxWail(sh.side);
+      shake = .6;
+      $('frost').style.opacity = 1; setTimeout(() => { $('frost').style.opacity = 0; }, 900);
+      say(res === 'timeout' ? '你叫不出來。他哀號著從你身邊擦過去。' : '不是這個名字。他哀號著從你身邊擦過去。');
+      moveTo(figure, new THREE.Vector3(sh.side * .7, 0, 3), .8, 'in');
+      setTimeout(() => say(`那是${sh.name}。他會跟著你到海上。`, '', 'ghost'), 1500);
+      figure.userData.resolveEnd = 3.4;
+    }
+  }
+  function endShades() {
+    const sum = U.summarize(results, U.unseenLost(save));
+    figure.visible = false;
+    phase = 'outro-wait'; say(''); trait(''); $('count').textContent = '';
+    speaker.position.set(0, 0, -16); speaker.visible = true; setOpacity(speaker, .95);
+    moveTo(speaker, new THREE.Vector3(0, 0, -4.2), 2.4);
+    sfxSpeaker();
+    runLines(U.closing(sum.nameless), () => finish(sum), 2.2);
+  }
+
+  function finish(sum) {
+    phase = 'result';
+    moveTo(speaker, new THREE.Vector3(0, 0, -18), 2.4, 'in');
+    $('resTitle').textContent = !shades.length ? '冥府裡沒有你的同伴' : sum.shadesNamed.length === shades.length ? '你叫出了每一個名字' : `你叫出了 ${sum.shadesNamed.length} 個名字`;
+    $('resNamed').hidden = !sum.shadesNamed.length;
+    $('resNamed').textContent = sum.shadesNamed.join('、') + ' 安息了。';
+    $('resFollow').hidden = !sum.shadesFollowing.length;
+    $('resFollow').textContent = sum.shadesFollowing.join('、') + ' 跟著你，到了海上。';
+    $('resNote').textContent = sum.nameless ? '你記住了阿伽門農的話：以無名之人的身分回去。' : '阿伽門農的後半句，你沒有聽見。';
+    const btns = $('resBtns'); btns.innerHTML = '';
+    if (solo) {
+      btns.append(btnEl('再一次', () => location.reload(), true), btnEl('回首頁', () => { location.href = '../index.html'; }));
+    } else {
+      S.save(null, U.finish(save, results));
+      btns.append(btnEl('出海（Enter）', () => { location.href = S.nextUrl('ogygia', '../'); }, true));
+    }
+    $('result').hidden = false;
+    const b = btns.querySelector('button'); if (b) b.focus();
+  }
+  function btnEl(text, fn, main) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (main ? ' main' : ''); b.textContent = text; b.onclick = fn; return b; }
+
+  // ================================================================ 輸入
+  $('start').addEventListener('click', e => { e.stopPropagation(); begin(); });
+  $('replay').addEventListener('click', e => { e.stopPropagation(); if (phase === 'ask') playClue(shades[cur], 1.6, false); });
+  $('stage').addEventListener('click', e => {
+    if (e.target.closest('a, button, .ask, .result')) return;
+    if (phase === 'start') begin(); else if (phase === 'lines' && lineIdx >= 0) nextLine();
+  });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      if (phase === 'start') { e.preventDefault(); begin(); }
+      else if (phase === 'lines' && lineIdx >= 0) { e.preventDefault(); nextLine(); }
+      else if (phase === 'result' && e.code === 'Enter') { const b = $('resBtns').querySelector('button'); if (b && document.activeElement !== b) b.click(); }
+    }
+    const n = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Numpad1: 0, Numpad2: 1, Numpad3: 2, Numpad4: 3 }[e.code];
+    if (n != null && phase === 'ask' && n < shades[cur].options.length) answer(n);
+    if (e.code === 'KeyR' && phase === 'ask') playClue(shades[cur], 1.6, false);
+  });
+  window.addEventListener('mousemove', e => {
+    const r = cv.getBoundingClientRect();
+    lookTarget.yaw = -((e.clientX - r.left) / r.width - .5) * .6; lookTarget.pitch = -((e.clientY - r.top) / r.height - .5) * .2;
+  });
+
+  // ================================================================ 迴圈
+  function resize() {
+    const w = cv.clientWidth, h = cv.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h;
+    camera.fov = w / h < .9 ? 78 : 62; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize); resize();
+
+  let last = performance.now(), clock = 0;
+  function tick(now) {
+    const real = Math.min(.25, (now - last) / 1000), dt = Math.min(.05, real); last = now; clock += dt; phaseT += real;
+
+    if (phase === 'lines') {
+      lineT += real;
+      if (lineIdx < 0 ? lineT >= 0 : lineT > 3.6) nextLine();
+    }
+    if (phase === 'approach' && phaseT >= 3.2) openAsk();
+    if (phase === 'ask') {
+      $('timerBar').style.transform = `scaleX(${Math.max(0, 1 - phaseT / U.SHADE_TIME)})`;
+      if (U.isTimeout(phaseT)) answer(null);
+    }
+    if (phase === 'resolve' && phaseT >= figure.userData.resolveEnd) { figure.visible = false; nextShade(); }
+
+    [figure, speaker].forEach(g => {
+      const mv = g.userData.move; if (!mv) return;
+      mv.t = Math.min(1, mv.t + dt / mv.dur);
+      const k = mv.ease === 'in' ? mv.t * mv.t : 1 - Math.pow(1 - mv.t, 2);
+      g.position.lerpVectors(mv.from, mv.to, k);
+      g.position.y = Math.abs(Math.sin(mv.t * 14)) * .03;
+      if (mv.ease === 'in' && (g === speaker || phase === 'resolve')) setOpacity(g, .95 * (1 - mv.t * .85));
+      if (mv.t >= 1) { g.userData.move = null; if (g === speaker && mv.ease === 'in') g.visible = false; }
+    });
+    [figure, speaker].forEach(g => { if (g.visible) { g.userData.head.position.x = Math.sin(clock * .9) * .02; g.rotation.z = Math.sin(clock * .7) * .02; } });
+    if (faceLight.userData.on) { faceLight.userData.on = Math.max(0, faceLight.userData.on - dt / 2.6); faceLight.intensity = 1.6 * Math.sin(Math.PI * Math.min(1, faceLight.userData.on * 1.2)); }
+    else faceLight.intensity = 0;
+
+    const ap = ash.geometry.attributes.position;
+    for (let i = 0; i < ap.count; i++) { let y = ap.getY(i) - dt * .12; if (y < 0) y = 6; ap.setY(i, y); ap.setX(i, ap.getX(i) + Math.sin(clock * .3 + i) * dt * .05); }
+    ap.needsUpdate = true;
+
+    look.yaw += (lookTarget.yaw - look.yaw) * Math.min(1, dt * 3);
+    look.pitch += (lookTarget.pitch - look.pitch) * Math.min(1, dt * 3);
+    shake = Math.max(0, shake - dt * .9);
+    camera.position.set(CAM.x + (Math.random() - .5) * shake * .15, CAM.y + Math.sin(clock * .5) * .02 + (Math.random() - .5) * shake * .15, CAM.z);
+    camera.rotation.set(look.pitch, look.yaw, 0);
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // 給測試用：不影響遊玩
+  window.__underworld = { get phase() { return phase; }, get shades() { return shades; }, get cur() { return cur; }, answer, begin };
+})();
+</script>

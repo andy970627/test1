@@ -5,6 +5,7 @@
 /* 系列首頁：標題、章節地圖、繼續／重新開始。單一夜色主題。
  * 出處（不上畫面）：
  *   洞穴、岸邊射箭【電影】；喊出名字【原典】；默默離開【改編】
+ *   冥府（西農、阿伽門農）【電影】；在黑霧裡叫出同伴的名字【改編】
  *   卡呂普索的島七年【原典】、站在礁石上的同伴【改編】、雅典娜小像【電影】
  *   乞丐潛入、比箭【原典＋電影，細節見各章】；終章交出王位、往西航行【電影，細節待確認】
  */
@@ -50,7 +51,7 @@ h1 {
 .btn.warn { border-color: #c26b4f; color: #f0a184; }
 .where { color: var(--dim); font-size: 13px; margin: 10px 0 0; min-height: 1.7em; }
 h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-spacing: .3em; margin: 40px 0 14px; font-weight: 600; }
-.map { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; counter-reset: ch; }
+.map { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; counter-reset: ch; }
 @media (max-width: 860px) { .map { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 520px) { .map { grid-template-columns: 1fr; } }
 .ch {
@@ -129,12 +130,13 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
   const CHAPTERS = [
     { id: 'cave', no: '第一章', name: '洞穴', line: '在黑暗裡聽巨人的呼吸，帶同伴鑽出石縫。', steps: ['cave'], solo: null },
     { id: 'shore', no: '銜接', name: '岸邊', line: '巨人睡著了。拉弓、喊名，還是默默離開？', steps: ['shore'], solo: 'shore/index.html?solo=1' },
+    { id: 'underworld', no: '銜接', name: '冥府', line: '黑霧裡，他們一個一個走過來。叫得出名字嗎？', steps: ['underworld'], solo: 'underworld/index.html?solo=1' },
     { id: 'ogygia', no: '第二章', name: '奧吉吉亞', line: '卡呂普索的島。一年一年刻在沙上。', steps: ['ogygia'], solo: 'ogygia/index.html?solo=1' },
     { id: 'beggar', no: '第三章', name: '門檻上的乞丐', line: '穿上破衣，走過宮門，走進滿是求婚者的大廳。', steps: ['beggar-gate', 'beggar-hall'], solo: 'beggar/index.html' },
     { id: 'bow', no: '第四章', name: '比箭', line: '上弦，拉滿，穿過十二把斧頭。', steps: ['bow'], solo: 'bow/index.html' },
     { id: 'ending', no: '終章', name: '終章', line: '大廳的門關上之後。', steps: ['ending'], solo: 'ending/index.html?solo=1' }
   ];
-  const STEP_NAME = { cave: '洞穴', shore: '岸邊', ogygia: '奧吉吉亞', 'beggar-gate': '門檻上的乞丐（宮門）', 'beggar-hall': '門檻上的乞丐（大廳）', bow: '比箭', ending: '終章' };
+  const STEP_NAME = { cave: '洞穴', shore: '岸邊', underworld: '冥府', ogygia: '奧吉吉亞', 'beggar-gate': '門檻上的乞丐（宮門）', 'beggar-hall': '門檻上的乞丐（大廳）', bow: '比箭', ending: '終章' };
   const SHORE_NAME = { shoot: '拉弓射了他', name: '喊出了名字', leave: '默默離開' };
 
   let save = S.load();
@@ -173,6 +175,7 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
     const f = [];
     if (started && save.shore) f.push(`<span>岸邊：<b>${SHORE_NAME[save.shore]}</b></span>`, `<span>島上：<b>${save.years} 年</b></span>`);
     if (started && save.crewLost.length) f.push(`<span>失去的同伴：<b>${save.crewLost.join('、')}</b></span>`);
+    if (started && Array.isArray(save.shadesNamed)) f.push(`<span>冥府：<b>叫出 ${save.shadesNamed.length} 個名字${save.shadesFollowing.length ? `，${save.shadesFollowing.length} 個跟著` : ''}</b></span>`);
     if (started && save.ledger) f.push(`<span>記下的帳：<b>${save.ledger}</b></span>`);
     $('facts').innerHTML = f.join('');
   }

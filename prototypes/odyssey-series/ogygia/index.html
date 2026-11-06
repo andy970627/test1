@@ -7,7 +7,7 @@
  *   卡呂普索的島、困住奧德修斯【電影；原典 第 5 卷】
  *   七年【原典 第 7 卷】；多出來的一、兩年（海神的怒氣）【改編】
  *   「留下來就不會老、不會死」【原典 第 5 卷】
- *   失去的同伴站在礁石上、低聲唸名字【改編】
+ *   失去的同伴站在礁石上、低聲唸名字【改編】；走過冥府時只剩沒被叫到名字、跟著來的亡魂【改編】
  *   眾神讓她放人、造木筏、她給帆布清水和順風【原典 第 5 卷】
  *   波塞頓的風暴打碎木筏【原典 第 5 卷；電影是否有演待確認】
  *   漂到伊薩卡【改編：原典是先到費埃克斯人的島，再被送回伊薩卡】
@@ -87,7 +87,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   const $ = id => document.getElementById(id);
   const solo = new URLSearchParams(location.search).has('solo');
   const save = solo ? S.fresh() : S.load();
-  const years = save.years, lost = save.crewLost.slice(), wrath = save.wrath;
+  const years = save.years, lost = S.reefFigures(save), wrath = save.wrath;
+  const restedAll = Array.isArray(save.shadesFollowing) && !lost.length && save.crewLost.length > 0; // 冥府裡全叫對了
   const NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 
   // ================================================================ 聲音
@@ -347,7 +348,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     { id: 'reefs', dur: 4 + Math.max(1, lost.length) * 2.4 + 1.5, draw: drawReefs, init: s => { s.shown = 0; s.at = []; }, cues: [
       [0, () => { sub(lost.length ? '夜裡，你看見他們站在礁石上。' : '夜裡，你望著海上的礁石。'); sea(.08, 380); }],
       ...(lost.length ? lost.map((name, i) => [3 + i * 2.4, s => { s.shown = i + 1; s.at[i] = s.t; sfxWhisper(); sub('……' + name, true); }])
-        : [[3.2, () => sub('礁石上沒有人。這一次，你沒有讓任何人留在岸上。')]])
+        : [[3.2, () => sub(restedAll ? '礁石上沒有人。你在冥府叫過他們的名字，他們都安息了。' : '礁石上沒有人。這一次，你沒有讓任何人留在岸上。')]])
     ] },
     { id: 'raft', dur: 8.5, draw: drawRaft, init: s => { s.logs = 0; s.mast = false; }, cues: [
       [0, () => { sub('眾神終於讓她放你走。你砍下樹，一根一根綁成木筏。'); sea(.1, 520); }],

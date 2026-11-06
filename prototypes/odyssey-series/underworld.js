@@ -4,13 +4,15 @@
  * 不碰 DOM。瀏覽器：全域 OdysseyUnderworld（要先載入 series.js）；Node：module.exports。
  * 依據：docs/design/2026-11-06-underworld-concept.md
  *
+ * 線索規則（使用者要求）：判斷亡魂用的線索，只能是玩家在岸邊點名時實際看過、聽過的——
+ *   腳步節奏、聲音特徵、他說過的那句話（可只給前半句）、被岩石砸中前喊的那句。
+ *   全部來自 series.js 的 CREW_TRAITS（岸邊和冥府用同一份資料）。
+ *   選項名字也只用岸邊點名出現過的人（其他失去的同伴、活著上船的同伴當干擾）。
+ *
  * 出處：
- *   冥府段落、西農的指責、阿伽門農的忠告【電影】（台詞細節待確認，這裡的句子是依概念文件寫的）
- *   在黑暗裡叫名字、叫對才安息、叫錯的跟到海上、時限、往事字幕【改編】
- *   死法：岸邊被巨人丟的岩石砸死【改編：主線規格第 20 節 C】、在洞裡被巨人吃掉【原典 第 9 卷；電影】
- *   同伴的個性：波利忒斯最親近【原典 第 10 卷】、埃爾佩諾爾最年輕【原典 第 10 卷】、
- *             歐律巴忒斯是傳令官【原典 第 19 卷】；其餘往事【改編】
- *   誘答名字：活著上船的同伴、特洛伊戰爭的英雄（阿基里斯、大埃阿斯、帕特羅克洛斯、赫克托耳等）【原典】
+ *   冥府段落、西農的指責、阿伽門農的忠告【電影】（台詞細節待確認，句子依概念文件）
+ *   在黑暗裡叫名字、叫對才安息、叫錯的跟到海上、時限【改編】
+ *   沒在岸邊出現過的死者（例如洞裡死的）叫不出名字，直接跟到海上【改編】
  *   全部救出來的玩家也聽得到完整忠告（沒有人沒被叫到）【改編】
  */
 (function (root, factory) {
@@ -20,62 +22,19 @@
   'use strict';
 
   var SHADE_TIME = 9;   // 秒：每個亡魂等你叫名字的時間
-  var OPTIONS = 4;      // 每次給幾個名字
-
-  // 和洞穴／岸邊無關、但同樣死在戰爭裡的名字（誘答）
-  var HEROES = ['阿基里斯', '大埃阿斯', '帕特羅克洛斯', '赫克托耳', '安提洛科斯', '普洛特西拉俄斯'];
-
-  // 每個同伴兩句往事：rock＝岸邊被岩石砸死；cave＝在洞裡被巨人吃掉
-  var MEMORY = {
-    '歐律羅科斯': {
-      rock: '「我叫你別回頭。船就在眼前，石頭從天上掉下來的時候，我還在數槳。」',
-      cave: '「我叫你別進那個洞。羊奶還是溫的，他就回來了。」'
-    },
-    '波利忒斯': {
-      rock: '「我站在你左手邊，跟在特洛伊城下一樣。石頭落下來，我來不及喊你。」',
-      cave: '「你想看看洞的主人長什麼樣子。我陪你等，等到他伸手把我拎起來。」'
-    },
-    '埃爾佩諾爾': {
-      rock: '「我是船上最小的，跑得最快，本來該第一個上船的。沙子太軟了。」',
-      cave: '「我躲在羊群後面，以為他看不見最小的那一個。」'
-    },
-    '珀里墨得斯': {
-      rock: '「那根燒紅的木樁，是我和你一起扛的。我以為出了洞，就算活下來了。」',
-      cave: '「那根橄欖木我才削尖一半。他抓住我的時候，木屑還黏在我手上。」'
-    },
-    '歐律巴忒斯': {
-      rock: '「我替你傳了十年的話。最後一句沒傳完，石頭就到了。」',
-      cave: '「我替你傳了十年的話。在洞裡，我喊了一整夜，沒有人應我。」'
-    },
-    '克洛墨尼俄斯': {
-      rock: '「你答應過要帶我回去看我的橄欖園。我離船只差十步。」',
-      cave: '「你答應過要帶我回去看我的橄欖園。我死在一個連一棵橄欖樹都沒有的洞裡。」'
-    },
-    '安提瑪科斯': {
-      rock: '「我在沙灘上撿了一顆白石子，要帶回去給我女兒。巨人丟下來的那顆，大太多了。」',
-      cave: '「他抓人像抓羊一樣。我的劍還插在鞘裡。」'
-    },
-    '塞翁': {
-      rock: '「船上還欠我一壺酒。我倒在浪花裡等你回頭，你沒有回頭。」',
-      cave: '「酒是我替你倒給他的。他喝醉了，可是他先吃了我。」'
-    }
-  };
-  var MEMORY_FALLBACK = {
-    rock: '「我在沙灘上等船。浪聲很大，我沒聽見石頭落下來。」',
-    cave: '「洞裡好黑。我只記得羊的味道，和他的呼吸。」'
-  };
+  var OPTIONS = 4;      // 每次最多給幾個名字
 
   var SINON = [
-    { who: '西農', text: '「奧德修斯。你把木馬推進城的時候，我替你說了謊。現在你連死人都不肯看一眼？」' },
-    { who: '西農', text: '「你沒有尊敬過死去的同伴。他們都在這裡——你叫得出他們的名字嗎？」' }
+    { who: '西農', text: '「奧德修斯。你沒有尊敬過死去的同伴。」' },
+    { who: '西農', text: '「他們都在這裡——你叫得出他們的名字嗎？」' }
   ];
   var SINON_SHORT = [
-    { who: '西農', text: '「奧德修斯。這裡沒有你的同伴在等你。你把他們都帶出來了。」' },
+    { who: '西農', text: '「奧德修斯。這裡沒有你的同伴在等你。」' },
     { who: '西農', text: '「可是別以為死人會忘記你。我們都在這裡看著。」' }
   ];
   var AGAMEMNON_FULL = { who: '阿伽門農', text: '「別以國王的身分回家。以無名之人的身分回去。」' };
   var AGAMEMNON_CUT = { who: '阿伽門農', text: '「別以國王的身分回家……」' };
-  var AGAMEMNON_CUT_AFTER = '他的話被身後的哀號蓋了過去。你沒聽見後半句。';
+  var AGAMEMNON_CUT_AFTER = { who: '', text: '他的話被身後的哀號蓋了過去。你沒聽見後半句。' };
 
   function shuffle(arr, rng) {
     var a = arr.slice();
@@ -85,35 +44,56 @@
     }
     return a;
   }
+  function uniq(a) { return a.filter(function (n, i) { return a.indexOf(n) === i; }); }
 
-  /** 這名同伴是怎麼死的：岸上帶出來的、而且岸邊有驚動巨人 → 'rock'；其餘 → 'cave'。 */
+  /** 只給前半句：「前半……」（讓玩家自己想起後半）。 */
+  function halfLine(text) {
+    var chars = Array.from(String(text));
+    var n = Math.max(2, Math.ceil(chars.length / 2));
+    return chars.slice(0, n).join('').replace(/[，。、！？—…]+$/, '') + '……';
+  }
+  /** 死在岸邊（岸邊有驚動巨人、他在點名名單裡）→ 'rock'；其餘 → 'cave'。 */
   function causeOf(name, save) {
     var s = S.normalize(save);
-    var i = S.CREW.indexOf(name);
-    if (i >= 0 && i < s.crewOut && (s.shore === 'shoot' || s.shore === 'name')) return 'rock';
-    return 'cave';
+    return S.rollCall(s).indexOf(name) >= 0 && (s.shore === 'shoot' || s.shore === 'name') ? 'rock' : 'cave';
   }
-  function memoryLine(name, cause) {
-    var m = MEMORY[name] || MEMORY_FALLBACK;
-    return m[cause === 'rock' ? 'rock' : 'cave'];
+  /** 冥府裡看得到的亡魂：失去的同伴中，岸邊點名時出現過的。 */
+  function seenLost(save) {
+    var s = S.normalize(save), seen = S.rollCall(s);
+    return uniq(s.crewLost).filter(function (n) { return seen.indexOf(n) >= 0 && S.traitsOf(n); });
+  }
+  /** 失去了、但岸邊沒出現過的（叫不出名字，直接跟著）。 */
+  function unseenLost(save) {
+    var s = S.normalize(save), seen = seenLost(s);
+    return uniq(s.crewLost).filter(function (n) { return seen.indexOf(n) < 0; });
   }
 
   /**
-   * 從存檔排出亡魂名單（順序、左右、選項都由 rng 決定；注入 rng 可重現）。
-   * 每個亡魂：{ name, cause, line, side: -1 左 | 1 右, options: [名字…]，正確答案只出現一次 }
-   * 誘答：其他失去的同伴最多 1 個（要靠往事分辨）＋ 活著的同伴＋特洛伊的英雄。
+   * 從存檔排出亡魂名單（順序、左右、線索、選項都由 rng 決定；注入 rng 可重現）。
+   * 每個亡魂：{ name, cause, step, voice, stepLabel, voiceLabel, clue: 'said'|'last', line, side: -1|1, options }
+   *   砸死的：一半機會給死前那句（完整）、一半給點名時那句的前半；洞裡死的只會是 said（照理不會出現）。
+   *   options：正確名字＋最多 1 個其他失去的同伴＋活著上船的同伴，全是點名時出現過的人。
    */
   function buildShades(save, rng) {
     rng = rng || Math.random;
     var s = S.normalize(save);
-    var lost = s.crewLost.filter(function (n, i, a) { return a.indexOf(n) === i; });
-    var alive = S.crewNames(s.crewOut).filter(function (n) { return lost.indexOf(n) < 0; });
+    var seen = S.rollCall(s), lost = seenLost(s);
+    var alive = seen.filter(function (n) { return s.crewLost.indexOf(n) < 0; });
     return shuffle(lost, rng).map(function (name) {
-      var cause = causeOf(name, s);
+      var t = S.traitsOf(name), cause = causeOf(name, s);
+      var clue = cause === 'rock' && rng() < 0.5 ? 'last' : 'said';
       var others = shuffle(lost.filter(function (n) { return n !== name; }), rng).slice(0, 1);
-      var pool = shuffle(alive.concat(HEROES).filter(function (n) { return n !== name && others.indexOf(n) < 0; }), rng);
-      var options = shuffle([name].concat(others, pool.slice(0, OPTIONS - 1 - others.length)), rng);
-      return { name: name, cause: cause, line: memoryLine(name, cause), side: rng() < 0.5 ? -1 : 1, options: options };
+      var pool = shuffle(alive, rng).slice(0, OPTIONS - 1 - others.length);
+      if (others.length + pool.length < OPTIONS - 1) { // 活著的人不夠，再補失去的同伴
+        others = others.concat(shuffle(lost.filter(function (n) { return n !== name && others.indexOf(n) < 0; }), rng)
+          .slice(0, OPTIONS - 1 - others.length - pool.length));
+      }
+      return {
+        name: name, cause: cause, step: t.step, voice: t.voice, stepLabel: t.stepLabel, voiceLabel: t.voiceLabel,
+        clue: clue, line: clue === 'last' ? '「' + t.last + '」' : '「' + halfLine(t.said) + '」',
+        side: rng() < 0.5 ? -1 : 1,
+        options: shuffle([name].concat(others, pool), rng)
+      };
     });
   }
 
@@ -131,27 +111,28 @@
     if (!total) return true;
     return namedCount * 2 > total;
   }
-  /** results：[{ name, result }] → 寫進存檔的欄位。 */
-  function summarize(results) {
+  /** results：[{ name, result }]；extraFollowing：沒在岸邊出現過的死者。 */
+  function summarize(results, extraFollowing) {
     var named = [], following = [];
     (results || []).forEach(function (r) { (r.result === 'named' ? named : following).push(r.name); });
+    following = following.concat(extraFollowing || []);
     return { shadesNamed: named, shadesFollowing: following, nameless: isNameless(named.length, named.length + following.length) };
   }
   /** 冥府結束：回傳往奧吉吉亞的新存檔。 */
   function finish(save, results) {
-    return S.advance(save, 'ogygia', summarize(results));
+    return S.advance(save, 'ogygia', summarize(results, unseenLost(save)));
   }
   function opening(save) {
-    return S.normalize(save).crewLost.length ? SINON : SINON_SHORT;
+    return seenLost(save).length ? SINON : SINON_SHORT;
   }
   function closing(nameless) {
-    return nameless ? [AGAMEMNON_FULL] : [AGAMEMNON_CUT, { who: '', text: AGAMEMNON_CUT_AFTER }];
+    return nameless ? [AGAMEMNON_FULL] : [AGAMEMNON_CUT, AGAMEMNON_CUT_AFTER];
   }
 
   return {
-    SHADE_TIME: SHADE_TIME, OPTIONS: OPTIONS, HEROES: HEROES, MEMORY: MEMORY, MEMORY_FALLBACK: MEMORY_FALLBACK,
-    AGAMEMNON_FULL: AGAMEMNON_FULL, AGAMEMNON_CUT: AGAMEMNON_CUT,
-    causeOf: causeOf, memoryLine: memoryLine, buildShades: buildShades, judge: judge, isTimeout: isTimeout,
-    isNameless: isNameless, summarize: summarize, finish: finish, opening: opening, closing: closing
+    SHADE_TIME: SHADE_TIME, OPTIONS: OPTIONS, AGAMEMNON_FULL: AGAMEMNON_FULL, AGAMEMNON_CUT: AGAMEMNON_CUT,
+    halfLine: halfLine, causeOf: causeOf, seenLost: seenLost, unseenLost: unseenLost,
+    buildShades: buildShades, judge: judge, isTimeout: isTimeout, isNameless: isNameless,
+    summarize: summarize, finish: finish, opening: opening, closing: closing
   };
 }));

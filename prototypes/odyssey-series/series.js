@@ -12,6 +12,9 @@
  *   岸邊每名同伴 1/3 被岩石砸死（主線規格第 20 節 C）【改編】
  *   同伴名字：歐律羅科斯、波利忒斯、埃爾佩諾爾、珀里墨得斯、歐律巴忒斯【原典】；
  *            克洛墨尼俄斯、安提瑪科斯、塞翁【改編：借名】；電影裡的同伴名字待確認
+ *   同伴的腳步、聲音、說過的話、死前的話【改編】（波利忒斯最親近、埃爾佩諾爾最年輕【原典 第 10 卷】，
+ *            歐律巴忒斯是傳令官【原典 第 19 卷】，珀里墨得斯幫忙扛木樁【原典 第 9 卷】）
+ *   冥府（shore → underworld → ogygia）：docs/design/2026-11-06-underworld-concept.md
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -20,7 +23,7 @@
   'use strict';
 
   var KEY = 'odyssey-series-v1';
-  var STEPS = ['cave', 'shore', 'ogygia', 'beggar-gate', 'beggar-hall', 'bow', 'ending'];
+  var STEPS = ['cave', 'shore', 'underworld', 'ogygia', 'beggar-gate', 'beggar-hall', 'bow', 'ending'];
   var SHORE = ['shoot', 'name', 'leave'];
   var KNOW = ['unknown', 'suspects', 'knows'];
   var CREW = ['歐律羅科斯', '波利忒斯', '埃爾佩諾爾', '珀里墨得斯', '歐律巴忒斯', '克洛墨尼俄斯', '安提瑪科斯', '塞翁'];
@@ -28,6 +31,35 @@
   var CREW_MAX = CREW.length;
   var SHORE_DEATH = 1 / 3;
   var SHORE_TIME = 8; // 秒；沒選就是默默離開
+
+  // ---------------------------------------------------------------- 同伴的特徵【改編】
+  // 岸邊點名時讓玩家看到、聽到；冥府只能拿這裡的東西當線索（同一份資料）。
+  // 腳步：period＝一輪幾秒，beats＝一輪裡每一下的時間與聲音種類（聲音由 crew-voice.js 合成）
+  var STEP_KINDS = {
+    greaves: { label: '脛甲叮噹作響的腳步', period: 0.72, beats: [[0, 'ring']] },
+    sandals: { label: '穩穩的皮涼鞋腳步', period: 0.6, beats: [[0, 'tap']] },
+    quick: { label: '又輕又快的小跑步', period: 0.3, beats: [[0, 'soft']] },
+    heavy: { label: '沉重的大步', period: 0.95, beats: [[0, 'thud']] },
+    staff: { label: '一步一下拄杖聲', period: 0.8, beats: [[0, 'tap'], [0.4, 'knock']] },
+    barefoot: { label: '赤腳踩沙的聲音', period: 0.66, beats: [[0, 'slap']] },
+    limp: { label: '拖著一條腿的腳步', period: 1.0, beats: [[0, 'tap'], [0.28, 'drag']] },
+    stagger: { label: '東倒西歪的腳步', period: 1.1, beats: [[0, 'tap'], [0.22, 'tap'], [0.7, 'soft']] }
+  };
+  var VOICE_KINDS = {
+    grumble: '低聲嘟囔', hum: '哼著歌', pant: '喘著氣', grunt: '悶哼一聲',
+    whistle: '吹一聲口哨', sigh: '長長嘆一口氣', cough: '咳嗽', hiccup: '打酒嗝'
+  };
+  // said：點名時說的話；last：被岩石砸中前喊的話（岸邊畫面上會出現）
+  var CREW_TRAITS = {
+    '歐律羅科斯': { step: 'greaves', voice: 'grumble', said: '我早說過，別進那個洞。', last: '我就說別回頭——' },
+    '波利忒斯': { step: 'sandals', voice: 'hum', said: '我在你左邊，像在特洛伊城下一樣。', last: '奧德修斯，小心——' },
+    '埃爾佩諾爾': { step: 'quick', voice: 'pant', said: '我最年輕，我要第一個上船！', last: '沙子好軟，跑不動——' },
+    '珀里墨得斯': { step: 'heavy', voice: 'grunt', said: '那根木樁是我扛的，肩膀還在燒。', last: '石頭！趴下——' },
+    '歐律巴忒斯': { step: 'staff', voice: 'whistle', said: '全體上船，聽我號令！', last: '上船！快上——' },
+    '克洛墨尼俄斯': { step: 'barefoot', voice: 'sigh', said: '回去以後，我要先去看我的橄欖園。', last: '我的橄欖園……' },
+    '安提瑪科斯': { step: 'limp', voice: 'cough', said: '我撿了一顆白石子，要帶回去給我女兒。', last: '把石子帶給她——' },
+    '塞翁': { step: 'stagger', voice: 'hiccup', said: '船上還欠我一壺酒。', last: '我的酒——' }
+  };
 
   function clampInt(v, lo, hi, def) {
     v = Math.round(Number(v));
@@ -65,6 +97,22 @@
     crewNames(crewOut).forEach(function (name) { if (rng() < SHORE_DEATH) lost.push(name); });
     return lost;
   }
+  /** 同伴的特徵（含文字說明）；不認得的名字回傳 null。 */
+  function traitsOf(name) {
+    var t = CREW_TRAITS[name];
+    if (!t) return null;
+    return { name: name, step: t.step, voice: t.voice, said: t.said, last: t.last,
+      stepLabel: STEP_KINDS[t.step].label, voiceLabel: VOICE_KINDS[t.voice] };
+  }
+  /** 岸邊點名會出現的人（帶出洞的同伴，照名單順序）。 */
+  function rollCall(save) {
+    return crewNames(normalize(save).crewOut);
+  }
+  /** 奧吉吉亞礁石上的人影：走過冥府就只放跟著的亡魂；沒走過就放所有失去的同伴。 */
+  function reefFigures(save) {
+    var s = normalize(save);
+    return (Array.isArray(s.shadesFollowing) ? s.shadesFollowing : s.crewLost).slice();
+  }
   function createRng(seed) { // mulberry32
     var a = (seed >>> 0) || 1;
     return function () {
@@ -87,7 +135,10 @@
       years: 7,
       ledger: 0,
       knowers: { tele: 'unknown', eum: 'unknown', pen: 'unknown' },
-      bow: null
+      bow: null,
+      shadesNamed: null,     // 冥府：叫對名字的同伴；null＝還沒走過冥府
+      shadesFollowing: null, // 冥府：叫錯或叫不出的同伴（跟到海上）
+      nameless: false        // 冥府：聽到阿伽門農完整的忠告
     };
   }
   /** 把任何東西整理成合法存檔（壞掉的欄位回到預設）。 */
@@ -107,6 +158,10 @@
     if (raw.bow && typeof raw.bow === 'object') {
       s.bow = { win: !!raw.bow.win, passed: clampInt(raw.bow.passed, 0, 12, 0) };
     }
+    function names(v) { return Array.isArray(v) ? v.filter(function (x) { return typeof x === 'string'; }).slice(0, CREW_MAX) : null; }
+    s.shadesNamed = names(raw.shadesNamed);
+    s.shadesFollowing = names(raw.shadesFollowing);
+    s.nameless = raw.nameless === true;
     return s;
   }
   function defaultStorage() {
@@ -147,6 +202,7 @@
     switch (step) {
       case 'cave': return root + 'index.html#cave';
       case 'shore': return root + 'shore/index.html';
+      case 'underworld': return root + 'underworld/index.html';
       case 'ogygia': return root + 'ogygia/index.html';
       case 'beggar-gate': return root + 'beggar/index.html?series=1&seg=gate';
       case 'beggar-hall': return root + 'beggar/index.html?series=1&seg=hall';
@@ -160,6 +216,7 @@
     KEY: KEY, STEPS: STEPS, CREW: CREW, CREW_DEFAULT: CREW_DEFAULT, SHORE_DEATH: SHORE_DEATH, SHORE_TIME: SHORE_TIME,
     wrathFromShore: wrathFromShore, yearsFromWrath: yearsFromWrath, beggarTuning: beggarTuning, bowSwayMul: bowSwayMul,
     crewNames: crewNames, resolveShore: resolveShore, createRng: createRng,
+    STEP_KINDS: STEP_KINDS, VOICE_KINDS: VOICE_KINDS, CREW_TRAITS: CREW_TRAITS, traitsOf: traitsOf, rollCall: rollCall, reefFigures: reefFigures,
     fresh: fresh, normalize: normalize, load: load, save: save, hasSave: hasSave,
     advance: advance, nextStep: nextStep, nextUrl: nextUrl
   };
