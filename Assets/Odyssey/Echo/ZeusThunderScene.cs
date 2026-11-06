@@ -122,16 +122,22 @@ public class ZeusThunderScene : MonoBehaviour
         athena.gameObject.SetActive(true);
         owl.localPosition = new Vector3(0.45f, 2.6f, 0f);
         owl.gameObject.SetActive(true);
-        horse.SetPositionAndRotation(at + side * 3f, face * Quaternion.Euler(0f, 90f, 0f));
+        // 木馬側身對著玩家（身長沿左右方向），馬頭朝外；原本正對玩家，只看得到窄窄的一面。
+        horse.SetPositionAndRotation(at + side * 2.6f, face);
         horse.localScale = Vector3.one;
         horse.gameObject.SetActive(false);
         if (lightsCave && EchoField.Instance != null)
             EchoField.Instance.FlashAll(at + Vector3.up * 3f, new Color(0.75f, 0.8f, 1f));
 
-        bool owlGone = false, horseLit = false;
+        bool owlGone = false, horseLit = false, markedAthena = false, markedTurn = false, markedHorse = false;
         Vector3 owlStart = owl.localPosition;
         for (float t = 0f; t < Duration; t += Time.deltaTime)
         {
+            // 自動畫面測試在這些瞬間停住截圖（平常不做事）。
+            if (!markedAthena && t >= 0.2f) { markedAthena = true; PlaytestDriver.Mark("athena"); }
+            if (!markedTurn && t >= 0.8f) { markedTurn = true; PlaytestDriver.Mark("turn"); }
+            if (!markedHorse && t >= 1.4f) { markedHorse = true; PlaytestDriver.Mark("horse"); }
+
             // 雅典娜轉身：0.4～1 秒轉 180°。
             float turn = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.4f, 1f, t));
             athenaTurn.localRotation = Quaternion.Euler(0f, 180f * turn, 0f);

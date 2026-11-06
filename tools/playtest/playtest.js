@@ -14,6 +14,8 @@ const buildDir = path.resolve(args.build || 'build');
 const outDir = path.resolve(args.out || 'playtest-out');
 
 // 每個情況：跳過去之後在哪些秒數截圖、要按哪些鍵。
+// marks：遊戲寫出 [PLAYTEST] mark 名稱 時截圖（過場會在那一瞬間停住 2.5 秒）。
+// 測試機用軟體繪圖，一秒只有一兩格，真實秒數對不上遊戲裡的時間；過場要照 mark 拍。
 const SCENES = [
   { name: 'night', shots: [1, 4], actions: async (page) => {
       await page.keyboard.press('Space');            // 空彈彈弓：回聲照亮身邊
@@ -26,7 +28,7 @@ const SCENES = [
     } },
   { name: 'boulder', shots: [1, 3] },
   { name: 'verse', shots: [0.5, 1.5, 3] },
-  { name: 'ambush', shots: [0.3, 0.8, 1.3, 2, 3.5] },
+  { name: 'ambush', shots: [3.5], marks: ['athena', 'turn', 'horse'] },
   { name: 'fairhit', shots: [0.5, 2, 4] },
   { name: 'prayer', shots: [1, 4] },
   { name: 'dawnsoon', shots: [1, 5] },
@@ -68,12 +70,16 @@ async function runScene(browser, base, scene) {
   const log = [];
   const errors = [];
   let ready = false, ran = false, lastStatus = '';
+  const markShots = [];
   page.on('console', (m) => {
     const text = m.text();
     log.push(`[${m.type()}] ${text}`);
     if (text.includes('[PLAYTEST] ready')) ready = true;
     if (text.includes('[PLAYTEST] ran')) ran = true;
     if (text.startsWith('[PLAYTEST] phase=')) lastStatus = text;
+    const mark = /^\[PLAYTEST\] mark (\S+)/.exec(text);
+    if (mark && (scene.marks || []).includes(mark[1]))
+      markShots.push(page.waitForTimeout(300).then(() => shot(page, scene.name, `mark-${mark[1]}`)));
     if (/Exception|NullReference|MissingReference|IndexOutOfRange/.test(text)) errors.push(text);
   });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -92,6 +98,12 @@ async function runScene(browser, base, scene) {
       result.shots.push(await shot(page, scene.name, `${t}s`));
     }
     if (scene.actions) await scene.actions(page);
+    // 等所有 mark 出現（過場在軟體繪圖下可能要十幾秒）。
+    const markDeadline = Date.now() + 60000;
+    while (markShots.length < (scene.marks || []).length && Date.now() < markDeadline) await page.waitForTimeout(500);
+    result.shots.push(...await Promise.all(markShots));
+    const missing = (scene.marks || []).filter((m) => !result.shots.some((f) => f.endsWith(`mark-${m}.png`)));
+    if (missing.length) errors.push(`過場沒有走到：${missing.join(', ')}`);
     await page.waitForTimeout(1500);                 // 再等一行狀態
     result.ok = errors.length === 0;
   } catch (e) {

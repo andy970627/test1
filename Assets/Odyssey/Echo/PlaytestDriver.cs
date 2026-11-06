@@ -23,6 +23,11 @@ public class PlaytestDriver : MonoBehaviour
         (Key.F10, PlaytestScene.Death, "被摸到"),
     };
 
+    /// <summary>自動畫面測試時，過場在關鍵瞬間停住這麼久（真實秒數），讓截圖拍得到。</summary>
+    public const float MarkHoldSeconds = 2.5f;
+
+    static PlaytestDriver s_Active;
+
     BlindGameLoop loop;
     bool automated;
     float nextLog;
@@ -36,6 +41,7 @@ public class PlaytestDriver : MonoBehaviour
         if (TryReadScene(out PlaytestScene scene))
         {
             automated = true;
+            s_Active = this;
             StartCoroutine(RunAfterStart(scene));
         }
     }
@@ -46,6 +52,32 @@ public class PlaytestDriver : MonoBehaviour
         yield return null;
         Debug.Log($"[PLAYTEST] ready scene={scene}");
         loop.RunPlaytest(scene);
+    }
+
+    /// <summary>
+    /// 過場的關鍵瞬間（例如木馬燒起來）。只在自動畫面測試時有作用：寫一行 [PLAYTEST] mark 名稱，並把遊戲暫停一下。
+    /// 測試機用軟體繪圖，一秒只有一兩格，照真實秒數截圖會錯過整段過場；照這行截圖才拍得到。
+    /// </summary>
+    public static void Mark(string name)
+    {
+        if (s_Active == null)
+            return;
+        Debug.Log($"[PLAYTEST] mark {name}");
+        s_Active.StartCoroutine(s_Active.Hold());
+    }
+
+    IEnumerator Hold()
+    {
+        float before = Time.timeScale;
+        Time.timeScale = 0f;
+        yield return new WaitForSecondsRealtime(MarkHoldSeconds);
+        Time.timeScale = before == 0f ? 1f : before;
+    }
+
+    void OnDestroy()
+    {
+        if (s_Active == this)
+            s_Active = null;
     }
 
     /// <summary>網址 ?playtest=名稱，或命令列 -playtest 名稱（不分大小寫）。</summary>
