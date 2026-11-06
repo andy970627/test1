@@ -20,8 +20,10 @@
  *     音樂層（夜風、低吟或自備音檔）也一起壓到約 −40 dB，聽得出「斷掉、空掉 → 現在可以動」。
  *   - p 越大，節奏匯流排越響（0.7 → 1.0），讓「越來越危險」聽得出來。
  *
- * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；setInterval 只負責「補排程」（lookahead 0.15 秒），
- *       不負責計時。不使用畫面幀時間。
+ * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；計時器只負責「補排程」（預排 0.5 秒），不負責計時。
+ *       不使用畫面幀時間。計時器優先用 Worker 裡的 setInterval（25 ms）送 tick 給主執行緒（背景分頁不被降到 1 秒），
+ *       建不起來就用主執行緒 setInterval。畫面每幀很慢（例如 200 ms）時，0.5 秒的預排仍蓋得住；
+ *       萬一主執行緒卡更久，從上次排到的地方接著補：還沒過的拍照排，已經過的跳過，不累積誤差。
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -41,7 +43,8 @@
     GATE_FLOOR: 0.03,  // 盲區時節奏匯流排殘留增益
     GATE_FALL: 0.08,   // 進盲區前的下滑時間（秒）
     GATE_RISE: 0.12,   // 出盲區後的回升時間（秒）
-    LOOKAHEAD: 0.15,   // 預先排程長度（秒）
+    LOOKAHEAD: 0.5,    // 預先排程長度（秒）：主執行緒每幀卡到約 0.4 秒也不丟拍
+    CATCHUP_MAX: 4,    // 落後超過這麼多秒（分頁休眠）就不回頭掃，直接從現在接上
     TICK_MS: 25,       // 補排程間隔
     BASS_PERIOD: 2.4,  // 低音週期，規則同值
     BASS_BASE: 0.22,   // 巡邏時低音增益
@@ -74,6 +77,7 @@
     calmok: 'calmOk', calmbad: 'calmBad', calmdone: 'calmDone',
     checkpoint: 'checkpoint', dash: 'dash', escape: 'escape', trapdoor: 'trapdoor',
     blind: 'blind', gap: 'blind',
+    preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
   // risset.js 的 game.out sfx 名稱：alert breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
@@ -402,10 +406,30 @@
     function tick() {
       if (dead) return;
       var end = ctx.currentTime + C.LOOKAHEAD;
-      if (schedEnd < ctx.currentTime) schedEnd = ctx.currentTime;   // 分頁被降速後不補排已過去的拍
+      // 落後時從上次排到的地方接著排（scheduleRange 會跳過已經過去的拍）；休眠太久才直接從現在接上
+      if (schedEnd < ctx.currentTime - C.CATCHUP_MAX) schedEnd = ctx.currentTime - C.CATCHUP_MAX;
       if (end > schedEnd) { scheduleRange(schedEnd, end); schedEnd = end; }
     }
-    if (opts.autoStart !== false) { tick(); timer = setInterval(tick, C.TICK_MS); }
+    // 計時器：Worker 送 tick（不受主執行緒 rAF 與背景分頁降速影響），失敗就用主執行緒 setInterval
+    var worker = null, workerURL = null;
+    function startTimer() {
+      var forceMain = opts.timer === 'main';
+      if (!forceMain && typeof Worker !== 'undefined' && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
+        try {
+          workerURL = URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},' + C.TICK_MS + ');'], { type: 'text/javascript' }));
+          worker = new Worker(workerURL);
+          worker.onmessage = tick;
+          worker.onerror = function () { stopWorker(); if (!timer && !dead) timer = setInterval(tick, C.TICK_MS); };
+        } catch (e) { stopWorker(); }
+      }
+      // 主執行緒計時器一直保留當備援（Worker 正常時兩邊都只是補排，重複呼叫沒有副作用）
+      timer = setInterval(tick, C.TICK_MS);
+    }
+    function stopWorker() {
+      if (worker) { try { worker.terminate(); } catch (e) {} worker = null; }
+      if (workerURL) { try { URL.revokeObjectURL(workerURL); } catch (e) {} workerURL = null; }
+    }
+    if (opts.autoStart !== false) { tick(); startTimer(); }
 
     // ---------- 音效 ----------
     var CUES = {
@@ -449,6 +473,14 @@
         var part = [0.56, 0.92, 1.19, 1.71, 2, 2.74, 3, 3.76], amp = [1, 0.7, 0.6, 0.45, 0.4, 0.25, 0.2, 0.15];
         for (var s = 0; s < 3; s++) for (var i = 0; i < part.length; i++)
           tone(cueBus, t + s * 0.55, 'sine', 330 * part[i], 0, 0, 0.12 * amp[i], 0.002, 2.6 - i * 0.22);
+      },
+      preBlind: function (t) {            // 盲區快到了：極輕、極短的一聲弦泛音（里拉琴輕觸），預備
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 1174.7;          // D6 泛音，和撥弦檢查點同調
+        o.connect(g); g.connect(cueBus);
+        env(g.gain, t, 0.035, 0.004, 0.22);
+        o.start(t); o.stop(t + 0.3);
+        noise(cueBus, t, 'bandpass', 2600, 1.2, 0.012, 0.03, 0.12);   // 一絲氣聲
       },
       blind: function (t) {               // 盲區提示：很輕、很悶的一下
         tone(cueBus, t, 'sine', 300, 220, 0.06, 0.05, 0.003, 0.12);
@@ -602,7 +634,7 @@
         fn(when != null ? when : ctx.currentTime + 0.005);
         return true;
       },
-      cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'latch', 'down', 'bell', 'blind', 'win',
+      cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'latch', 'down', 'bell', 'preBlind', 'blind', 'win',
                  'alert', 'caught', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
@@ -646,7 +678,7 @@
       // 測試用：音樂層節點（讀 gain.value 驗證壓低）
       _music: { gate: musicGate, duck: musicDuck, hp: musicHP, synth: synthLevel, track: trackLevel },
       log: log,
-      dispose: function () { dead = true; if (timer) clearInterval(timer); stopTrack(); try { master.disconnect(); } catch (e) {} }
+      dispose: function () { dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack(); try { master.disconnect(); } catch (e) {} }
     };
     return api;
   }

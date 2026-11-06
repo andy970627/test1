@@ -74,7 +74,21 @@ button { font: inherit; font-size: 16px; background: transparent; color: var(--a
 button.primary { background: var(--fire); color: #1a1008; font-weight: 500; }
 button:hover { filter: brightness(1.12); }
 :focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
-#fail h2 { color: var(--blood); }
+/* 開場字卡：寬螢幕分兩欄（故事｜操作與開關）壓低高度；開始按鈕黏在畫面底部，任何尺寸都不必捲動就看得到 */
+#intro .card .col { display: grid; gap: 14px; align-content: start; min-width: 0; }
+#intro .row.start { position: sticky; bottom: calc(-24px - var(--sb)); margin: 0 -16px calc(-24px - var(--sb)); padding: 18px 16px calc(20px + var(--sb));
+  background: linear-gradient(to bottom, rgba(5, 6, 10, 0), rgba(5, 6, 10, .96) 38%); z-index: 1; }
+@media (min-width: 900px) {
+  #intro .card { max-width: 1080px; grid-template-columns: 1.05fr 1fr; gap: 14px 40px; align-items: start; }
+  #intro .card .row.start { grid-column: 1 / -1; justify-content: center; }
+  #intro .card p { line-height: 1.7; }
+}
+@media (min-width: 900px) and (max-height: 760px) {
+  #intro .card { gap: 10px 36px; } #intro .card .col { gap: 10px; }
+  #intro .card h1 { font-size: 40px; } #intro .card p { line-height: 1.6; } #intro .card .lead { font-size: 16px; }
+  #intro.screen { padding-top: calc(16px + var(--st)); }
+}
+#fail h2 { color: var(--blood); font-size: clamp(20px, 3.6vw, 28px); line-height: 1.5; }
 #win { background: transparent; transition: background 3s; }
 #win.dark { background: #000; }
 #win .card { opacity: 0; transition: opacity 2.5s; text-align: center; justify-items: center; }
@@ -122,12 +136,15 @@ button:hover { filter: brightness(1.12); }
 <!-- 開場字卡 -->
 <div class="screen" id="intro">
   <div class="card">
+   <div class="col">
     <h1>木馬之夜</h1>
     <p class="lead">十年了。希臘大軍圍攻特洛伊城整整十年，始終攻不進那道城牆。</p>
     <p>今天，希臘人假裝撤退，在海灘上留下一匹巨大的木馬。特洛伊人以為那是戰利品，把它拖進城裡，喝酒慶祝到深夜。</p>
     <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b style="color:var(--fire)">今晚，由你打開城門。</b></p>
     <p>這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，鼓點一斷，就是你移動的時候。</p>
     <p class="dim">這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
+   </div>
+   <div class="col">
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
       <dt>按住 空白鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
@@ -137,7 +154,8 @@ button:hover { filter: brightness(1.12); }
       <dt>Esc</dt><dd>暫停</dd>
     </dl>
     <div id="optSlotIntro"></div>
-    <div class="row"><button class="primary" id="btnStart">點一下開始</button></div>
+   </div>
+    <div class="row start"><button class="primary" id="btnStart">點一下開始</button></div>
   </div>
 </div>
 
@@ -183,9 +201,8 @@ button:hover { filter: brightness(1.12); }
 <!-- 失敗 -->
 <div class="screen" id="fail" hidden>
   <div class="card">
-    <h2>你被發現了</h2>
-    <p id="failWhy"></p>
-    <p class="dim">按 R 從這一區重來。</p>
+    <h2 id="failWhy">你被發現了。</h2>
+    <p class="dim">按 R 從這一區重來</p>
     <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button></div>
   </div>
 </div>
@@ -652,7 +669,7 @@ function newGame() {
   if (game.level !== builtFor) build(game.level);
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
-  $('msgs').innerHTML = ''; $('hint').textContent = ''; lastHintAt = -1e9;
+  $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
   $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
 }
 function startFromTop() {
@@ -677,8 +694,32 @@ const desync = () => game && game.cycle && (game.cycle.desync != null ? !!game.c
 function lag(fn) { if (desync()) setTimeout(fn, num(K().DESYNC_LAG, .15) * 1000); else fn(); }
 
 const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'Shift': 'Shift', '空白鍵': '空白鍵' };
+// 提示排隊：一次一則，每則至少 HINT_MIN 秒；排隊中有下一則時，顯示滿 HINT_SKIP 秒後按任意鍵可提早換
+// （避免一進區就連發的提示互相覆蓋，屏息提示一定看得到）；同一則已在顯示或排隊中就不再排
+const HINT_MIN = 4000, HINT_SKIP = 1200, HINT_LAST = 7000;
+const hintQ = []; let hintCur = null, hintAt = 0;
+function queueHint(text) {
+  if (!text) return;
+  text = String(text);
+  if (text === hintCur || hintQ.includes(text)) return;
+  hintQ.push(text);
+  if (hintCur == null) nextHint();
+  else if (performance.now() - hintAt >= HINT_MIN) nextHint();        // 目前這則已經顯示夠久
+  else { clearTimeout(hintTimer); hintTimer = setTimeout(nextHint, HINT_MIN - (performance.now() - hintAt)); }
+}
+function nextHint() {
+  clearTimeout(hintTimer);
+  const text = hintQ.shift();
+  if (text == null) { hintCur = null; $('hint').style.opacity = 0; return; }
+  showHint(text);
+}
+function skipHint() {                                   // 任意鍵：排隊中有下一則才換
+  if (hintCur != null && hintQ.length && performance.now() - hintAt >= HINT_SKIP) nextHint();
+}
+function clearHints() { hintQ.length = 0; hintCur = null; clearTimeout(hintTimer); $('hint').textContent = ''; $('hint').style.opacity = 0; }
 function showHint(text) {
   if (!text) return;
+  hintCur = String(text); hintAt = performance.now();
   const h = $('hint');
   h.innerHTML = '';
   // 把「按 Q」「按住 E」裡的鍵名框起來
@@ -687,7 +728,11 @@ function showHint(text) {
     else h.appendChild(document.createTextNode(part));
   });
   h.style.opacity = 1;
-  clearTimeout(hintTimer); hintTimer = setTimeout(() => { h.style.opacity = 0; }, 7000);
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(nextHint, hintQ.length ? HINT_MIN : HINT_LAST);   // 沒有下一則就留久一點再淡出
+}
+// 新提示進來時如果目前這則已無後續、正在等 HINT_LAST，queueHint 會依顯示時間決定立刻換或等滿 HINT_MIN
+function hintState() { return { cur: hintCur, queue: hintQ.slice(), shownMs: hintCur == null ? 0 : performance.now() - hintAt };
 }
 function showMsg(text, color) {
   const d = document.createElement('div'); d.textContent = text; if (color) d.style.color = color;
@@ -700,7 +745,7 @@ function drain() {
   for (const e of evs) {
     if (!e) continue;
     if (e.type === 'sfx') { audio.cue(e.a); if (e.a === 'takedown' || e.a === 'down') lag(() => flash(.25)); }
-    else if (e.type === 'hint') lag(() => showHint(e.a));
+    else if (e.type === 'hint') lag(() => queueHint(e.a));
     else if (e.type === 'msg') lag(() => showMsg(e.a));
   }
 }
@@ -713,6 +758,8 @@ function readInput() {
     mx: 0, mz: 0,
     breath: k('Space'),
     dash: !!pend.dash, takedown: !!pend.takedown, calm: !!pend.calm,
+    // 按下 Q 的那一刻（音訊時鐘，扣掉輸出延遲＝玩家聽到的時間）；規則有 calmAt 就用它判定，不用幀時間
+    calmAt: pend.calmAt,
     interact: k('KeyE'),
   };
   // 規則要世界座標的移動方向：前方 (−sin yaw, −cos yaw)、右方 (cos yaw, −sin yaw)
@@ -886,7 +933,7 @@ function hud(dt) {
 function showOver() {
   overShown = true; unlockPointer();
   if (game.phase === 'fail') {
-    const why = game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';
+    const why = game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';   // 規則給的完整句子直接顯示
     $('failWhy').textContent = why;
     setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
   } else {
@@ -931,15 +978,20 @@ window.addEventListener('mousemove', e => {
   V.yaw -= dx * .0024;
   V.pitch = clamp(V.pitch - dy * .0024, -1.45, 1.2);
 });
+const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   const was = keys[e.code]; keys[e.code] = true;
+  if (!e.repeat && !was && !MOVE_KEYS.has(e.code)) skipHint();   // 走路鍵一直在按，不拿來換提示
   if (!game) return;
   if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
   if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
   if (paused || e.repeat || was) return;
   if (e.code === 'KeyE') pend.takedown = true;          // 點一下＝暗殺事件；按住的狀態另外以 interact 送出
-  if (e.code === 'KeyQ') pend.calm = true;
+  if (e.code === 'KeyQ') {
+    pend.calm = true;
+    if (actx) pend.calmAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+  }
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') pend.dash = true;
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -976,7 +1028,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, V, keys, scene };
+window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene };
 requestAnimationFrame(loop);
 })();
 </script>
