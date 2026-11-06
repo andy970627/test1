@@ -1,5 +1,12 @@
 /* 特洛伊的迴響：聲音層（UMD 全域 RissetAudio）
- * 純 Web Audio，所有聲音都是程式合成，不載入任何音檔。
+ * 純 Web Audio，所有聲音都是程式合成；唯一例外是「自備配樂」測試模式（設計文件 7.1）：
+ * 使用者在選單選自己電腦上的音檔，loadTrack(arrayBuffer) 解碼後只在瀏覽器本機循環播放，不打包、不上傳。
+ *
+ * 兩層分工（設計文件第 7 節）：
+ *   - 功能層：Risset 打擊、失控層、警戒低音。時間與音量和音樂層完全無關。
+ *   - 音樂層：合成（夜風＋低吟）與自備音檔兩條，setMusicMode('synth'|'track'|'mix') 切換，各自有音量。
+ *     兩條都經過同一組音樂匯流排：盲區時短漸變壓到約 −40 dB；警戒時壓低約 −12 dB 並低切約 200 Hz，
+ *     讓慢低音最清楚；追殺時略提高。所有音量變化都用 ctx.currentTime 排程的 ramp。
  *
  * Risset 節奏【改編】：
  *   - 4 層打擊（k = 0..3），每層在一個循環 T 內速度從 v·2^k 指數加速到 v·2^(k+1)。
@@ -10,7 +17,7 @@
  *   - 增益是「速度位置」x = (k + p) ÷ 4 的鐘形曲線：最慢的從無聲淡入、最快的淡出到無聲。
  *   - 音色跟著 x 走（低鼓 → 框鼓 → 手拍 → 金屬敲擊），交接時音色也連續，聽起來一直加速卻不會變快。
  *   - 例外（遊戲要的）：p 從接近 1 跳回 0 的 0.5 秒是盲區：不排拍、節奏匯流排（含殘響）壓到幾乎無聲，
- *     只剩夜風與低吟，聽得出「斷掉、空掉 → 現在可以動」。
+ *     音樂層（夜風、低吟或自備音檔）也一起壓到約 −40 dB，聽得出「斷掉、空掉 → 現在可以動」。
  *   - p 越大，節奏匯流排越響（0.7 → 1.0），讓「越來越危險」聽得出來。
  *
  * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；setInterval 只負責「補排程」（lookahead 0.15 秒），
@@ -38,7 +45,18 @@
     TICK_MS: 25,       // 補排程間隔
     BASS_PERIOD: 2.4,  // 低音週期，規則同值
     BASS_BASE: 0.22,   // 巡邏時低音增益
-    HUNT_FLOOR: 0.55   // 追殺時每層最低增益（所有層疊加）
+    HUNT_FLOOR: 0.55,  // 追殺時每層最低增益（所有層疊加）
+    // 音樂層（合成與自備音檔共用）
+    MUSIC_BLIND_FLOOR: 0.01,   // 盲區時音樂層增益（−40 dB）
+    MUSIC_FALL: 0.05,          // 進盲區前的下滑時間（秒）
+    MUSIC_RISE: 0.15,          // 出盲區後的回升時間（秒）
+    MUSIC_ALARM_DB: -12,       // 警戒滿值時音樂層壓低（dB）
+    MUSIC_HP_BASE: 20,         // 平時音樂層低切頻率（Hz，等於沒切）
+    MUSIC_HP_ALARM: 200,       // 警戒滿值時低切頻率（Hz）
+    MUSIC_HUNT_GAIN: 1.15,     // 追殺時音樂層略提高
+    MUSIC_RAMP: 0.25,          // 模式、音量、警戒變化的 ramp 長度（秒）
+    TRACK_VOL: 0.35,           // 自備音檔預設音量（市售音檔通常很滿，先放低）
+    SYNTH_VOL: 1               // 合成音樂層預設音量
   };
 
   // 各 cue 名稱與別名（規則層的 sfx 名稱不確定時都接得住）
@@ -216,8 +234,32 @@
       o.connect(f); f.connect(g); g.connect(d); o.start(t); o.stop(t + 1.2);
     }
 
-    // ---------- 環境：夜風 + 低吟 ----------
-    var ambient = ctx.createGain(); ambient.gain.value = 0; ambient.connect(master);
+    // ---------- 音樂層匯流排 ----------
+    // synthLevel / trackLevel（模式與各自音量）→ musicHP（警戒低切）→ musicDuck（警戒／追殺）→ musicGate（盲區）→ master
+    var musicGate = ctx.createGain(); musicGate.gain.value = 1; musicGate.connect(master);
+    var musicDuck = ctx.createGain(); musicDuck.gain.value = 1; musicDuck.connect(musicGate);
+    var musicHP = ctx.createBiquadFilter(); musicHP.type = 'highpass'; musicHP.frequency.value = C.MUSIC_HP_BASE; musicHP.Q.value = 0.7;
+    musicHP.connect(musicDuck);
+    var music = { mode: 'synth', synthVol: C.SYNTH_VOL, trackVol: C.TRACK_VOL, buf: null, src: null };
+    var synthLevel = ctx.createGain(); synthLevel.gain.value = music.synthVol; synthLevel.connect(musicHP);
+    var trackLevel = ctx.createGain(); trackLevel.gain.value = 0; trackLevel.connect(musicHP);
+    function rampTo(param, v, dur, expo) {      // 從現在的值排程 ramp 到 v（ctx.currentTime 為準）
+      var now = ctx.currentTime, cur = param.value;
+      param.cancelScheduledValues(now); param.setValueAtTime(cur, now);
+      if (expo) param.exponentialRampToValueAtTime(Math.max(v, 1e-4), now + dur);
+      else param.linearRampToValueAtTime(v, now + dur);
+    }
+    function applyMusicLevels(dur) {
+      var d = dur == null ? C.MUSIC_RAMP : dur;
+      rampTo(synthLevel.gain, music.mode === 'track' ? 0 : music.synthVol, d);
+      rampTo(trackLevel.gain, (music.mode !== 'synth' && music.buf) ? music.trackVol : 0, d);
+    }
+    function stopTrack() {
+      if (music.src) { try { music.src.stop(); } catch (e) {} try { music.src.disconnect(); } catch (e) {} music.src = null; }
+    }
+
+    // ---------- 環境：夜風 + 低吟（合成音樂層） ----------
+    var ambient = ctx.createGain(); ambient.gain.value = 0; ambient.connect(synthLevel);
     if (!mute.ambient) {
       var w = ctx.createBufferSource(); w.buffer = noiseBuf; w.loop = true;
       var wf = ctx.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 420; wf.Q.value = 0.8;
@@ -241,6 +283,7 @@
                alarmStart: null, alarmNext: 0, lastBass: -1e9, panic: 0, lastCreak: -1e9 };
     var schedEnd = ctx.currentTime;          // 已排程到哪個時間（不含）
     var gateCycle = null;                    // 已排好 gate 自動化的最後一個循環
+    var musicCycle = null;                   // 已排好音樂層盲區自動化的最後一個循環
     var timer = null, dead = false;
 
     function cycleIndex(t) { return Math.floor((t - t0) / T); }
@@ -268,11 +311,38 @@
       gateCycle = c;
     }
 
+    // 音樂層盲區：循環開始前 MUSIC_FALL 秒滑到 −40 dB，盲區結束後 MUSIC_RISE 秒拉回
+    function musicGateValue(t) {
+      var local = (t - t0) - cycleIndex(t) * T, F = C.MUSIC_BLIND_FLOOR;
+      if (local < C.BLIND) return F;
+      if (local < C.BLIND + C.MUSIC_RISE) return F + (1 - F) * (local - C.BLIND) / C.MUSIC_RISE;
+      if (local > T - C.MUSIC_FALL) return 1 + (F - 1) * (local - (T - C.MUSIC_FALL)) / C.MUSIC_FALL;
+      return 1;
+    }
+    function scheduleMusicGate(c, from) {
+      var cs = t0 + c * T, F = C.MUSIC_BLIND_FLOOR, ev = [
+        ['set', cs, F], ['set', cs + C.BLIND, F],
+        ['lin', cs + C.BLIND + C.MUSIC_RISE, 1],
+        ['set', cs + T - C.MUSIC_FALL, 1],
+        ['lin', cs + T, F]
+      ];
+      var p = musicGate.gain;
+      if (from != null) { p.cancelScheduledValues(from); p.setValueAtTime(musicGateValue(from), from); }
+      for (var i = 0; i < ev.length; i++) {
+        if (from != null && ev[i][1] <= from) continue;
+        if (ev[i][0] === 'set') p.setValueAtTime(ev[i][2], ev[i][1]);
+        else p.linearRampToValueAtTime(ev[i][2], ev[i][1]);
+      }
+      musicCycle = c;
+    }
+
     function scheduleRange(a, b) {
       var nowT = ctx.currentTime - 0.002;
       // gate：目前循環起（中途接上）再到 b 之後的下一個循環
       if (gateCycle == null) scheduleGate(cycleIndex(a), a);
       while (t0 + (gateCycle + 1) * T < b + 0.3) scheduleGate(gateCycle + 1, null);
+      if (musicCycle == null) scheduleMusicGate(cycleIndex(a), a);
+      while (t0 + (musicCycle + 1) * T < b + 0.3) scheduleMusicGate(musicCycle + 1, null);
 
       var c0 = cycleIndex(a), c1 = cycleIndex(b);
       var nLayers = C.LAYERS + (st.hunted ? 1 : 0);
@@ -481,6 +551,7 @@
         if (s.cycle && isFinite(s.cycle.T) && isFinite(s.cycle.t0) &&
             (Math.abs(s.cycle.T - T) > 1e-6 || Math.abs(s.cycle.t0 - t0) > 1e-6)) {
           T = s.cycle.T; t0 = s.cycle.t0; scheduleGate(cycleIndex(schedEnd), schedEnd);
+          scheduleMusicGate(cycleIndex(schedEnd), schedEnd);
         }
         if (s.bass) {
           if (isFinite(s.bass.period) && s.bass.period > 0) st.bassPeriod = s.bass.period;
@@ -518,6 +589,9 @@
           rhythmHP.frequency.setTargetAtTime(30 + al * 220, now, k);
           bassGain.gain.setTargetAtTime(hu ? 0.6 : C.BASS_BASE + (1 - C.BASS_BASE) * al, now, k);
           rhythmBus.gain.setTargetAtTime(mute.rhythm ? 0 : (hu ? 1.3 : 1), now, k);
+          // 音樂層：警戒退後＋低切（讓慢低音最清楚），追殺略提高；功能層不受影響
+          rampTo(musicDuck.gain, hu ? C.MUSIC_HUNT_GAIN : Math.pow(10, C.MUSIC_ALARM_DB * al / 20), C.MUSIC_RAMP);
+          rampTo(musicHP.frequency, hu ? C.MUSIC_HP_BASE : C.MUSIC_HP_BASE * Math.pow(C.MUSIC_HP_ALARM / C.MUSIC_HP_BASE, al), C.MUSIC_RAMP, true);
         }
       },
       cue: function (name, when) {
@@ -535,11 +609,56 @@
       resume: function () { return (ctx.resume ? ctx.resume() : Promise.resolve()).then(function () { tick(); }); },
       // 離線渲染／測試用：一次排到 tEnd
       scheduleUntil: function (tEnd) { if (tEnd > schedEnd) { scheduleRange(schedEnd, tEnd); schedEnd = tEnd; } },
+      // ---------- 音樂層：自備配樂（測試模式，設計文件 7.1）與模式切換 ----------
+      // loadTrack 接受 ArrayBuffer（會被解碼、脫離）或已解碼的 AudioBuffer；回傳 Promise<AudioBuffer>。
+      // 只換音檔，不改模式；模式由 setMusicMode 決定。
+      loadTrack: function (data) {
+        if (dead) return Promise.reject(new Error('audio disposed'));
+        var p = (data && typeof data.getChannelData === 'function') ? Promise.resolve(data) : decode(ctx, data);
+        return p.then(function (buf) {
+          if (dead) return buf;
+          stopTrack();
+          var src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+          src.connect(trackLevel); src.start(ctx.currentTime + 0.02);
+          music.buf = buf; music.src = src;
+          applyMusicLevels();
+          return buf;
+        });
+      },
+      clearTrack: function () {
+        rampTo(trackLevel.gain, 0, 0.05);
+        var src = music.src; music.src = null; music.buf = null;
+        if (src) { try { src.stop(ctx.currentTime + 0.06); } catch (e) {} }
+        if (music.mode !== 'synth') music.mode = 'synth';
+        applyMusicLevels();
+      },
+      hasTrack: function () { return !!music.buf; },
+      setTrackVolume: function (v) { music.trackVol = clamp(+v || 0, 0, 1.5); applyMusicLevels(0.08); },
+      setSynthVolume: function (v) { music.synthVol = clamp(+v || 0, 0, 1.5); applyMusicLevels(0.08); },
+      // 'synth' 合成｜'track' 只播自備音檔｜'mix' 兩者都播。沒有音檔時只接受 'synth'，回傳是否成功
+      setMusicMode: function (m) {
+        if (m !== 'synth' && m !== 'track' && m !== 'mix') return false;
+        if (m !== 'synth' && !music.buf) return false;
+        music.mode = m; applyMusicLevels(); return true;
+      },
+      getMusic: function () { return { mode: music.mode, synthVol: music.synthVol, trackVol: music.trackVol, hasTrack: !!music.buf,
+                                       duration: music.buf ? music.buf.duration : 0 }; },
+      // 測試用：音樂層節點（讀 gain.value 驗證壓低）
+      _music: { gate: musicGate, duck: musicDuck, hp: musicHP, synth: synthLevel, track: trackLevel },
       log: log,
-      dispose: function () { dead = true; if (timer) clearInterval(timer); try { master.disconnect(); } catch (e) {} }
+      dispose: function () { dead = true; if (timer) clearInterval(timer); stopTrack(); try { master.disconnect(); } catch (e) {} }
     };
     return api;
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, CONST: C };
+  // decodeAudioData：新版回傳 Promise，舊版（Safari）只有回呼，兩種都接
+  function decode(ctx, ab) {
+    return new Promise(function (res, rej) {
+      if (!ab || typeof ab.byteLength !== 'number') { rej(new Error('不是音檔資料')); return; }
+      var r = ctx.decodeAudioData(ab, res, function (e) { rej(e || new Error('無法解碼音檔')); });
+      if (r && typeof r.then === 'function') r.then(res, rej);
+    });
+  }
+
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C };
 });

@@ -82,6 +82,19 @@ button:hover { filter: brightness(1.12); }
 #win h2 { color: var(--fire); }
 #win .later { font-family: var(--display); font-size: clamp(22px, 4vw, 30px); letter-spacing: .3em; color: var(--ash); opacity: 0; transition: opacity 2s 2.5s; }
 #win.dark .later { opacity: 1; }
+/* 音樂層（自備配樂測試模式，設計文件 7.1） */
+#music { flex-basis: 100%; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+#music .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+#music .mlabel { font-size: 14px; color: var(--fire); }
+#music label.off { opacity: .45; cursor: not-allowed; }
+#music .filebtn { border: 1px solid var(--fire); padding: 5px 12px; font-size: 14px; position: relative; }
+#music .filebtn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
+#music .filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+#music button { font-size: 14px; padding: 5px 12px; }
+#music #trackName { font-size: 13px; color: var(--dim); overflow-wrap: anywhere; min-width: 0; }
+#music #trackName.ok { color: var(--ash); }
+#music .note { font-size: 12px; color: var(--dim); margin: 0; }
+#music input[type=range] { width: 120px; }
 @media (max-width: 640px) {
   #breath { width: 140px; }
   #phase { width: 150px; }
@@ -133,7 +146,7 @@ button:hover { filter: brightness(1.12); }
   <div class="card">
     <h2>暫停</h2>
     <div id="optSlotPause"></div>
-    <p class="dim">難度要「從頭開始」才會套用。</p>
+    <p class="dim">難度要「從頭開始」才會套用；音樂層設定立即生效。</p>
     <div class="row">
       <button class="primary" id="btnResume">繼續</button>
       <button id="btnRetryP">從這一區重來</button>
@@ -147,6 +160,24 @@ button:hover { filter: brightness(1.12); }
   <legend>實驗開關</legend>
   <label><input type="checkbox" id="oPhase"> 顯示相位條（除錯用）</label>
   <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
+  <div id="music" role="group" aria-label="音樂層">
+    <div class="mrow">
+      <span class="mlabel">音樂層</span>
+      <label><input type="radio" name="oMusic" value="synth" checked> 合成</label>
+      <label class="off" title="先載入音樂檔"><input type="radio" name="oMusic" value="track" disabled> 自備音檔</label>
+      <label class="off" title="先載入音樂檔"><input type="radio" name="oMusic" value="mix" disabled> 混合</label>
+    </div>
+    <div class="mrow">
+      <label class="filebtn"><input type="file" id="oTrackFile" accept="audio/*">載入音樂檔</label>
+      <span id="trackName">尚未載入（「自備音檔」「混合」要先載入）</span>
+      <button type="button" id="btnTrackClear" hidden>移除</button>
+    </div>
+    <p class="note">只在你的瀏覽器播放，不會上傳。</p>
+    <div class="mrow">
+      <label>合成音量 <input type="range" id="oSynthVol" min="0" max="1.5" step="0.05" value="1"></label>
+      <label class="off">音檔音量 <input type="range" id="oTrackVol" min="0" max="1" step="0.01" value="0.35" disabled></label>
+    </div>
+  </div>
 </fieldset>
 
 <!-- 失敗 -->
@@ -539,8 +570,80 @@ function makeAudio(T) {
     update: s => (a && a.update ? a.update(s) : AudioMod.update && AudioMod.update(s)),
     cue: n => (a && a.cue ? a.cue(n) : AudioMod.cue && AudioMod.cue(n)),
     stop: () => (a && a.stop ? a.stop() : a && a.dispose ? a.dispose() : null),
+    raw: a,
   };
+  applyMusic(true);
 }
+
+// ============================================================
+// 音樂層：合成／自備音檔／混合（自備配樂測試模式，設計文件 7.1）
+// 音檔只在本機解碼播放，不上傳；換局重建聲音時沿用已解碼的 AudioBuffer。
+// ============================================================
+const music = { mode: 'synth', synthVol: 1, trackVol: .35, name: '', buf: null };
+const rawAudio = () => (audio && audio.raw && typeof audio.raw.setMusicMode === 'function' ? audio.raw : null);
+function applyMusic(reload) {
+  const a = rawAudio(); if (!a) return;
+  a.setSynthVolume(music.synthVol); a.setTrackVolume(music.trackVol);
+  if (music.buf && (reload || !a.hasTrack())) {
+    a.loadTrack(music.buf).then(() => a.setMusicMode(music.mode)).catch(e => console.warn('音檔載入失敗', e));
+  } else a.setMusicMode(music.buf ? music.mode : 'synth');
+}
+function musicUI() {
+  const has = !!music.buf;
+  if (!has) music.mode = 'synth';
+  document.querySelectorAll('input[name=oMusic]').forEach(r => {
+    const need = r.value !== 'synth';
+    r.disabled = need && !has; r.checked = r.value === music.mode;
+    r.parentElement.classList.toggle('off', r.disabled);
+    r.parentElement.title = r.disabled ? '先載入音樂檔' : '';
+  });
+  $('oSynthVol').disabled = music.mode === 'track';
+  $('oTrackVol').disabled = !has || music.mode === 'synth';
+  $('oSynthVol').parentElement.classList.toggle('off', $('oSynthVol').disabled);
+  $('oTrackVol').parentElement.classList.toggle('off', $('oTrackVol').disabled);
+  $('btnTrackClear').hidden = !has;
+  if (has) { $('trackName').textContent = '♪ ' + music.name; $('trackName').classList.add('ok'); }
+}
+document.querySelectorAll('input[name=oMusic]').forEach(r => r.addEventListener('change', () => {
+  if (!r.checked || r.disabled) return;
+  music.mode = r.value; musicUI();
+  const a = rawAudio(); if (a) a.setMusicMode(music.mode);
+}));
+$('oSynthVol').addEventListener('input', e => { music.synthVol = +e.target.value; const a = rawAudio(); if (a) a.setSynthVolume(music.synthVol); });
+$('oTrackVol').addEventListener('input', e => { music.trackVol = +e.target.value; const a = rawAudio(); if (a) a.setTrackVolume(music.trackVol); });
+$('oTrackFile').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const nameEl = $('trackName');
+  nameEl.textContent = '解碼中… ' + f.name; nameEl.classList.remove('ok');
+  const fr = new FileReader();
+  fr.onerror = () => { nameEl.textContent = '讀不到這個檔案'; musicUI(); };
+  fr.onload = () => {
+    const a = rawAudio();
+    let p;
+    if (a) p = a.loadTrack(fr.result);
+    else {                                        // 還沒開始遊戲：先建音訊環境解碼，開始時交給聲音層
+      if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
+      p = AudioMod.decode(actx, fr.result);
+    }
+    p.then(buf => {
+      music.buf = buf; music.name = f.name;
+      if (music.mode === 'synth') music.mode = 'track';   // 載入就是想聽：先切到只播音檔，可再改混合
+      musicUI(); applyMusic(false);
+    }).catch(err => {
+      console.warn('無法解碼音檔', err);
+      nameEl.textContent = '無法播放「' + f.name + '」（這個瀏覽器不支援此格式）';
+      musicUI();
+    });
+  };
+  fr.readAsArrayBuffer(f);
+  e.target.value = '';                            // 同一個檔案可以再選一次
+});
+$('btnTrackClear').onclick = () => {
+  const a = rawAudio(); if (a) a.clearTrack();
+  music.buf = null; music.name = ''; music.mode = 'synth';
+  $('trackName').textContent = '尚未載入（「自備音檔」「混合」要先載入）'; $('trackName').classList.remove('ok');
+  musicUI();
+};
 function newGame() {
   // 規則：opts.T 是常數覆寫；從開場字卡（區 0）進入區 1，讓第一個提示照規則出現
   const g = Rules.createLevel({ t0, startZone: 0, T: { CYCLE: curT } });
