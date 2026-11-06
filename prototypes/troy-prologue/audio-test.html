@@ -1,0 +1,81 @@
+<title>特洛伊聲音試聽</title>
+<style>
+/* 人工試聽頁：只測 audio.js（RissetAudio），不含規則與畫面。單一夜色主題。 */
+:root { --night:#110d0a; --panel:#1b1510; --line:#3a2d22; --ash:#d8cbb6; --dim:#8f8270; --fire:#f2b866; --alarm:#e0663f; }
+body { margin:0; background:var(--night); color:var(--ash); font:15px/1.6 "Noto Sans TC", system-ui, sans-serif; }
+main { max-width:640px; margin:0 auto; padding:20px 16px 40px; }
+h1 { font-size:20px; margin:0 0 4px; color:var(--fire); }
+p.note { color:var(--dim); margin:0 0 16px; font-size:13px; }
+section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+button { background:#2a2018; color:var(--ash); border:1px solid var(--line); border-radius:6px; padding:7px 12px; margin:3px 2px; font:inherit; cursor:pointer; }
+button:hover { border-color:var(--fire); }
+button.on { background:var(--alarm); color:#140d08; }
+label { display:flex; align-items:center; gap:10px; margin:6px 0; }
+input[type=range] { flex:1; }
+#readout { font:600 22px/1.4 ui-monospace, monospace; }
+#bar { height:10px; background:#2a2018; border-radius:5px; overflow:hidden; margin-top:6px; }
+#bar i { display:block; height:100%; width:0; background:var(--fire); }
+#blind { display:inline-block; min-width:5em; padding:0 8px; border-radius:4px; }
+#blind.yes { background:var(--fire); color:#140d08; }
+</style>
+<main>
+  <h1>特洛伊的迴響・聲音試聽</h1>
+  <p class="note">Risset 節奏：一直加速卻不會變快；每 10 秒「斷掉」0.5 秒是盲區。低音每 2.4 秒一拍。</p>
+  <section>
+    <button id="start">開始</button>
+    <button id="stop">暫停</button>
+    <label>音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    <div id="readout">p = 0.000　<span id="blind">—</span></div>
+    <div id="bar"><i></i></div>
+    <div class="note" id="info"></div>
+  </section>
+  <section>
+    <label>警戒 alarm <input id="alarm" type="range" min="0" max="1" step="0.01" value="0"> <span id="alarmv">0.00</span></label>
+    <button id="hunt">追殺：關</button>
+  </section>
+  <section id="cues"></section>
+</main>
+<script src="audio.js"></script>
+<script>
+(function () {
+  var ctx = null, audio = null, hunted = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var LABEL = { breathIn: '屏息吸氣', breathOut: '憋氣結束', gasp: '喘氣', step: '腳步', latch: '門閂', down: '倒地', bell: '警鐘', blind: '盲區提示', win: '勝利' };
+
+  function state() {
+    var T = audio.T, t0 = audio.t0, now = audio.now(), per = audio.CONST.BASS_PERIOD;
+    return {
+      cycle: { T: T, t0: t0, p: audio.phase(), blind: audio.isBlind(), index: Math.floor((now - t0) / T) },
+      alarm: +$('alarm').value, hunted: hunted,
+      bass: { period: per, nextBeat: t0 + Math.ceil((now - t0) / per) * per }
+    };
+  }
+  $('start').onclick = function () {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      audio = RissetAudio.createAudio(ctx, { T: 10, t0: ctx.currentTime + 0.1 });
+      audio.setMaster(+$('vol').value);
+      requestAnimationFrame(frame);
+    } else audio.resume();
+  };
+  $('stop').onclick = function () { if (audio) audio.suspend(); };
+  $('vol').oninput = function () { if (audio) audio.setMaster(+this.value); };
+  $('alarm').oninput = function () { $('alarmv').textContent = (+this.value).toFixed(2); };
+  $('hunt').onclick = function () { hunted = !hunted; this.textContent = '追殺：' + (hunted ? '開' : '關'); this.classList.toggle('on', hunted); };
+  Object.keys(LABEL).forEach(function (k) {
+    var b = document.createElement('button'); b.textContent = LABEL[k];
+    b.onclick = function () { if (audio) audio.cue(k); };
+    $('cues').appendChild(b);
+  });
+  function frame() {
+    var s = state(); audio.update(s);
+    var p = s.cycle.p;
+    $('readout').firstChild.nodeValue = 'p = ' + p.toFixed(3) + '　';
+    $('blind').textContent = s.cycle.blind ? '盲區' : '—';
+    $('blind').className = s.cycle.blind ? 'yes' : '';
+    $('bar').firstChild.style.width = (p * 100).toFixed(1) + '%';
+    $('info').textContent = '音訊時間 ' + s.cycle.index + ' 循環・下一個低音 ' + (s.bass.nextBeat - audio.now()).toFixed(2) + ' 秒後';
+    requestAnimationFrame(frame);
+  }
+})();
+</script>
