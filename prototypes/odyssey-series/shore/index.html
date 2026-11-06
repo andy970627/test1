@@ -42,17 +42,21 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 }
 .say.shout { color: var(--lamp); font-size: clamp(22px, 3.4vw, 34px); letter-spacing: .06em; }
 .say b { color: var(--lamp); font-weight: 600; }
-.trait { position: absolute; left: 0; right: 0; top: calc(22% + 3.4em); margin: 0; text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .12em; text-shadow: 0 1px 6px #000; transition: opacity .6s; padding: 0 var(--gutter-r) 0 var(--gutter-l); }
+.say.muster { top: 16%; }
+.say.muster .line { display: inline-block; max-width: min(720px, 100%); padding: 10px 18px 12px; background: rgba(4, 6, 10, .62); border-radius: 3px; box-sizing: border-box; }
+.say.muster .nm { display: block; font-size: clamp(24px, 3.6vw, 36px); font-weight: 900; letter-spacing: .12em; color: var(--lamp); margin-bottom: 2px; }
+.trait { position: absolute; left: 0; right: 0; top: calc(16% + 6.6em); margin: 0; text-align: center; color: var(--dim); font-size: 14px; letter-spacing: .12em; text-shadow: 0 1px 6px #000; transition: opacity .6s; padding: 0 var(--gutter-r) 0 var(--gutter-l); }
 .musterSkip { position: absolute; right: var(--gutter-r); bottom: 14px; margin: 0; font-size: 13px; color: var(--dim); text-shadow: 0 1px 4px #000; }
 .choice {
   position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); width: min(760px, calc(100% - 32px));
-  display: grid; gap: 10px;
+  display: grid; gap: 10px; pointer-events: auto;
 }
 .opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .opt {
   background: rgba(8, 10, 14, .74); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; text-align: center;
-  font-size: 16px; line-height: 1.5;
+  font: 16px/1.5 var(--body); color: var(--ash); cursor: pointer; width: 100%;
 }
+.opt:hover { border-color: var(--bronze); background: rgba(20, 22, 28, .86); }
 .opt kbd { display: block; font: 500 12px var(--body); color: var(--bronze); letter-spacing: .12em; margin-bottom: 2px; }
 .opt.pick { border-color: var(--lamp); color: var(--lamp); }
 .timer { height: 4px; background: rgba(43, 50, 61, .8); }
@@ -87,9 +91,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     <p class="musterSkip" id="musterSkip" hidden>Esc：跳過點名</p>
     <div class="choice" id="choice" hidden>
       <div class="opts">
-        <div class="opt" id="optShoot"><kbd>左鍵</kbd>拉弓射他</div>
-        <div class="opt" id="optName"><kbd>空白鍵</kbd>喊出你的名字</div>
-        <div class="opt" id="optLeave"><kbd>不動</kbd>默默離開</div>
+        <button type="button" class="opt" id="optShoot"><kbd>點這裡／左鍵點畫面</kbd>拉弓射他</button>
+        <button type="button" class="opt" id="optName"><kbd>點這裡／空白鍵</kbd>喊出你的名字</button>
+        <button type="button" class="opt" id="optLeave"><kbd>點這裡／不動</kbd>默默離開</button>
       </div>
       <div class="timer"><i id="timerBar"></i></div>
     </div>
@@ -117,7 +121,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   const S = window.OdysseySeries;
   const $ = id => document.getElementById(id);
   const solo = new URLSearchParams(location.search).has('solo');
-  const save = solo ? S.fresh() : S.load();
+  // 骰子第一次就擲好存起來（shoreRoll），重新整理沿用、失去的人不會換
+  const save = S.ensureShoreRoll(solo ? S.fresh() : S.load(), Math.random);
+  if (!solo) S.save(null, save);
   const crew = S.crewNames(save.crewOut);
 
   // ================================================================ 聲音（全部合成）
@@ -302,7 +308,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   ship.position.set(-13, 0, -17); ship.rotation.y = .5; scene.add(ship);
 
   // 同伴：沙灘上走向船的人影
-  const crewMat = M(0x101114);
+  // 被月光與火把照亮的輪廓：顏色比夜色亮，帶一點自發光，讓剪影看得清楚
+  const crewMat = M(0x6e6253, { emissive: 0x1c150e });
   const crewMen = crew.map((name, i) => {
     const g = new THREE.Group();
     mesh(new THREE.CylinderGeometry(.18, .22, 1.2, 6), crewMat, 0, .75, 0, g);
@@ -333,6 +340,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   mesh(new THREE.CylinderGeometry(.015, .015, 1, 4), M(0x8a6a44), 0, 0, 0, arrow).rotation.x = Math.PI / 2;
   mesh(new THREE.ConeGeometry(.04, .12, 4), M(0x9a9a9a), 0, 0, -.55, arrow).rotation.x = -Math.PI / 2;
   arrow.visible = false; scene.add(arrow);
+  // 點名用的火把光：跟著走出來的那個人，從靠鏡頭的一側照他
+  const torch = new THREE.PointLight(0xffb060, 0, 7, 1.6); scene.add(torch);
+  const torchFlame = mesh(new THREE.SphereGeometry(.07, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffc070 }), 0, -10, 0);
 
   // ================================================================ 流程
   let phase = 'start', phaseT = 0, choice = null, lost = [], shake = 0;
@@ -350,13 +360,20 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     say('巨人睡在巨石裡面。他看不見你。');
   }
   // 點名：一個一個從石縫裡走出來，走到沙灘上（腳步、聲音、一句話）
-  const MUSTER_EACH = 2.3, MUSTER_LEAD = 1.6;
+  const MUSTER_EACH = 3.6, MUSTER_LEAD = 1.6;
   const CAVE_MOUTH = new THREE.Vector3(CAVE_X - 1.2, .45, CAVE_Z + 2);
   let musterIdx = -1;
   function trait(text) { const el = $('trait'); el.textContent = text; el.style.opacity = text ? 1 : 0; }
   function sayName(name, line, cls) {
     const el = $('say'); el.className = 'say' + (cls ? ' ' + cls : ''); el.textContent = '';
-    const b = document.createElement('b'); b.textContent = name + '：'; el.append(b, line); el.style.opacity = 1;
+    if (cls === 'muster') {
+      const box = document.createElement('span'); box.className = 'line';
+      const b = document.createElement('b'); b.className = 'nm'; b.textContent = name;
+      box.append(b, line); el.append(box);
+    } else {
+      const b = document.createElement('b'); b.textContent = name + '：'; el.append(b, line);
+    }
+    el.style.opacity = 1;
   }
   function panOf(v) { const p = v.clone().project(camera); return Math.max(-1, Math.min(1, p.x)); }
   function startMuster() {
@@ -370,7 +387,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     musterIdx = i;
     const m = crewMen[i], u = m.userData, t = u.traits;
     m.visible = true; u.enter = 0; m.position.copy(CAVE_MOUTH);
-    sayName(u.name, '「' + t.said + '」');
+    sayName(u.name, '「' + t.said + '」', 'muster');
     trait(t.stepLabel + '・' + t.voiceLabel);
     const v = crewVox();
     if (v) {
@@ -381,7 +398,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   }
   function endMuster() {
     crewMen.forEach(m => { m.visible = true; m.userData.enter = null; m.position.copy(m.userData.home); });
-    $('musterSkip').hidden = true; trait(''); autoLook = null;
+    $('musterSkip').hidden = true; trait(''); autoLook = null; musterIdx = -1;
+    torch.intensity = 0; torchFlame.position.y = -10;
     openChoice();
   }
   function openChoice() {
@@ -394,7 +412,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     choice = c;
     ['Shoot', 'Name', 'Leave'].forEach(k => $('opt' + k).classList.toggle('pick', k.toLowerCase() === c));
     setTimeout(() => { $('choice').hidden = true; }, 500);
-    lost = S.resolveShore(c, save.crewOut, Math.random);
+    lost = S.lostFromRoll(c, save.shoreRoll);
     phase = 'act'; phaseT = 0; events.length = 0;
     if (c === 'shoot') playShoot(); else if (c === 'name') playName(); else playLeave();
   }
@@ -454,8 +472,8 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     phase = 'result'; say('');
     const out = save.crewOut, kept = out - lost.length;
     const T = {
-      shoot: ['你射中了沉睡的巨人。他追了出來。', `帶出 ${out} 名同伴，路上又失去 ${lost.length} 名。波塞頓聽見了兒子的禱告。`],
-      name: ['你對著巨人喊出了自己的名字。', `帶出 ${out} 名同伴，路上又失去 ${lost.length} 名。波塞頓記住了你的名字。`],
+      shoot: ['你射中了沉睡的巨人。他追了出來。', `${lossLine(out)}波塞頓聽見了兒子的禱告。`],
+      name: ['你對著巨人喊出了自己的名字。', `${lossLine(out)}波塞頓記住了你的名字。`],
       leave: ['你沒有回頭。', `帶出 ${out} 名同伴。`]
     }[choice];
     $('resTitle').textContent = T[0];
@@ -474,11 +492,21 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     $('result').hidden = false;
     const b = btns.querySelector('button'); if (b) b.focus();
   }
+  function lossLine(out) {
+    return lost.length ? `帶出 ${out} 名同伴，路上又失去 ${lost.length} 名。` : `帶出 ${out} 名同伴。岩石全砸進了海裡，一個人也沒少。`;
+  }
   function goNext() { location.href = S.nextUrl('underworld', '../'); }
   function btnEl(text, fn, main) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (main ? ' main' : ''); b.textContent = text; b.onclick = fn; return b; }
 
   // ================================================================ 輸入
   $('start').addEventListener('click', begin);
+  // 三個選項是真正的按鈕：各自綁定，點擊不會落到底下的畫面
+  [['optShoot', 'shoot'], ['optName', 'name'], ['optLeave', 'leave']].forEach(([id, c]) => {
+    const b = $(id);
+    b.addEventListener('mousedown', e => e.stopPropagation());
+    b.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+    b.addEventListener('click', e => { e.stopPropagation(); pick(c); });
+  });
   cv.addEventListener('mousedown', e => { if (e.button !== 0) return; if (phase === 'start') begin(); else pick('shoot'); });
   window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); if (phase === 'start') begin(); else pick('name'); }
@@ -579,6 +607,15 @@ canvas#cv { display: block; width: 100%; height: 100%; }
       }
     }
 
+    // 點名的火把：照亮正在走出來／剛站定的人
+    if (phase === 'muster' && musterIdx >= 0) {
+      const m = crewMen[musterIdx];
+      const toCam = new THREE.Vector3(CAM.x - m.position.x, 0, CAM.z - m.position.z).normalize();
+      torch.position.set(m.position.x + toCam.x * 1.1 + .35, 1.9, m.position.z + toCam.z * 1.1);
+      torch.intensity = 1.7 + Math.sin(clock * 17) * .15 + Math.sin(clock * 7.3) * .1;
+      torchFlame.position.set(m.position.x + toCam.x * .35 + .3, 1.75, m.position.z + toCam.z * .35);
+    }
+
     // 鏡頭
     const target = autoLook && phase !== 'choose' ? autoLook : lookTarget;
     look.yaw += (target.yaw - look.yaw) * Math.min(1, dt * (autoLook ? 1.6 : 4));
@@ -594,6 +631,6 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 
   window.addEventListener('keydown', e => { if (e.code === 'Enter' && phase === 'result') { const b = $('resBtns').querySelector('button'); if (b && document.activeElement !== b) b.click(); } });
   // 給測試用：不影響遊玩
-  window.__shore = { pick: c => pick(c), begin, skipMuster: () => { if (phase === 'muster') endMuster(); }, get phase() { return phase; } };
+  window.__shore = { pick: c => pick(c), begin, get lost() { return lost.slice(); }, get roll() { return (save.shoreRoll || []).slice(); }, skipMuster: () => { if (phase === 'muster') endMuster(); }, get phase() { return phase; } };
 })();
 </script>

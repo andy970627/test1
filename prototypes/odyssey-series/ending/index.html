@@ -81,7 +81,8 @@ dd { margin: 0; color: var(--ash); }
   'use strict';
   const S = window.OdysseySeries;
   const $ = id => document.getElementById(id);
-  const solo = new URLSearchParams(location.search).has('solo');
+  // 單獨玩：網址帶 solo，或這台電腦沒有連作存檔 → 不讀也不寫、不清存檔
+  const solo = new URLSearchParams(location.search).has('solo') || !S.hasSave();
   const save = solo ? S.fresh() : S.load();
   const k = save.knowers, bow = save.bow;
   const lose = !!(bow && !bow.win);
@@ -109,9 +110,14 @@ dd { margin: 0; color: var(--ash); }
       : k.pen === 'suspects' ? '潘妮洛普看了你很久，問：我們的床，搬得動嗎？你說搬不動，床腳是一棵還活著的橄欖樹。她才走過來。'
       : '潘妮洛普不肯相信。她要人把床搬出來。你說：搬不動——床腳是一棵還活著的橄欖樹。她哭了。');
     L(`你在卡呂普索的島上數過${NUM[save.years]}年，回來的時候，兒子已經是個男人了。`);
-    L(save.crewLost.length ? `你沒有忘記：${save.crewLost.join('、')}。` : '從洞裡帶出來的人，你一個也沒有留在岸上。');
-    if (save.shadesNamed && save.shadesNamed.length) L(`在冥府的黑霧裡，你叫出了${save.shadesNamed.join('、')}的名字。`);
-    if (save.shadesFollowing && save.shadesFollowing.length) L(`${save.shadesFollowing.join('、')}沒有被叫到名字，一路跟著你的船。`);
+    // 你沒有忘記：叫出名字、安息的人；仍跟著你的人（和奧吉吉亞礁石上的人影同一份名單）
+    const named = Array.isArray(save.shadesNamed) ? save.shadesNamed : [];
+    const following = S.reefFigures(save);
+    if (!save.crewLost.length) L('從洞裡帶出來的人，你一個也沒有留在岸上。');
+    else {
+      if (named.length) L(`你沒有忘記：在冥府的黑霧裡，你叫出了${named.join('、')}的名字。${named.length > 1 ? '他們' : '他'}安息了。`);
+      if (following.length) L(`${named.length ? '' : '你沒有忘記：'}${following.join('、')}還跟著你，和在奧吉吉亞的礁石上一樣。`);
+    }
     L('後來，你把王位交給了忒勒馬科斯。');
     L('你和潘妮洛普上了船，往西航行。這一次，不是為了回家。', 'last');
   }
@@ -151,7 +157,7 @@ dd { margin: 0; color: var(--ash); }
   const act = $('actions');
   function btn(text, fn, main) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (main ? ' main' : ''); b.textContent = text; b.onclick = fn; act.appendChild(b); return b; }
   if (lose && !solo) btn('再拉一次弓', () => { S.save(null, S.advance(save, 'bow')); location.href = S.nextUrl('bow', '../'); }, true);
-  btn('再玩一次', () => { S.save(null, S.fresh()); location.href = '../index.html#cave'; }, !lose || solo);
+  btn('再玩一次', solo ? () => location.reload() : () => { S.save(null, S.fresh()); location.href = '../index.html#cave'; }, !lose || solo);
   btn('回首頁', () => { location.href = '../index.html'; });
   if (!solo) S.save(null, S.advance(save, lose ? 'bow' : 'ending'));
 

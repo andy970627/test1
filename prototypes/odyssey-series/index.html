@@ -199,9 +199,10 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
   $('btnRestart').addEventListener('click', () => {
     const b = $('btnRestart');
     if (started && Date.now() - armed > 3000) { armed = Date.now(); b.textContent = '再按一次：抹掉進度'; b.classList.add('warn'); setTimeout(() => { b.textContent = '重新開始'; b.classList.remove('warn'); }, 3000); return; }
+    // 抹掉進度：大按鈕回到「開始」（走出洞口或進 Unity 洞穴時才寫新存檔）
     save = S.fresh();
-    S.save(null, save);
-    started = true;
+    S.clear(null);
+    started = false;
     goCave();
     renderMap(); renderTop();
   });

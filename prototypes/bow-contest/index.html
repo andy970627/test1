@@ -832,8 +832,13 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   new ResizeObserver(resize).observe(stage); resize();
   // 頂端標題列（含連作那一行）有多高，提示文字和上弦面板就往下排多少，不會壓在一起
   const topBar = $('top'), hud = topBar.parentNode;
-  const placeHead = () => hud.style.setProperty('--head', topBar.offsetHeight + 'px');
-  new ResizeObserver(placeHead).observe(topBar); placeHead();
+  const placeHead = () => {
+    hud.style.setProperty('--head', topBar.offsetHeight + 'px');
+    // 上弦面板排在提示文字下面（提示換成兩行也不會壓到）
+    const m = ui.msg, below = m.textContent ? m.offsetTop + m.offsetHeight + 10 : 0;
+    ui.stringUI.style.top = below ? `max(${below}px, calc(var(--head) + 48px))` : '';
+  };
+  new ResizeObserver(placeHead).observe(topBar); new ResizeObserver(placeHead).observe(ui.msg); placeHead();
 
   // 看求婚者的鏡頭：從你的凳子看過去；箭飛的時候跟著箭；釘住之後走到那把斧頭前面，看箭釘在孔的哪一邊
   // （從凳子看，第一把斧頭會擋住後面的斧面）

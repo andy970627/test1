@@ -9,7 +9,7 @@
  *   wrath 射箭 2【電影：出洞後射箭報復，招來追殺】、喊名 1【原典：波塞頓記住了名字】、默默離開 0【改編】
  *   years = 7 + wrath（在卡呂普索島上 7 年【原典】，多出來的年數【改編】）
  *   乞丐難度、比箭晃動倍率【改編】
- *   岸邊每名同伴 1/3 被岩石砸死（主線規格第 20 節 C）【改編】
+ *   岸邊每名同伴 1/3 被岩石砸死（主線規格第 20 節 C；第一次擲骰存成 shoreRoll，重整沿用）【改編】
  *   同伴名字：歐律羅科斯、波利忒斯、埃爾佩諾爾、珀里墨得斯、歐律巴忒斯【原典】；
  *            克洛墨尼俄斯、安提瑪科斯、塞翁【改編：借名】；電影裡的同伴名字待確認
  *   同伴的腳步、聲音、說過的話、死前的話【改編】（波利忒斯最親近、埃爾佩諾爾最年輕【原典 第 10 卷】，
@@ -97,6 +97,22 @@
     crewNames(crewOut).forEach(function (name) { if (rng() < SHORE_DEATH) lost.push(name); });
     return lost;
   }
+  /**
+   * 岸邊的骰子先擲好存起來（shoreRoll＝如果巨人醒來會被砸死的人），重新整理不會換人。
+   * 已有合法的 shoreRoll（都在這次帶出的名單裡）就沿用；回傳新存檔，不改原物件。
+   */
+  function ensureShoreRoll(s, rng) {
+    var n = normalize(s);
+    var crew = crewNames(n.crewOut);
+    var ok = Array.isArray(n.shoreRoll) && n.shoreRoll.every(function (x) { return crew.indexOf(x) >= 0; });
+    if (!ok) n.shoreRoll = resolveShore('shoot', n.crewOut, rng);
+    return n;
+  }
+  /** 依存好的骰子算失去的人：默默離開一個也不失去。 */
+  function lostFromRoll(choice, roll) {
+    if (choice !== 'shoot' && choice !== 'name') return [];
+    return Array.isArray(roll) ? roll.slice() : [];
+  }
   /** 同伴的特徵（含文字說明）；不認得的名字回傳 null。 */
   function traitsOf(name) {
     var t = CREW_TRAITS[name];
@@ -138,7 +154,8 @@
       bow: null,
       shadesNamed: null,     // 冥府：叫對名字的同伴；null＝還沒走過冥府
       shadesFollowing: null, // 冥府：叫錯或叫不出的同伴（跟到海上）
-      nameless: false        // 冥府：聽到阿伽門農完整的忠告
+      nameless: false,       // 冥府：聽到阿伽門農完整的忠告
+      shoreRoll: null        // 岸邊：先擲好的骰子（巨人醒來會被砸死的人）；null＝還沒擲
     };
   }
   /** 把任何東西整理成合法存檔（壞掉的欄位回到預設）。 */
@@ -162,6 +179,7 @@
     s.shadesNamed = names(raw.shadesNamed);
     s.shadesFollowing = names(raw.shadesFollowing);
     s.nameless = raw.nameless === true;
+    s.shoreRoll = names(raw.shoreRoll);
     return s;
   }
   function defaultStorage() {
@@ -178,6 +196,11 @@
     storage = storage || defaultStorage();
     var n = normalize(s);
     try { if (storage) storage.setItem(KEY, JSON.stringify(n)); return true; } catch (e) { return false; }
+  }
+  /** 抹掉存檔（首頁「重新開始」用）。 */
+  function clear(storage) {
+    storage = storage || defaultStorage();
+    try { if (storage) { if (storage.removeItem) storage.removeItem(KEY); else storage.setItem(KEY, ''); } return true; } catch (e) { return false; }
   }
   function hasSave(storage) {
     storage = storage || defaultStorage();
@@ -215,9 +238,9 @@
   return {
     KEY: KEY, STEPS: STEPS, CREW: CREW, CREW_DEFAULT: CREW_DEFAULT, SHORE_DEATH: SHORE_DEATH, SHORE_TIME: SHORE_TIME,
     wrathFromShore: wrathFromShore, yearsFromWrath: yearsFromWrath, beggarTuning: beggarTuning, bowSwayMul: bowSwayMul,
-    crewNames: crewNames, resolveShore: resolveShore, createRng: createRng,
+    crewNames: crewNames, resolveShore: resolveShore, ensureShoreRoll: ensureShoreRoll, lostFromRoll: lostFromRoll, createRng: createRng,
     STEP_KINDS: STEP_KINDS, VOICE_KINDS: VOICE_KINDS, CREW_TRAITS: CREW_TRAITS, traitsOf: traitsOf, rollCall: rollCall, reefFigures: reefFigures,
-    fresh: fresh, normalize: normalize, load: load, save: save, hasSave: hasSave,
+    fresh: fresh, normalize: normalize, load: load, save: save, clear: clear, hasSave: hasSave,
     advance: advance, nextStep: nextStep, nextUrl: nextUrl
   };
 }));

@@ -11,7 +11,7 @@ function memStore(init) {
 
 test('fresh：預設存檔符合計畫第 3 節', () => {
   const s = S.fresh();
-  assert.deepEqual(Object.keys(s).sort(), ['bow', 'crewLost', 'crewOut', 'knowers', 'ledger', 'nameless', 'shadesFollowing', 'shadesNamed', 'shore', 'step', 'wrath', 'years'].sort());
+  assert.deepEqual(Object.keys(s).sort(), ['bow', 'crewLost', 'crewOut', 'knowers', 'ledger', 'nameless', 'shadesFollowing', 'shadesNamed', 'shore', 'shoreRoll', 'step', 'wrath', 'years'].sort());
   assert.equal(s.step, 'cave');
   assert.equal(s.crewOut, 6);
   assert.equal(s.years, 7);
@@ -158,4 +158,41 @@ test('同伴特徵：每人都有、腳步與聲音各不相同、句子不重�
   assert.equal(lines.size, S.CREW.length * 2);
   assert.equal(S.traitsOf('阿基里斯'), null);
   assert.deepEqual(S.rollCall({ crewOut: 3 }), S.CREW.slice(0, 3));
+});
+
+test('岸邊骰子存檔：第一次擲好寫進 shoreRoll，重新整理沿用、不換人', () => {
+  const store = memStore();
+  let calls = 0;
+  const rng = () => { calls++; return [0.1, 0.9, 0.2, 0.9, 0.9, 0.9][(calls - 1) % 6]; };
+  const s1 = S.ensureShoreRoll(S.advance(S.fresh(), 'shore'), rng);
+  assert.deepEqual(s1.shoreRoll, [S.CREW[0], S.CREW[2]]);
+  S.save(store, s1);
+  // 重新整理：讀回存檔再確保一次，骰子不再擲、名單相同
+  const before = calls;
+  const s2 = S.ensureShoreRoll(S.load(store), () => 0);
+  assert.equal(calls, before);
+  assert.deepEqual(s2.shoreRoll, s1.shoreRoll);
+  assert.deepEqual(S.lostFromRoll('shoot', s2.shoreRoll), [S.CREW[0], S.CREW[2]]);
+  assert.deepEqual(S.lostFromRoll('name', s2.shoreRoll), [S.CREW[0], S.CREW[2]]);
+  assert.deepEqual(S.lostFromRoll('leave', s2.shoreRoll), []);
+  // 沒有人陣亡的骰子也要存住（空陣列，不是 null）
+  const s3 = S.ensureShoreRoll(S.fresh(), () => 0.99);
+  assert.deepEqual(s3.shoreRoll, []);
+  assert.deepEqual(S.ensureShoreRoll(s3, () => 0).shoreRoll, []);
+  // 名單外的名字（壞資料或換了帶出人數）→ 重擲
+  const s4 = S.ensureShoreRoll(Object.assign(S.fresh(), { crewOut: 2, shoreRoll: [S.CREW[5]] }), () => 0);
+  assert.deepEqual(s4.shoreRoll, S.CREW.slice(0, 2));
+  // 不改原物件；壞資料 normalize 成 null
+  const orig = S.fresh(); S.ensureShoreRoll(orig, () => 0); assert.equal(orig.shoreRoll, null);
+  assert.equal(S.normalize({ shoreRoll: '壞' }).shoreRoll, null);
+});
+
+test('clear：抹掉存檔後 hasSave 為 false', () => {
+  const store = memStore();
+  store.removeItem = k => store._m.delete(k);
+  S.save(store, S.fresh());
+  assert.equal(S.hasSave(store), true);
+  S.clear(store);
+  assert.equal(S.hasSave(store), false);
+  assert.equal(S.load(store).step, 'cave');
 });
