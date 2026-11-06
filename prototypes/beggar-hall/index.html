@@ -214,10 +214,19 @@ const series = (() => {
   let on = false; try { on = new URLSearchParams(location.search).get('series') === '1'; } catch (e) {}
   const save = on ? readSave() : null;
   if (!save) return null;
-  return { years: Number.isFinite(save.years) ? Math.max(7, Math.min(9, Math.round(save.years))) : 7 };
+  // 存檔停在 'beggar-hall'（宮門已過）：接著從大廳開始，帶著宮門留下的知情者與帳
+  const KS = ['unknown', 'suspects', 'knows'];
+  let resume = null;
+  if (save.step === 'beggar-hall') {
+    resume = BeggarSim.freshCarry();
+    const k = save.knowers && typeof save.knowers === 'object' ? save.knowers : {};
+    for (const n of ['tele', 'eum', 'pen']) if (KS.includes(k[n])) resume[n] = k[n];
+    if (Number.isFinite(save.ledger)) resume.ledger = Math.max(0, Math.round(save.ledger));
+  }
+  return { years: Number.isFinite(save.years) ? Math.max(7, Math.min(9, Math.round(save.years))) : 7, nameless: save.nameless === true, resume };
 })();
-if (series) { $('seriesYears').textContent = `在卡呂普索的島上困了 ${series.years} 年`; $('seriesYears').hidden = false; }
-const options = () => Object.assign({ knowers: opt.knowers.checked, tell: opt.tell.checked, statue: opt.statue.checked, ledger: opt.ledger.checked, loose: opt.dodge.value === 'loose' }, series ? { years: series.years } : {});
+if (series) { $('seriesYears').textContent = `在卡呂普索的島上困了 ${series.years} 年` + (series.nameless ? '・以無名之人回家' : '') + (series.resume ? '・接著上次：大廳' : ''); $('seriesYears').hidden = false; }
+const options = () => Object.assign({ knowers: opt.knowers.checked, tell: opt.tell.checked, statue: opt.statue.checked, ledger: opt.ledger.checked, loose: opt.dodge.value === 'loose' }, series ? { years: series.years, nameless: series.nameless } : {});
 
 // ---------- three.js ----------
 const canvas = $('cv');
@@ -515,12 +524,15 @@ function drawIndicators() {
 }
 
 // ---------- 開始一段 ----------
-function startGame(seg, carry) {
+// held：先建好場景但停在選單（沒有使用者點擊不能鎖滑鼠、開聲音），開場訊息留到按「繼續」才顯示
+function startGame(seg, carry, held = false) {
   game = BeggarSim.createGame(seg, carry, { options: options() });
   build(game);
   V.yaw = game.player.yaw; V.pitch = -.6; V.eye = 1.0; V.shake = 0;
   pend = {}; resultShown = false;
   $('result').hidden = true; $('menu').hidden = true; $('dialog').hidden = true; $('msgs').innerHTML = ''; $('btnResume').hidden = true; $('btnRestart').hidden = true;
+  if (held) { pause(); $('btnRestart').hidden = true; $('btnResume').textContent = seg === 'hall' ? '繼續：大廳' : '繼續'; return; }
+  $('btnResume').textContent = '繼續';
   paused = false; lockPointer();
   startMurmur(); if (murmurGain) murmurGain.gain.value = seg === 'hall' ? .25 : .05;
   SFX.lyre();
@@ -544,7 +556,7 @@ function showResult() {
   const r = game.result, c = game.carry, ledger = game.O.ledger;
   $('btnBow').hidden = true;
   if (series && game.phase === 'win') {
-    if (game.seg === 'gate') writeSave({ step: 'beggar-hall' });
+    if (game.seg === 'gate') writeSave({ ledger: c.ledger, knowers: { tele: c.tele, eum: c.eum, pen: c.pen }, step: 'beggar-hall' });
     else writeSave({ ledger: c.ledger, knowers: { tele: c.tele, eum: c.eum, pen: c.pen }, step: 'bow' });
   }
   if (game.phase === 'fail') {
@@ -822,7 +834,9 @@ window.addEventListener('keyup', e => { if (e.code === 'KeyE' && keys.KeyE) pend
 window.addEventListener('blur', () => { if (keys.KeyE) pend.eReleased = true; for (const k in keys) keys[k] = false; });
 
 function pause() { paused = true; $('btnResume').hidden = false; $('btnRestart').hidden = false; $('menu').hidden = false; unlockPointer(); }
-$('btnResume').onclick = () => { paused = false; $('menu').hidden = true; $('btnResume').hidden = true; $('btnRestart').hidden = true; lockPointer(); last = performance.now(); };
+$('btnResume').onclick = () => {
+  audio(); if (!murmurGain && game) { startMurmur(); if (murmurGain) murmurGain.gain.value = game.seg === 'hall' ? .25 : .05; }
+  $('btnResume').textContent = '繼續'; paused = false; $('menu').hidden = true; $('btnResume').hidden = true; $('btnRestart').hidden = true; lockPointer(); last = performance.now(); };
 $('btnRestart').onclick = () => { audio(); retry(); };
 $('btnGate').onclick = () => { audio(); startGame('gate', BeggarSim.freshCarry()); };
 $('btnHall').onclick = () => {
@@ -834,6 +848,7 @@ function retry() { if (game) startGame(game.seg, game.retryCarry()); }
 $('btnRetry').onclick = retry;
 $('btnNext').onclick = () => startGame('hall', game.carry);
 $('btnBow').onclick = () => { location.href = '../bow/index.html?series=1'; };   // 打包後 beggar/ 和 bow/ 是同層資料夾
+if (series && series.resume) startGame('hall', series.resume, true);   // 系列模式從存檔接續：直接在大廳
 window.BeggarDebug = { get game() { return game; } };   // 自動測試用：讀目前的遊戲狀態
 $('btnMenu').onclick = () => { game = null; $('tags').innerHTML = ''; $('result').hidden = true; $('btnResume').hidden = true; $('btnRestart').hidden = true; $('menu').hidden = false; };
 })();

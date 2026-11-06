@@ -614,3 +614,43 @@ test('years = 7 和沒給 years 完全一樣（同一個亂數種子、同樣的
     assert.equal(snap(a), snap(b));
   }
 });
+
+// ---------- 系列模式：無名之人（nameless）【改編；阿伽門農的忠告【電影】】 ----------
+const crypto = require('node:crypto');
+const snapHash = g => crypto.createHash('sha256').update(JSON.stringify({ t: g.t, p: g.player, phase: g.phase, carry: g.carry, anger: g.anger, body: g.body,
+  npcs: g.npcs.map(n => [n.kind, n.x, n.z, n.yaw, n.susp, n.mode]) })).digest('hex').slice(0, 16);
+const closeTo = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+const mixedInput = i => ({ yaw: Math.sin(i / 30) * 2, mz: i % 90 < 60 ? -1 : 0, stand: i % 200 > 180, ePressed: i % 50 === 0 });
+
+test('nameless：預設 false，同一個種子的結果和加入這個選項之前一模一樣', () => {
+  // 雜湊是加入 nameless 之前的版本算出來的（2026-11-06）
+  const golden = { gate: '1b7d59b30ea78c2b', hall: 'f181d0d1c28f039f' };
+  for (const seg of ['gate', 'hall']) {
+    const a = mk(seg, {}, { seed: 11 }), b = mk(seg, {}, { seed: 11, options: { nameless: false } });
+    assert.equal(a.nameless, false); assert.equal(a.suspMul, 1);
+    run(a, 40, mixedInput); run(b, 40, mixedInput);
+    assert.equal(snapHash(a), golden[seg], seg);
+    assert.equal(snapHash(b), golden[seg], seg);
+    assert.ok(!a.out.some(e => e.type === 'msg' && /阿伽門農/.test(e.a)));
+  }
+  assert.equal(mk('hall', {}, { options: { nameless: 'yes' } }).nameless, false);   // 只認 true
+});
+
+test('nameless：開場有一句阿伽門農的話；所有疑心增加 ×0.85', () => {
+  for (const seg of ['gate', 'hall']) {
+    const g = mk(seg, {}, { options: { nameless: true } });
+    assert.ok(g.out.some(e => e.type === 'msg' && e.a === '你想起阿伽門農的話：別以國王的身分回家。'), seg);
+  }
+  const a = mk('hall'), b = mk('hall', {}, { options: { nameless: true } });
+  const na = byName(a, '安提諾俄斯'), nb = byName(b, '安提諾俄斯');
+  a.addSusp(na, .4); b.addSusp(nb, .4);
+  closeTo(na.susp, .4); closeTo(nb.susp, .4 * S.NAMELESS_MUL);
+  a.addSusp(na, -.1); b.addSusp(nb, -.1);   // 降低不打折
+  closeTo(na.susp, .3); closeTo(nb.susp, .34 - .1);
+  // 實際跑一段：站著在廳裡亂走，疑心累積比較少
+  const total = g => g.npcs.reduce((s, n) => s + n.susp, 0);
+  const x = mk('hall', {}, { seed: 5 }), y = mk('hall', {}, { seed: 5, options: { nameless: true } });
+  const input = i => ({ yaw: Math.sin(i / 25), mz: -1, stand: true });
+  run(x, 3, input); run(y, 3, input);
+  assert.ok(total(y) < total(x), `${total(y)} < ${total(x)}`);
+});

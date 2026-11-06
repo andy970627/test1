@@ -106,6 +106,8 @@
   // 每多 1 年：回頭看的機率 ×1.12，並依這個順序把一個嘲弄者改成會丟東西的人（固定順序，好測、好重現）
   const YEARS_MIN = 7, YEARS_MAX = 9, YEAR_GLANCE_MUL = 1.12;
   const YEAR_THROWERS = ['阿格勞斯', '歐律諾摩斯'];
+  // 系列模式：在冥府聽到阿伽門農完整的忠告（nameless）→ 這一段所有疑心的增加 ×0.85【改編；忠告本身【電影】】
+  const NAMELESS_MUL = .85;
   const yearsOf = y => Number.isFinite(y) ? clamp(Math.round(y), YEARS_MIN, YEARS_MAX) : YEARS_MIN;
   function level(seg) {
     if (seg === 'gate') return {
@@ -139,15 +141,17 @@
   // ---------- 遊戲 ----------
   function createGame(seg, carry, opts = {}) {
     const rng = opts.rng || Math.random;
-    const O = Object.assign({ knowers: true, tell: true, statue: true, ledger: true, loose: false, years: YEARS_MIN }, opts.options || {});
+    const O = Object.assign({ knowers: true, tell: true, statue: true, ledger: true, loose: false, years: YEARS_MIN, nameless: false }, opts.options || {});
     O.years = yearsOf(O.years);
+    O.nameless = O.nameless === true;
+    const suspMul = O.nameless ? NAMELESS_MUL : 1;
     const extra = O.years - YEARS_MIN;
     const glanceMul = Math.pow(YEAR_GLANCE_MUL, extra);
     const L = level(seg);
     carry = Object.assign(freshCarry(), carry || {});
     if (!Number.isFinite(carry.ledger)) carry.ledger = 0;
     const g = {
-      seg, L, O, T, years: O.years, glanceP: Math.min(1, T.glanceP * glanceMul), glanceCuriousP: Math.min(1, T.glanceCuriousP * glanceMul), t: 0, phase: 'play', result: null, out: [],
+      seg, L, O, T, years: O.years, glanceP: Math.min(1, T.glanceP * glanceMul), glanceCuriousP: Math.min(1, T.glanceCuriousP * glanceMul), nameless: O.nameless, suspMul, t: 0, phase: 'play', result: null, out: [],
       carry: JSON.parse(JSON.stringify(carry)), snapshot: JSON.parse(JSON.stringify(carry)),
       player: { x: L.start.x, z: L.start.z, yaw: L.start.yaw, standing: false, limp: false, crouched: true, moving: false, light: 0, stepT: 0, bones: 1 },
       body: 1, anger: 0, statue: 'carried', statueT: 0, statuePos: null,
@@ -193,6 +197,7 @@
       g.msg('大廳裡全是求婚者。走到爐火邊坐下，但別被看穿。');
       g.later(4.2, () => g.msg('乞討、照看火盆是乞丐的差事；無端走動、站直張望都會引人注意。'));
     }
+    if (O.nameless) g.msg('你想起阿伽門農的話：別以國王的身分回家。', 'fire');
     for (const k in g.knowers) { const n = g.knowers[k]; n.kstate = g.carry[k]; n.tell = 0; }
     if (g.knowers.pen && g.carry.pen === 'knows') g.permission = true;
 
@@ -222,6 +227,7 @@
     const seers = () => hostiles().filter(n => n.vis > 0);
     function addSusp(n, v, reason) {
       if (g.phase !== 'play') return;
+      if (v > 0) v *= suspMul;
       n.susp = clamp(n.susp + v, 0, 1);
       if (v > 0 && n.vis > 0) n.lastSeen = { x: P.x, z: P.z };
       if (n.susp >= 1) fail(reason || 'seen', n);
@@ -266,7 +272,7 @@
     function tellBurst(n, k) {
       const lines = { tele: '忒勒馬科斯猛地站起來，對著求婚者吼：「你們誰敢再碰他！」', pen: '潘妮洛普推開門，盯著你看了太久。', eum: '歐邁俄斯忍不住大聲叫了一聲「主人」。' };
       g.msg(lines[k], 'tell'); n.tell = .3;
-      for (const h of hostiles()) if (hyp(h.x, h.z, n.x, n.z) < 12) { h.susp = clamp(h.susp + .6, 0, 1); if (h.susp >= 1) return fail('tell', n); }
+      for (const h of hostiles()) if (hyp(h.x, h.z, n.x, n.z) < 12) { h.susp = clamp(h.susp + .6 * suspMul, 0, 1); if (h.susp >= 1) return fail('tell', n); }
     }
     function humiliate(by, text, hit) {
       g.anger = clamp(g.anger + (hit ? T.angerHit : T.angerInsult), 0, 1);
@@ -583,7 +589,7 @@
         n.away = n.mode === 'investigate' || n.mode === 'walk';
         // 傳染：懷疑的人和身邊的人交頭接耳
         if (n.stage === 'suspicious') for (const o of hostiles()) if (o !== n && o.stage !== 'suspicious' && hyp(o.x, o.z, n.x, n.z) < T.contagionRadius) {
-          o.susp = clamp(o.susp + dt * T.contagionRate, 0, .99); if (n.lastSeen && !o.lastSeen) o.lastSeen = { x: n.lastSeen.x, z: n.lastSeen.z }; if (n.lastSeen && !o.focus) o.focus = { x: n.lastSeen.x, z: n.lastSeen.z, until: g.t + 1.5 };
+          o.susp = clamp(o.susp + dt * T.contagionRate * suspMul, 0, .99); if (n.lastSeen && !o.lastSeen) o.lastSeen = { x: n.lastSeen.x, z: n.lastSeen.z }; if (n.lastSeen && !o.focus) o.focus = { x: n.lastSeen.x, z: n.lastSeen.z, until: g.t + 1.5 };
         }
 
         // 各角色
@@ -698,5 +704,5 @@
     statue: w => ['他們看見了神像。', `乞丐身上掉出一尊雅典娜神像，${w}認出了它。`, '提示：神像掉出來時，3 秒內按 E 撿起來。'],
   };
 
-  return { T, createGame, level, stageOf, lightAt, segHitsRect, segHitsCircle, blocked, judgeDodge, FAIL_TEXT, freshCarry, angDiff, YEAR_THROWERS };
+  return { T, createGame, level, stageOf, lightAt, segHitsRect, segHitsCircle, blocked, judgeDodge, FAIL_TEXT, freshCarry, angDiff, YEAR_THROWERS, NAMELESS_MUL };
 });
