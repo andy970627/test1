@@ -14,7 +14,7 @@ const buildDir = path.resolve(args.build || 'build');
 const outDir = path.resolve(args.out || 'playtest-out');
 
 // 每個情況：跳過去之後在哪些秒數截圖、要按哪些鍵。
-// marks：遊戲寫出 [PLAYTEST] mark 名稱 時截圖（過場會在那一瞬間停住 2.5 秒）。
+// marks：遊戲寫出 [PLAYTEST] mark 名稱 時截圖（過場會在那一瞬間停住 6 秒）。
 // 測試機用軟體繪圖，一秒只有一兩格，真實秒數對不上遊戲裡的時間；過場要照 mark 拍。
 const SCENES = [
   { name: 'night', shots: [1, 4], actions: async (page) => {
@@ -57,10 +57,13 @@ function serve(root) {
   });
 }
 
-async function shot(page, scene, label) {
+// 截圖一張一張排隊拍：軟體繪圖下一張要好幾秒，兩張同時拍會卡住逾時。
+let shotQueue = Promise.resolve();
+function shot(page, scene, label) {
   const file = path.join(outDir, `${scene}-${label}.png`);
-  await page.screenshot({ path: file });
-  return file;
+  const next = shotQueue.then(() => page.screenshot({ path: file, timeout: 90000 })).then(() => file);
+  shotQueue = next.catch(() => {});
+  return next;
 }
 
 async function runScene(browser, base, scene) {

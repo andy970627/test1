@@ -24,7 +24,7 @@ public class PlaytestDriver : MonoBehaviour
     };
 
     /// <summary>自動畫面測試時，過場在關鍵瞬間停住這麼久（真實秒數），讓截圖拍得到。</summary>
-    public const float MarkHoldSeconds = 2.5f;
+    public const float MarkHoldSeconds = 6f;
 
     static PlaytestDriver s_Active;
 
