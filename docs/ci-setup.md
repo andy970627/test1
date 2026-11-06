@@ -43,7 +43,13 @@
 - 想不推程式也重建：Actions → **CI** → **Run workflow**。
 - 第一次跑 Unity 測試＋建網頁版合計約 30～60 分鐘（兩邊各要下載 Unity 並匯入整個專案），之後有快取會快很多。repo 是私人的，GitHub 每月有免費分鐘數上限。
 
-## 4. 網頁版已知限制
+## 4. 實測捷徑與自動畫面測試
+
+- **手動（Unity 編輯器）**：選單 **Odyssey → Create Playtest Scene and Play** 一鍵建場景並開始；夜晚中按 F2～F10 直接跳到要測的情況（巨石前、偷襲、正面出手、禱告、天亮前 30 秒、天亮、巨石全開、岸邊、被摸到），F1 面板下方列出按鍵。
+- **自動（CI）**：網頁版建好後，「自動畫面測試」用 Playwright 逐一打開 `index.html?playtest=名稱`，截圖、錄影、抓瀏覽器例外；結果在執行頁的摘要，截圖與影片在成品 **Playtest-Screens**。
+- **本機跑自動測試**：下載 `BlindCave-WebGL` 解壓到 `build/`，在 `tools/playtest` 執行 `npm install --no-save playwright@1.49.1 && npx playwright install chromium`，再回專案根目錄跑 `node tools/playtest/playtest.js --build build --out playtest-out`。
+
+## 5. 網頁版已知限制
 
 - 第一次點畫面才會鎖定滑鼠；按 Esc 時瀏覽器會先放開滑鼠，再點一下畫面即可。
 - 「離開」在網頁版沒有作用，直接關分頁。
