@@ -103,9 +103,15 @@ public class DeathScreen : MonoBehaviour
         Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, DeathCard.DimAlpha(t)));
 
         // 不加黑帶：只留上下兩條回紋線框住文字，畫面照樣看得到。
+        // 回紋之間要裝得下標題、死因與詳細行：內容較高時回紋往外撐，文字整塊置中，不壓到回紋。
+        float titleH = size * 1.25f;
+        float lineH = causeStyle.fontSize * 1.6f;
+        float blockH = titleH + lineH * (string.IsNullOrEmpty(detail) ? 1 : 2);
+        float pad = 4f + MeanderHeight + causeStyle.fontSize * 0.5f;
         float bandA = DeathCard.BandAlpha(t);
-        float bandH = Screen.height * BandHeight;
+        float bandH = Mathf.Max(Screen.height * BandHeight, blockH + pad * 2f);
         float bandY = (Screen.height - bandH) / 2f;
+        float blockTop = bandY + (bandH - blockH) / 2f;
         var gold = new Color(MeanderGold.r, MeanderGold.g, MeanderGold.b, bandA / DeathCard.BandMax);
         Meander(bandY + 4f, gold);
         Meander(bandY + bandH - 4f - MeanderHeight, gold);
@@ -113,10 +119,10 @@ public class DeathScreen : MonoBehaviour
         float a = DeathCard.TextAlpha(t);
         Color titleColor = dawn ? DawnGrey : BloodRed;
         titleColor.a = a;
-        var center = new Vector2(Screen.width / 2f, Screen.height / 2f - bandH * 0.12f);
+        var center = new Vector2(Screen.width / 2f, blockTop + titleH / 2f);
         var oldMatrix = GUI.matrix;
         GUIUtility.ScaleAroundPivot(Vector2.one * DeathCard.TextScale(t), center);
-        var titleRect = new Rect(0, center.y - size * 0.75f, Screen.width, size * 1.5f);
+        var titleRect = new Rect(0, blockTop, Screen.width, titleH);
         Outline(titleRect, Title, titleStyle, a, 3f);
         titleStyle.normal.textColor = titleColor;
         GUI.Label(titleRect, Title, titleStyle);
@@ -124,14 +130,14 @@ public class DeathScreen : MonoBehaviour
 
         var c = CauseColor;
         c.a = a;
-        var causeRect = new Rect(0, center.y + size * 0.75f, Screen.width, causeStyle.fontSize * 1.6f);
+        var causeRect = new Rect(0, blockTop + titleH, Screen.width, lineH);
         Outline(causeRect, cause, causeStyle, a, 2f);
         causeStyle.normal.textColor = c;
         GUI.Label(causeRect, cause, causeStyle);
         if (!string.IsNullOrEmpty(detail))
         {
             var d = new Color(c.r, c.g, c.b, a * 0.7f);
-            var detailRect = new Rect(0, center.y + size * 0.75f + causeStyle.fontSize * 1.6f, Screen.width, causeStyle.fontSize * 1.6f);
+            var detailRect = new Rect(0, blockTop + titleH + lineH, Screen.width, lineH);
             Outline(detailRect, detail, causeStyle, a, 2f);
             causeStyle.normal.textColor = d;
             GUI.Label(detailRect, detail, causeStyle);
