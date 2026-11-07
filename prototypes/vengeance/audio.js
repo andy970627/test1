@@ -14,7 +14,8 @@
  *   - 沒有音樂層（夜風、低吟、謝帕德）：大廳裡只有打擊、低吼、低音與動作音效，空檔更乾淨。
  *
  * Risset 節奏【改編】：4 層打擊，第 k 層第 n 拍在 p = log2(1 + n ÷ (M·2^k))；音量 = 鐘形 bell((k + p) ÷ 4)。
- *   空檔（驟降，第 1 個循環起每輪開頭 GAP 秒）不排拍，節奏匯流排（含殘響）與低吼壓到幾乎無聲；低音不斷，是忒勒馬科斯的拍子。
+ *   空檔（驟降，第 1 個循環起每輪開頭 GAP 秒）不排拍，節奏匯流排（含殘響）與低吼壓到幾乎無聲。
+ *   低音不經過 gate，是忒勒馬科斯的拍子；網格錯開半拍（t0 + 1.2 + m·2.4），所以空檔裡也沒有低音尾巴。
  *
  * 介面：
  *   createAudio(ctx, {t0, cycle, gap, bassPeriod, master}) → api
@@ -30,7 +31,7 @@
   'use strict';
 
   var C = {
-    CYCLE: 7.2, GAP: 0.6, BASS_PERIOD: 2.4,   // 和規則同值；實際以 createAudio 的 opts 為準
+    CYCLE: 7.2, GAP: 0.6, BASS_PERIOD: 2.4, BASS_OFFSET: 1.2,   // 和規則同值；實際以 createAudio 的 opts 為準
     LAYERS: 4, M: 7, BELL_SIGMA: 0.22, MIN_GAIN: 0.02,
     TENSION_LO: 0.7, TENSION_HI: 1.0,          // 節奏匯流排：循環開頭 → 結尾
     GATE_FLOOR: 0.03, GATE_FALL: 0.08, GATE_RISE: 0.12,
@@ -50,7 +51,7 @@
   function createAudio(ctx, opts) {
     opts = opts || {};
     var clk = { t0: opts.t0 != null ? +opts.t0 : ctx.currentTime, T: +opts.cycle || C.CYCLE, gap: opts.gap != null ? +opts.gap : C.GAP };
-    var BP = +opts.bassPeriod || C.BASS_PERIOD;
+    var BP = +opts.bassPeriod || C.BASS_PERIOD, BO = opts.bassOffset != null ? +opts.bassOffset : C.BASS_OFFSET;   // 低音網格 = t0 + BO + m·BP（和規則 bass.anchor 一致）
     var sr = ctx.sampleRate, dead = false, stopped = false;
 
     // ---------- 共用素材（複製自木馬之夜） ----------
@@ -246,7 +247,7 @@
       murmurGain.gain.linearRampToValueAtTime(0.0001, e - 0.02);
     }
     function scheduleBass(a, b) {
-      var t0 = clk.t0;
+      var t0 = clk.t0 + BO;
       for (var m = Math.ceil((a - t0) / BP - 1e-9); t0 + m * BP < b; m++) {
         var t = t0 + m * BP;
         if (t >= a && m >= 0) bassHit(t);

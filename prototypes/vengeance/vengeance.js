@@ -21,7 +21,8 @@
  *   循環長度固定 CYCLE（7.2 秒 = 3 個低音拍），循環 c 從 t0 + c·CYCLE 開始，相位 p = 經過秒數 ÷ CYCLE。
  *   空檔（驟降）＝第 1 個循環起，每個循環開頭的 GAP_LEN（0.6）秒：Risset 打擊斷掉、全場靜止。
  *   第 0 個循環沒有空檔（還沒有「驟降」），也沒有攻擊（求婚者慌忙找武器）。
- *   低音拍：t0 + k·BASS_PERIOD，所以每個循環開頭（驟降）剛好落在低音拍上。
+ *   低音拍：t0 + BASS_OFFSET + k·BASS_PERIOD（錯開半拍）：一個循環 3 拍，落在 p = 1/6、1/2、5/6，
+ *   空檔裡沒有低音（尾音約 1.15 秒，最後一拍在驟降前 1.2 秒），按 Q 和放箭也不會擠在同一瞬間。
  *
  * 一個循環裡（「越快越近越兇」）：
  *   求婚者從自己的位置往門檻逼近，前進量 a(p) = p²；空檔裡全場凍結在最近的位置（a = 1）。
@@ -70,6 +71,7 @@
     BELL_SIGMA: 0.22,     // 層音量鐘形曲線寬度
     BEAT_MIN_GAIN: 0.02,  // 低於這個音量的拍不排
     BASS_PERIOD: 2.4,     // 慢低音週期
+    BASS_OFFSET: 1.2,     // 低音網格相對 t0 錯開半拍，避開空檔
     BASS_WIN: 0.15,       // 低音拍容許 ±0.15 秒
     LATENCY_GRACE: 0.05,  // 晚按那側多給的秒數
     TELE_LOCK: 0.6,       // 按錯拍後幾秒內不能再按
@@ -228,7 +230,7 @@
       player: { x: 0, z: -0.8, yaw: 0, pitch: 0, hp: K.HP, arrows: K.ARROWS,
         dodgeAt: -1e9, breathing: false, breathStart: -1e9, breathEnd: -1e9, breathT: 0, breathLock: false, hurtAt: -1e9 },
       tele: { until: -1e9, coolUntil: -1e9, lockUntil: -1e9, lastBeat: null, streak: 0, blocks: 0 },
-      bass: { anchor: t0, period: K.BASS_PERIOD, nextBeat: t0 },
+      bass: { anchor: t0 + K.BASS_OFFSET, period: K.BASS_PERIOD, nextBeat: t0 + K.BASS_OFFSET },
       suitors: SUITORS.map((s) => Object.assign({}, s, { hpLeft: s.hp, down: false, downAt: null, dx: null, dz: null, surrender: false })),
       attacks: [], attackSeq: 0, plannedCycle: -1,
       floorArrows: [], arrowSeq: 0,

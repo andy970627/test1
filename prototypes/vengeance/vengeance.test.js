@@ -40,13 +40,21 @@ test('循環：相位、序號、空檔只在第 1 個循環起的開頭 0.6 秒
   assert.deepEqual(gs.map((x) => +x[0].toFixed(6)), [cs(1), cs(2), cs(3), cs(4)].map((v) => +v.toFixed(6)));
 });
 
-test('低音拍：每 2.4 秒，驟降剛好落在低音拍上；±0.15 秒判定（晚按多給 0.05）', () => {
+test('低音拍：每 2.4 秒、一個循環 3 拍，錯開半拍避開空檔；±0.15 秒判定（晚按多給 0.05）', () => {
   assert.ok(near(K.CYCLE / K.BASS_PERIOD, 3, 1e-9));
-  for (let c = 1; c < 5; c++) assert.ok(near(R.bassBeatNear(cs(c), T0).off, 0, 1e-9));
-  assert.ok(R.bassBeatNear(T0 + 2.4 + 0.14, T0, 2.4, 0.15, 0.05).ok);
-  assert.ok(R.bassBeatNear(T0 + 2.4 + 0.19, T0, 2.4, 0.15, 0.05).ok, '晚 0.19 秒還算（延遲寬限）');
-  assert.ok(!R.bassBeatNear(T0 + 2.4 - 0.19, T0, 2.4, 0.15, 0.05).ok, '早 0.19 秒不算');
-  assert.ok(!R.bassBeatNear(T0 + 3.6, T0, 2.4, 0.15, 0.05).ok);
+  const g = R.createGame({ t0: T0 });
+  const A = g.bass.anchor;
+  assert.ok(near(A, T0 + K.BASS_OFFSET, 1e-9));
+  for (let c = 1; c < 5; c++) {
+    const b = R.bassBeatNear(cs(c), A);
+    assert.ok(Math.abs(b.off) >= K.BASS_PERIOD / 2 - 1e-9, '驟降離最近的低音拍半拍遠');
+    // 驟降前最後一拍的尾音（約 1.15 秒）在空檔開始前結束
+    assert.ok(cs(c) - (b.next - K.BASS_PERIOD) >= 1.15);
+  }
+  assert.ok(R.bassBeatNear(A + 2.4 + 0.14, A, 2.4, 0.15, 0.05).ok);
+  assert.ok(R.bassBeatNear(A + 2.4 + 0.19, A, 2.4, 0.15, 0.05).ok, '晚 0.19 秒還算（延遲寬限）');
+  assert.ok(!R.bassBeatNear(A + 2.4 - 0.19, A, 2.4, 0.15, 0.05).ok, '早 0.19 秒不算');
+  assert.ok(!R.bassBeatNear(A + 1.2, A, 2.4, 0.15, 0.05).ok);
 });
 
 test('Risset 拍：空檔裡不排，每層每循環整數拍，交接處音量連續', () => {
@@ -191,7 +199,7 @@ test('屏息太久會喘氣，暴露位置', () => {
 
 test('忒勒馬科斯：低音拍 ±0.15 秒按 Q 舉盾，擋下一次攻擊', () => {
   const { g, impact } = withAttack('spear');
-  const beat = T0 + Math.floor((impact - T0) / K.BASS_PERIOD) * K.BASS_PERIOD;   // 命中前最後一拍
+  const A0 = g.bass.anchor, beat = A0 + Math.floor((impact - A0) / K.BASS_PERIOD) * K.BASS_PERIOD;   // 命中前最後一拍
   runTo(g, beat + 0.1);
   R.step(g, beat + 0.12, { tele: true, teleAt: beat + 0.12 });
   assert.ok(g.events.some((e) => e.type === 'tele_ok'));
@@ -207,7 +215,7 @@ test('忒勒馬科斯：低音拍 ±0.15 秒按 Q 舉盾，擋下一次攻擊', 
 
 test('忒勒馬科斯：按錯拍盾放下、沒擋住', () => {
   const { g, impact } = withAttack('spear');
-  const beat = T0 + Math.floor((impact - T0) / K.BASS_PERIOD) * K.BASS_PERIOD;
+  const A0 = g.bass.anchor, beat = A0 + Math.floor((impact - A0) / K.BASS_PERIOD) * K.BASS_PERIOD;
   runTo(g, beat + 0.1);
   R.step(g, beat + 0.12, { tele: true, teleAt: beat + 0.12 });
   const mid = beat + 0.6;
@@ -220,7 +228,7 @@ test('忒勒馬科斯：按錯拍盾放下、沒擋住', () => {
 
 test('忒勒馬科斯：判定用 teleAt（按鍵當下的音訊時間），不是幀時間', () => {
   const g = R.createGame({ t0: T0, seed: 1 });
-  const beat = T0 + 2 * K.BASS_PERIOD;
+  const beat = g.bass.anchor + 2 * K.BASS_PERIOD;
   runTo(g, beat - 0.5);
   R.step(g, beat + 0.3, { tele: true, teleAt: beat + 0.05 });   // 幀晚到 0.3 秒，但按鍵在 +0.05
   assert.ok(g.events.some((e) => e.type === 'tele_ok'));

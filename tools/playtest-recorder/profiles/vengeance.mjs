@@ -19,6 +19,8 @@ export default {
   viewport: { width: 960, height: 540 },
   renderScale: 0.5,
   defaults: { duration: 90 },
+  // 玩家自己的動作音（放箭、倒地、桌板、屏息、閃避、盾…）走提示音匯流排、空檔不壓：有這些 cue 的那次空檔照列但不計入
+  analysis: { thresholds: { blindConfoundCues: '^(shoot|down|shield_hit|miss|breath_in|breath_out|breath_ok|dodge|dodge_ok|block|hurt|tele_ok|tele_miss|gasp|pick|surrender|win|fall|empty|bow_busy)$' } },
 
   async prepare(page, o) {
     await page.waitForFunction(() => window.VengeanceDebug && window.VengeanceRules && window.VengeanceAudio, null, { timeout: 30000 });
@@ -126,7 +128,8 @@ export default {
         }
       }
       const per = timeline[0].bassPer || 2.4;
-      for (let m = Math.max(0, Math.ceil((S.a - S.t0) / per)); S.t0 + m * per <= S.b; m++) out.push({ t: S.t0 + m * per, w: 1, kind: 'bass' });
+      const an = (timeline.find((s) => s.ct0 === S.t0) || timeline[0]).bassAnchor;   // 低音網格錯開半拍：anchor = t0 + 1.2
+      for (let m = Math.max(0, Math.ceil((S.a - an) / per)); an + m * per <= S.b; m++) out.push({ t: an + m * per, w: 1, kind: 'bass' });
     }
     out.sort((x, y) => x.t - y.t);
     return out;

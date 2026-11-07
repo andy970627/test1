@@ -118,7 +118,7 @@ button:hover { filter: brightness(1.12); }
   <div class="card">
     <h1>大廳復仇</h1>
     <p class="lead">乞丐射穿了十二把斧頭，扯下破衣：他是奧德修斯。<br>大廳的門關上了。</p>
-    <p>求婚者占了你的家二十年。現在你站在門檻上，手裡是剛穿過斧孔的弓，兒子忒勒馬科斯在你身旁。</p>
+    <p>你離家二十年，求婚者占了你的家、逼你的妻子改嫁。現在你站在門檻上，手裡是剛穿過斧孔的弓，兒子忒勒馬科斯在你身旁。</p>
     <p>鼓聲會越來越急，求婚者越逼越近；鼓聲<strong>突然斷掉</strong>的那一瞬間，全場凍結——那就是放箭的時候。</p>
     <dl class="keys">
       <dt>滑鼠</dt><dd>瞄準（先點一下畫面鎖定滑鼠）</dd>
@@ -272,7 +272,7 @@ function buildFigures(game) {
     figs.set(s.id, f);
   }
   tele = figure(0x3c5a4a, false, { shield: true, hair: 0x4a3420 });
-  tele.g.position.set(-1.35, 0, -1.3);
+  tele.g.position.set(-1.7, 0, -2.6);
 }
 // 弓（掛在鏡頭上）
 const bow = new THREE.Group(); camera.add(bow);
@@ -282,7 +282,7 @@ const bow = new THREE.Group(); camera.add(bow);
   const str = new THREE.Mesh(new THREE.CylinderGeometry(.003, .003, .84, 3), MB(0xd8d0c0)); str.position.x = -.21 + .42 * Math.cos(Math.PI * .45) ; bow.add(str);
   bow.userData.arrow = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .8, 4), M(0xb09060));
   bow.userData.arrow.rotation.x = Math.PI / 2; bow.userData.arrow.position.set(-.05, 0, -.25); bow.add(bow.userData.arrow);
-  bow.position.set(.32, -.28, -.6); bow.rotation.set(0, 0, -.25);
+  bow.position.set(.36, -.24, -.7); bow.rotation.set(0, .25, -.35); bow.scale.setScalar(.45);
 }
 
 // ============================================================
@@ -306,7 +306,7 @@ function buildHud() {
   $('quiver').innerHTML = Array.from({ length: K.ARROWS }, () => '<b></b>').join('');
   const tr = $('phase').querySelector('.track');
   tr.querySelectorAll('.bass').forEach(b => b.remove());
-  for (let i = 0; i < 3; i++) { const b = document.createElement('div'); b.className = 'bass'; b.style.left = (i / 3 * 100) + '%'; tr.appendChild(b); }
+  for (let i = 0; i < 3; i++) { const b = document.createElement('div'); b.className = 'bass'; b.style.left = ((K.BASS_OFFSET + i * K.BASS_PERIOD) / K.CYCLE * 100) + '%'; tr.appendChild(b); }
   tr.querySelector('.gapw').style.width = (K.GAP_LEN / K.CYCLE * 100) + '%';
 }
 buildHud();
@@ -316,7 +316,7 @@ function startGame() {
   if (actx.state === 'suspended') actx.resume();
   const t0 = actx.currentTime + 0.4;
   game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0 });
-  if (!audio) audio = AudioMod.createAudio(actx, { t0, cycle: K.CYCLE, gap: K.GAP_LEN, bassPeriod: K.BASS_PERIOD });
+  if (!audio) audio = AudioMod.createAudio(actx, { t0, cycle: K.CYCLE, gap: K.GAP_LEN, bassPeriod: K.BASS_PERIOD, bassOffset: K.BASS_OFFSET });
   else audio.setClock({ t0, cycle: K.CYCLE, gap: K.GAP_LEN });
   buildFigures(game);
   V.yaw = 0; V.pitch = -.04;
@@ -439,7 +439,7 @@ function loop(now) {
   const dodgeK = Math.max(0, 1 - (t - P.dodgeAt) / .45);
   camera.position.set(P.x + Math.sin(dodgeK * Math.PI) * .45, K.EYE_Y - (P.breathing ? .12 : 0) - Math.sin(dodgeK * Math.PI) * .15, P.z);
   camera.rotation.set(V.pitch + sy + (Math.random() - .5) * hurtK * .08, V.yaw + sx, Math.sin(dodgeK * Math.PI) * -.12);
-  bow.position.y = -.28 + Math.sin(t * 2) * .004;
+  bow.position.y = -.24 + Math.sin(t * 2) * .004;
   bow.userData.arrow.visible = P.arrows > 0 && game.lastShotCycle !== cy.index;
   $('cross').style.transform = `translate(${(-sx * 900).toFixed(1)}px, ${(sy * 900).toFixed(1)}px)`;
   $('cross').classList.toggle('steady', gap);
@@ -482,6 +482,13 @@ function loop(now) {
       if (vis) { fg.tag.style.left = ((tmpV.x + 1) / 2 * innerWidth) + 'px'; fg.tag.style.top = ((1 - tmpV.y) / 2 * innerHeight) + 'px'; }
       fg.tag.querySelector('small').textContent = st.hpLeft > 1 ? '舉著桌板' : '';
     }
+  }
+  // 名牌互相重疊時往上錯開
+  const placed = [];
+  for (const fg of figs.values()) if (fg.tag && fg.tag.isConnected && fg.tag.style.display !== 'none') {
+    let x = parseFloat(fg.tag.style.left), y = parseFloat(fg.tag.style.top);
+    for (const q of placed) if (Math.abs(q.x - x) < 130 && Math.abs(q.y - y) < 30) y = q.y - 30;
+    fg.tag.style.top = y + 'px'; placed.push({ x, y });
   }
   // 忒勒馬科斯：盾舉著＝舉到胸前；冷卻中＝垂下
   if (tele) {
