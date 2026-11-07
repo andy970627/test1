@@ -1185,3 +1185,112 @@ test('程式玩家用固定策略通關整關（動態循環；不同 t0、種�
     assert.ok(Tmin < 8 && Tmax > 10, `循環長度有隨危險變化：${Tmin.toFixed(2)}～${Tmax.toFixed(2)}`);
   }
 });
+
+// ---------------- 第 8.5 節：假驟降 ----------------
+
+/** 關掉所有衛兵、固定 dt 一路跑，記下每一次交接（相位跳回 0）：{index, fake, pre（前一輪有沒有 pre_blind）, blindFrames}。 */
+function handoffs(g, from, to, dt, inputFn) {
+  const out = []; let t = from, lastIdx = g.cycle.index, pre = false, cur = null;
+  const hints = [];
+  while (t < to) {
+    t += dt; g.step(t, inputFn ? inputFn(g, t) : {});
+    for (const e of g.drain()) {
+      if (e.type === 'sfx' && e.a === 'pre_blind') pre = true;
+      if (e.type === 'hint') hints.push({ a: e.a, idx: g.cycle.index });
+    }
+    if (g.cycle.index !== lastIdx) {
+      lastIdx = g.cycle.index;
+      cur = { index: g.cycle.index, fake: g.cycle.fake, pre, blindFrames: 0, start: g.cycle.start };
+      out.push(cur); pre = false;
+    }
+    if (cur && g.cycle.blind) cur.blindFrames++;
+  }
+  return { list: out, hints };
+}
+const allDown = (g) => { for (const q of g.guards) { q.state = 'down'; q.active = false; } return g; };
+
+test('8.5 假驟降：常數；前兩區（木馬腹中、神殿廣場）不會出現', () => {
+  assert.equal(K.FAKE_FROM_ZONE, 3);
+  assert.equal(K.FAKE_EVERY, 4);
+  assert.equal(R.HINTS.fake, '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。');
+  for (const z of [1, 2]) for (const dyn of [false, true]) {
+    const g = allDown(dyn ? R.createLevel({ startZone: z, seed: 11 }) : lvl({ startZone: z, seed: 11 }));
+    g.step(0, {});
+    const { list } = handoffs(g, 0, 1500, 1 / 30);
+    assert.ok(list.length > 100, `區 ${z}`);
+    assert.ok(list.every((h) => !h.fake && h.pre && h.blindFrames > 0), `區 ${z} 出現假驟降或缺預告／盲區`);
+  }
+});
+
+test('8.5 假驟降：第 3 區起約每 4 個循環 1 次、不會連續；沒有盲區、沒有 pre_blind；第一次出現時提示', () => {
+  for (const seed of [1, 2, 3]) {
+    const g = allDown(lvl({ startZone: 3, seed }));
+    g.step(0, {});
+    const { list, hints } = handoffs(g, 0, 4000, 1 / 30);
+    const fakes = list.filter((h) => h.fake);
+    const rate = fakes.length / list.length;
+    assert.ok(rate > 0.17 && rate < 0.33, `seed ${seed}：比例 ${rate.toFixed(3)}（${fakes.length}／${list.length}）`);
+    for (let i = 1; i < list.length; i++) assert.ok(!(list[i].fake && list[i - 1].fake), `seed ${seed}：連續兩次假驟降（第 ${list[i].index} 輪）`);
+    for (const h of list.slice(1)) {
+      if (h.fake) { assert.equal(h.blindFrames, 0, '假驟降沒有盲區'); assert.equal(h.pre, false, '假驟降前沒有 pre_blind'); }
+      else { assert.ok(h.blindFrames > 0, '真的交接有盲區'); assert.equal(h.pre, true, '真的交接前有 pre_blind'); }
+    }
+    const fh = hints.filter((x) => x.a === R.HINTS.fake);
+    assert.equal(fh.length, 1, '提示只出一次');
+    assert.equal(fh[0].idx, fakes[0].index, '在第一次假驟降時提示');
+  }
+});
+
+test('8.5 假驟降：nextFake 提早一個循環決定；blindFrom 指向再下一輪；beatsBetween 照常回傳開頭的拍', () => {
+  const g = allDown(lvl({ startZone: 3, seed: 2 }));
+  let t = 0; g.step(t, {});
+  while (!g.cycle.nextFake && t < 2000) { t += 1 / 30; g.step(t, {}); }
+  assert.ok(g.cycle.nextFake, '找到假驟降');
+  const c = g.cycle, next = t + (1 - c.p) * c.T;
+  assert.ok(near(c.blindFrom, next + c.T, 1e-6), '下一段盲區在假驟降的再下一輪');
+  const bs = R.beatsBetween(next - 0.01, next + K.BLIND_LEN, g);
+  assert.ok(bs.length > 3 && bs.some((b) => b.t >= next && b.t < next + K.BLIND_LEN && b.k === 1), '假驟降開頭 0.6 秒照常有拍');
+  // 到了假驟降那一輪：fake = true、nextFake = false（不連續）、blind = false
+  while (g.cycle.index === c.index) { t += 1 / 30; g.step(t, {}); }
+  assert.equal(g.cycle.fake, true); assert.equal(g.cycle.nextFake, false); assert.equal(g.cycle.blind, false);
+  const bs2 = R.beatsBetween(g.cycle.start, g.cycle.start + K.BLIND_LEN, g);
+  assert.ok(bs2.length > 3, '這一輪開頭照常有拍');
+  // 對照：真的交接，開頭 0.6 秒沒有拍
+  while (g.cycle.index === c.index + 1) { t += 1 / 30; g.step(t, {}); }
+  assert.equal(g.cycle.fake, false);
+  assert.equal(R.beatsBetween(g.cycle.start, g.cycle.start + K.BLIND_LEN - 1e-6, g).length, 0);
+});
+
+test('8.5 假驟降：衛兵照常聽得到、衝刺沒有用', () => {
+  const g = lvl({ startZone: 3, seed: 2 });
+  const q = solo(g, 'g3a', 38, 23, 0);
+  place(g, 38, 21);    // 在衛兵背後 2 公尺：低頻時在感知範圍內
+  let t = 0; g.step(t, {});
+  while (!(g.cycle.nextFake && g.cycle.p > 0.9) && t < 2000) { t += 1 / 30; g.step(t, {}); }
+  while (!g.cycle.fake) { t += 1 / 30; g.step(t, {}); }
+  const s0 = q.susp, x0 = g.player.x;
+  g.step(t + 0.05, { mx: -1, dash: true });
+  assert.ok(Math.abs(g.player.x - x0) < 0.5, '沒有衝刺');
+  run(g, t + 0.05, t + 0.4, () => ({ mx: -0.3 }));
+  assert.ok(q.susp > s0, `移動被聽到（疑心 ${s0} → ${q.susp}）`);
+  assert.ok(!sfx(g).includes('dash'));
+});
+
+test('8.5 假驟降：警戒、追殺中不抽；追殺開始時取消已抽中的', () => {
+  const g = allDown(lvl({ startZone: 3, seed: 2 }));
+  let t = 0; g.step(t, {});
+  while (!g.cycle.nextFake && t < 2000) { t += 1 / 30; g.step(t, {}); }
+  g.hunted = true; g.stillT = 0;
+  // 直接呼叫內部的 startHunt 不方便：用「警戒中按錯拍」走正常流程
+  const h = lvl({ startZone: 3, seed: 2 });
+  solo(h, 'g3a', 38, 23, 0); place(h, 38, 24.2);
+  let u = 0; h.step(u, {});
+  while (!h.cycle.nextFake && u < 2000) { u += 1 / 30; h.step(u, {}); }
+  h.step(u + 0.01, { takedown: true });    // 盲區外按 → 起疑
+  assert.equal(h.panic.active, true);
+  h.step(u + 0.3, { calm: true });         // 不在拍上 → 追殺
+  assert.equal(h.hunted, true);
+  assert.equal(h.cycle.nextFake, false, '追殺開始時取消');
+  const { list } = handoffs(h, u + 0.3, u + 60, 1 / 30, (gg) => { gg.hunted = true; gg.stillT = 0; return {}; });
+  assert.ok(list.length > 5 && list.every((x) => !x.fake), '追殺中不出現');
+});

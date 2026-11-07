@@ -21,6 +21,10 @@
  *   聲音層用 p(t) = anchor.p + (t − anchor.t) ÷ anchor.T 外推排程（beatsBetween 也是這樣算）。
  *   T.DYNAMIC = false 時固定 T = CYCLE（舊規則，測試用）。
  *   盲區前 PRE_BLIND 秒發一次 sfx 'pre_blind'（預告，給聲音做很輕的預備音；只在一般盲區前發）。
+ *   假驟降（第 8.5 節）：從 FAKE_FROM_ZONE 區起，每次相位跳回 0 時用 rng 抽「下一次交接」是否為假
+ *   （機率 1 ÷ (FAKE_EVERY − 1)，平均約每 FAKE_EVERY 個循環 1 次；這一次是假的，下一次一定是真的，不會連續）。
+ *   cycle.fake = 這一輪開頭的交接是假驟降（沒有盲區、感知照常）；cycle.nextFake = 下一次交接是假驟降
+ *   （提早一整個循環決定，聲音才來得及不排靜音、不發 pre_blind）。警戒、追殺中不抽；追殺開始時取消已抽中的。
  *   Risset 拍點公式（從聲音層移過來，兩邊共用）：第 k 層第 n 拍在 p = log2(1 + n ÷ (M·2^k))，
  *   n = 0 .. M·2^k − 1；音量 = 鐘形曲線 bell((k + p) ÷ LAYERS)。
  *   腳步（第 8.3 節）：移動時每 STEP_GAP 秒一步；落在音量夠大的拍點 ±STEP_WIN 秒內 → 'step_masked'（不出聲），
@@ -78,6 +82,9 @@
     BLIND_LEN: 0.6,       // 盲區秒數（感知 = 0）：相位跳回 0 之後；警戒時是兩個低音拍正中央
     BLIND: 0.6,           // 舊名，等於 BLIND_LEN（畫面、聲音還在讀）；只改 BLIND_LEN 時會跟著改
     PRE_BLIND: 0.4,       // 盲區前幾秒發出 sfx 'pre_blind'（預告）
+    FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉
+    FAKE_FROM_ZONE: 3,    // 從第 3 區（窄巷）起才會出現
+    FAKE_EVERY: 4,        // 平均每幾個循環 1 次：每次交接以 1 ÷ (FAKE_EVERY − 1) 的機率抽，抽中後下一次一定是真的
     R_BASE: 2,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²
     R_GAIN: 8,
     ALERT_MUL: 1.3,       // 警戒（起疑）與追殺時感知 ×1.3
@@ -222,6 +229,8 @@
     const alert = !!(game.panic && game.panic.active) && !hunted;
     const nL = K.RISSET_LAYERS + (hunted ? 1 : 0);
     const BL = blindLen(K);
+    const aIdx = an.index != null ? an.index : (c.index || 0);
+    const fakeCyc = (cyc) => (cyc === aIdx && !!c.fake) || (cyc === aIdx + 1 && !!c.nextFake);
     const minGain = opts.minGain != null ? opts.minGain : (opts.includeQuiet ? 0 : K.BEAT_MIN_GAIN);
     const out = [];
     if (!(ub > ua)) return out;
@@ -240,7 +249,7 @@
           if (gain < minGain) continue;
           if (!opts.includeBlind) {
             if (alert) { if (game.bass && alertBlindAt(t, game.bass.anchor, game.bass.period, K).blind) continue; }
-            else if (ph * an.T < BL) continue;
+            else if (ph * an.T < BL && !fakeCyc(cyc)) continue;   // 假驟降：交接照常，開頭的拍照響
           }
           out.push({ t, k, n, cycle: cyc, p: ph, x: (k + ph) / K.RISSET_LAYERS, gain });
         }
@@ -295,7 +304,8 @@
     gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
     lockedExit: '還在被追，先甩掉追兵才能往前走。',
     step: '腳步要踩在鼓點上，聲音才會被蓋過；亂踩的腳步，身邊的衛兵聽得到。',
-    alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。'
+    alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
+    fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
   };
   // 失敗原因（g.failReason 是一句完整的話，畫面層直接顯示；g.failCode 是代號）
   const CAUSES = {
@@ -391,7 +401,7 @@
       time: null,
       // t0：起始對齊（不變，巡邏時低音以它對齊）；start：本循環 p = 0 的音訊時間；
       // blindFrom／blindTo：目前或下一段盲區（預估）；alertBlind：盲區是否改成低音拍之間
-      cycle: { T: K.CYCLE, targetT: K.CYCLE, t0, start: t0, p: 0, blind: false, index: 0, desync: false,
+      cycle: { T: K.CYCLE, targetT: K.CYCLE, t0, start: t0, p: 0, blind: false, index: 0, desync: false, fake: false, nextFake: false,
         anchor: { t: t0, p: 0, T: K.CYCLE, index: 0, start: t0 }, blindFrom: t0, blindTo: t0 + K.BLIND_LEN, alertBlind: false },
       bass: { period: K.BASS_PERIOD, anchor: t0, nextBeat: t0 },
       player: null,
@@ -534,6 +544,7 @@
       }
       clearPanic();
       g.hunted = true; g.stillT = 0;
+      g.cycle.nextFake = false;   // 追殺中不要假驟降（擺脫要靠真的盲區判斷時機）
       if (!wasHunted) { emit('sfx', 'hunt'); if (reason) emit('msg', reason); }
       hint('hunted');
     }
@@ -567,9 +578,18 @@
         alert: g.phase === 'play' && g.panic.active
       }, K);
     }
+    /** 假驟降：相位跳回 0 時抽下一次交接（這一次是假的就不抽，不會連續）。 */
+    function rollFake() {
+      const c = g.cycle;
+      c.fake = c.nextFake;
+      c.nextFake = false;
+      if (!K.FAKE || c.fake || g.phase !== 'play' || g.zone < K.FAKE_FROM_ZONE || g.hunted || g.panic.active) return;
+      c.nextFake = rng() < 1 / Math.max(1, K.FAKE_EVERY - 1);
+    }
     /** 首幀或重來：T 直接等於目標，相位照 t0 對齊。 */
     function snapClock(t) {
       const c = g.cycle;
+      c.fake = false; c.nextFake = false;
       c.targetT = cycleTarget(); c.T = c.targetT;
       const u = (t - c.t0) / c.T;
       c.index = Math.floor(u); c.p = u - c.index;
@@ -588,7 +608,7 @@
         c.T = c.targetT;
         const u = c.p + el / c.T, w = Math.floor(u);
         c.p = u - w; c.index += w;
-        if (w > 0) c.start = t - c.p * c.T;
+        if (w > 0) { c.start = t - c.p * c.T; c.nextFake = false; rollFake(); }
         return;
       }
       let ts = t - el;
@@ -597,7 +617,7 @@
         const maxd = c.T * K.CYCLE_RATE * h;
         c.T += Math.max(-maxd, Math.min(maxd, c.targetT - c.T));
         const np = c.p + h / c.T;
-        if (np >= 1) { c.start = ts + (1 - c.p) * c.T; c.index++; c.p = np - 1; }
+        if (np >= 1) { c.start = ts + (1 - c.p) * c.T; c.index++; c.p = np - 1; rollFake(); }
         else c.p = np;
         ts += h; el -= h;
       }
@@ -612,10 +632,12 @@
         c.blind = ab.blind; c.blindId = 'b' + ab.k + '@' + g.bass.anchor;
         c.blindFrom = ab.from; c.blindTo = ab.to;
       } else {
-        c.blind = t >= c.start - 1e-9 && t - c.start < BL;
+        c.blind = !c.fake && t >= c.start - 1e-9 && t - c.start < BL;
         c.blindId = 'c' + c.index;
         if (c.blind) { c.blindFrom = c.start; c.blindTo = c.start + BL; }
-        else { c.blindFrom = t + (1 - c.p) * c.T; c.blindTo = c.blindFrom + BL; }
+        else {   // 下一段（預估）；下一次交接是假驟降就再晚一個循環（假驟降不會連續）
+          c.blindFrom = t + (1 - c.p) * c.T + (c.nextFake ? c.T : 0); c.blindTo = c.blindFrom + BL;
+        }
       }
       c.desync = c.p > K.DESYNC_P;
       c.anchor = { t, p: c.p, T: c.T, index: c.index, start: c.start };
@@ -634,7 +656,8 @@
       const pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
       if (inp.yaw != null) pl.yaw = inp.yaw;
       // 盲區預告：循環最後 PRE_BLIND 秒發一次
-      if (!c.alertBlind && (1 - p) * c.T <= K.PRE_BLIND + 1e-9 && preBlindCycle !== c.index) {
+      // 假驟降之前不預告（聽得出差別：沒有預告音就不是真的斷）
+      if (!c.alertBlind && !c.nextFake && (1 - p) * c.T <= K.PRE_BLIND + 1e-9 && preBlindCycle !== c.index) {
         preBlindCycle = c.index; emit('sfx', 'pre_blind');
       }
       let loud = false;
@@ -769,6 +792,7 @@
         if (blind && c.index > blindHintGate.i && t - blindHintGate.t >= K.HINT_GAP) hint('blind');
       }
       if (c.alertBlind && blind && g.panic.count > 0) hint('alertBlind');
+      if (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN) hint('fake');   // 第一次假驟降時說明
 
       // 感知
       for (const q of g.guards) {
