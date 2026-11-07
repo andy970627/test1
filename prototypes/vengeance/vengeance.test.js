@@ -330,3 +330,129 @@ test('只會亂射、不躲的玩家會輸', () => {
   }
   assert.ok(wins <= 1, `亂射贏了 ${wins} 次`);
 });
+
+// ---------- 暗示階梯（docs/design/2026-11-07-hint-guidance.md 第 1、4、5 節） ----------
+const hintsOf = (g) => g.log.filter((e) => e.type === 'hint');
+
+test('暗示文字：五種機制都有第 2 階文字與第 3 階按鍵說明（照設計文件第 4 節）', () => {
+  assert.equal(R.HINTS.attack.text, '他舉起長矛時，下一拍就會出手：閃開或屏息。');
+  assert.equal(R.HINTS.dodge.text, '聽聲音從哪邊來，往另一邊閃。');
+  assert.equal(R.HINTS.gap.text, '鼓聲一斷，才是放箭的時候。');
+  assert.equal(R.HINTS.tele.text, '跟著最低的聲音按 Q，你兒子會替你擋。');
+  assert.equal(R.HINTS.arrows.text, '箭用完了，地上還有。');
+  for (const k in R.HINTS) assert.ok(R.HINTS[k].keys.length > 8, k + ' 有按鍵說明');
+});
+
+test('空檔外放箭：第 1 次只有世界內暗示、第 2 次加文字、第 3 次加按鍵；空檔裡放一箭退回第 1 階', () => {
+  const g = R.createGame({ t0: T0 });
+  runTo(g, cs(1) + 2); calm(g);
+  for (let i = 0; i < 3; i++) { const t = cs(1) + 2.2 + i * 0.3; R.step(g, t, { shoot: true, yaw: 2.5, pitch: 0.5 }); calm(g); }
+  const h = hintsOf(g).filter((e) => e.key === 'gap');
+  assert.deepEqual(h.map((e) => e.level), [1, 2, 3]);
+  assert.equal(h[0].text, undefined);
+  assert.equal(h[1].text, '鼓聲一斷，才是放箭的時候。'); assert.equal(h[1].keys, undefined);
+  assert.ok(/左鍵/.test(h[2].keys));
+  runTo(g, cs(2) + 0.1, () => ({})); calm(g);
+  R.step(g, cs(2) + 0.15, { shoot: true, yaw: 2.5, pitch: 0.5 });
+  const last = hintsOf(g).filter((e) => e.key === 'gap').pop();
+  assert.deepEqual([last.level, last.text], [1, undefined], '空檔裡放箭：退回第 1 階');
+  assert.equal(R.hintLevel(g.hints, 'gap'), 1);
+});
+
+test('按 Q 錯拍：失敗次數往上加；對拍一次退回第 1 階', () => {
+  const g = R.createGame({ t0: T0 });
+  const A = g.bass.anchor;
+  for (let i = 0; i < 3; i++) { runTo(g, A + i * 2.4 + 1.2); calm(g); R.step(g, A + i * 2.4 + 1.21, { tele: true }); }
+  assert.deepEqual(hintsOf(g).filter((e) => e.key === 'tele').map((e) => e.level), [1, 2, 3]);
+  runTo(g, A + 4 * 2.4); calm(g);
+  R.step(g, A + 4 * 2.4 + 0.01, { tele: true, teleAt: A + 4 * 2.4 });
+  assert.equal(R.hintLevel(g.hints, 'tele'), 1);
+  assert.equal(hintsOf(g).pop().level, 1);
+});
+
+test('被攻擊打中：記 attack；按了閃避還是被打中另記 dodge；閃過一次退回第 1 階', () => {
+  const g = R.createGame({ t0: T0, seed: 3 });
+  let hurt = 0, pressed = false;
+  // 什麼都不做，等被打中兩次；第二次在命中前 0.8 秒（太早）按閃避
+  while (hurt < 2 && g.time < T0 + 60) {
+    const t = g.time + 1 / 30;
+    const A = g.attacks.find((a) => !a.done && !a.cancelled);
+    const inp = {};
+    if (hurt === 1 && A && !pressed && t >= A.impact - 0.8) { inp.dodge = true; pressed = true; }
+    R.step(g, t, inp);
+    hurt = g.stats.hurts;
+  }
+  const att = hintsOf(g).filter((e) => e.key === 'attack');
+  assert.deepEqual(att.map((e) => e.level), [1, 2]);
+  assert.equal(att[1].text, '他舉起長矛時，下一拍就會出手：閃開或屏息。');
+  assert.ok(hintsOf(g).some((e) => e.key === 'dodge'), '按了閃避還是被打中 → dodge');
+  // 接著閃過一次
+  let ok = false;
+  const st = {};
+  while (!ok && g.phase === 'play' && g.time < T0 + 120) {
+    const t = g.time + 1 / 30, A = g.attacks.find((a) => !a.done && !a.cancelled && t >= a.warn);
+    const inp = {};
+    if (A && !st[A.id] && t >= A.impact - 0.1) { inp.dodge = true; st[A.id] = 1; }
+    R.step(g, t, inp);
+    ok = g.events.some((e) => e.type === 'dodge_ok');
+  }
+  assert.ok(ok);
+  assert.equal(R.hintLevel(g.hints, 'attack'), 1);
+  assert.equal(R.hintLevel(g.hints, 'dodge'), 1);
+});
+
+test('箭用完：射光那一下記一次、空箭袋再按放箭再記；撿到箭退回第 1 階', () => {
+  const g = R.createGame({ t0: T0 });
+  runTo(g, cs(1) + 1); calm(g);
+  g.player.arrows = 1;
+  R.step(g, cs(1) + 1.1, { shoot: true, yaw: 2.8, pitch: -0.9 }); calm(g);
+  R.step(g, cs(1) + 1.2, { shoot: true, yaw: 2.8, pitch: -0.9 }); calm(g);
+  R.step(g, cs(1) + 1.3, { shoot: true, yaw: 2.8, pitch: -0.9 }); calm(g);
+  const lv = hintsOf(g).filter((e) => e.key === 'arrows').map((e) => e.level);
+  assert.deepEqual(lv, [1, 2, 3]);
+  assert.equal(hintsOf(g).filter((e) => e.key === 'arrows')[1].text, '箭用完了，地上還有。');
+  const a = g.floorArrows[0];
+  g.player.x = a.x; g.player.z = a.z;
+  R.step(g, cs(1) + 1.4, { pick: true });
+  assert.equal(R.hintLevel(g.hints, 'arrows'), 1);
+});
+
+test('重來沿用暗示階梯：createGame({hints}) 接著上一局的失敗次數', () => {
+  const g = R.createGame({ t0: T0 });
+  runTo(g, cs(1) + 2); calm(g);
+  R.step(g, cs(1) + 2.1, { shoot: true, yaw: 2.5, pitch: 0.5 });
+  const g2 = R.createGame({ t0: 50, hints: g.hints });
+  runTo(g2, 50 + K.CYCLE + 2); calm(g2);
+  R.step(g2, 50 + K.CYCLE + 2.1, { shoot: true, yaw: 2.5, pitch: 0.5 });
+  assert.equal(hintsOf(g2).find((e) => e.key === 'gap').level, 2);
+});
+
+test('預備動作：每輪的出手預備落在最高速（p ≥ 0.75）；所有預備（含暴露位置引來的）都不在空檔裡', () => {
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const g = R.createGame({ t0: T0, seed });
+    const rng = R.makeRng(seed);
+    g.player.hp = 99;                                    // 只看時機，不讓它倒下
+    runTo(g, T0 + 80, (t) => (rng() < 0.03 ? { shoot: true, yaw: (rng() - 0.5) * 2, pitch: -0.05 } : { dodge: rng() < 0.05, breath: false }));
+    const warns = g.log.filter((e) => e.type === 'attack_warn');
+    assert.ok(warns.length > 5);
+    for (const w of warns) {
+      const A = g.attacks.find((a) => a.id === w.attack);
+      assert.ok(!R.inGap(w.t, T0), `種子 ${seed}：預備在空檔裡 ${w.t}`);
+      assert.ok(Number.isFinite(w.x) && Number.isFinite(w.z), '預備事件帶出手者位置（立體聲、火把用）');
+      if (A && A.reason === 'cycle') assert.ok(R.cycleAt(A.warn, T0).p >= 0.75, `預備相位 ${R.cycleAt(A.warn, T0).p}`);
+    }
+  }
+});
+
+test('程式玩家帶著暗示階梯照樣通關，不會累積到第 2 階', () => {
+  let hints;
+  for (const seed of [11, 12, 13]) {
+    const g = R.createGame({ t0: T0, seed, hints });
+    const st = {};
+    let t = T0;
+    while (t < T0 + 150 && g.phase === 'play') { t += 1 / 15; R.step(g, t, R.botInput(g, t, st)); }
+    assert.equal(g.phase, 'win');
+    assert.ok(!hintsOf(g).some((e) => e.level >= 2 && e.key !== 'attack'), JSON.stringify(hintsOf(g)));
+    hints = g.hints;
+  }
+});

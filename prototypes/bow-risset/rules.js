@@ -44,6 +44,14 @@
  *   求婚者起鬨【改編】；丟骨頭【原典：第 20 卷克特西波斯朝乞丐丟牛蹄，借來用，只當背景細節】
  *   心跳 Risset 節奏、驟降放箭、慢動作奏主題【改編】
  *   主題動機（回家的動機，木馬之夜的閃回）【改編】
+ *
+ * 暗示階梯（docs/design/2026-11-07-hint-guidance.md 第 1、3 節）【改編】：
+ *   每種機制記失敗次數（round.hints，重來時由 carry.hints 沿用）：
+ *     string 上弦滑掉｜drop 在最高速放箭而且沒成功｜heart 心跳加速中（還沒到最高速）放箭而且沒成功｜
+ *     heckle 被起鬨推偏（拿掉起鬨的推力就會多穿過孔）。
+ *   第 1 次失敗：只有世界內暗示（聲音、畫面）；失敗 2 次：第 2 階（一行提示文字）；3 次以上：第 3 階（文字＋按鍵說明）。
+ *   成功一次（上好弦／在驟降放箭／起鬨過後沒被推偏）就退回第 1 階。
+ *   事件 { type: 'hint', key, level, text（第 2 階起才有）, keys（第 3 階才有） }。文字照設計文件第 3 節「提示文字」欄。
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -570,6 +578,41 @@
     return { yaw: yaw, pitch: pitch };
   }
 
+  // ---------------------------------------------------------------- 暗示階梯【改編】
+  // text：設計文件第 3 節的「提示文字（第 2 階）」；keys：第 3 階加上的按鍵說明。
+  var HINTS = {
+    string: { label: '上弦平衡', text: '左右移動，讓指針留在亮處。', keys: '按住滑鼠左右移動（手機：手指按住畫面左右拖）；弦發出刺耳的摩擦聲就是偏了。' },
+    heart:  { label: '心跳加速＝越晃', text: '心跳越快，手越不穩。', keys: '按住滑鼠或空白鍵拉弓，先別急著放，等心跳斷掉。' },
+    drop:   { label: '驟降最穩', text: '心跳斷掉的那一瞬間放箭。', keys: '按住滑鼠或空白鍵拉弓；心跳斷掉、準心收成一點時放開。' },
+    heckle: { label: '求婚者起鬨', text: '有人舉杯，起鬨就要來了。', keys: '聽到敲桌、看到舉杯時繼續按住別放，等心跳斷掉再放開。' }
+  };
+  /** 暗示階梯的狀態（純資料，可沿用到下一輪）：{ fails: {key: 次數}, level: {key: 1..3} } */
+  function createHints(prev) {
+    if (prev && prev.fails && prev.level) return prev;
+    return { fails: {}, level: {} };
+  }
+  function hintLevel(h, key) { return (h && h.level[key]) || 1; }
+  function levelFor(fails) { return fails >= 3 ? 3 : fails >= 2 ? 2 : 1; }
+  function hintEvent(key, level) {
+    var H = HINTS[key] || {};
+    var e = { type: 'hint', key: key, level: level };
+    if (level >= 2) e.text = H.text;
+    if (level >= 3) e.keys = H.keys;
+    return e;
+  }
+  /** 記一次失敗，回傳 hint 事件（每次失敗都發，第 1 階沒有文字，畫面只加強世界內暗示）。 */
+  function hintFail(h, key) {
+    h.fails[key] = (h.fails[key] || 0) + 1;
+    h.level[key] = levelFor(h.fails[key]);
+    return hintEvent(key, h.level[key]);
+  }
+  /** 記一次成功：退回第 1 階；原本在第 2 階以上才回傳 hint 事件（讓畫面收起文字），否則 null。 */
+  function hintSuccess(h, key) {
+    var was = hintLevel(h, key);
+    h.fails[key] = 0; h.level[key] = 1;
+    return was > 1 ? hintEvent(key, 1) : null;
+  }
+
   // ---------------------------------------------------------------- 一輪（狀態機）
   var TEXT = {
     introString: '求婚者一個接一個都拉不開這把弓。現在輪到乞丐模樣的你。',
@@ -587,7 +630,7 @@
   };
 
   // options: { difficulty, stringPhase（預設 true）, fatigue（預設 true）, heckle（預設 true）}
-  // carry:   { strungOnce } 同一場比試重來時沿用
+  // carry:   { strungOnce, hints } 同一場比試重來時沿用（hints＝暗示階梯的失敗次數）
   // now：建立當下的時鐘（音訊時間，預設 0）
   function createRound(options, rng, carry, now) {
     options = options || {}; rng = rng || Math.random; carry = carry || {};
@@ -612,6 +655,8 @@
       waitRelease: false,
       heckles: [],            // 這次拉弓的起鬨 [{ id, j, kind, size, cueAt, hitAt, dir, ph, who, hit }]
       heckleSeq: 0,
+      heckleSeen: 0,          // 這次拉弓已經出現過幾次起鬨預告（暗示階梯判定「等過起鬨」用）
+      hints: createHints(carry.hints),
       heckleNow: { yaw: 0, pitch: 0 },
       crowd: 0.18,
       flight: null,
@@ -650,7 +695,7 @@
   }
 
   // input: { now（音訊時鐘秒，可省）, down, stringDx, look: {yaw, pitch} }
-  // 回傳事件：'strung'|'slip'|'drawStart'|'fire'|'cancel'|'dropStart'|'dropEnd'|'heckleCue'|'heckleHit'|'pass'|'stop'|'result'
+  // 回傳事件：'strung'|'slip'|'drawStart'|'fire'|'cancel'|'dropStart'|'dropEnd'|'heckleCue'|'heckleHit'|'pass'|'stop'|'result'|'hint'
   function stepRound(round, dt, input) {
     input = input || {};
     if (input.now !== undefined && input.now !== null) {
@@ -665,10 +710,12 @@
       stepString(round.str, Math.min(pdt, 0.05), { down: down, dx: input.stringDx || 0 });   // 上弦同原版：每步最多 0.05 秒（指針模擬步長太大會不穩）
       if (round.str.failed) {
         ev.push({ type: 'slip' });
+        ev.push(hintFail(round.hints, 'string'));
         ev.push({ type: 'result', result: finish(round, false, TEXT.slipTitle, TEXT.slipText, 'slip') });
       } else if (round.str.done) {
         round.strungOnce = true; round.phase = 'aim'; round.waitRelease = down;
         ev.push({ type: 'strung', text: TEXT.strung });
+        var hs = hintSuccess(round.hints, 'string'); if (hs) ev.push(hs);
       }
     } else if (round.phase === 'aim') {
       if (round.waitRelease && !down) round.waitRelease = false;
@@ -681,14 +728,18 @@
       }
       if (d.drawing && !pull) {
         var rel = releaseDraw(d);
-        if (rel.fire) { var res = fireRound(round, rel); ev.push({ type: 'fire', res: res, power: rel.power, flight: round.flight, at: now }); }
+        if (rel.fire) {
+          var heckAtRel = round.heckleNow || { yaw: 0, pitch: 0 };
+          var res = fireRound(round, rel); ev.push({ type: 'fire', res: res, power: rel.power, flight: round.flight, at: now });
+          judgeRelease(round, rel, res, heckAtRel, ev);
+        }
         else {
           ev.push({ type: 'cancel', text: TEXT.cancel });
           round.heart = createHeart('rest', now); round.heckles = [];
         }
       } else {
         if (pull && !d.drawing) {
-          round.heart = createHeart('risset', now); round.heckles = []; prevHb = null;
+          round.heart = createHeart('risset', now); round.heckles = []; round.heckleSeen = 0; prevHb = null;
           ev.push({ type: 'drawStart', at: now });
         }
         stepDraw(d, pdt, { down: pull }, { heart: round.heart, now: now, fatigue: round.fatigue, swayMul: round.swayMul });
@@ -737,6 +788,7 @@
                 hitAt: hb.s + K.hitP * hb.C, dir: { x: Math.cos(ang), y: Math.sin(ang) }, ph: rng() * 6.28,
                 who: Math.floor(rng() * 14), hit: false };
       round.heckles.push(e);
+      round.heckleSeen++;
       ev.push({ type: 'heckleCue', kind: kind, label: K.kinds[kind].label, who: e.who, id: e.id, lead: Math.max(0, e.hitAt - now) });
     }
     for (var i = 0; i < round.heckles.length; i++) {
@@ -744,6 +796,28 @@
       if (!x.hit && now >= x.hitAt) { x.hit = true; ev.push({ type: 'heckleHit', kind: x.kind, who: x.who, id: x.id }); }
     }
     round.heckles = round.heckles.filter(function (x) { return now < x.hitAt + 2; });
+  }
+
+  /**
+   * 放箭後的暗示階梯判定。heck：放手那一刻疊在晃動上的起鬨推力。
+   *   被起鬨推偏：拿掉起鬨推力再算一次，會多穿過孔 → heckle 失敗。
+   *   在最高速放而且沒成功 → drop 失敗；在加速中放而且沒成功 → heart 失敗。
+   *   在驟降放 → drop、heart 成功；這次拉弓有過起鬨、放手時推力已經散掉（或贏了）→ heckle 成功。
+   */
+  function judgeRelease(round, rel, res, heck, ev) {
+    var h = round.hints, K = TUNING.heckle, push = function (e) { if (e) ev.push(e); };
+    var heckMag = Math.hypot(heck.yaw, heck.pitch);
+    var byHeckle = false;
+    if (!res.win && heckMag > 1e-6) {
+      var sw = rel.sway, clean = { yaw: sw.yaw - heck.yaw, pitch: sw.pitch - heck.pitch, x: sw.x, y: sw.y };
+      var alt = simulate(makeShot({ yaw: round.aim.yaw, pitch: round.aim.pitch, power: rel.power, sway: clean }), round.difficulty, round.axeOffset);
+      byHeckle = alt.win || alt.passed > res.passed;
+    }
+    if (byHeckle) push(hintFail(h, 'heckle'));
+    else if (round.heckleSeen > 0 && (res.win || heckMag < K.jolt * 0.1)) push(hintSuccess(h, 'heckle'));
+    if (rel.stage === 'drop') { push(hintSuccess(h, 'drop')); push(hintSuccess(h, 'heart')); }
+    else if (!res.win && !byHeckle && rel.stage === 'fast') push(hintFail(h, 'drop'));
+    else if (!res.win && !byHeckle && rel.stage === 'rising') push(hintFail(h, 'heart'));
   }
 
   // ---------------------------------------------------------------- 解算（測試與程式玩家用）
@@ -817,7 +891,8 @@
   }
 
   return {
-    TUNING: TUNING, THEME12: THEME12, DIR_LABEL: DIR_LABEL, TEXT: TEXT,
+    TUNING: TUNING, THEME12: THEME12, DIR_LABEL: DIR_LABEL, TEXT: TEXT, HINTS: HINTS,
+    createHints: createHints, hintFail: hintFail, hintSuccess: hintSuccess, hintLevel: hintLevel, judgeRelease: judgeRelease,
     createRng: createRng, createNoise: createNoise, clamp: clamp, hash01: hash01,
     holeRadius: holeRadius, axeZ: axeZ, axePositions: axePositions,
     // Risset

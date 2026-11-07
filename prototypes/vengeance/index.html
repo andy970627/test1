@@ -68,6 +68,8 @@ canvas#cv { position: fixed; inset: 0; display: block; width: 100%; height: 100%
 #warn { left: 50%; top: 58%; transform: translateX(-50%); font-size: 20px; font-family: var(--display); color: var(--warn); text-shadow: 0 1px 3px #000, 0 0 10px #000; text-align: center; white-space: nowrap; }
 #warn .k, #hint .k { display: inline-block; border: 1px solid currentColor; padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: .8em; font-family: var(--text); }
 #hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 16px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(680px, calc(100vw - 32px)); }
+#hint.ladder { color: var(--fire); }
+#hint .keysline { display: block; font-size: 14px; color: var(--ash); margin-top: 2px; }
 #msgs { left: 50%; top: calc(18px + var(--st)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(560px, calc(100vw - 32px)); }
 #msgs div { background: var(--panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 4s forwards; }
 @keyframes fade { 0%, 80% { opacity: 1 } 100% { opacity: 0 } }
@@ -217,11 +219,25 @@ const flames = [];
 // 長桌（翻倒的、立著的）
 box(1, .8, 5, 0x4a3524, -6.6, .4, -6); box(1, .8, 5, 0x4a3524, 6.6, .4, -6);
 box(1, .8, 4, 0x4a3524, -2.8, .4, -15.5); box(4, .8, 1, 0x4a3524, 3, .4, -10.8);
-// 牆上的火把
-for (const [x, z] of [[-8.1, -5], [8.1, -5], [-8.1, -15], [8.1, -15]]) {
+// 牆上的火把（攻擊那一側的火把會閃一下：世界內暗示「閃避方向」）
+const torches = [];
+for (const [x, z] of [[-8.1, -3.5], [8.1, -3.5], [-8.1, -9], [8.1, -9], [-8.1, -15], [8.1, -15]]) {
   box(.12, .7, .12, 0x2a1f16, x, 2.4, z);
-  const f = new THREE.Mesh(new THREE.ConeGeometry(.15, .45, 6), MB(0xf2b866)); f.position.set(x, 2.95, z); scene.add(f); flames.push(f);
+  const f = new THREE.Mesh(new THREE.ConeGeometry(.15, .45, 6), new THREE.MeshBasicMaterial({ color: 0xf2b866 })); f.position.set(x, 2.95, z); scene.add(f); flames.push(f);
+  torches.push({ x, z, mesh: f, flash: 0 });
 }
+const torchFlash = new THREE.PointLight(0xffd090, 0, 9, 1.6); scene.add(torchFlash);
+function flashTorch(x, z) {                // 離出手者最近、而且和他在同一側（相對玩家視線）的火把
+  const P = game.player, side = Math.sign(Rules.wrapAngle(Rules.yawTo(x - P.x, z - P.z) - V.yaw)) || 1;
+  let best = null, bd = 1e9;
+  for (const T of torches) {
+    const a = Rules.wrapAngle(Rules.yawTo(T.x - P.x, T.z - P.z) - V.yaw);
+    const d = Math.hypot(T.x - x, T.z - z) + (Math.sign(a) === side ? 0 : 30);
+    if (d < bd) { bd = d; best = T; }
+  }
+  if (best) { best.flash = 1; torchFlash.position.set(best.x * .95, 2.9, best.z); torchFlash.userData.k = 1; }
+}
+const panOf = (x, z) => { const P = game.player, a = Rules.wrapAngle(Rules.yawTo(x - P.x, z - P.z) - V.yaw); return clamp(-Math.sin(a), -1, 1); };
 // 掛在牆上的盾（裝飾）
 for (const z of [-7, -12, -17]) { const s = cyl(.5, .5, .08, 0x8a6a3a, -8.2, 3.2, z, scene, 16); s.rotation.z = Math.PI / 2; }
 
@@ -236,12 +252,23 @@ function figure(color, tall, opt = {}) {
   box(.09, .55 * s, .09, color, 0, -.27 * s, 0, pivot);                      // 持兵器的手
   const pivotL = new THREE.Group(); pivotL.position.set(-.3 * s, 1.15 * s, 0); up.add(pivotL);
   box(.09, .55 * s, .09, color, 0, -.27 * s, 0, pivotL);
-  let spear = null, table = null, shield = null;
+  let spear = null, table = null, shield = null, chair = null, aura = null;
   if (opt.spear) { spear = cyl(.025, .025, 2.0, 0x6a5030, 0, -.5, 0, pivot, 5); const tip = new THREE.Mesh(new THREE.ConeGeometry(.05, .2, 5), M(0xb89a60)); tip.position.y = 1.08; spear.add(tip); }
   if (opt.table) { table = box(1.0, .8, .08, 0x5a4026, 0, .85, -.4, up); }
+  if (opt.chair) {                                                         // 撲上來前舉起的椅子（預備動作）
+    chair = new THREE.Group(); chair.visible = false;
+    box(.42, .05, .42, 0x5a4026, 0, 0, 0, chair); for (const [cx, cz] of [[-.17, -.17], [.17, -.17], [-.17, .17], [.17, .17]]) box(.04, .4, .04, 0x4a3420, cx, -.22, cz, chair);
+    box(.42, .4, .04, 0x5a4026, 0, .22, -.19, chair);
+    chair.position.set(0, 2.0 * s, .05); up.add(chair);
+  }
+  if (opt.aura) {                                                          // 最強的求婚者：腳下一圈火光、頭上一道金箍
+    aura = new THREE.Mesh(new THREE.RingGeometry(.42, .62, 28), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: .55, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+    aura.rotation.x = -Math.PI / 2; aura.position.y = .03; g.add(aura);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.165 * s, .022, 6, 18), MB(0xf0b040)); band.rotation.x = Math.PI / 2; band.position.y = 1.5 * s; up.add(band);
+  }
   if (opt.shield) { shield = cyl(.42, .42, .06, 0xa07a40, 0, 0, 0, scene, 18); shield.rotation.x = Math.PI / 2; const boss = sphere(.08, 0xd0b070, 0, -.04, 0, shield); boss.scale.y = .5; pivotL.add(shield); shield.position.set(-.05, -.35, -.2); }
   scene.add(g);
-  return { g, up, pivot, pivotL, spear, table, shield, fall: 0, kneel: 0 };
+  return { g, up, pivot, pivotL, spear, table, shield, chair, aura, fall: 0, kneel: 0 };
 }
 let figs = new Map();             // 求婚者 id → 圖形
 let tele = null;                  // 忒勒馬科斯
@@ -261,7 +288,7 @@ function clearFigures() {
 function buildFigures(game) {
   clearFigures();
   for (const s of game.suitors) {
-    const f = figure(s.color, s.leader, { spear: true, table: s.hp > 1, hair: s.leader ? 0x1a120a : 0x3a2a1a });
+    const f = figure(s.color, s.leader, { spear: true, table: s.hp > 1, chair: s.hp <= 1, aura: s.leader, hair: s.leader ? 0x1a120a : 0x3a2a1a });
     f.g.position.set(s.x, 0, s.z);
     f.vx = s.x; f.vz = s.z;
     if (s.leader) {
@@ -272,6 +299,7 @@ function buildFigures(game) {
     figs.set(s.id, f);
   }
   tele = figure(0x3c5a4a, false, { shield: true, hair: 0x4a3420 });
+  tele.shield.material = new THREE.MeshLambertMaterial({ color: 0xa07a40, emissive: 0x000000 });   // 盾牌在低音拍上反光（獨立材質）
   tele.g.position.set(-1.7, 0, -2.6);
 }
 // 弓（掛在鏡頭上）
@@ -282,6 +310,9 @@ const bow = new THREE.Group(); camera.add(bow);
   const str = new THREE.Mesh(new THREE.CylinderGeometry(.003, .003, .84, 3), MB(0xd8d0c0)); str.position.x = -.21 + .42 * Math.cos(Math.PI * .45) ; bow.add(str);
   bow.userData.arrow = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .8, 4), M(0xb09060));
   bow.userData.arrow.rotation.x = Math.PI / 2; bow.userData.arrow.position.set(-.05, 0, -.25); bow.add(bow.userData.arrow);
+  // 空檔時箭頭泛光（世界內暗示「現在可以放箭」）
+  bow.userData.tip = new THREE.Mesh(new THREE.SphereGeometry(.035, 10, 8), new THREE.MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  bow.userData.tip.position.set(-.05, 0, -.66); bow.add(bow.userData.tip);
   bow.position.set(.36, -.24, -.7); bow.rotation.set(0, .25, -.35); bow.scale.setScalar(.45);
 }
 
@@ -295,6 +326,8 @@ let pend = {};
 let showPhase = true;
 let lastFrame = performance.now();
 const hintState = { tele: false, shot: false, shown: 0 };
+let ladder = null;                // 暗示階梯第 2、3 階的文字 { key, html, until }
+let hintsCarry = null;            // 重來時沿用的失敗次數（規則的 g.hints）
 
 function msg(text, color) {
   const d = document.createElement('div'); d.textContent = text; if (color) d.style.color = color;
@@ -315,7 +348,8 @@ function startGame() {
   if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
   if (actx.state === 'suspended') actx.resume();
   const t0 = actx.currentTime + 0.4;
-  game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0 });
+  game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0, hints: hintsCarry });
+  hintsCarry = game.hints; ladder = null; laterCues.length = 0;
   if (!audio) audio = AudioMod.createAudio(actx, { t0, cycle: K.CYCLE, gap: K.GAP_LEN, bassPeriod: K.BASS_PERIOD, bassOffset: K.BASS_OFFSET });
   else audio.setClock({ t0, cycle: K.CYCLE, gap: K.GAP_LEN });
   buildFigures(game);
@@ -335,21 +369,23 @@ function setHint(h) { $('hint').innerHTML = h || ''; }
 // ============================================================
 const nameOf = id => { const s = game.suitors.find(x => x.id === id); return s ? (s.leader ? s.title + s.name : '一名求婚者') : ''; };
 function onEvent(e) {
-  if (audio) audio.cue(e.type, null, e);
+  if (e.type === 'attack_warn') e.pan = panOf(e.x, e.z);
+  if (audio && e.type !== 'hint') audio.cue(e.type, null, e);
   const f = e.by ? figs.get(e.by) : e.id ? figs.get(e.id) : null;
   switch (e.type) {
     case 'shoot': flyArrow(e); if (!e.gap) msg('鼓聲裡放箭：手在晃，弓弦聲也暴露了你的位置', 'var(--warn)'); else hintState.shot = true; break;
     case 'down': if (f) { f.fall = 0.001; if (f.tag) f.tag.remove(); } msg(e.leader ? `${nameOf(e.id)}倒下了` + (e.left ? `（還有 ${e.left} 名頭目）` : '') : '一名求婚者倒下了', e.leader ? 'var(--fire)' : null); break;
-    case 'shield_hit': if (f && f.table) { f.table.rotation.x = .3; } msg(`箭釘在${nameOf(e.id)}舉起的桌板上——再一箭`); break;
-    case 'miss': break;
+    case 'shield_hit': { if (f && f.table) { f.table.rotation.x = .3; } msg(`箭釘在${nameOf(e.id)}舉起的桌板上——再一箭`); const a = game.floorArrows.find(x => x.id === e.arrow); if (a) landSound(a.x, a.z, e.t); break; }
+    case 'miss': landSound(e.x, e.z, e.t); break;
+    case 'hint': onHint(e); break;
     case 'bow_busy': msg('一個空檔只來得及射一箭'); break;
-    case 'empty': msg('箭袋空了：走到地上的箭旁邊按 E 撿', 'var(--warn)'); break;
-    case 'attack_warn': break;
+    case 'empty': msg('箭袋空了', 'var(--warn)'); break;
+    case 'attack_warn': flashTorch(e.x, e.z); break;
     case 'dodge_ok': msg('閃過了', 'var(--still)'); break;
     case 'breath_ok': msg('你屏住呼吸——他撲了個空', 'var(--still)'); break;
     case 'block': msg('忒勒馬科斯舉盾擋下！', 'var(--bronze)'); break;
     case 'hurt': $('red').style.transition = 'none'; $('red').style.opacity = 1; requestAnimationFrame(() => { $('red').style.transition = 'opacity .8s'; $('red').style.opacity = 0; }); msg(e.kind === 'spear' ? '被矛擦中！' : '被撲倒在地，又掙扎起身！', 'var(--danger)'); break;
-    case 'tele_ok': hintState.tele = true; break;
+    case 'tele_ok': hintState.tele = true; shieldFlash = 1; break;
     case 'tele_miss': msg('沒對上低音，忒勒馬科斯慌了一下'); break;
     case 'tele_busy': msg('盾剛被撞開，他還在穩住'); break;
     case 'gasp': msg('憋不住了，大口喘氣——他們聽見了', 'var(--warn)'); break;
@@ -360,6 +396,24 @@ function onEvent(e) {
     case 'fall': onFail(); break;
   }
 }
+// 暗示階梯：第 2 階一行文字、第 3 階加按鍵；第 1 階（或成功退回）收起同一個機制的文字
+function onHint(e) {
+  if (e.level < 2) { if (ladder && ladder.key === e.key) { ladder = null; setHint(''); } return; }
+  const keysHtml = e.keys ? `<span class="keysline">${e.keys.replace(/(Shift|空白鍵|左鍵|W A S D|Q|E|F)(?![a-z])/g, '<span class="k">$1</span>')}</span>` : '';
+  ladder = { key: e.key, html: e.text + keysHtml, until: actx.currentTime + (e.level >= 3 ? 12 : 8) };
+}
+// 箭落地的聲音：在落點那一側；落在空檔裡就延到空檔結束後（暗示聲不蓋住驟降）
+function landSound(x, z, t) {
+  if (!audio) return;
+  let at = t + .32;
+  const cy = Rules.cycleAt(at, game.t0, game.T);
+  if (cy.gap) at = cy.start + game.T.GAP_LEN + .04;
+  const P = game.player;
+  laterCues.push({ name: 'arrow_land', at, data: { pan: panOf(x, z), dist: Math.hypot(x - P.x, z - P.z) } });   // 到時候才交給聲音層
+  floorPing = { x, z, at };
+}
+let shieldFlash = 0, floorPing = null;
+const laterCues = [];
 function onWin() {
   audio && audio.stopRhythm(1.2);
   document.body.classList.remove('playing'); unlockPointer();
@@ -393,6 +447,11 @@ function flySpear(A) {
   scene.add(m);
   transient.push({ mesh: m, from, to, t0: performance.now(), dur: 360, kind: 'spear', ttl: 1600 });
   if (f.spear) f.spear.visible = false;
+  if (audio) {                             // 破風聲從出手那一側；萬一落在空檔就延到空檔後
+    let at = actx.currentTime; const cy = Rules.cycleAt(at, game.t0, game.T);
+    if (cy.gap) at = cy.start + game.T.GAP_LEN + .01;
+    laterCues.push({ name: 'spear_fly', at, data: { pan: panOf(from.x, from.z) } });
+  }
 }
 
 // ============================================================
@@ -402,8 +461,8 @@ const tmpV = new THREE.Vector3();
 function loop(now) {
   requestAnimationFrame(loop);
   const wallDt = Math.min(.1, (now - lastFrame) / 1000); lastFrame = now;
-  for (const fl of flames) fl.scale.y = .85 + Math.random() * .3;
-  hearthLight.intensity = 1.5 + Math.random() * .2;
+  const frozenNow = game && actx && game.phase === 'play' && game.cycle.gap;
+  if (!frozenNow) { for (const fl of flames) fl.scale.y = .85 + Math.random() * .3; hearthLight.intensity = 1.5 + Math.random() * .2; }   // 空檔：火也凝住
   if (!game || !actx) { renderer.render(scene, camera); return; }
   const t = actx.currentTime;
   const lat = actx.outputLatency || actx.baseLatency || 0;
@@ -422,6 +481,7 @@ function loop(now) {
     pick: !!pend.pick
   };
   pend = {};
+  for (let i = laterCues.length - 1; i >= 0; i--) if (t >= laterCues[i].at - .03) { const c = laterCues.splice(i, 1)[0]; if (audio) audio.cue(c.name, Math.max(c.at, t), c.data); }
   const wasPlay = game.phase === 'play';
   Rules.step(game, t, input);
   for (const e of game.events) onEvent(e);
@@ -441,6 +501,17 @@ function loop(now) {
   camera.rotation.set(V.pitch + sy + (Math.random() - .5) * hurtK * .08, V.yaw + sx, Math.sin(dodgeK * Math.PI) * -.12);
   bow.position.y = -.24 + Math.sin(t * 2) * .004;
   bow.userData.arrow.visible = P.arrows > 0 && game.lastShotCycle !== cy.index;
+  // 空檔：箭頭泛光（還能射才亮）
+  const tipK = gap && bow.userData.arrow.visible ? .75 + .25 * Math.sin(t * 30) : 0;
+  bow.userData.tip.material.opacity += (tipK - bow.userData.tip.material.opacity) * (gap ? 1 : .3);
+  // 攻擊那一側的火把閃一下
+  for (const T of torches) {
+    T.flash = Math.max(0, T.flash - wallDt * 2.2);
+    T.mesh.material.color.setHex(T.flash > .05 ? 0xfff2c8 : 0xf2b866);
+    T.mesh.scale.setScalar(1 + T.flash * 1.6);
+  }
+  torchFlash.userData.k = Math.max(0, (torchFlash.userData.k || 0) - wallDt * 2.2);
+  torchFlash.intensity = 2.6 * torchFlash.userData.k;
   $('cross').style.transform = `translate(${(-sx * 900).toFixed(1)}px, ${(sy * 900).toFixed(1)}px)`;
   $('cross').classList.toggle('steady', gap);
   $('chill').style.opacity = gap ? .55 : 0;
@@ -463,11 +534,18 @@ function loop(now) {
     const A = game.attacks.find(a => a.by === st.id && !a.done && !a.cancelled && t >= a.warn);
     let armT = -.2, lean = 0;
     if (A && A.type === 'spear') armT = -2.6;
-    if (A && A.type === 'lunge') { lean = .45; armT = -1.2; }
+    if (A && A.type === 'lunge') { lean = .25; armT = -2.7; }
     if (playing && !gap && !A) armT = -.2 - cy.p * .8;        // 越快越兇：舉起兵器
     if (gap) { /* 凍結 */ } else fg.pivot.rotation.x += (armT - fg.pivot.rotation.x) * Math.min(1, k * 2);
     fg.up.rotation.x += (lean - fg.up.rotation.x) * Math.min(1, k * 2);
     if (fg.spear && !A && !fg.spear.visible && !st.down) fg.spear.visible = true;
+    // 撲上來的預備：舉起椅子過頭（擲矛的預備＝舉矛）
+    if (fg.chair) { const lift = !!(A && A.type === 'lunge') && !st.down; fg.chair.visible = lift; if (lift && fg.spear) fg.spear.visible = false; }
+    if (!gap) {
+      if (A && A.type === 'lunge') fg.pivotL.rotation.x += (-2.7 - fg.pivotL.rotation.x) * Math.min(1, k * 3);
+      else if (!fg.kneel) fg.pivotL.rotation.x += (0 - fg.pivotL.rotation.x) * Math.min(1, k * 2);
+    }
+    if (fg.aura) { fg.aura.visible = !st.down && !st.surrender; if (!gap) fg.aura.material.opacity = .4 + .2 * Math.sin(t * 9 + fg.vx) + .1 * Math.random(); }
     if (fg.table) fg.table.visible = st.hpLeft > 1 && !st.down;
     // 倒地（悶響＋倒地動作，不寫血腥）
     if (fg.fall > 0 && fg.fall < 1) { fg.fall = Math.min(1, fg.fall + wallDt / .55); }
@@ -498,6 +576,12 @@ function loop(now) {
     tele.pivotL.rotation.x += (want - tele.pivotL.rotation.x) * Math.min(1, k * 4);
     tele.g.rotation.y = Math.PI + .2;
     tele.up.rotation.z = cool ? .08 : 0;
+    // 盾牌在低音拍上反光（拍子剛過時最亮），對拍舉盾時再亮一下
+    const bbN = Rules.bassBeatNear(t, game.bass.anchor, game.bass.period);
+    const glint = playing && bbN.off >= -.02 ? Math.exp(-Math.max(0, bbN.off) / .16) * (bbN.off < .6 ? 1 : 0) : 0;
+    shieldFlash = Math.max(0, shieldFlash - wallDt * 2.5);
+    const sk = Math.min(1, glint * .7 + shieldFlash);
+    tele.shield.material.emissive.setRGB(sk * 1.0, sk * .8, sk * .45);
   }
   // 地上的箭
   const ids = new Set(game.floorArrows.map(a => a.id));
@@ -506,7 +590,15 @@ function loop(now) {
     const g = new THREE.Group(); g.position.set(a.x, .03, a.z);
     const sh = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .8, 4), MB(0xe8d0a0)); sh.rotation.z = Math.PI / 2; sh.rotation.y = Math.random() * 3; g.add(sh);
     const ring = new THREE.Mesh(new THREE.RingGeometry(.3, .34, 20), new THREE.MeshBasicMaterial({ color: 0xf0a85a, transparent: true, opacity: .5, side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; g.add(ring);
+    g.userData.ring = ring; g.userData.ph = Math.random() * 6;
     scene.add(g); floorArrowMeshes.set(a.id, g);
+  }
+  // 地上的箭微微發亮（呼吸般脈動）；剛落地的那支亮一下
+  for (const [id, g] of floorArrowMeshes) {
+    const a = game.floorArrows.find(x => x.id === id);
+    const fresh = a && floorPing && Math.abs(a.x - floorPing.x) < .01 && Math.abs(a.z - floorPing.z) < .01 && t >= floorPing.at && t < floorPing.at + .6 ? 1 : 0;
+    g.userData.ring.material.opacity = .35 + .25 * Math.sin(t * 3 + g.userData.ph) + .4 * fresh;
+    g.userData.ring.scale.setScalar(1 + .5 * fresh);
   }
   // 飛行物
   for (let i = transient.length - 1; i >= 0; i--) {
@@ -551,13 +643,21 @@ function updateHud(t) {
     const A = act.sort((a, b) => a.impact - b.impact)[0];
     const f = figs.get(A.by);
     if (f) { const ang = Rules.wrapAngle(Rules.yawTo(f.vx - P.x, f.vz - P.z) - V.yaw); side = ang > .5 ? 'L' : ang < -.5 ? 'R' : 'C'; }
-    w = A.type === 'spear' ? `${nameOf(A.by)}舉起長矛——<span class="k">Shift</span> 閃避` : `${nameOf(A.by)}要撲上來——<span class="k">Shift</span> 閃避，或按住 <span class="k">空白鍵</span> 屏息`;
-    if (T.until >= A.impact && A.impact >= T.coolUntil) w += '<br><small style="color:var(--bronze)">（盾舉著：躲不掉也有兒子擋）</small>';
+    // 暗示階梯：第 1 階只有世界內暗示（舉矛／舉椅、出鞘／吸氣聲、那一側的火把）；被打中 2 次起才出文字，3 次起加按鍵
+    const lv = Rules.hintLevel(game.hints, 'attack');
+    if (lv >= 2) {
+      w = A.type === 'spear' ? `${nameOf(A.by)}舉起長矛` : `${nameOf(A.by)}舉起椅子要撲上來`;
+      w += lv >= 3 ? (A.type === 'spear' ? '——<span class="k">Shift</span> 閃避' : '——<span class="k">Shift</span> 閃避，或按住 <span class="k">空白鍵</span> 屏息') : '——閃開或屏息';
+      if (T.until >= A.impact && A.impact >= T.coolUntil) w += '<br><small style="color:var(--bronze)">（盾舉著：躲不掉也有兒子擋）</small>';
+    }
   }
   $('warn').innerHTML = w;
   $('edgeL').style.opacity = side === 'L' ? 1 : 0; $('edgeR').style.opacity = side === 'R' ? 1 : 0; $('edgeC').style.opacity = side === 'C' ? .8 : 0;
   // 教學提示
   const since = t - hintState.shown;
+  $('hint').classList.toggle('ladder', !!(ladder && t < ladder.until));
+  if (ladder && t < ladder.until) { if ($('hint').innerHTML !== ladder.html) setHint(ladder.html); return; }
+  if (ladder) { ladder = null; setHint(''); }
   if (cy.index >= 1 && !hintState.shot && since > 5) setHint('鼓聲<b>突然斷掉</b>、畫面泛藍凍結的那一瞬間，瞄準求婚者按 <span class="k">左鍵</span>。頭目頭上有名字。');
   else if (hintState.tele && hintState.shot) setHint(game.floorArrows.length && P.arrows <= 3 ? '箭快沒了：走到地上發光的箭旁邊按 <span class="k">E</span>' : '');
   else if (!hintState.tele && since > 14) setHint('最低沉的那一聲鼓（右下角的金色圓點）響的時候按 <span class="k">Q</span>，讓忒勒馬科斯舉盾');
@@ -629,7 +729,7 @@ $('oPhase').onchange = e => { showPhase = e.target.checked; };
   camera.position.set(0, K.EYE_Y, -.8); camera.rotation.set(-.04, 0, 0);
 }
 
-window.VengeanceDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
+window.VengeanceDebug = { get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
 requestAnimationFrame(loop);
 })();
 </script>

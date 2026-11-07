@@ -30,7 +30,7 @@
  *     擲矛 spear：Shift 閃避（impact −0.35 ～ +0.12 秒內按）。
  *     撲上來 lunge：Shift 閃避，或按住空白鍵屏息（impact 前 0.2 秒起憋住，他撲空）。
  *     都沒躲 → 忒勒馬科斯的盾舉著就替你擋下（盾被撞開，SHIELD_COOL 秒後才能再舉）；沒盾 → 受傷。
- *   頭目倒下 2 名以上：每個循環出手兩次（p ≈ 0.84、0.96）。
+ *   頭目倒下 2 名以上：每個循環出手兩次（p ≈ 0.88、0.97）。
  *
  * 放箭：
  *   空檔內：準心最穩，箭照瞄準方向飛（SPREAD_GAP = 0）。一個空檔只能射一箭（拉弓要時間）。
@@ -47,13 +47,24 @@
  *
  * 勝利：四名頭目全部倒下 → 其餘求婚者投降。失敗：生命 HP（3）歸零，畫面層按 R 重新 createGame。
  *
+ * 暗示階梯（docs/design/2026-11-07-hint-guidance.md 第 1、4 節）【改編】：
+ *   每種機制記失敗次數（g.hints；重來時 createGame({hints}) 沿用上一局的）：
+ *     attack 被攻擊打中｜dodge 按了閃避還是被打中（時機或方向不對）｜gap 空檔外放箭｜tele 按 Q 錯拍｜
+ *     arrows 箭用完（射光那一下，和空箭袋還按放箭）。
+ *   第 1 次失敗：只有世界內暗示；失敗 2 次：第 2 階（一行提示文字）；3 次以上：第 3 階（文字＋按鍵說明）。
+ *   成功一次（閃過／屏息躲過、空檔裡放箭、對拍舉盾、撿到箭）就退回第 1 階。
+ *   事件 hint：{key, level, text（第 2 階起）, keys（第 3 階）}。文字照設計文件第 4 節「提示文字」欄。
+ * 世界內暗示的時機（規則保證，畫面與聲音照著演）：
+ *   每輪的出手：預備（attack_warn，帶出手者位置 x、z）落在 p ≥ 0.75 的最高速、而且一定不在空檔裡；
+ *   暴露位置引來的擲矛：預備若會落進空檔，延到空檔結束後（空檔裡不出預備聲）。
+ *
  * 介面：
  *   createGame({t0, seed, cycle}) → game
  *   step(game, t, input) → game；本幀事件在 game.events（陣列，每筆 {type, t, ...}）
  *   input = { yaw, pitch, mx, mz（世界座標移動方向）, shoot, shootAt, dodge, dodgeAt, breath（按住）, tele, teleAt, pick }
  *   事件 type：shoot、miss、shield_hit、down、bow_busy、empty、exposed、attack_warn、dodge、dodge_ok、breath_ok、
  *     block、hurt、tele_ok、tele_miss、tele_busy、breath_in、breath_out、gasp、pick、pick_none、gap、pre_gap、
- *     surrender、win、fall
+ *     surrender、win、fall、hint
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -88,7 +99,7 @@
     CHEST_Y: 1.2,         // 瞄準胸口的高度（程式玩家用）
     EXPOSE_LEAD: 1.3,     // 空檔外放箭、喘氣暴露位置後，幾秒後有人擲矛過來
     IMPACT_P1: [0.9],         // 一次出手：命中相位
-    IMPACT_P2: [0.84, 0.96],  // 兩次出手
+    IMPACT_P2: [0.88, 0.97],  // 兩次出手（第一下的預備也落在 p ≥ 0.75 的最高速；兩下相隔 0.65 秒 > 閃避冷卻）
     TWO_ATTACKS_FROM: 2,  // 倒下幾名頭目後每循環出手兩次
     WARN_LEAD: 0.9,       // 預備（舉矛、蹲低）提早幾秒
     DODGE_EARLY: 0.35,    // 閃避：impact 前 0.35 秒內按
@@ -106,6 +117,35 @@
     PICK_R: 1.3,          // 撿箭半徑
     MAX_DT: 0.1
   });
+
+  // ---------- 暗示階梯【改編】 ----------
+  // text：設計文件第 4 節「提示文字（第 2 階）」；keys：第 3 階加上的按鍵說明。
+  const HINTS = Object.freeze({
+    attack: { label: '求婚者出手的時機', text: '他舉起長矛時，下一拍就會出手：閃開或屏息。', keys: '看到舉矛、舉椅子，或聽到出鞘、吸氣聲，快命中時按 Shift 閃避；撲上來的人也可以按住空白鍵屏息。' },
+    dodge:  { label: '閃避方向', text: '聽聲音從哪邊來，往另一邊閃。', keys: '戴耳機聽出手聲在左還是右，那一側的火把會閃一下；別太早按 Shift，命中前一瞬間再按。' },
+    gap:    { label: '驟降空檔射箭', text: '鼓聲一斷，才是放箭的時候。', keys: '鼓聲斷掉、畫面泛藍凍結、箭頭發光時，按滑鼠左鍵（或 F）放箭。' },
+    tele:   { label: '忒勒馬科斯舉盾', text: '跟著最低的聲音按 Q，你兒子會替你擋。', keys: '最低沉的那一聲鼓響、他的盾牌反光時按 Q（前後 0.15 秒內）。' },
+    arrows: { label: '撿箭', text: '箭用完了，地上還有。', keys: '用 W A S D 走到地上發亮的箭旁邊，按 E 撿起來。' }
+  });
+  function createHints(prev) { return prev && prev.fails && prev.level ? prev : { fails: {}, level: {} }; }
+  function hintLevel(h, key) { return (h && h.level[key]) || 1; }
+  function hintData(key, level) {
+    const H = HINTS[key] || {}, d = { key, level };
+    if (level >= 2) d.text = H.text;
+    if (level >= 3) d.keys = H.keys;
+    return d;
+  }
+  function hintFail(g, key, t) {
+    const h = g.hints;
+    h.fails[key] = (h.fails[key] || 0) + 1;
+    h.level[key] = h.fails[key] >= 3 ? 3 : h.fails[key] >= 2 ? 2 : 1;
+    return emit(g, 'hint', t, hintData(key, h.level[key]));
+  }
+  function hintSuccess(g, key, t) {
+    const h = g.hints, was = hintLevel(h, key);
+    h.fails[key] = 0; h.level[key] = 1;
+    return was > 1 ? emit(g, 'hint', t, hintData(key, 1)) : null;
+  }
 
   // ---------- 小工具 ----------
   const pmod = (a, b) => ((a % b) + b) % b;
@@ -237,7 +277,8 @@
       lastShotCycle: -99, preGapSent: -1, gapSent: -1,
       stats: { shots: 0, gapShots: 0, offShots: 0, hits: 0, downs: 0, misses: 0, dodges: 0, breaths: 0, blocks: 0, hurts: 0,
         teleOk: 0, teleMiss: 0, picks: 0, exposed: 0, winAt: null, failAt: null },
-      events: [], log: []
+      events: [], log: [],
+      hints: createHints(opts.hints)
     };
     return g;
   }
@@ -357,7 +398,10 @@
     g.stats.exposed++;
     emit(g, 'exposed', t, { why, by: s ? s.id : null, impact });
     if (!s) return;
-    g.attacks.push({ id: ++g.attackSeq, by: s.id, type: 'spear', warn: Math.max(t + 0.2, impact - K.WARN_LEAD), impact, warned: false, done: false, cancelled: false, cycle: cy.index, reason: why });
+    let warn = Math.max(t + 0.2, impact - K.WARN_LEAD);
+    const wc = cycleAt(warn, g.t0, K);
+    if (wc.gap) warn = Math.min(impact - 0.05, wc.start + K.GAP_LEN + 0.02);   // 空檔裡不出預備（聲音、動作都延到空檔後）
+    g.attacks.push({ id: ++g.attackSeq, by: s.id, type: 'spear', warn, impact, warned: false, done: false, cancelled: false, cycle: cy.index, reason: why });
   }
 
   function landArrow(g, x, z, t, why) {
@@ -379,7 +423,7 @@
 
   function shoot(g, t, at, yaw, pitch) {
     const K = g.T, P = g.player;
-    if (P.arrows <= 0) { emit(g, 'empty', t); return; }
+    if (P.arrows <= 0) { emit(g, 'empty', t); hintFail(g, 'arrows', t); return; }
     const cy = cycleAt(at, g.t0, K);
     if (cy.gap && g.lastShotCycle === cy.index) { emit(g, 'bow_busy', t); return; }
     P.arrows--;
@@ -396,6 +440,8 @@
     }
     const hit = traceShot(g, ay, ap, t);
     emit(g, 'shoot', t, { gap: cy.gap, yaw: ay, pitch: ap, arrows: P.arrows, target: hit ? hit.s.id : null, dist: hit ? hit.dist : null });
+    if (cy.gap) hintSuccess(g, 'gap', t); else hintFail(g, 'gap', t);
+    if (P.arrows === 0) hintFail(g, 'arrows', t);          // 射光了（地上還有箭）
     if (hit) {
       const s = hit.s, q = suitorPos(g, s, t);
       g.stats.hits++;
@@ -427,8 +473,8 @@
     A.done = true;
     const dodged = P.dodgeAt >= A.impact - K.DODGE_EARLY && P.dodgeAt <= A.impact + K.DODGE_LATE;
     const held = A.type === 'lunge' && P.breathStart <= A.impact - K.BREATH_EARLY && (P.breathing || P.breathEnd >= A.impact) && P.breathStart > -1e8;
-    if (dodged) { A.result = 'dodge'; g.stats.dodges++; emit(g, 'dodge_ok', t, { attack: A.id, by: A.by, kind: A.type }); return; }
-    if (held) { A.result = 'breath'; g.stats.breaths++; emit(g, 'breath_ok', t, { attack: A.id, by: A.by, kind: A.type }); return; }
+    if (dodged) { A.result = 'dodge'; g.stats.dodges++; emit(g, 'dodge_ok', t, { attack: A.id, by: A.by, kind: A.type }); hintSuccess(g, 'attack', t); hintSuccess(g, 'dodge', t); return; }
+    if (held) { A.result = 'breath'; g.stats.breaths++; emit(g, 'breath_ok', t, { attack: A.id, by: A.by, kind: A.type }); hintSuccess(g, 'attack', t); return; }
     if (g.tele.until >= A.impact && A.impact >= g.tele.coolUntil) {
       A.result = 'block';
       g.tele.until = -1e9; g.tele.coolUntil = t + K.SHIELD_COOL; g.tele.blocks++; g.stats.blocks++;
@@ -438,6 +484,8 @@
     A.result = 'hurt';
     P.hp--; P.hurtAt = t; g.stats.hurts++;
     emit(g, 'hurt', t, { attack: A.id, by: A.by, kind: A.type, hp: P.hp });
+    hintFail(g, 'attack', t);
+    if (P.dodgeAt >= A.impact - 1 && P.dodgeAt <= A.impact + K.DODGE_LATE) hintFail(g, 'dodge', t);   // 按了閃避還是被打中
     if (P.hp <= 0 && g.phase === 'play') {
       g.phase = 'fail'; g.stats.failAt = t - g.t0;
       for (const B of g.attacks) if (!B.done) B.cancelled = true;
@@ -512,11 +560,13 @@
             Tl.lastBeat = b.beat; Tl.until = b.beat + g.bass.period + K.BASS_WIN + K.LATENCY_GRACE;
             g.stats.teleOk++;
             emit(g, 'tele_ok', t, { beat: b.beat, off: b.off, index: Tl.streak++ });
+            hintSuccess(g, 'tele', t);
           }
         } else {
           Tl.until = -1e9; Tl.lockUntil = at + K.TELE_LOCK; Tl.streak = 0;
           g.stats.teleMiss++;
           emit(g, 'tele_miss', t, { off: b.off });
+          hintFail(g, 'tele', t);
         }
       }
     }
@@ -535,16 +585,18 @@
         g.floorArrows = g.floorArrows.filter((a) => near.indexOf(a) < 0);
         P.arrows += near.length; g.stats.picks += near.length;
         emit(g, 'pick', t, { n: near.length, arrows: P.arrows });
+        hintSuccess(g, 'arrows', t);
       } else emit(g, 'pick_none', t);
     }
 
     // 攻擊：預備、結算
     for (const A of g.attacks) {
       if (A.done || A.cancelled) continue;
-      if (!A.warned && t >= A.warn) {
+      if (!A.warned && t >= A.warn && !cy.gap) {           // 幀剛好跨進空檔時，預備延到空檔後（空檔裡不出預備聲）
         A.warned = true;
         const s = g.suitors.find((x) => x.id === A.by);
-        emit(g, 'attack_warn', t, { attack: A.id, by: A.by, kind: A.type, impact: A.impact, leader: !!(s && s.leader) });
+        const q = s ? suitorPos(g, s, t) : { x: 0, z: -10 };
+        emit(g, 'attack_warn', t, { attack: A.id, by: A.by, kind: A.type, impact: A.impact, leader: !!(s && s.leader), x: q.x, z: q.z });
       }
       if (t >= A.impact + K.DODGE_LATE) {
         resolveAttack(g, A, t);
@@ -614,7 +666,7 @@
   }
 
   return {
-    T, SUITORS,
+    T, SUITORS, HINTS, createHints, hintLevel,
     yawTo, forward, wrapAngle, makeRng,
     cycleAt, inGap, gapsBetween, bassBeatNear,
     layerBeats, beatPhases, layerGain, beatsBetween,

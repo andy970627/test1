@@ -9,6 +9,10 @@
  *   - 求婚者人聲：rules.crowdLevel 每 50 ms 一個控制點，linearRamp 接起來。
  *   - 謝帕德音階（上弦）：setShepard(on, pos)，pos 是規則給的八度位置（張力 × 3），6 個八度的鐘形音量，無限上爬的錯覺。
  *   - 主題動機（箭飛行）：playNotes(notes, at)，射出那一刻把穿過的每一孔的音排進音訊時鐘（里拉琴）。
+ * 世界內暗示的聲音（docs/design/2026-11-07-hint-guidance.md 第 3 節）【改編】：
+ *   setGrind(level)：上弦時指針偏離亮區，弦發出刺耳的摩擦（level 0..1 = 偏多遠、偏多久）；回到亮區聲音變順（level → 0）。
+ *   sfx.knock()：起鬨前有人用杯底敲桌子（三下），接著才是起鬨的預告聲。
+ *   心跳越快越響：本來就由規則的 heartGain 決定（不另加）。
  * 計時器：Worker 裡的 setInterval（25 ms）送 tick（背景分頁不被降速），建不起來就用主執行緒 setInterval，兩邊都只是補排。
  *
  * 來源：
@@ -301,7 +305,30 @@
       creak.g.gain.setTargetAtTime(level * 0.1, ctx.currentTime, 0.05);
       creak.f.frequency.setTargetAtTime(200 + level * 220, ctx.currentTime, 0.1);
     }
+    // 上弦偏離：刺耳的摩擦（高頻帶通噪音＋30 Hz 抖動的鋸齒，像弦在弓臂上刮）
+    var grind = null;
+    function setGrind(level) {
+      level = clamp(level || 0, 0, 1);
+      if (!grind) {
+        var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(), am = ctx.createGain();
+        var lfo = ctx.createOscillator(), lg = ctx.createGain(), saw = ctx.createOscillator(), sg = ctx.createGain(), sf = ctx.createBiquadFilter();
+        s.buffer = noiseBuf; s.loop = true; f.type = 'bandpass'; f.frequency.value = 3200; f.Q.value = 3;
+        lfo.type = 'square'; lfo.frequency.value = 31; lg.gain.value = 0.5; am.gain.value = 0.5; lfo.connect(lg); lg.connect(am.gain);
+        saw.type = 'sawtooth'; saw.frequency.value = 180; sf.type = 'bandpass'; sf.frequency.value = 1400; sf.Q.value = 2; sg.gain.value = 0.25;
+        s.connect(f); f.connect(am); saw.connect(sf); sf.connect(sg); sg.connect(am); am.connect(g); g.gain.value = 0; g.connect(sfxBus);
+        s.start(); lfo.start(); saw.start();
+        grind = { g: g, f: f, saw: saw };
+      }
+      var t = ctx.currentTime;
+      grind.g.gain.setTargetAtTime(level * 0.09, t, level > 0 ? 0.03 : 0.08);
+      grind.f.frequency.setTargetAtTime(2600 + level * 2400, t, 0.05);
+      grind.saw.frequency.setTargetAtTime(150 + level * 120, t, 0.05);
+    }
     var sfx = {
+      knock: function () {                 // 起鬨前：有人用杯底敲桌子三下
+        var t = ctx.currentTime;
+        for (var i = 0; i < 3; i++) { var k = t + i * 0.13; tone(sfxBus, k, 'sine', 240, 140, 0.05, 0.22, 0.002, 0.1); nz(sfxBus, k, 'bandpass', 1100, 2, 0.16, 0.001, 0.03); }
+      },
       twang: function () { var t = ctx.currentTime; osc('sawtooth', 210, t, 0.45, 0.16, 70); osc('triangle', 420, t, 0.25, 0.08, 160); noise(t, 0.08, 0.25, 'bandpass', 1800, 2); },
       swallow: function () { var t = ctx.currentTime; for (var i = 0; i < 3; i++) osc('sine', 2600 + i * 180, t + i * 0.13, 0.11, 0.06, 3400); },
       thunder: function () {
@@ -342,7 +369,7 @@
 
     return {
       CONST: C, ctx: ctx, now: function () { return ctx.currentTime; },
-      follow: follow, setOffset: setOffset, setShepard: setShepard, setCreak: setCreak,
+      follow: follow, setOffset: setOffset, setShepard: setShepard, setCreak: setCreak, setGrind: setGrind,
       playNotes: playNotes, stopNotes: stopNotes, sfx: sfx,
       get log() { return log; },
       drainLog: function () { return log ? log.splice(0, log.length) : []; },

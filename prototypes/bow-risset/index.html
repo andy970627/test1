@@ -72,7 +72,12 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
   position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
   border: 1.5px solid rgba(208, 105, 77, .55); box-sizing: border-box; will-change: transform;
 }
-.heart.drop { border-color: rgba(240, 194, 122, .95); }
+.heart.drop { border-color: rgba(240, 194, 122, .95); border-width: 3px; }
+/* 光暈：跟著心跳一明一暗；驟降時靜止（世界內暗示「最穩的那一刻」） */
+.halo { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(240, 194, 122, .28) 0%, rgba(208, 105, 77, .12) 45%, rgba(0, 0, 0, 0) 70%); opacity: 0; will-change: transform, opacity; }
+.result .ladder { color: var(--lamp); font-size: 15px; }
+.result .ladder small { display: block; color: var(--ash); font-size: 13px; margin-top: 2px; }
 .dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(240, 194, 122, .8); }
 .cue { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); margin: 0; font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--blood); text-shadow: 0 1px 6px #000, 0 0 3px #000; opacity: 0; transition: opacity .15s; white-space: nowrap; }
 .cue.on { opacity: 1; }
@@ -126,6 +131,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     <div class="still" id="still"></div>
     <div class="top" id="top"><span><span class="title">比箭・Risset 版</span><span class="sub">心跳越來越快，等它斷掉的那半秒</span></span><span class="score" id="score"></span></div>
     <p class="msg" id="msg"></p>
+    <div class="halo" id="halo" hidden></div>
     <div class="heart" id="heartRing" hidden></div>
     <div class="dot" id="dot" hidden></div>
     <p class="cue" id="cue" aria-live="polite"></p>
@@ -146,6 +152,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       <h2 id="resTitle"></h2>
       <p id="resText"></p>
       <p class="count" id="resCount"></p>
+      <p class="ladder" id="resHint" hidden></p>
       <button type="button" id="retryBtn">再來一次（R）</button>
     </div>
   </div>
@@ -182,7 +189,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     score: $('score'), msg: $('msg'), stringUI: $('stringUI'), stringTip: $('stringTip'), needle: $('needle'), tension: $('tensionBar'),
     drawUI: $('drawUI'), drawLabel: $('drawLabel'), power: $('powerBar'), tempo: $('tempo'), tempoBar: $('tempoBar'), hint: $('hint'), hold: $('holdBtn'),
     result: $('result'), resTitle: $('resTitle'), resText: $('resText'), resCount: $('resCount'), retry: $('retryBtn'),
-    heart: $('heartRing'), dot: $('dot'), cue: $('cue'), still: $('still'), pulse: $('pulse'), theme: $('theme'),
+    heart: $('heartRing'), dot: $('dot'), halo: $('halo'), resHint: $('resHint'), cue: $('cue'), still: $('still'), pulse: $('pulse'), theme: $('theme'),
   };
   const opt = { string: $('optString'), fatigue: $('optFatigue'), heckle: $('optHeckle'), guide: $('optGuide'), hole: $('optHole') };
   const DEBUG = /(^|[?#&])debug\b/.test(location.search + location.hash);
@@ -204,6 +211,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   }
   const sfx = new Proxy({}, { get: (_, k) => (...a) => { if (snd && ac.state === 'running') snd.sfx[k](...a); } });
   function setCreak(v) { if (snd) snd.setCreak(v); }
+  function setGrind(v) { if (snd) snd.setGrind(v); }
   function nextClock(dt) {
     if (ac && ac.state === 'running') {
       if (offset === null) offset = ac.currentTime - clock;
@@ -403,7 +411,13 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       const cup = cyl(.05, .035, .08, M.bronze, 10); cup.position.set(sx * 1.85 + .1, .69, z + .1); scene.add(cup);
       const bread = new THREE.Mesh(new THREE.SphereGeometry(.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0x8a6030, roughness: 1 }));
       bread.scale.y = .5; bread.position.set(sx * 1.85 - .1, .67, z + .28); scene.add(bread);
-      suitors.push({ ...p, ph: rnd() * 10, laugh: 0, rate: 11 + rnd() * 5 });
+      // 起鬨前舉起的酒杯（世界內暗示：有人舉杯，起鬨就要來了）
+      const raised = new THREE.Group(); raised.visible = false; p.body.add(raised);
+      const rArm = cyl(.045, .05, .55, new THREE.MeshStandardMaterial({ color: cloaks[(k * 3 + (sx > 0 ? 1 : 0)) % cloaks.length], roughness: .95 }), 8);
+      rArm.position.set(.2, .78, .05); rArm.rotation.z = -.2; raised.add(rArm);
+      const rCup = cyl(.06, .04, .1, new THREE.MeshStandardMaterial({ color: 0xc08a48, metalness: .55, roughness: .3, emissive: 0xffb050, emissiveIntensity: .6 }), 10);
+      rCup.position.set(.26, 1.08, .05); raised.add(rCup);
+      suitors.push({ ...p, raised, ph: rnd() * 10, laugh: 0, rate: 11 + rnd() * 5 });
     }
   });
   // 特勒馬科斯：站在斧頭旁，手持長矛
@@ -437,6 +451,13 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     tmpV.set(obj.position.x - v.x, obj.position.y - v.y, obj.position.z - v.z); obj.lookAt(tmpV);
   }
 
+
+  // 對準時 12 孔連成一道光的通道（世界內暗示「視線」）：孔的金邊依預測彈道穿過的孔數亮起，全部穿過時多一道細光
+  const beamLen = (T.axeCount - 1) * T.axeSpacing + .6;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, beamLen, 8, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd890, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  beam.rotation.x = Math.PI / 2; beam.visible = false; scene.add(beam);
+  let channel = 0;                          // 預測彈道穿過幾個孔（0..12）
 
   // 起鬨丟過來的骨頭
   const bone = new THREE.Group(); bone.visible = false; scene.add(bone);
@@ -501,8 +522,10 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     // 姿勢：上弦時弓斜放低、靠中間；瞄準時立在左前方
     const lerp = (a, b) => a + (b - a) * pose;
     const sw = sway || { yaw: 0, pitch: 0 };
-    bowG.position.set(lerp(.06, -.13) + sw.yaw * 4, lerp(-.36, -.12) + sw.pitch * 4, lerp(-1.0, -.72));
-    bowG.rotation.set(lerp(-.55, 0), 0, lerp(1.25, .06));
+    // 上弦偏離亮區：弓臂發抖（越偏越久抖越兇）
+    const tr = bowTremble ? bowTremble * (.006 * Math.sin(t * 71) + .004 * Math.sin(t * 113)) : 0;
+    bowG.position.set(lerp(.06, -.13) + sw.yaw * 4 + tr, lerp(-.36, -.12) + sw.pitch * 4 + tr * .6, lerp(-1.0, -.72));
+    bowG.rotation.set(lerp(-.55, 0), 0, lerp(1.25, .06) + tr * 6);
     if (strung) {
       vNock.set(0, 0, c + .3 * pull);
       seg(strA, vTop, vNock); seg(strB, vNock, vBot);
@@ -528,6 +551,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   }
 
   // ================================================================ 遊戲狀態（規則在 rules.js 的 createRound / stepRound）
+  let bowTremble = 0, ladderNote = null;      // 弓臂發抖量；暗示階梯第 2、3 階的文字（下一輪開頭再說一次）
   let round = null, attempts = 0, best = 0, time = 0, fov = 55, resultAt = 0, flightDoneAt = 0;
   let pendingEnd = null, resultShowAt = 0;
   const input = { down: false, stringDx: 0, look: { yaw: 0, pitch: 0 } };
@@ -543,7 +567,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     R.THEME12.notes.forEach(n => { const b = document.createElement('b'); b.textContent = n.name.replace(/\d/, ''); ui.theme.appendChild(b); });
   }
   function newRound(full) {
-    const prev = !full && round ? { strungOnce: round.strungOnce } : {};
+    const prev = !full && round ? { strungOnce: round.strungOnce, hints: round.hints } : { hints: round ? round.hints : null };
     round = R.createRound(roundOptions(), Math.random, prev, clock);
     if (full) { attempts = 0; best = 0; buildAxes(diff(), round.axeOffset); }
     resultAt = 0; flightDoneAt = 0; pendingEnd = null; resultShowAt = 0;
@@ -555,8 +579,9 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     worldArrow.visible = false;
     ui.result.hidden = true; ui.theme.hidden = true; buildTheme();
     if (bot) bot = R.createBot(nextBotOpts());
-    say(round.intro, 6);
-    setCreak(0);
+    if (ladderNote) { say(ladderNote, 9); ladderNote = null; } else say(round.intro, 6);
+    setCreak(0); setGrind(0); ui.resHint.hidden = true;
+    suitors.forEach(p => { p.raised.visible = false; });
     if (snd) { snd.stopNotes(); snd.follow(round.heart, offset); }
     refreshHud();
   }
@@ -571,6 +596,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     ui.stringUI.hidden = ph !== 'string';
     ui.drawUI.hidden = ph !== 'aim';
     ui.heart.hidden = ui.dot.hidden = ph !== 'aim';
+    if (ph !== 'aim') ui.halo.hidden = true;
     ui.hold.hidden = !touchUI || ph !== 'aim';
     ui.stringTip.textContent = touchUI ? '上弦：手指按住畫面左右拖，讓指針留在亮區' : '上弦：按住滑鼠，左右移動，讓指針留在亮區';
     let hint = '';
@@ -601,8 +627,8 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   function onEvents(evs) {
     for (const e of evs) {
       if (e.type === 'heckleCue') {
-        const p = suitors[e.who % suitors.length]; p.stand = 1;
-        cue(e.label + '——', .9); sfx.cue(e.kind);
+        const p = suitors[e.who % suitors.length]; p.stand = 1; p.cupT = 1.6;
+        cue(e.label + '——', .9); sfx.knock(); setTimeout(() => sfx.cue(e.kind), 260);
         if (e.kind === 'bone') {
           boneFly.on = true; boneFly.t = 0; boneFly.dur = Math.max(.25, e.lead);
           p.g.getWorldPosition(boneFly.from); boneFly.from.y = 1.4;
@@ -613,7 +639,8 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       else if (e.type === 'dropStart') { cue(R.TEXT.dropWord, .5, true); if (cueTimer && boneFly.on) { boneFly.on = false; bone.visible = false; } }
       else if (e.type === 'drawStart' || e.type === 'cancel') { if (snd) snd.follow(round.heart, offset); if (e.type === 'cancel') say(e.text); }
       else if (e.type === 'strung') { setCreak(0); sfx.swallow(); sfx.thunder(); say(e.text, 6); refreshHud(); }
-      else if (e.type === 'slip') sfx.slip();
+      else if (e.type === 'slip') { sfx.slip(); setGrind(0); }
+      else if (e.type === 'hint') onHint(e);
       else if (e.type === 'fire') {
         attempts++; sfx.twang(); worldArrow.visible = true; guide.visible = false;
         ui.theme.hidden = false; ui.cue.classList.remove('on');
@@ -631,6 +658,17 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
         pendingEnd = { at: time + wait, result: e.result };
       }
     }
+  }
+
+  // 暗示階梯：第 1 階只有世界內暗示；第 2 階一行文字、第 3 階加按鍵說明（結果面板上、下一輪開頭各說一次）
+  function onHint(e) {
+    if (e.level < 2) { if (ladderNote && e.key) ladderNote = null; return; }
+    const text = e.text + (e.keys ? '　' + e.keys : '');
+    ladderNote = text;
+    ui.resHint.innerHTML = '';
+    ui.resHint.append(e.text);
+    if (e.keys) { const sm = document.createElement('small'); sm.textContent = e.keys; ui.resHint.append(sm); }
+    ui.resHint.hidden = false;
   }
 
   function press() {
@@ -770,6 +808,12 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     }
     if (ph === 'string') setCreak((input.down || bot) ? .3 + round.str.tension * .7 : 0);
     else if (ph === 'aim') setCreak(d.drawing && d.power < 1 ? .4 : 0);
+    // 上弦偏離：摩擦聲＋弓臂發抖（outTime ÷ outLimit 越接近 1 越快滑掉）
+    if (ph === 'string' && (input.down || bot)) {
+      const out = Math.max(0, Math.abs(round.str.needle) - T.string.zone);
+      const g = out > 0 ? Math.min(1, .35 + out * 1.2 + round.str.outTime / T.string.outLimit * .5) : 0;
+      setGrind(g); bowTremble += (g - bowTremble) * Math.min(1, dt * 20);
+    } else { if (bowTremble) setGrind(0); bowTremble += (0 - bowTremble) * Math.min(1, dt * 10); if (bowTremble < .01) bowTremble = 0; }
 
     // 心跳脈動（畫面跟著規則的拍點）：最近 0.25 秒內的拍加總
     beatPulse = 0;
@@ -790,6 +834,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       suitors.forEach(p => {
         p.laugh = Math.max(0, p.laugh - dt * .3);
         p.stand = Math.max(0, (p.stand || 0) - dt * .5);
+        p.cupT = Math.max(0, (p.cupT || 0) - dt); p.raised.visible = p.cupT > 0 && ph === 'aim';
         const l = Math.max(p.laugh, ph === 'aim' ? (crowd - .3) * .9 : 0), b = Math.abs(Math.sin(time * p.rate + p.ph));
         p.headG.rotation.x = -.45 * l * b + Math.sin(time * .7 + p.ph) * .04;
         p.body.position.y = p.seatY + .03 * l * b + .3 * Math.min(1, p.stand * 1.6);
@@ -831,6 +876,20 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       camera.rotation.set(aim.pitch + sw.pitch, aim.yaw + sw.yaw, 0, 'YXZ');
     }
 
+    // 對準時的光通道：用拉滿的彈道＋現在的晃動預測，穿過的孔金邊亮起，12 孔全過時亮出一道細光
+    channel = 0;
+    if (aiming && round.strungOnce) {
+      const pres = R.simulate(R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power: 1, sway: d.sway }), round.difficulty, round.axeOffset);
+      channel = pres.passed;
+    }
+    const steady = aiming && hb.drop && d.drawing;
+    axes.forEach((a, i) => { if (aiming && i < channel) a.rimMat.emissiveIntensity = Math.max(a.rimMat.emissiveIntensity, (steady ? 1.6 : .9) * (1 - i / 30)); });
+    beam.visible = aiming && channel >= T.axeCount;
+    if (beam.visible) {
+      const o = round.axeOffset; beam.position.set(o.x, H + o.y, -(T.axeFirst + (T.axeCount - 1) * T.axeSpacing / 2));
+      beam.material.opacity = steady ? .55 : .25 + .1 * Math.sin(time * 6);
+    }
+
     if (opt.guide.checked && aiming) {
       const shot = R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power: d.drawing ? Math.max(.3, d.power) : 1, sway: d.sway });
       const arr = guideGeo.attributes.position.array;
@@ -867,10 +926,15 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       const tempo = hb.mode === 'risset' ? (hb.drop ? 1 : hb.p) : 0;
       ui.tempoBar.style.width = (tempo * 100) + '%';
       ui.tempo.classList.toggle('drop', !!hb.drop);
-      // 準心圈：每一拍脹一下；驟降時收小、變亮
-      const s = hb.drop && d.drawing ? .45 : .7 + Math.min(.6, beatPulse * .35) + (d.drawing ? hb.p * .25 : 0);
+      // 準心圈：隨心跳收縮擴張，心跳越快幅度越大；驟降時收成一點、光暈靜止
+      const drop = !!(hb.drop && d.drawing);
+      const fastK = d.drawing && hb.mode === 'risset' ? hb.p : 0;
+      const s = drop ? .1 : .72 + Math.min(.9, beatPulse * (.18 + .55 * fastK)) + fastK * .2;
       ui.heart.style.transform = `scale(${s.toFixed(3)})`;
-      ui.heart.classList.toggle('drop', !!(hb.drop && d.drawing));
+      ui.heart.classList.toggle('drop', drop);
+      ui.halo.hidden = !d.drawing;
+      if (drop) { ui.halo.style.opacity = '.85'; ui.halo.style.transform = 'scale(.55)'; }
+      else { ui.halo.style.opacity = (.25 + Math.min(.6, beatPulse * .45)).toFixed(3); ui.halo.style.transform = `scale(${(.8 + Math.min(.7, beatPulse * (.15 + .45 * fastK))).toFixed(3)})`; }
     }
   }
 

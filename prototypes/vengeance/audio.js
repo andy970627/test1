@@ -17,6 +17,13 @@
  *   空檔（驟降，第 1 個循環起每輪開頭 GAP 秒）不排拍，節奏匯流排（含殘響）與低吼壓到幾乎無聲。
  *   低音不經過 gate，是忒勒馬科斯的拍子；網格錯開半拍（t0 + 1.2 + m·2.4），所以空檔裡也沒有低音尾巴。
  *
+ * 世界內暗示的聲音（docs/design/2026-11-07-hint-guidance.md 第 4 節）【改編】：
+ *   attack_warn：出手前一拍。擲矛＝青銅矛出鞘（刮擦往上滑）、撲上來＝倒吸一口氣＋低吼；都依 data.pan 放在立體聲的那一側。
+ *   spear_fly：矛飛過來的破風聲（立體聲，從出手那一側）。
+ *   tele_ok：對拍時盾牌「咚」一聲（加在里拉琴前面）。
+ *   arrow_land：落地的箭彈了幾下（data.pan、data.dist 給位置）。畫面層保證排在空檔之外。
+ *   以上都由畫面層依規則事件呼叫；規則保證預備不在空檔裡，所以這些暗示聲不會蓋住驟降。
+ *
  * 介面：
  *   createAudio(ctx, {t0, cycle, gap, bassPeriod, master}) → api
  *   api.setClock({t0, cycle, gap})   重新開局：舊的預排全部靜音，從新的 t0 接著排
@@ -292,6 +299,15 @@
 
     // ---------- 動作音效 ----------
     var teleN = 0;
+    // 立體聲：攻擊從哪邊來，聲音就從哪邊來（pan −1 左 … +1 右）；gain 依距離
+    function panDest(pan, gain) {
+      var g = ctx.createGain(); g.gain.value = gain == null ? 1 : gain;
+      if (ctx.createStereoPanner) {
+        var p = ctx.createStereoPanner(); p.pan.value = clamp(+pan || 0, -1, 1);
+        g.connect(p); p.connect(cueBus);
+      } else g.connect(cueBus);
+      return g;
+    }
     function arrowWhoosh(t, k) { noise(cueBus, t, 'bandpass', 2200, 2.5, 0.22 * k, 0.01, 0.16, 1.3); }
     var CUES = {
       shoot: function (t, d) {               // 弓弦一響＋箭破空；空檔外的弓弦更刺耳（暴露）
@@ -316,15 +332,32 @@
         tone(cueBus, t + 0.24, 'sine', 820, 0, 0, 0.04, 0.001, 0.25);
         tone(cueBus, t + 0.24, 'sine', 1310, 0, 0, 0.025, 0.001, 0.18);
       },
-      attack_warn: function (t, d) {          // 預備：擲矛＝青銅矛頭刮過盾緣；撲上來＝一聲低吼＋踏步
+      attack_warn: function (t, d) {          // 預備（出手前一拍）：擲矛＝青銅矛出鞘；撲上來＝倒吸一口氣＋低吼＋踏步。放在出手那一側
+        var dst = panDest(d && d.pan, 1);
         if (d && d.kind === 'lunge') {
-          noise(cueBus, t, 'bandpass', 380, 3, 0.4, 0.05, 0.35);
-          tone(cueBus, t, 'sawtooth', 110, 90, 0.3, 0.08, 0.04, 0.3);
-          noise(cueBus, t + 0.3, 'lowpass', 400, 1, 0.35, 0.002, 0.07);
-          noise(cueBus, t + 0.6, 'lowpass', 400, 1, 0.4, 0.002, 0.07);
+          var f = noise(dst, t, 'bandpass', 700, 1.6, 0.32, 0.28, 0.12);            // 吸氣：氣流聲往上爬
+          f.frequency.setValueAtTime(600, t); f.frequency.exponentialRampToValueAtTime(1700, t + 0.38);
+          noise(dst, t + 0.4, 'bandpass', 380, 3, 0.38, 0.04, 0.3);
+          tone(dst, t + 0.4, 'sawtooth', 110, 90, 0.3, 0.08, 0.04, 0.28);
+          noise(dst, t + 0.62, 'lowpass', 400, 1, 0.38, 0.002, 0.07);
         } else {
-          noise(cueBus, t, 'highpass', 3500, 6, 0.12, 0.08, 0.3);
-          tone(cueBus, t, 'sine', 1900, 2300, 0.35, 0.04, 0.05, 0.35);
+          var sh = noise(dst, t, 'bandpass', 2400, 5, 0.22, 0.03, 0.32);           // 出鞘：金屬刮擦往上滑
+          sh.frequency.setValueAtTime(1800, t); sh.frequency.exponentialRampToValueAtTime(6200, t + 0.32);
+          tone(dst, t + 0.3, 'sine', 2350, 0, 0, 0.05, 0.002, 0.5);                // 出鞘後矛頭一聲輕鳴
+          tone(dst, t + 0.3, 'sine', 3480, 0, 0, 0.025, 0.002, 0.35);
+        }
+      },
+      spear_fly: function (t, d) {             // 矛破空飛來（從出手那一側）
+        var dst = panDest(d && d.pan, 1);
+        var f = noise(dst, t, 'bandpass', 900, 2, 0.28, 0.2, 0.12, 1.1);
+        f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(2600, t + 0.3);
+      },
+      arrow_land: function (t, d) {            // 箭落地：木桿在石地上彈兩三下（位置＝落點）
+        var dst = panDest(d && d.pan, clamp(3 / ((d && d.dist) || 3), 0.3, 1));
+        for (var i = 0; i < 3; i++) {
+          var tt = t + i * (0.09 - i * 0.02), k = 1 - i * 0.3;
+          tone(dst, tt, 'triangle', 1100 - i * 120, 900 - i * 100, 0.03, 0.07 * k, 0.001, 0.05);
+          noise(dst, tt, 'bandpass', 2600, 3, 0.12 * k, 0.001, 0.03);
         }
       },
       dodge: function (t) { noise(cueBus, t, 'bandpass', 600, 1, 0.25, 0.02, 0.18); },   // 衣袍一甩
@@ -343,7 +376,9 @@
         noise(cueBus, t, 'lowpass', 500, 1, 0.5, 0.002, 0.15);
         noise(cueBus, t + 0.18, 'bandpass', 900, 1.5, 0.15, 0.05, 0.3);
       },
-      tele_ok: function (t) {                 // 忒勒馬科斯舉盾：盾緣輕碰＋里拉琴奏主題下一個音
+      tele_ok: function (t) {                 // 忒勒馬科斯舉盾：盾牌「咚」＋盾緣輕碰＋里拉琴奏主題下一個音
+        tone(cueBus, t, 'sine', 170, 95, 0.12, 0.45, 0.002, 0.22);               // 咚：厚木包青銅的悶響
+        noise(cueBus, t, 'bandpass', 420, 1.5, 0.25, 0.001, 0.06);
         lyre(cueBus, t, THEME.notes[teleN % THEME.notes.length], C.LYRE_VEL * (teleN % THEME.notes.length === 0 ? 1.15 : 1));
         teleN++;
         tone(cueBus, t, 'sine', 640, 0, 0, 0.05, 0.001, 0.3);
