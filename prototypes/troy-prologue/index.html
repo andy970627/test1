@@ -34,6 +34,15 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #chill { inset: 0; background: #4f6ea8; mix-blend-mode: color; opacity: 0; }
 /* 不合拍的腳步被聽到：畫面邊緣極淡的暖光一閃 */
 #stepEdge { inset: 0; box-shadow: inset 0 0 120px 24px rgba(240, 150, 70, .9); opacity: 0; }
+/* 世界內暗示（設計文件 2026-11-07 第 2.1 節；強度 × visualAid，由程式設定 opacity） */
+#behind { inset: 0; opacity: 0; }
+#hand { left: calc(-10px + var(--sl)); bottom: calc(-30px + var(--sb)); width: min(34vw, 300px); opacity: 0; transform: translate(-70%, 18%) rotate(-8deg); transform-origin: 0 100%; }
+#hand svg { display: block; width: 100%; height: auto; }
+#blade { right: calc(9% + var(--sr)); bottom: calc(14% + var(--sb)); width: 120px; height: 120px; opacity: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(220, 235, 255, .95) 0 2px, rgba(170, 200, 255, .35) 4px, transparent 22px),
+              linear-gradient(135deg, transparent 47%, rgba(200, 220, 255, .75) 49.5%, rgba(255, 255, 255, .95) 50%, rgba(200, 220, 255, .75) 50.5%, transparent 53%); }
+#whisper { left: 50%; bottom: calc(92px + var(--sb)); transform: translateX(-50%); font-family: var(--display); font-size: 16px; letter-spacing: .08em; color: #c9d2e6; text-shadow: 0 1px 3px #000, 0 0 10px #000; opacity: 0; transition: opacity .35s; white-space: nowrap; }
+#whisper i { font-style: normal; color: var(--dim); font-size: 13px; margin-right: 6px; }
 #red { inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 20, 10, .75) 100%); opacity: 0; transition: opacity .3s; }
 #cross { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: var(--ash); opacity: .45; border-radius: 50%; }
 #zone { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-family: var(--display); font-size: 15px; letter-spacing: .14em; color: var(--dim); text-shadow: 0 1px 3px #000; }
@@ -93,6 +102,8 @@ button:hover { filter: brightness(1.12); }
   #intro.screen { padding-top: calc(16px + var(--st)); }
 }
 #fail h2 { color: var(--blood); font-size: clamp(20px, 3.6vw, 28px); line-height: 1.5; }
+#failHint { border-left: 2px solid var(--fire); padding: 4px 0 4px 12px; color: var(--ash); }
+#failHint .k, #hint .k { display: inline-block; border: 1px solid var(--dim); padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: 14px; }
 #win { background: transparent; transition: background 3s; }
 #win.dark { background: #000; }
 #win .card { opacity: 0; transition: opacity 2.5s; text-align: center; justify-items: center; }
@@ -114,6 +125,7 @@ button:hover { filter: brightness(1.12); }
 #music .note { font-size: 12px; color: var(--dim); margin: 0; }
 #music input[type=range] { width: 120px; }
 @media (max-width: 640px) {
+  #whisper { bottom: calc(118px + var(--sb)); font-size: 14px; }
   #breath { width: 140px; }
   #phase { width: 150px; }
   #hint { font-size: 15px; bottom: calc(60px + var(--sb)); }
@@ -126,6 +138,13 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="chill"></div>
 <div class="hud" id="stepEdge"></div>
 <div class="hud" id="edge"></div>
+<div class="hud" id="behind"></div>
+<div class="hud" id="hand" aria-hidden="true"><svg viewBox="0 0 300 220"><!-- 同伴的手從畫面左下抓住你的手臂（剪影） -->
+  <path d="M0 220 L0 120 C40 112 92 104 140 98 C160 96 176 90 190 80 C204 70 222 62 240 64 C252 65 256 72 250 80 C262 78 274 82 272 92 C282 94 288 102 280 110 C288 114 290 124 280 130 C270 136 252 132 238 134 C222 138 206 150 188 160 C150 182 90 204 40 220 Z" fill="#0b0907"/>
+  <path d="M190 80 C204 70 222 62 240 64 M250 80 C240 84 230 90 222 96 M272 92 C258 96 246 102 236 108 M280 110 C266 114 254 118 244 122" stroke="#2a1d12" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M0 132 C50 122 100 114 150 108" stroke="#3a2a1a" stroke-width="2" fill="none" opacity=".7"/></svg></div>
+<div class="hud" id="blade" aria-hidden="true"></div>
+<div class="hud" id="whisper" aria-live="polite"></div>
 <div class="hud" id="red"></div>
 <div class="hud" id="cross"></div>
 <div class="hud" id="zone"><span id="zoneNo"></span><b id="zoneName"></b></div>
@@ -209,6 +228,7 @@ button:hover { filter: brightness(1.12); }
 <div class="screen" id="fail" hidden>
   <div class="card">
     <h2 id="failWhy">你被發現了。</h2>
+    <p id="failHint" hidden></p>
     <p class="dim">按 R 從這一區重來</p>
     <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button></div>
   </div>
@@ -346,7 +366,8 @@ let builtFor = null;   // 已經建好場景的 level 物件
 const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
 function build(L) {
   scene.remove(world); world = new THREE.Group(); scene.add(world);
-  S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null, horsePlanks: null, moonSlits: [] };
+  S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null, horsePlanks: null, moonSlits: [],
+        prints: [], printI: 0, latchRings: null };
   builtFor = L;
   world.add(new THREE.HemisphereLight(0x3a4870, 0x0a0806, .55));
   const moonL = new THREE.DirectionalLight(0x8a9cd0, .35); moonL.position.set(-30, 50, 40); world.add(moonL);
@@ -406,7 +427,7 @@ function build(L) {
       for (const [px, pz] of [[r.x0, r.z0], [r.x1, r.z0], [r.x0, r.z1], [r.x1, r.z1]]) cyl(.22, .26, 3.2, 0x7a7262, px, 1.6, pz, world, 8);
       continue;
     }
-    if (has(r, '屋簷') || has(r, '廊下') || has(r, '角')) {                                        // 布篷、木屋簷
+    if (has(r, '屋簷') || has(r, '廊下') || has(r, '角') || has(r, '後') || has(r, '旁')) {        // 布篷、木屋簷：窄巷的陰影一段接一段（路線暗示）
       const awn = box(ww + .3, .06, dd + .3, 0, x, 2.6, z, world, MD(0x2a1f18)); awn.rotation.x = .05;
       for (const [px, pz] of [[r.x0, r.z0], [r.x1, r.z0], [r.x0, r.z1], [r.x1, r.z1]]) box(.1, 2.6, .1, 0x2a2018, px, 1.3, pz);
     }
@@ -418,13 +439,15 @@ function build(L) {
     { x: 21.4, z: 12.9, y: 1.45, small: true }, { x: 22.6, z: 12.9, y: 1.45, small: true },   // 祭壇（雕像台座）上的火盆
     { x: 38.5, z: 17.25, torch: true }, { x: 43, z: 27.75, torch: true },                     // 窄巷牆上的火把
     { x: 58.5, z: 9.6, torch: true }, { x: 58.5, z: 20.4, torch: true }, { x: 54, z: 21.5 },                      // 城門兩側
+    // 路線暗示（2.2 節）：廣場往城門方向的火盆排成一線，越往前越暗（要你走暗處）【改編】
+    { x: 15.5, z: 18.3, dim: 1 }, { x: 19.2, z: 18.3, dim: .7 }, { x: 22.9, z: 18.3, dim: .45 }, { x: 26.6, z: 18.3, dim: .25, small: true, y: .9 }, { x: 29.4, z: 18.3, dim: .1, small: true, y: .9 },
   ];
   for (const b of fires) {
     let y;
     if (b.torch) { y = 2.9; cyl(.05, .05, .9, 0x3a2a1a, b.x, 2.5, b.z, world, 5); }
-    else if (b.small) { y = b.y; cyl(.22, .12, .14, 0x6a4a22, b.x, y, b.z); }
+    else if (b.small) { y = b.y; cyl(.22, .12, .14, 0x6a4a22, b.x, y, b.z); if (b.dim != null) cyl(.06, .1, y, 0x2a221a, b.x, y / 2, b.z); }
     else { y = 1.2; for (let k = 0; k < 3; k++) { const a = k * 2.1; const leg = box(.05, 1.1, .05, 0x2a221a, b.x + Math.sin(a) * .25, .55, b.z + Math.cos(a) * .25); leg.rotation.z = Math.sin(a) * .2; } cyl(.45, .22, .25, 0x6a4a22, b.x, 1.1, b.z); }
-    const s = b.torch ? .5 : b.small ? .5 : 1.1, base = b.torch ? 1.4 : b.small ? .9 : 2;
+    const s = (b.torch ? .5 : b.small ? .5 : 1.1) * (b.dim != null ? .6 + .4 * b.dim : 1), base = (b.torch ? 1.4 : b.small ? .9 : 2) * (b.dim != null ? b.dim : 1);
     const light = new THREE.PointLight(0xff9040, base, b.torch ? 10 : 14, 2); light.position.set(b.x, y + .7, b.z); world.add(light);
     S.fires.push({ f: flame(world, b.x, y, b.z, s), light, base });
   }
@@ -447,6 +470,58 @@ function build(L) {
   }
   if (L.horse) buildHorse(L.horse, L);
   if (gate) buildGate(L.gate, gate);
+  buildRouteHints(L, gate, walls);
+}
+
+// ============================================================
+// 路線暗示（設計文件 2026-11-07 第 2.2 節）：城門塔樓剪影、西農的白堊貓頭鷹記號、合拍腳印的貼花池
+// 路線暗示不乘 visualAid（第 3、4 區也要認得路）；腳印是機制暗示，畫的時候才乘
+// ============================================================
+function buildRouteHints(L, gate, walls) {
+  // 城門塔樓：永遠在屋頂上方看得到的剪影（不受霧影響，比夜空略亮一點，塔頂有一點火光）
+  if (gate) {
+    const sil = new THREE.MeshBasicMaterial({ color: 0x1b2234, fog: false }), rim = new THREE.MeshBasicMaterial({ color: 0x252e46, fog: false });
+    const gx = gate.x1 + 1.5, gz0 = gate.z0 - 2.2, gz1 = gate.z1 + 2.2;
+    for (const tz of [gz0, gz1]) {
+      box(3.4, 19, 3.4, 0, gx, 9.5, tz, world, sil);
+      box(3.9, .6, 3.9, 0, gx, 19.2, tz, world, rim);
+      for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; box(.8, 1, .8, 0, gx + Math.cos(a) * 1.55, 20, tz + Math.sin(a) * 1.55, world, sil); }
+      const fire = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffa050, fog: false })); fire.position.set(gx, 20.1, tz); world.add(fire);
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(.9, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff8030, fog: false, transparent: true, opacity: .18, blending: THREE.AdditiveBlending, depthWrite: false })); halo.position.copy(fire.position); world.add(halo);
+    }
+    box(1.8, 3, gz1 - gz0, 0, gx, 15, (gz0 + gz1) / 2, world, sil);          // 兩座塔之間的門樓頂
+  }
+  // 間諜西農【經典】事先用白堊畫的貓頭鷹記號：箭頭指向城門（從看得到它的那一側看過去，箭頭朝城門）【改編】
+  const owlTex = (flip) => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 160; const x = c.getContext('2d');
+    if (flip) { x.translate(256, 0); x.scale(-1, 1); }
+    x.strokeStyle = 'rgba(236,232,220,.95)'; x.lineWidth = 7; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath(); x.ellipse(70, 92, 36, 46, 0, 0, Math.PI * 2); x.stroke();                     // 身體
+    x.beginPath(); x.arc(56, 74, 11, 0, Math.PI * 2); x.stroke(); x.beginPath(); x.arc(84, 74, 11, 0, Math.PI * 2); x.stroke();   // 眼睛
+    x.beginPath(); x.moveTo(42, 52); x.lineTo(46, 34); x.lineTo(58, 48); x.moveTo(82, 48); x.lineTo(94, 34); x.lineTo(98, 52); x.stroke();   // 耳羽
+    x.beginPath(); x.moveTo(70, 84); x.lineTo(66, 92); x.lineTo(74, 92); x.closePath(); x.stroke();   // 喙
+    x.beginPath(); x.moveTo(125, 92); x.lineTo(226, 92); x.moveTo(198, 66); x.lineTo(228, 92); x.lineTo(198, 118); x.stroke();   // 箭頭
+    const t = new THREE.CanvasTexture(c); return t;
+  };
+  const owlMat = flip => new THREE.MeshBasicMaterial({ map: owlTex(flip), transparent: true, opacity: .62, depthWrite: false, color: 0xd8d4c6 });
+  const mR = owlMat(false), mL = owlMat(true);
+  // [x, z, 面向]：'s' = 面南（貼在北側牆上）、'n' = 面北、'w' = 面西
+  const marks = [[29.97, 16.2, 'w'], [32.6, 17.02, 's'], [37.4, 17.02, 's'], [44.2, 17.02, 's'], [41.6, 27.98, 'n'], [45.2, 27.98, 'n']];
+  for (const [mx, mz, face] of marks) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(.95, .6), face === 'n' ? mL : mR);
+    m.position.set(mx, 1.45, mz);
+    m.rotation.y = face === 's' ? 0 : face === 'n' ? Math.PI : -Math.PI / 2;
+    world.add(m);
+  }
+  // 合拍腳印：踩在鼓點上時，塵土裡的腳印微微發亮（貼花池，畫面層每步取一個）
+  const pc = document.createElement('canvas'); pc.width = 32; pc.height = 64; const px = pc.getContext('2d');
+  const gr = px.createRadialGradient(16, 34, 2, 16, 34, 26); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  px.fillStyle = gr; px.beginPath(); px.ellipse(16, 38, 10, 22, 0, 0, Math.PI * 2); px.fill();
+  const ptex = new THREE.CanvasTexture(pc);
+  for (let i = 0; i < 14; i++) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(.16, .3), new THREE.MeshBasicMaterial({ map: ptex, color: 0xffc070, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.visible = false; world.add(m); S.prints.push({ m, life: 0 });
+  }
 }
 
 function buildTemple(w, porch) {
@@ -528,6 +603,14 @@ function buildHorse(H, L) {
     for (const [ox, oz, ww, dd] of [[0, -.45, .95, .06], [0, .45, .95, .06], [-.45, 0, .06, .95], [.45, 0, .06, .95]]) box(ww, .1, dd, 0, td.x + ox, fy + .05, td.z + oz, g, MB(0x7a5a30));
     cyl(.03, .03, fy, 0x8a7a50, td.x + .25, fy / 2, td.z, g, 5);                                  // 垂下的繩子
     const glow = new THREE.PointLight(0xff9040, .7, 3, 2); glow.position.set(td.x, fy - .5, td.z); g.add(glow);
+    // 路線暗示（2.2 節）：暗門縫透出一道月光，是腹中最亮的地方；從洞口往上斜斜升起一道冷光
+    const mm = (o) => new THREE.MeshBasicMaterial({ color: 0xbfd0f0, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const hole = new THREE.Mesh(new THREE.PlaneGeometry(.86, .86), mm(.55)); hole.rotation.x = -Math.PI / 2; hole.position.set(td.x, fy - .06, td.z); g.add(hole);
+    for (const [ox, oz, ww, dd] of [[0, -.43, .9, .03], [0, .43, .9, .03], [-.43, 0, .03, .9], [.43, 0, .03, .9]]) box(ww, .02, dd, 0, td.x + ox, fy + .11, td.z + oz, g, mm(.9));
+    const shaft = new THREE.Mesh(new THREE.PlaneGeometry(.8, 1.9), mm(.09)); shaft.position.set(td.x + .1, fy + .9, td.z); shaft.rotation.z = -.18; g.add(shaft);
+    const shaft2 = shaft.clone(); shaft2.rotation.y = Math.PI / 2; g.add(shaft2);
+    const moonL = new THREE.PointLight(0x9fb4e8, .9, 3.2, 2); moonL.position.set(td.x, fy + .3, td.z); g.add(moonL);
+    S.trapMoon = { hole, shaft, shaft2, light: moonL };
   }
   // 側板：豎著的木條，縫隙透出外面的火光
   // 側板與頂板放在同一個群組：隨拍輕震（設計文件 8.2「世界隨拍跳動」）
@@ -562,15 +645,30 @@ function buildHorse(H, L) {
   for (const oz of [-.3, .3]) box(.15, .5, .15, 0, bx1 + .9, top + 3.3, bzc + oz, g, M(0x4a3420));
   const mane = box(.3, 2.2, .3, 0, bx1 - .1, top + 1.5, bzc, g, M(0x2a1e12)); mane.rotation.z = -.5;
   const tail = box(.3, 2.2, .3, 0, bx0 - .4, top - .7, bzc, g, M(0x2a1e12)); tail.rotation.z = -.4;
-  // 腹中的同伴：靠著兩側坐著（剪影）
-  for (const [ox, side] of [[.9, -1], [2.3, 1], [3.8, -1], [4.6, 1]]) {
-    const px = zb.x0 + ox; if (px > zb.x1 - 1.2) continue;
+  // 腹中的同伴：靠著兩側坐著（剪影）。路線暗示（2.2 節）：同伴的頭都望向暗門，最靠近暗門的那位伸手指著它
+  const companions = [[.9, -1], [2.3, 1], [3.8, -1], [4.6, 1]].map(([ox, side]) => ({ px: zb.x0 + ox, side })).filter(c => c.px <= zb.x1 - 1.2);
+  companions.forEach((c, ci) => {
+    const { px, side } = c;
     const p = new THREE.Group(); p.position.set(px, fy, bzc + side * (bd / 2 - .35)); g.add(p);
     const sil = new THREE.MeshBasicMaterial({ color: 0x0c0b0a }), helm = new THREE.MeshBasicMaterial({ color: 0x3a2e18 });
-    box(.4, .75, .3, 0, 0, .4, 0, p, sil); const hd = new THREE.Mesh(new THREE.SphereGeometry(.15, 8, 6), helm); hd.position.y = .98; p.add(hd);
-    box(.04, .16, .3, 0, 0, 1.14, 0, p, sil); box(.3, .15, .6, 0, 0, .1, -side * .35, p, sil);
+    box(.4, .75, .3, 0, 0, .4, 0, p, sil);
+    const head = new THREE.Group(); head.position.y = .98; p.add(head);
+    const hd = new THREE.Mesh(new THREE.SphereGeometry(.15, 8, 6), helm); head.add(hd);
+    box(.04, .16, .3, 0, 0, .16, 0, head, sil);
+    box(.07, .05, .06, 0, .12, -.02, 0, head, new THREE.MeshBasicMaterial({ color: 0x4a3626 }));       // 臉（鼻樑）：看得出望向哪裡
+    box(.3, .15, .6, 0, 0, .1, -side * .35, p, sil);
     const sp = cyl(.02, .02, 2, 0x5a5040, .2, 1, 0, p, 4); sp.rotation.x = side * .25;
-  }
+    if (td) {                                     // 頭轉向暗門（臉的 +x 對準暗門方向）
+      const wx = td.x - px, wz = td.z - (bzc + side * (bd / 2 - .35));
+      head.rotation.y = Math.atan2(-wz, wx);
+      head.rotation.z = -.12;                      // 微微低頭：暗門在地板上
+      if (ci === companions.length - 1) {          // 最靠近暗門的那位：手臂伸出去指著暗門
+        const arm = new THREE.Group(); arm.position.set(0, .7, 0); p.add(arm);
+        box(.55, .07, .07, 0, .27, 0, 0, arm, sil); box(.12, .05, .05, 0, .6, -.02, 0, arm, new THREE.MeshBasicMaterial({ color: 0x3a2a1c }));
+        arm.rotation.y = Math.atan2(-wz, wx); arm.rotation.z = -Math.atan2(.7, Math.hypot(wx, wz));
+      }
+    }
+  });
 }
 
 function buildGate(G, gr) {
@@ -597,10 +695,28 @@ function buildGate(G, gr) {
   const bar = new THREE.Group(); bar.position.set(0, 2.4, .6); root.add(bar);
   box(gw + 1.2, .45, .45, 0, 0, 0, 0, bar, M(0x6a4a2a));
   for (const sx of [-gw / 2 + .3, -.2, gw / 2 - .3]) box(.3, .8, .7, 0, sx, 2.4, .5, root, M(0x3a3a3e));
+  // 機制暗示（2.1 節）：門閂上的鐵環，低頻時映著月光、高頻時沒入陰影（畫面層每幀改顏色，強度 × visualAid）
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x55555a });
+  for (const rx of [-1.6, 0, 1.6]) { const r = new THREE.Mesh(new THREE.TorusGeometry(.22, .045, 6, 14), ringMat); r.position.set(rx, -.36, .26); bar.add(r); }
+  S.latchRings = ringMat;
+  // 路線暗示（2.2 節）：門閂旁的月光——從城牆上方斜照下來的一道冷光，地上一塊亮斑（一直都在）
+  const lm = (o) => new THREE.MeshBasicMaterial({ color: 0xb8c8ee, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 9), lm(.07)); beam.position.set(-1.4, 4.4, 1.6); beam.rotation.set(0, .3, .22); root.add(beam);
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(1.3, 24), lm(.22)); pool.rotation.x = -Math.PI / 2; pool.position.set(-1.2, .04, 1.5); root.add(pool);
+  const ml = new THREE.PointLight(0xa8bce8, .8, 6, 2); ml.position.set(-1, 3.2, 1.4); root.add(ml);
   S.gate = { doors, bar, gw, open: 0 };
 }
 
 // ---------- 衛兵 ----------
+let discTexC = null;
+function discTex() {                          // 感知光圈：中央淡、邊緣一圈較亮（讀得出「範圍到這裡」）
+  if (discTexC) return discTexC;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,.28)'); gr.addColorStop(.78, 'rgba(255,255,255,.4)'); gr.addColorStop(.93, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+  return (discTexC = new THREE.CanvasTexture(c));
+}
 function makeGuard() {
   const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
   const cloak = 0x6a2420, skin = 0x9a7458, bronze = 0x9a7a3a;
@@ -630,8 +746,14 @@ function makeGuard() {
   // 除錯：感知範圍圈
   const ring = new THREE.Mesh(new THREE.RingGeometry(.96, 1, 48), new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: .35, side: THREE.DoubleSide, depthWrite: false }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = .04; ring.visible = false; world.add(ring);
+  // 機制暗示（2.1 節）：火把在地上的光圈＝感知範圍 r(p)，跟著脹縮（盲區縮到沒有）；強度 × visualAid
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ map: discTex(), color: 0xffa050, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  disc.rotation.x = -Math.PI / 2; disc.position.y = .035; disc.renderOrder = 1; world.add(disc);
+  // 機制暗示：盲區時，背對你、距離夠近（可暗殺）的衛兵輪廓泛起一圈冷光
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(.42, .36, 2.05, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
+  rim.position.y = 1.05; up.add(rim);
   world.add(g);
-  return { g, up, legs, armR, armL, head, tf, light, glow, halo, ring, fall: 0, run: 0, px: null, pz: null, walk: 0 };
+  return { g, up, legs, armR, armL, head, tf, light, glow, halo, ring, disc, rim, discR: 0, tilt: 0, fall: 0, run: 0, px: null, pz: null, walk: 0 };
 }
 
 // ============================================================
@@ -660,7 +782,7 @@ function makeAudio(T) {
   audio = {
     now: () => (a && a.now ? a.now() : AudioMod.now ? AudioMod.now() : actx.currentTime),
     update: s => (a && a.update ? a.update(s) : AudioMod.update && AudioMod.update(s)),
-    cue: n => (a && a.cue ? a.cue(n) : AudioMod.cue && AudioMod.cue(n)),
+    cue: (n, d) => (a && a.cue ? a.cue(n, d) : AudioMod.cue && AudioMod.cue(n, d)),   // d：事件本身（index、x、z）
     stop: () => (a && a.stop ? a.stop() : a && a.dispose ? a.dispose() : null),
     setListener: o => { try { if (a && typeof a.setListener === 'function') a.setListener(o); } catch (e) {} },
     raw: a,
@@ -751,6 +873,7 @@ function newGame() {
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
+  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
   $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
 }
 function startFromTop() {
@@ -764,6 +887,8 @@ function retryZone() {
   if (!game) return startFromTop();
   if (!actx) makeAudio(curT);
   game.retry();                                  // 規則：從這一區開頭重來（前區已放倒的衛兵維持）
+  const L = HW.lastLadder;
+  if (L && performance.now() - L.at < 15000) { clearHints(); queueHint(L.a); }
   overShown = false; winT = 0; $('fail').hidden = true;
   V.yaw = num(game.player.yaw, V.yaw); V.pitch = -.1;
   resume();
@@ -774,7 +899,8 @@ function curP() { return game && game.cycle ? game.cycle.p || 0 : 0; }
 const desync = () => game && game.cycle && (game.cycle.desync != null ? !!game.cycle.desync : curP() > num(K().DESYNC_P, .8));
 function lag(fn) { if (desync()) setTimeout(fn, num(K().DESYNC_LAG, .15) * 1000); else fn(); }
 
-const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'Shift': 'Shift', '空白鍵': '空白鍵' };
+const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'Shift': 'Shift', '空白鍵': '空白鍵', 'W A S D': 'W A S D' };
+const KEY_RE = /(空白鍵|Shift|W A S D|\bE\b|\bQ\b)/;
 // 提示排隊：一次一則，每則至少 HINT_MIN 秒；排隊中有下一則時，顯示滿 HINT_SKIP 秒後按任意鍵可提早換
 // （避免一進區就連發的提示互相覆蓋，屏息提示一定看得到）；同一則已在顯示或排隊中就不再排
 const HINT_MIN = 4000, HINT_SKIP = 1200, HINT_LAST = 7000;
@@ -798,16 +924,19 @@ function skipHint() {                                   // 任意鍵：排隊中
   if (hintCur != null && hintQ.length && performance.now() - hintAt >= HINT_SKIP) nextHint();
 }
 function clearHints() { hintQ.length = 0; hintCur = null; clearTimeout(hintTimer); $('hint').textContent = ''; $('hint').style.opacity = 0; }
+function keyText(el, text) {                       // 把「按 Q」「按住 E」裡的鍵名框起來
+  String(text).split(KEY_RE).forEach(part => {
+    if (KEYNAMES[part]) { const k = document.createElement('span'); k.className = 'k'; k.textContent = part; el.appendChild(k); }
+    else el.appendChild(document.createTextNode(part));
+  });
+}
 function showHint(text) {
   if (!text) return;
   hintCur = String(text); hintAt = performance.now();
   const h = $('hint');
   h.innerHTML = '';
   // 把「按 Q」「按住 E」裡的鍵名框起來
-  String(text).split(/(空白鍵|Shift|\bE\b|\bQ\b)/).forEach(part => {
-    if (KEYNAMES[part]) { const k = document.createElement('span'); k.className = 'k'; k.textContent = part; h.appendChild(k); }
-    else h.appendChild(document.createTextNode(part));
-  });
+  keyText(h, text);
   h.style.opacity = 1;
   clearTimeout(hintTimer);
   hintTimer = setTimeout(nextHint, hintQ.length ? HINT_MIN : HINT_LAST);   // 沒有下一則就留久一點再淡出
@@ -825,9 +954,10 @@ function drain() {
   const evs = out.splice(0, out.length);
   for (const e of evs) {
     if (!e) continue;
-    if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) VIS.stepFlash = 1;   // 這一步被聽到了
-    if (e.type === 'sfx') { audio.cue(e.a); if (e.a === 'takedown' || e.a === 'down') lag(() => flash(.25)); }
-    else if (e.type === 'hint') lag(() => queueHint(e.a));
+    if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) { VIS.stepFlash = 1; tiltGuards(e.x, e.z); }   // 這一步被聽到了
+    if (e.type === 'sfx' && e.a === 'step_masked') spawnPrint(e.x, e.z);                // 合拍：腳印發亮
+    if (e.type === 'sfx') { audio.cue(e.a, e); if (e.a === 'takedown' || e.a === 'down') lag(() => flash(.25)); }
+    else if (e.type === 'hint') { if (e.key && e.level >= 2) HW.lastLadder = { key: e.key, level: e.level, a: e.a, at: performance.now() }; lag(() => queueHint(e.a)); }
     else if (e.type === 'msg') lag(() => showMsg(e.a));
   }
 }
@@ -872,6 +1002,7 @@ function loop() {
     if (blindNow && !loop.wasBlind && game.phase === 'play') { try { audio.cue('blind'); } catch (e) {} }
     loop.wasBlind = blindNow;
     drain();
+    worldHints(t);
   } else VIS.prevT = null;
   if (game && !paused && (game.phase === 'fail' || game.phase === 'win')) {
     if (game.out && game.out.length) drain();
@@ -908,7 +1039,6 @@ function sync(dt, now) {
   // 火光閃動
   const fl = () => 1 + (Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08) * jitter;
   for (const F of S.fires) { F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25); }
-  for (const s of S.shafts) s.material.opacity = .05 + Math.random() * .03 * motion;
   if (S.horseLight) S.horseLight.intensity = .35 + Math.random() * .2 * motion + VIS.pulse * .15;
 
   // 衛兵
@@ -948,8 +1078,27 @@ function sync(dt, now) {
     // 除錯圈：感知範圍 r(p)
     const dbg = $('oPhase').checked && !down;
     F.ring.visible = dbg; if (dbg) { const r = blind ? .01 : rp * (susp || hunted ? num(KK.ALERT_MUL, 1.3) : 1); F.ring.scale.set(r, r, r * 0 + r); F.ring.position.set(G.x, .04, G.z); }
+    // ---- 世界內暗示（設計文件 2026-11-07 第 2.1 節），強度一律 × visualAid ----
+    const aid = VIS.aid, sg = HW.sigBy[key];
+    // 火把光圈 = 感知範圍：跟著 r(p) 脹縮，盲區縮到沒有
+    F.discR += ((down || !sg ? 0 : sg.r) - F.discR) * Math.min(1, dt * 12);
+    F.disc.visible = aid > .01 && F.discR > .05 && !down;
+    if (F.disc.visible) { F.disc.scale.set(F.discR, F.discR, 1); F.disc.position.set(G.x, .035, G.z); F.disc.material.opacity = .2 * aid * (hunted || susp ? 1.35 : 1); }
+    // 可暗殺：輪廓泛起冷光（盲區最亮；靠近但還沒到盲區時淡淡的）
+    const rimT = sg && sg.killable && !down ? (blind ? .6 : .14) * aid : 0;
+    F.rim.material.opacity += (rimT - F.rim.material.opacity) * Math.min(1, dt * 12);
+    F.rim.visible = F.rim.material.opacity > .005;
+    // 不合拍的腳步被聽到：衛兵側頭
+    F.tilt = Math.max(0, F.tilt - dt * 1.1);
+    F.head.rotation.z = Math.sin(Math.min(1, F.tilt) * Math.PI) * .5 * aid;
+    // 起疑：火焰在低音拍上跳一下，像節拍器
+    if (susp && !down && g.bass && Number.isFinite(g.bass.nextBeat)) {
+      const since = (g.bass.period || 2.4) - (g.bass.nextBeat - audio.now());
+      const jump = Math.exp(-Math.max(0, since) * 7) * aid;
+      F.tf.scale.y *= 1 + jump * 1.1; F.tf.scale.x *= 1 + jump * .35; F.tf.scale.z *= 1 + jump * .35;
+    }
   });
-  for (const [k, F] of S.guards) if (!seen.has(k)) { world.remove(F.g); world.remove(F.ring); S.guards.delete(k); }
+  for (const [k, F] of S.guards) if (!seen.has(k)) { world.remove(F.g); world.remove(F.ring); world.remove(F.disc); S.guards.delete(k); }
 
   // 城門：門閂隨進度滑開；勝利時門往外打開
   if (S.gate) {
@@ -967,6 +1116,7 @@ function sync(dt, now) {
     S.invaders.light.intensity = won ? Math.min(3, winT * 1.2) : 0;
     if (won) for (const v of S.invaders.list) { v.f.position.x -= v.sp * dt; if (v.f.position.x < S.invaders.gx - 14) v.f.position.x += 42; v.f.scale.y = fl(); }
   }
+  hintVisuals(dt);                                // 世界內暗示（在算圖之前更新，木板縫火光、鐵環、腳印才畫得出來）
 }
 
 // ============================================================
@@ -1135,6 +1285,100 @@ function visFrame(dt, floorY, playing) {
   return fz;
 }
 
+// ============================================================
+// 世界內暗示（設計文件 2026-11-07-hint-guidance.md 第 2.1 節）
+// 訊號來自規則的 hintSignals(game)；聲音暗示（audio.cue）一直都在；視覺暗示 × visualAid（VIS.aid）。
+// 同伴的低語是程式合成的氣聲，這裡同時顯示字幕（字幕是聲音的說明，不乘 visualAid）。
+// ============================================================
+const HW = { sig: null, sigBy: {}, gaspAt: -1e9, nowN: 0, nowCycle: null, susp: {}, growlAt: {}, clickCycle: null,
+             hand: 0, handKick: 0, back: 0, backSide: 0, blade: 0, lastLadder: null, capTimer: null };
+function caption(who, text, ms) {
+  const el = $('whisper');
+  el.innerHTML = ''; const i = document.createElement('i'); i.textContent = who; el.appendChild(i); el.appendChild(document.createTextNode('「' + text + '」'));
+  el.style.opacity = 1;
+  clearTimeout(HW.capTimer); HW.capTimer = setTimeout(() => { el.style.opacity = 0; }, ms || 1800);
+}
+function worldHints(t) {
+  const g = game;
+  let s = null;
+  try { s = typeof Rules.hintSignals === 'function' ? Rules.hintSignals(g) : null; } catch (e) { s = null; }
+  HW.sig = s; HW.sigBy = {};
+  if (!s || g.phase !== 'play') return;
+  for (const q of s.guards) HW.sigBy[q.id] = q;
+  const c = g.cycle;
+  // 屏息：衛兵靠近、節奏正往最快走 → 同伴倒吸一口氣、壓低聲音說「別動」，手從畫面邊緣抓住你的手臂
+  if (g.zone === 1 && s.breathWarn > .45 && t - HW.gaspAt > 7 && (s.blindIn == null || s.blindIn > 1.1)) {
+    HW.gaspAt = t; HW.handKick = 1;
+    audio.cue('companionGasp'); caption('身旁的同伴壓低聲音', '別動。');
+  }
+  // 驟降：前兩次，同伴在鼓聲斷掉前低聲說「就是現在」（說完正好斷）
+  if (g.zone === 1 && HW.nowN < 2 && !g.panic.active && !c.nextFake && s.blindIn != null && s.blindIn < .98 && s.blindIn > .68 && HW.nowCycle !== c.index && t - HW.gaspAt > 1.5) {
+    HW.nowCycle = c.index; HW.nowN++;
+    audio.cue('whisperNow'); caption('同伴低聲', '就是現在。', 2000);
+  }
+  // 衛兵起疑：疑心越過一半時低吼一聲（從他的位置傳來）
+  for (const q of g.guards) {
+    if (!q.active) continue;
+    const prev = HW.susp[q.id] || 0; HW.susp[q.id] = q.susp;
+    if (q.state === 'patrol' && prev < .5 && q.susp >= .5 && t - (HW.growlAt[q.id] || -1e9) > 5) { HW.growlAt[q.id] = t; audio.cue('growl', { x: q.x, z: q.z }); }
+  }
+  // 門閂：推著推著，節奏快要變快（p 接近 GATE_LOW_P）時，鐵環輕輕「喀」一下：該放手了
+  const lowP = num(K().GATE_LOW_P, .5);
+  if (s.latch && s.latch.near && keys.KeyE && c.p > lowP - .1 && c.p <= lowP && HW.clickCycle !== c.index) { HW.clickCycle = c.index; audio.cue('latchClick'); }
+}
+function tiltGuards(x, z) {                      // 不合拍腳步被聽到：附近的衛兵側頭
+  if (!Number.isFinite(x) || !game) return;
+  const R2 = num(K().STEP_R, 2.5) * 1.6;
+  for (const G of arr(game.guards)) { if (!G.active) continue; const F = S && S.guards.get(G.id); if (F && Math.hypot(G.x - x, G.z - z) <= R2) F.tilt = 1; }
+}
+function spawnPrint(x, z) {                      // 合拍腳步：塵土裡的腳印微微發亮
+  if (!S || !S.prints.length || !Number.isFinite(x) || VIS.aid < .01 || (game && game.player.inBelly)) return;
+  const P = S.prints[S.printI++ % S.prints.length], side = S.printI % 2 ? 1 : -1, yaw = V.yaw;
+  P.m.position.set(x + Math.cos(yaw) * .12 * side, .04, z - Math.sin(yaw) * .12 * side);
+  P.m.rotation.z = yaw; P.life = 1; P.m.visible = true;
+}
+const RING_MOON = new THREE.Color(0xdce6ff), RING_DARK = new THREE.Color(0x1c1c22);
+function hintVisuals(dt) {
+  const g = game, s = HW.sig, aid = VIS.aid, blind = !!(g.cycle && g.cycle.blind);
+  // 同伴的手：屏息警告越強越伸進畫面（只在木馬腹中）
+  HW.handKick = Math.max(0, HW.handKick - dt * .45);
+  const handT = g.zone === 1 && s ? Math.max(s.breathWarn * .8, HW.handKick) : 0;
+  HW.hand += (handT - HW.hand) * Math.min(1, dt * 6);
+  const hEl = $('hand'), hv = HW.hand * aid;
+  hEl.style.opacity = Math.min(1, hv * 1.4).toFixed(3);
+  hEl.style.transform = `translate(${(-70 + 62 * HW.hand).toFixed(1)}%, ${(18 - 10 * HW.hand).toFixed(1)}%) rotate(${(-8 + 6 * HW.hand).toFixed(1)}deg)`;
+  // 背後有人：畫面邊緣朝那個方向輕微暗下（左後、右後、正後方＝底部）
+  const bk = s && s.back ? s.back.k : 0;
+  HW.back += (bk - HW.back) * Math.min(1, dt * 4);
+  if (s && s.back) HW.backSide += (s.back.side - HW.backSide) * Math.min(1, dt * 6);
+  const bEl = $('behind'), side = HW.backSide;
+  const cx = 50 + side * 55, cy = 100 - Math.abs(side) * 45;
+  bEl.style.background = `radial-gradient(ellipse 75% 70% at ${cx.toFixed(0)}% ${cy.toFixed(0)}%, rgba(0,0,0,.92), rgba(0,0,0,0) 70%)`;
+  bEl.style.opacity = (HW.back * .85 * aid).toFixed(3);
+  // 刀刃反光：盲區時有可暗殺的衛兵（或已經貼在背後）
+  const kill = s && s.guards.some(q => q.killable && (blind || q.ready));
+  HW.blade += ((kill ? 1 : 0) - HW.blade) * Math.min(1, dt * (kill ? 14 : 5));
+  const tw = .75 + .25 * Math.sin(performance.now() / 70);
+  $('blade').style.opacity = (HW.blade * tw * aid).toFixed(3);
+  // 木板縫的火光：衛兵從木馬下走過時，從下方掃過他所在位置的縫
+  if (S && S.shafts.length) {
+    let gx = null, warn = s ? s.breathWarn : 0;
+    if (g.zone === 1) for (const q of arr(g.guards)) if (q.active && (gx == null || Math.abs(q.x - g.player.x) < Math.abs(gx - g.player.x))) gx = q.x;
+    for (const sh of S.shafts) {
+      const near = gx == null ? 0 : Math.exp(-Math.pow(sh.position.x - gx, 2) / .8);
+      sh.material.opacity = .05 + .03 * Math.random() * (1 - VIS.freeze) + near * (.06 + .12 * warn) * aid;
+    }
+  }
+  // 門閂鐵環：低頻映著月光（銀白），高頻沒入陰影（暗）；visualAid = 0 時固定中間色
+  if (S && S.latchRings) {
+    const low = curP() <= num(K().GATE_LOW_P, .5);
+    tmpC.setHex(0x55555a).lerp(low ? RING_MOON : RING_DARK, aid);
+    S.latchRings.color.copy(tmpC);
+  }
+  // 腳印：慢慢暗掉
+  if (S) for (const P of S.prints) if (P.life > 0) { P.life = Math.max(0, P.life - dt / 2.2); P.m.material.opacity = P.life * .55 * aid; P.m.visible = P.life > 0; }
+}
+
 // ---------- 介面 ----------
 const gateProg = g => g.gate ? clamp(num(g.gate.progress, 0) / num(g.gate.need, K().GATE_NEED, 15), 0, 1) : 0;
 let noiseT = 0;
@@ -1192,6 +1436,10 @@ function showOver() {
   if (game.phase === 'fail') {
     const why = game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';   // 規則給的完整句子直接顯示
     $('failWhy').textContent = why;
+    // 暗示階梯第 2、3 階：失敗畫面也寫出來（重來後再提示一次）
+    const L = HW.lastLadder, fh = $('failHint');
+    fh.innerHTML = ''; fh.hidden = !(L && performance.now() - L.at < 8000);
+    if (!fh.hidden) keyText(fh, L.a);
     setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
   } else {
     $('win').hidden = false;
@@ -1285,7 +1533,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS };
+window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW };
 requestAnimationFrame(loop);
 })();
 </script>

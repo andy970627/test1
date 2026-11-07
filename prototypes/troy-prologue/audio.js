@@ -34,6 +34,14 @@
  * 聲音互動（設計文件 8.3）：腳步 step_masked／step_loud、安撫哼唱 calm_ok／calm_bad（低吟唱主題第 index 個音）、
  *   門閂 latch_step（里拉琴奏主題第 index 個音，8 音）、衛兵 3D 聽聲辨位（setListener＋每名衛兵一個 HRTF PannerNode，最多 6 名）。
  *
+ * 暗示聲（設計文件 2026-11-07-hint-guidance.md 第 2 節）【改編】：新加的聲音暗示全部走暗示匯流排（hintBus → 盲區 gate，壓到約 −46 dB），
+ *   單發的再用 hintFree() 檢查不和預測的盲區重疊，盲區仍是乾淨的空檔。聲音暗示一直都在（不乘 visualAid）。
+ *   cue：companionGasp（同伴倒吸氣＋氣聲「別動」）、whisperNow（氣聲「就是現在」）、growl（衛兵起疑低吼，3D）、
+ *   gravel（不合拍腳步後碎石滾動，stepLoud 自動帶）、latchClick（推門閂時節奏快要變快的「喀」）；高頻推門閂的 latch 開頭多一聲刺耳的「喀」。
+ *   衛兵聲音隨相位變清楚；背對你、可暗殺的衛兵（規則 hintSignals）在盲區前呼吸放大、時間對準盲區開頭。
+ *   路線（2.2 節）：風從暗門外（區 1）、城門方向（區 2、4）、巷尾（區 3）傳來（3D）；區 2 起偶爾有遠方號角從城門外吹響
+ *   （只在盲區剛結束、吹完碰不到下一段盲區時）；城門區門外大軍的低語隨門閂進度越來越近。警戒時路線環境聲退後。
+ *
  * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；計時器只負責「補排程」（預排 0.5 秒），不負責計時。
  *       不使用畫面幀時間。計時器優先用 Worker 裡的 setInterval（25 ms）送 tick 給主執行緒（背景分頁不被降到 1 秒），
  *       建不起來就用主執行緒 setInterval。畫面每幀很慢（例如 200 ms）時，0.5 秒的預排仍蓋得住；
@@ -110,7 +118,19 @@
     MAX_GUARD_VOICES: 6,       // 同時有聲音的衛兵上限（HRTF 很吃 CPU）
     GUARD_FAR: 30,             // 超過這個距離（公尺）不出聲；最後 8 公尺淡出
     GUARD_BLIND_FLOOR: 0.08,   // 盲區時衛兵聲音壓到多少（約 −22 dB：盲區要聽起來是空檔，貼身的衛兵仍隱約可辨）
-    EAR_Y: 1.6                 // 聽者耳朵高度（公尺）
+    EAR_Y: 1.6,                // 聽者耳朵高度（公尺）
+    // 暗示聲（設計文件 2026-11-07-hint-guidance.md 第 2 節）：全部走 hintBus → 盲區 gate
+    HINT_BLIND_FLOOR: 0.005,   // 盲區時暗示聲壓到多少（約 −46 dB）：盲區要是乾淨的空檔
+    HINT_GAIN: 1,              // 暗示聲總音量
+    WHISPER_GAIN: 0.9,         // 同伴的氣聲低語（窄帶通後能量小，所以峰值設高）
+    GROWL_GAIN: 0.3,           // 衛兵起疑的低吼
+    GRAVEL_GAIN: 0.12,         // 不合拍腳步後的碎石滾動
+    WIND_GAIN: 0.05,           // 路線的風（從城門／巷尾／暗門方向）
+    HORN_GAIN: 0.05,           // 遠方希臘大軍的號角（從城門方向）
+    HORN_EVERY: 22,            // 號角大約每幾秒一次（只在盲區剛結束時吹，吹完不碰到下一段盲區）
+    MURMUR_GAIN: 0.06,         // 城門外大軍的低語（越推門閂越近）
+    KILL_BREATH_MUL: 1.8,      // 盲區前，背對你、可暗殺的衛兵呼吸聲放大幾倍
+    GUARD_P_GAIN: 0.5          // 衛兵聲音隨相位變清楚：×(0.75 + 0.5·p)
   };
 
   // ---------- 主題動機（原創，D 多利安）----------
@@ -145,6 +165,7 @@
     calmok: 'calmOk', calmbad: 'calmBad', calmdone: 'calmDone',
     stepmasked: 'stepMasked', steploud: 'stepLoud', latchstep: 'latchStep',
     checkpoint: 'checkpoint', dash: 'dash', escape: 'escape', trapdoor: 'trapdoor',
+    gravel: 'gravel', companiongasp: 'companionGasp', whispernow: 'whisperNow', growl: 'growl', latchclick: 'latchClick',
     blind: 'blind', gap: 'blind',
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
@@ -837,6 +858,118 @@
     var guardOut = ctx.createGain(); guardOut.gain.value = 1; guardOut.connect(master);   // 衛兵 3D 聲音（盲區壓低、不全靜音）
     var gateG = new Gate(guardOut.gain, C.GUARD_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
 
+    // ---------- 暗示聲（設計文件 2026-11-07-hint-guidance.md 第 2.1、2.2 節）【改編】 ----------
+    // 新加的暗示聲（同伴倒吸氣與低語、碎石滾動、衛兵起疑低吼、推門閂前的「喀」、風、號角、門外低語）全部走
+    // hintBus → hintOut（盲區 gate，壓到 HINT_BLIND_FLOOR）→ master，不送進共用殘響（殘響尾巴會拖進盲區）。
+    // 單發的暗示聲另外用 hintFree(t, 長度) 檢查：和預測的盲區重疊就不發。聲音暗示一直都在，不乘 visualAid。
+    var hintOut = ctx.createGain(); hintOut.gain.value = 1; hintOut.connect(master);
+    var gateH = new Gate(hintOut.gain, C.HINT_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
+    var hintBus = ctx.createGain(); hintBus.gain.value = C.HINT_GAIN; hintBus.connect(hintOut);
+    var routeDuck = ctx.createGain(); routeDuck.gain.value = 1; routeDuck.connect(hintBus);   // 路線環境聲：警戒時退後，讓慢低音最清楚
+    function hintFree(t, dur) {
+      if (gateR.forced) return false;
+      var ws = windowsBetween(t - 1, t + dur + 1);
+      for (var i = 0; i < ws.length; i++) if (ws[i].s < t + dur + 0.05 && ws[i].e > t - 0.05) return false;
+      return true;
+    }
+    // 3D 位置的暗示聲：輪流用幾個 panner（HRTF 很吃 CPU，不每次新建）
+    var hintPans = [], hintPanI = 0;
+    function hintAt(x, z, y) {
+      if (!isFinite(x) || !isFinite(z)) return hintBus;
+      if (hintPans.length < 4) { var np = makePanner(); np.refDistance = 2; np.rolloffFactor = 1; np.connect(hintBus); hintPans.push(np); }
+      var p = hintPans[hintPanI++ % hintPans.length];
+      setPos(p, x, y == null ? 1 : y, z, ctx.currentTime, true);
+      return p;
+    }
+    // 同伴的氣聲低語：程式合成的耳語（沒有聲帶振動，只有氣流經過「口腔共振峰」），字幕由畫面層顯示。
+    // 一個音節 = 子音（短的高頻氣聲）＋母音（兩個窄帶通噪音當 F1、F2，可以滑動）。
+    var CONS_F = { b: 1400, d: 2900, j: 4300, sh: 3300, x: 5400, z: 5800 };
+    function whisperSyl(dest, t, syl, pk) {
+      var c = syl.c, d = syl.d || 0.16, tv = t;
+      if (c) {
+        var long = c === 'sh' || c === 'x';
+        noise(dest, t, 'bandpass', CONS_F[c], 2.2, pk * (long ? 0.45 : 0.6), 0.004, long ? 0.07 : 0.025);
+        tv = t + (long ? 0.06 : 0.025);
+      }
+      var f1 = noise(dest, tv, 'bandpass', syl.v[0], 6, pk, 0.025, d);
+      var f2 = noise(dest, tv, 'bandpass', syl.v[1], 8, pk * 0.55, 0.025, d);
+      if (syl.v[2]) f1.frequency.linearRampToValueAtTime(syl.v[2], tv + d);
+      if (syl.v[3]) f2.frequency.linearRampToValueAtTime(syl.v[3], tv + d);
+      return tv + d + 0.03 - t;
+    }
+    function whisper(dest, t, syls, pk) {
+      var tt = t;
+      for (var i = 0; i < syls.length; i++) tt += whisperSyl(dest, tt, syls[i], pk * (i === 0 ? 1 : 0.9)) + 0.02;
+      return tt - t;
+    }
+    // 「別動」bié dòng、「就是現在」jiù shì xiàn zài（母音 [F1, F2, F1 終, F2 終]）
+    var SAY = {
+      dontMove: [{ c: 'b', v: [320, 2250, 520, 1850], d: 0.14 }, { c: 'd', v: [460, 820, 420, 760], d: 0.2 }],
+      now: [{ c: 'j', v: [320, 2200, 460, 950], d: 0.1 }, { c: 'sh', v: [420, 1550], d: 0.07 },
+            { c: 'x', v: [320, 2250, 620, 1850], d: 0.1 }, { c: 'z', v: [760, 1250, 420, 2000], d: 0.11 }]
+    };
+    var companionPan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;   // 同伴在左手邊
+    if (companionPan) { companionPan.pan.value = -0.45; companionPan.connect(hintBus); }
+    var companionOut = companionPan || hintBus;
+
+    // 路線的環境聲（2.2 節）：風（暗門外／城門方向／巷尾）、城門外大軍的低語；號角另外單發
+    var routeLive = [];
+    function routePanner(ref) { var p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = ref; p.rolloffFactor = 0.6; p.maxDistance = 200; p.connect(routeDuck); return p; }
+    var windPan = routePanner(6), windGain = ctx.createGain(); windGain.gain.value = 0; windGain.connect(windPan);
+    var murmurPan = routePanner(8), murmurGain = ctx.createGain(); murmurGain.gain.value = 0; murmurGain.connect(murmurPan);
+    var hornPan = routePanner(14);
+    if (!mute.ambient) {
+      var ws0 = ctx.createBufferSource(); ws0.buffer = noiseBuf; ws0.loop = true;
+      var wbp = ctx.createBiquadFilter(); wbp.type = 'bandpass'; wbp.frequency.value = 520; wbp.Q.value = 0.7;
+      var wlfo = ctx.createOscillator(); wlfo.frequency.value = 0.13; var wlg = ctx.createGain(); wlg.gain.value = 260; wlfo.connect(wlg); wlg.connect(wbp.frequency);
+      var gust = ctx.createGain(); gust.gain.value = C.WIND_GAIN;
+      var glfo = ctx.createOscillator(); glfo.frequency.value = 0.09; var glg = ctx.createGain(); glg.gain.value = C.WIND_GAIN * 0.5; glfo.connect(glg); glg.connect(gust.gain);
+      ws0.connect(wbp); wbp.connect(gust); gust.connect(windGain); ws0.start(); wlfo.start(); glfo.start();
+      routeLive.push(ws0, wlfo, glfo);
+      // 低語：三個「母音」共振峰的噪音，音量被兩條不同速的 LFO 隨機起伏，像很多人壓低聲音說話
+      var ms = ctx.createBufferSource(); ms.buffer = noiseBuf; ms.loop = true; ms.playbackRate.value = 0.8;
+      var mAmp = ctx.createGain(); mAmp.gain.value = C.MURMUR_GAIN;
+      [[380, 5, 1], [820, 6, 0.6], [1500, 7, 0.25]].forEach(function (fm) {
+        var f = ctx.createBiquadFilter(), g = ctx.createGain(); f.type = 'bandpass'; f.frequency.value = fm[0]; f.Q.value = fm[1]; g.gain.value = fm[2];
+        ms.connect(f); f.connect(g); g.connect(mAmp);
+      });
+      [[3.1, 0.45], [4.7, 0.3], [0.6, 0.35]].forEach(function (l) {
+        var o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = l[0]; g.gain.value = C.MURMUR_GAIN * l[1];
+        o.connect(g); g.connect(mAmp.gain); o.start(); routeLive.push(o);
+      });
+      mAmp.connect(murmurGain); ms.start(); routeLive.push(ms);
+    }
+    // 每區的風從哪裡來（世界座標；y 是高度）
+    var WIND_AT = [null, { x: 11, y: 0.2, z: 15, g: 0.7 }, { x: 62, y: 5, z: 15, g: 0.8 }, { x: 49, y: 2, z: 22.5, g: 0.9 }, { x: 62, y: 4, z: 15, g: 0.7 }];
+    var route = { zone: -1, nextHorn: ctx.currentTime + 6, prog: -1 };
+    function updateRoute(s, now) {
+      var z = clamp((+s.zone || 0) | 0, 0, 4), won = s.phase === 'win';
+      if (z !== route.zone) {
+        route.zone = z;
+        var W = WIND_AT[z];
+        if (W) setPos(windPan, W.x, W.y, W.z, now, true);
+        windGain.gain.setTargetAtTime(W ? W.g : 0, now, 1.2);
+        setPos(murmurPan, 63, 1.5, 15, now, true); setPos(hornPan, 75, 6, 15, now, true);
+        if (z >= 2 && route.nextHorn < now + 4) route.nextHorn = now + 4 + Math.random() * 4;
+      }
+      var prog = s.gate && s.gate.need ? clamp(s.gate.progress / s.gate.need, 0, 1) : 0;
+      var mg = won ? 0 : (z === 4 ? 0.25 + 0.75 * prog : 0);
+      if (Math.abs(mg - route.prog) > 0.01) { route.prog = mg; murmurGain.gain.setTargetAtTime(mg, now, 0.8); }
+      var al = clamp(+s.alarm || 0, 0, 1);
+      routeDuck.gain.setTargetAtTime(s.hunted ? 0.35 : 1 - 0.75 * al, now, 0.3);
+      // 號角：只在盲區剛結束、整段吹完都碰不到下一段盲區時吹（警戒、追殺不吹）
+      var cy = s.cycle || {};
+      if (z >= 2 && !won && s.phase === 'play' && !s.hunted && !cy.alertBlind && now >= route.nextHorn && !cy.blind) {
+        var t = now + 0.05;
+        if (hintFree(t, 2.9)) {
+          horn(hornPan, t, 146.83, 1.3, C.HORN_GAIN); horn(hornPan, t + 1.15, 220, 1.5, C.HORN_GAIN * 0.85);
+          route.nextHorn = now + C.HORN_EVERY * (0.8 + Math.random() * 0.4);
+          if (log) log.push({ type: 'horn', t: t });
+        }
+      }
+    }
+    var hintSig = null;                      // 規則的 hintSignals(state)：可暗殺的衛兵、離盲區幾秒
+
     // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排
     function scheduleBeats(from, end, ws) {
       var Pa = Pof(from), Pb = Pof(end), nL = C.LAYERS + 1;   // 第 LAYERS 層：追殺額外層，或假驟降的金屬尾音
@@ -911,7 +1044,7 @@
     function scheduleTo(end, now) {
       if (dead) return;
       var ws = windowsBetween(now - 1, end + C.BASS_TAIL + 0.2);
-      gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now);
+      gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now); gateH.plan(ws, now);
       // 越接近循環尾越響（0.7 → 1.0），平滑跟著相位
       tension.gain.setTargetAtTime(C.TENSION_LO + (C.TENSION_HI - C.TENSION_LO) * frac(Pof(now + 0.05)), now, 0.06);
       var from = now + 0.004;
@@ -1009,6 +1142,7 @@
       f2.frequency.exponentialRampToValueAtTime(260, t + inh + 1.1);
       tone(v.input, t + inh + 0.1, 'sawtooth', 96, 82, 0.8, 0.008 * k, 0.1, fast ? 0.5 : 0.9);
     }
+    var guardP = 0;
     function updateGuards(list, now) {
       var cand = [], i;
       for (i = 0; i < list.length; i++) {
@@ -1042,8 +1176,13 @@
           if (sp > 15) sp = 0;                                  // 瞬移（重來、換區）不算走路
           v.speed = v.speed * 0.5 + sp * 0.5; v.lx = c.q.x; v.lz = c.q.z; v.lt = now;
         }
-        v.input.gain.setTargetAtTime(clamp((C.GUARD_FAR - c.d) / 8, 0, 1), now, 0.2);
+        // 越快越近，衛兵的呼吸與腳步越清楚；背對你、可暗殺的衛兵在盲區前呼吸特別清楚（2.1 節）
+        var kill = hintSig && hintSig.kill && hintSig.kill[c.id];
+        var gk = (1 - C.GUARD_P_GAIN / 2 + C.GUARD_P_GAIN * guardP) * (kill ? C.KILL_BREATH_MUL : 1);
+        v.input.gain.setTargetAtTime(clamp((C.GUARD_FAR - c.d) / 8, 0, 1) * gk, now, 0.2);
         var alert = c.q.state === 'hunted' || c.q.state === 'suspicious';
+        // 可暗殺：盲區前 0.7 秒內吸一口氣，吐氣正好蓋過盲區開頭（衛兵聲在盲區照樣被 gateG 壓低）
+        if (kill && hintSig.blindIn != null && hintSig.blindIn < 0.7 && hintSig.blindIn > 0.2 && now >= v.nextBreath - 1.2) v.nextBreath = now;
         if (v.speed > 0.25) {
           if (now >= v.nextStep - 0.05) {
             var ts = Math.max(now + 0.01, v.nextStep);
@@ -1164,9 +1303,49 @@
           stepSound(g, t, C.STEP_LOUD_GAIN / 0.45);
         } else stepSound(cueBus, t, C.STEP_LOUD_GAIN / 0.45);
         noise(cueBus, t + 0.01, 'bandpass', 3200, 2.5, 0.04, 0.001, 0.03);   // 砂礫輕響，讓它比鼓聲突出
+        CUES.gravel(t + 0.05, d);           // 暗示：碎石滾動一聲（走暗示匯流排，盲區不響）
+      },
+      // ---------- 暗示聲（2.1 節）：全部走 hintBus，和盲區重疊就不發 ----------
+      gravel: function (t, d) {           // 碎石滾動：幾顆小石子一路滾開，越來越輕
+        if (!hintFree(t, 0.45)) return;
+        var out = d && isFinite(d.x) ? hintAt(+d.x + 0.4, +d.z + 0.3, 0.05) : hintBus;
+        for (var i = 0; i < 6; i++) {
+          var ti = t + i * (0.045 + Math.random() * 0.04), k = 1 - i / 7;
+          noise(out, ti, 'bandpass', 3600 + Math.random() * 2400, 3, C.GRAVEL_GAIN * k, 0.001, 0.018);
+          tone(out, ti, 'sine', 2200 + Math.random() * 1800, 0, 0, C.GRAVEL_GAIN * 0.12 * k, 0.001, 0.03);
+        }
+      },
+      companionGasp: function (t) {       // 同伴倒吸一口氣，壓低聲音說「別動」（字幕由畫面層顯示）
+        if (!hintFree(t, 0.85)) return;
+        var f = noise(companionOut, t, 'bandpass', 1100, 1.4, C.WHISPER_GAIN * 0.35, 0.05, 0.16);
+        f.frequency.exponentialRampToValueAtTime(2600, t + 0.2);
+        whisper(companionOut, t + 0.3, SAY.dontMove, C.WHISPER_GAIN);
+      },
+      whisperNow: function (t) {          // 同伴低聲說「就是現在」：排在盲區之前結束（盲區開始時正好說完）
+        if (!hintFree(t, 0.62)) return;
+        whisper(companionOut, t, SAY.now, C.WHISPER_GAIN * 0.85);
+      },
+      growl: function (t, d) {            // 衛兵起疑：喉嚨裡一聲低吼（「嗯？」），從衛兵的位置傳來
+        if (!hintFree(t, 0.8)) return;
+        var out = d && isFinite(d.x) ? hintAt(+d.x, +d.z, 1.6) : hintBus;
+        var o = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), tr = ctx.createOscillator(), tg = ctx.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(92, t); o.frequency.linearRampToValueAtTime(118, t + 0.35); o.frequency.linearRampToValueAtTime(84, t + 0.7);
+        lp.type = 'lowpass'; lp.frequency.value = 420; lp.Q.value = 2;
+        tr.frequency.value = 17; tg.gain.value = 0.35; tr.connect(tg); tg.connect(g.gain);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(C.GROWL_GAIN, t + 0.08);
+        g.gain.setValueAtTime(C.GROWL_GAIN, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.75);
+        o.connect(lp); lp.connect(g); g.connect(out); o.start(t); tr.start(t); o.stop(t + 0.8); tr.stop(t + 0.8);
+        noise(out, t, 'lowpass', 600, 0.8, C.GROWL_GAIN * 0.5, 0.05, 0.5);   // 鼻息
+      },
+      latchClick: function (t) {          // 門閂快要發出聲音：鐵環輕輕「喀」一下（節奏正往快走，該放手了）
+        if (!hintFree(t, 0.15)) return;
+        tone(hintBus, t, 'square', 2900, 2100, 0.01, 0.025, 0.001, 0.03);
+        noise(hintBus, t, 'highpass', 4500, 1, 0.08, 0.001, 0.02);
       },
       latchStep: function (t, d) { latchNote(t, d); },
-      latch: function (t) {               // 門閂：木頭摩擦 + 撞擊
+      latch: function (t) {               // 門閂：木頭摩擦 + 撞擊；開頭一聲刺耳的「喀」（高頻推只會在 p > 0.5，碰不到盲區）
+        tone(cueBus, t, 'square', 2600, 1900, 0.02, 0.06, 0.001, 0.04);
+        noise(cueBus, t, 'highpass', 4200, 1, 0.22, 0.001, 0.03);
         var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
         o.type = 'sawtooth'; o.frequency.value = 85; lfo.frequency.value = 23; lg.gain.value = 25;
         lfo.connect(lg); lg.connect(o.frequency);
@@ -1338,14 +1517,14 @@
           var ts = cy.anchor && isFinite(cy.anchor.t) ? +cy.anchor.t : (isFinite(s.time) ? +s.time : now);
           var sb = !!cy.blind, ws = windowsBetween(ts - 2, ts + 2);
           var w = inWins(ts, ws, -0.03), mis = sb ? !inWins(ts, ws, 0.03) : !!w;
-          if (gateR.forced && !sb) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); mismN = 0; }
+          if (gateR.forced && !sb) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); mismN = 0; }
           else if (mis && !gateR.forced) {
             if (++mismN >= 2) {
               mismN = 0;
-              if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); replan(now); }
+              if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); gateH.force(true, now); replan(now); }
               else if (w) {
                 suppress.push({ s: w.s, e: w.e });
-                gateR.force(false, now); gateM.force(false, now); gateG.force(false, now);
+                gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now);
               }
               if (log) log.push({ type: 'blindFix', t: now, blind: sb });
             }
@@ -1375,6 +1554,18 @@
           rampTo(musicDuck.gain, hu ? C.MUSIC_HUNT_GAIN : Math.pow(10, C.MUSIC_ALARM_DB * al / 20), C.MUSIC_RAMP);
           rampTo(musicHP.frequency, hu ? C.MUSIC_HP_BASE : C.MUSIC_HP_BASE * Math.pow(C.MUSIC_HP_ALARM / C.MUSIC_HP_BASE, al), C.MUSIC_RAMP, true);
         }
+        // 暗示：規則的 hintSignals（可暗殺的衛兵、離盲區幾秒）；路線的風、號角、門外低語
+        hintSig = null;
+        var Rh = getRules();
+        if (Rh && typeof Rh.hintSignals === 'function' && s.player) {
+          try {
+            var hs = Rh.hintSignals(s), km = {};
+            (hs.guards || []).forEach(function (gq) { if (gq.killable) km[String(gq.id)] = true; });
+            hintSig = { kill: km, blindIn: hs.blindIn };
+          } catch (e) { hintSig = null; }
+        }
+        guardP = s.cycle && isFinite(s.cycle.p) && !s.cycle.blind ? clamp(+s.cycle.p, 0, 1) : 0;
+        updateRoute(s, now);
         // 衛兵 3D：倒下、非作用中的靜音；沒有衛兵清單就全部淡掉
         if (s.guards && s.guards.length != null) updateGuards(s.guards, now);
         // 立刻補排一次（新外推、新盲區），不等下一個 tick
@@ -1402,7 +1593,8 @@
         return true;
       },
       cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
-                 'alert', 'caught', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor'],
+                 'alert', 'caught', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
+                 'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
       resume: function () { return (ctx.resume ? ctx.resume() : Promise.resolve()).then(function () { tick(); }); },
@@ -1410,6 +1602,7 @@
       scheduleUntil: function (tEnd) { scheduleTo(tEnd, ctx.currentTime); },
       // 測試／除錯：重排統計、衛兵聲部
       _stats: stats,
+      _hint: { out: hintOut, bus: hintBus, wind: windGain, murmur: murmurGain, route: route, free: function (t, d) { return hintFree(t, d); } },
       _voices: function () { return voices.map(function (v) { return { id: v.id, speed: +v.speed.toFixed(2) }; }); },
       // ---------- 音樂層：自備配樂（測試模式，設計文件 7.1）與模式切換 ----------
       // loadTrack 接受 ArrayBuffer（會被解碼、脫離）或已解碼的 AudioBuffer；回傳 Promise<AudioBuffer>。
@@ -1464,6 +1657,7 @@
       dispose: function () {
         dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack();
         persist.forEach(function (n) { try { n.stop(); } catch (e) {} });
+        routeLive.forEach(function (n) { try { n.stop(); } catch (e) {} });
         try { master.disconnect(); } catch (e) {}
       }
     };

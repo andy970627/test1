@@ -37,6 +37,13 @@
  *
  *   事件附帶欄位：step_* 帶 {x, z}；calm_ok／calm_bad 帶 index；latch_step 帶 index（0～7）。
  *
+ * 暗示階梯（設計文件 2026-11-07-hint-guidance.md 第 1、2.1 節）：game.hints[key] = {fails, level, lastFail}，
+ *   key：breath 屏息（喘氣、最快時站著被聽到）｜blind 驟降（最快時亂動被發現）｜radius 感知範圍（慢時在火光圈裡走到起疑）｜
+ *   step 腳步太吵｜calm 安撫失敗｜takedown 暗殺失手｜fake 假驟降時動了｜listen 被背後的衛兵發現｜latch 推門閂太吵。
+ *   同一種失敗 HINT_FAIL_GAP 秒內只算一次；第 2 次發 {type:'hint', a: 提示文字, key, level: 2}，第 3 次起 level 3（文字＋按鍵說明）；
+ *   成功一次（屏息時衛兵就在身邊、盲區裡走動或衝刺、火光圈外安全走、合拍腳步、安撫完成、暗殺成功、假驟降沒動、轉身面對背後的人、
+ *   低頻推進門閂）就退回第 1 階。重來不清除。第 1 階只靠世界內暗示：hintSignals(game) 給畫面層與聲音層共用的訊號。
+ *
  * 出處（CLAUDE.md：大眾熟知的經典段落為主、自由改編、電影輔助）：
  *   木馬、特洛伊陷落之夜、從木馬裡出來打開城門【經典】（電影的演法與配樂〈Troy〉當參考，細節待確認）
  *   越危險越快、腳步合拍掩護、門閂奏主題、視覺輔助【改編：第 8 節】
@@ -125,6 +132,11 @@
     DESYNC_P: 0.8,        // p > 0.8：畫面刻意延遲加雜訊
     DESYNC_LAG: 0.15,
     HINT_GAP: 4,          // 開場屏息提示之後，至少隔幾秒才出盲區提示
+    HINT_FAIL_GAP: 2,     // 暗示階梯：同一種失敗，間隔不到幾秒只算一次（例如連續幾步都太吵）
+    HINT_WARN_LEAD: 0.25, // 世界內暗示 hintSignals：屏息警告看「再過一會兒」的感知半徑，p 往上看這麼多
+    HINT_BACK_R: 8,       //   背後有人：幾公尺內
+    HINT_BACK_ANG: 1.9,   //   背後有人：和玩家正前方夾角超過幾弧度（約 110°）
+    HINT_KILL_R: 3.2,     //   可暗殺：背後幾公尺內就開始提示（真正出手要 TAKEDOWN_R 內）
     MAX_DT: 0.1           // step 每次最多推進 0.1 秒
   });
 
@@ -307,6 +319,37 @@
     alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
     fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
   };
+  // ---------- 暗示階梯（設計文件 2026-11-07-hint-guidance.md 第 1、2.1 節）----------
+  // 同一種失敗：第 1 次只有世界內暗示（聲音、畫面，畫面層與聲音層負責）；第 2 次發 level 2（text）；
+  // 第 3 次起發 level 3（text＋keys）；成功一次退回第 1 階。text 照設計文件 2.1 節「提示文字」欄。
+  const HINT_LADDER = {
+    breath: { name: '屏息', text: '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
+      keys: '按住 空白鍵 屏息，放開就換氣；最多撐約 6 秒，節奏慢下來就放開。' },
+    blind: { name: '驟降（盲區）', text: '「鼓聲一斷，就是你移動的時候。」',
+      keys: '鼓聲斷掉的那半秒才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' },
+    radius: { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他聽得到的範圍。」',
+      keys: '火光圈外才按 W A S D 移動；被照到時停下，或按住 空白鍵。' },
+    step: { name: '腳步合拍', text: '「踩著鼓點走，腳步聲會被蓋過。」',
+      keys: '靠近衛兵時，等鼓點密起來才按住 W A S D 走；鼓聲稀疏就放開、停下。' },
+    calm: { name: '警戒與安撫', text: '「別跟著亂掉的鼓聲快。聽最低的那個聲音，跟著它按 Q。」',
+      keys: '最低的那聲約 2.4 秒響一次，每響一聲按一下 Q，對準 4 次；不要連按。' },
+    takedown: { name: '衝刺與暗殺', text: '「鼓聲斷掉時，從背後靠近按 E。」',
+      keys: '用 W A S D 繞到他背後 1.5 公尺內，鼓聲一斷就按 E。' },
+    fake: { name: '假驟降', text: '「有時鼓聲只是換手，沒有那聲預告，就不要動。」',
+      keys: '沒聽到那聲預告的輕響，就不要按 W A S D；等下一次真的斷掉再走。' },
+    listen: { name: '3D 聽聲辨位', text: '「戴上耳機，聽聲音從哪邊來。」',
+      keys: '移動滑鼠（或拖曳畫面）轉身，把腳步聲轉到正前方。' },
+    latch: { name: '城門門閂', text: '「節奏慢的時候才推，快的時候放手。」',
+      keys: '站在門閂旁按住 E 推；節奏一快就放開 E，等慢下來再按住。' }
+  };
+  /** 暗示階梯第 level 階的文字：1 = 沒有文字（null），2 = 提示文字，3 = 提示文字＋按鍵說明。 */
+  function ladderText(key, level) {
+    const L = HINT_LADDER[key];
+    if (!L || level < 2) return null;
+    const t = L.text.replace(/^「|」$/g, '');
+    return level >= 3 ? t + '　' + L.keys : t;
+  }
+
   // 失敗原因（g.failReason 是一句完整的話，畫面層直接顯示；g.failCode 是代號）
   const CAUSES = {
     move_high: '節奏最快時你動了，衛兵聽見了',
@@ -382,6 +425,58 @@
     };
   }
 
+  // ---------- 世界內暗示的訊號（設計文件 2026-11-07 第 2.1 節；畫面層、聲音層共用，純讀 game 不改它） ----------
+  /**
+   * 回傳 {breathWarn, warnGuard, guards, back, latch, blindIn}：
+   *   breathWarn 0～1：沒屏息、不在盲區，有衛兵在「再過一會兒」的感知範圍內，而且節奏正往最快走（同伴倒吸氣、抓手臂）。
+   *   guards：每名作用中衛兵 {id, r（此刻感知半徑，盲區 = 0）, d, behind（玩家在他背後）, killable（背後 HINT_KILL_R 內）,
+   *           ready（背後 TAKEDOWN_R 內，盲區按 E 就成功）}。
+   *   back：玩家背後 HINT_BACK_R 內最近的衛兵 {id, d, side（−1 左…1 右）, k（0～1，越近越大）}，沒有 = null。
+   *   latch：城門區在門閂旁 {near, low（p ≤ GATE_LOW_P，推了安靜）}，否則 null。
+   *   blindIn：離下一段（真的）盲區還有幾秒（警戒、追殺中 = null）。
+   */
+  function hintSignals(game) {
+    const K = (game && game.T) || T;
+    const out = { breathWarn: 0, warnGuard: null, guards: [], back: null, latch: null, blindIn: null };
+    if (!game || !game.player || !game.cycle) return out;
+    const pl = game.player, c = game.cycle, p = c.p || 0, blind = !!c.blind;
+    const pf = forward(pl.yaw || 0), pr = { x: -pf.z, z: pf.x };   // 右方 = (cos yaw, −sin yaw)
+    const pAhead = Math.min(1, p + K.HINT_WARN_LEAD);
+    for (const q of game.guards || []) {
+      if (!q.active || q.state === 'down') continue;
+      const alert = q.state === 'suspicious' || q.state === 'hunted';
+      const d = Math.hypot(q.x - pl.x, q.z - pl.z, pl.y || 0), d2 = Math.hypot(q.x - pl.x, q.z - pl.z);
+      const r = blind ? 0 : radiusAt(p, alert, K);
+      const f = forward(q.yaw || 0);
+      const behind = f.x * (pl.x - q.x) + f.z * (pl.z - q.z) < 0;
+      const killable = behind && !pl.inBelly && q.state !== 'hunted' && d2 <= K.HINT_KILL_R;
+      out.guards.push({ id: q.id, r, d, behind, killable, ready: killable && d2 <= K.TAKEDOWN_R });
+      // 屏息警告：p 從 0.4 起漸強，快到 HIGH_P 時最強；衛兵落在 r(p + lead) 內
+      if (!blind && !pl.breathing && game.phase === 'play' && p > 0.4) {
+        const rA = radiusAt(pAhead, alert, K);
+        if (d <= rA) {
+          const k = Math.min(1, (p - 0.4) / Math.max(1e-6, K.HIGH_P - 0.4)) * Math.min(1, 1.3 - d / rA);
+          if (k > out.breathWarn) { out.breathWarn = Math.max(0, Math.min(1, k)); out.warnGuard = q.id; }
+        }
+      }
+      // 背後有人（玩家看不到的那一側）
+      if (d2 > 0.3 && d2 <= K.HINT_BACK_R) {
+        const ux = (q.x - pl.x) / d2, uz = (q.z - pl.z) / d2;
+        const ang = Math.acos(Math.max(-1, Math.min(1, ux * pf.x + uz * pf.z)));
+        if (ang >= K.HINT_BACK_ANG && (!out.back || d2 < out.back.d)) {
+          const side = Math.max(-1, Math.min(1, 2 * (ux * pr.x + uz * pr.z)));   // 正後方 = 0，偏右 → 1
+          out.back = { id: q.id, d: d2, side, k: Math.max(0, Math.min(1, 1 - d2 / K.HINT_BACK_R)) };
+        }
+      }
+    }
+    if (game.zone === 4 && game.level && game.level.gate && !(game.gate && game.gate.open)) {
+      const L = game.level.gate.latch, d = Math.hypot(pl.x - L.x, pl.z - L.z);
+      if (d <= K.LATCH_R * 2.5) out.latch = { near: d <= K.LATCH_R, low: p <= K.GATE_LOW_P, d };
+    }
+    if (!c.alertBlind && !game.hunted && Number.isFinite(c.blindFrom) && Number.isFinite(game.time)) out.blindIn = Math.max(0, c.blindFrom - game.time);
+    return out;
+  }
+
   // ---------- 遊戲 ----------
   function createLevel(opts) {
     opts = opts || {};
@@ -417,10 +512,13 @@
       level,
       out: [],
       hintsShown: {},
+      // 暗示階梯：每種機制 {fails（連續失敗次數，成功歸零）, level（1～3）, lastFail（上次算進去的音訊時間）}
+      hints: {},
       visualAidMode: opts.visualAid == null ? 'auto' : opts.visualAid, // 畫面層可隨時改：'auto'|'on'|'off'|數字
       visualAid: 1
     };
     g.visualAid = visualAidFor(g.zone, g.visualAidMode);
+    for (const k of Object.keys(HINT_LADDER)) g.hints[k] = { fails: 0, level: 1, lastFail: -1e9 };
     let last = null;
     let latchNoiseAt = -1e9;
     let dashCycle = null; // 每個盲區只能衝刺一次
@@ -429,9 +527,32 @@
     let huntCause = null;
     let clockT = null;    // 循環時鐘上次推進到的音訊時間
     let stepAcc = 0;      // 腳步計時
+    let radiusOkT = 0;    // 暗示階梯「感知範圍」：在火光圈外、但就在旁邊安全走了幾秒
+    let fakeWatch = null; // 暗示階梯「假驟降」：{index, moved}，這一輪假驟降的頭 BLIND_LEN 秒有沒有動
 
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HINTS[key]); } };
+    /** 暗示階梯：key 這件事失敗一次（HINT_FAIL_GAP 秒內重複的只算一次）。第 2 次起發 hint {key, level}。 */
+    function hintFail(key) {
+      const H = g.hints[key]; if (!H) return;
+      const t = g.time == null ? 0 : g.time;
+      if (t - H.lastFail < K.HINT_FAIL_GAP) return;
+      H.lastFail = t; H.fails++;
+      H.level = Math.max(1, Math.min(3, H.fails));
+      if (H.level >= 2) emit('hint', ladderText(key, H.level), { key, level: H.level });
+    }
+    /** 暗示階梯：key 這件事成功一次 → 退回第 1 階。 */
+    function hintOk(key) {
+      const H = g.hints[key]; if (!H) return;
+      H.fails = 0; H.level = 1; H.lastFail = -1e9;
+    }
+    /** 衛兵是否在玩家看不到的背後（3D 聽聲辨位）。 */
+    function behindPlayer(q) {
+      const pl = g.player, d = Math.hypot(q.x - pl.x, q.z - pl.z);
+      if (d < 0.3 || d > K.HINT_BACK_R * 1.5) return false;
+      const f = forward(pl.yaw || 0);
+      return Math.acos(Math.max(-1, Math.min(1, ((q.x - pl.x) * f.x + (q.z - pl.z) * f.z) / d))) >= K.HINT_BACK_ANG;
+    }
 
     function makePlayer(z) {
       const s = level.zones[z].start;
@@ -518,6 +639,7 @@
     }
     function makeSuspicious(q, t) {
       if (q.state !== 'patrol') return;
+      if (behindPlayer(q)) hintFail('listen');
       q.state = 'suspicious'; q.susp = 1;
       q.lookAt = { x: g.player.x, z: g.player.z };
       if (!g.panic.active) {
@@ -532,6 +654,10 @@
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
     function startHunt(q, cause, reason) {
       cause = cause || 'seen';
+      // 暗示階梯：亂動 → 驟降；安撫失敗 → 安撫；被背後的衛兵發現 → 聽聲辨位（大聲的喘氣、門閂在發聲的地方就算過了）
+      if (cause === 'move_high') hintFail('blind');
+      else if (/^calm_/.test(cause)) hintFail('calm');
+      if (q && behindPlayer(q)) hintFail('listen');
       if (g.player.inBelly) { fail(CAUSES[cause] + '——你在木馬裡被發現了。', 'belly_' + cause); return; }
       if (!g.hunted) huntCause = cause;
       const pl = g.player;
@@ -664,15 +790,19 @@
 
       // 屏息
       if (inp.breath && !pl.breathLock) {
-        if (!pl.breathing) emit('sfx', 'breath_in');
+        if (!pl.breathing) { emit('sfx', 'breath_in'); pl.breathSaved = false; }
         pl.breathing = true;
         pl.breathT += dt;
+        // 屏息真的救了你：節奏最快時，有衛兵就在感知範圍內
+        if (p > K.HIGH_P && !blind) for (const q of g.guards) {
+          if (q.active && dist3(q, pl) <= radiusAt(p, q.state !== 'patrol', K)) { pl.breathSaved = true; break; }
+        }
         if (pl.breathT >= K.BREATH_MAX) {
-          pl.breathT = K.BREATH_MAX; pl.breathing = false; pl.breathLock = true; loud = true;
-          emit('sfx', 'gasp'); hint('gasp');
+          pl.breathT = K.BREATH_MAX; pl.breathing = false; pl.breathLock = true; loud = true; pl.breathSaved = false;
+          emit('sfx', 'gasp'); hint('gasp'); hintFail('breath');
         }
       } else {
-        if (pl.breathing) emit('sfx', 'breath_out');
+        if (pl.breathing) { emit('sfx', 'breath_out'); if (pl.breathSaved) hintOk('breath'); pl.breathSaved = false; }
         pl.breathing = false;
         pl.breathT = Math.max(0, pl.breathT - K.BREATH_RECOVER * dt);
         if (!inp.breath) pl.breathLock = false;
@@ -698,7 +828,7 @@
             if (l < 1e-6) { const f = forward(pl.yaw); dx = f.x; dz = f.z; } else { dx /= l; dz /= l; }
             const n = Math.ceil(K.DASH / 0.1);
             for (let k = 0; k < n; k++) moveBody(pl, dx * K.DASH / n, dz * K.DASH / n);
-            emit('sfx', 'dash');
+            emit('sfx', 'dash'); hintOk('blind');
           } else if (!blind) hint('dash');
         }
       }
@@ -715,6 +845,29 @@
           const masked = stepMasked(t, g);
           stepLoud = !masked;
           emit('sfx', masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z });
+          if (masked && g.guards.some((q) => q.active && dist2(q, pl) < K.STEP_R * 2)) hintOk('step');
+        }
+      }
+      // 暗示階梯的成功：盲區裡在衛兵附近走動（驟降）；在火光圈外、但就在旁邊走（感知範圍）；假驟降時沒動
+      if (walked && g.guards.some((q) => q.active && dist3(q, pl) <= radiusAt(1, false, K))) {
+        if (blind) hintOk('blind');
+        else {
+          let inR = false, nearR = false;
+          for (const q of g.guards) {
+            if (!q.active) continue;
+            const r = radiusAt(p, q.state !== 'patrol', K), d = dist3(q, pl);
+            if (d <= r) inR = true; else if (d <= 2 * r) nearR = true;
+          }
+          if (inR) radiusOkT = 0;
+          else if (nearR && (radiusOkT += dt) >= 1.5) { radiusOkT = 0; hintOk('radius'); }
+        }
+      }
+      if (!c.alertBlind && c.fake) {
+        if (!fakeWatch || fakeWatch.index !== c.index) fakeWatch = { index: c.index, moved: false, done: false };
+        if (t - c.start < K.BLIND_LEN) { if (moved) fakeWatch.moved = true; }
+        else if (!fakeWatch.done) {
+          fakeWatch.done = true;
+          if (!fakeWatch.moved && g.guards.some((q) => q.active && dist3(q, pl) <= radiusAt(1, false, K))) hintOk('fake');
         }
       }
 
@@ -733,9 +886,9 @@
           const behind = f.x * (pl.x - best.x) + f.z * (pl.z - best.z) < 0;
           if (blind && behind) {
             best.state = 'down'; best.active = false; best.susp = 0;
-            emit('sfx', 'takedown');
+            emit('sfx', 'takedown'); hintOk('takedown');
           } else {
-            emit('sfx', 'takedown_fail');
+            emit('sfx', 'takedown_fail'); hintFail('takedown');
             if (best.state === 'patrol') makeSuspicious(best, t);
           }
         }
@@ -752,9 +905,9 @@
             g.gate.progress = Math.min(K.GATE_NEED, g.gate.progress + dt);
             // 每推進 1/8 奏一個音（index 0～7，推滿正好第 8 個）
             const s0 = Math.floor(before / K.GATE_NEED * 8 + 1e-9), s1 = Math.floor(g.gate.progress / K.GATE_NEED * 8 + 1e-9);
-            for (let i = s0; i < Math.min(8, s1); i++) emit('sfx', 'latch_step', { index: i });
+            for (let i = s0; i < Math.min(8, s1); i++) { emit('sfx', 'latch_step', { index: i }); hintOk('latch'); }
           } else if (t - latchNoiseAt >= K.LATCH_NOISE_GAP) {
-            latchNoiseAt = t; loud = true; emit('sfx', 'latch');
+            latchNoiseAt = t; loud = true; emit('sfx', 'latch'); hintFail('latch');
           }
         }
       }
@@ -778,7 +931,7 @@
               q.state = 'patrol'; q.susp = 0; q.calm = 0; q.grace = K.CALM_GRACE; q.lookAt = null;
             }
             clearPanic();
-            emit('sfx', 'calm_done'); emit('msg', '衛兵搖搖頭，走回原路。');
+            emit('sfx', 'calm_done'); hintOk('calm'); emit('msg', '衛兵搖搖頭，走回原路。');
           }
         }
       }
@@ -821,20 +974,38 @@
           else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
           continue;
         }
-        if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); }
+        if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
+        let why = heardStep ? 'step' : null;
         if (moved && (heardMove || seen)) {
           if (p > K.HIGH_P) { startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！'); continue; }
+          // 假驟降的頭 BLIND_LEN 秒裡動了，被聽見 → 算「假驟降」；平常 → 算「感知範圍」
+          why = (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN + 0.3) ? 'fake' : 'radius';
+          if (why === 'fake') hintFail('fake');
           if (q.grace <= 0) q.susp += K.SUSP_MOVE * dt;
           if (q.state === 'suspicious') q.lookAt = { x: pl.x, z: pl.z };
         } else if (seen || heardBreath) {
           if (q.grace <= 0) q.susp += (p > K.HIGH_P ? K.SUSP_SEEN_HIGH : K.SUSP_SEEN_LOW) * dt;
+          if (!pl.breathing && p > K.HIGH_P) why = 'breath';
         } else if (q.state === 'patrol') {
           q.susp = Math.max(0, q.susp - K.SUSP_DECAY * dt);
         }
         q.susp = Math.min(1, q.susp);
-        if (q.susp >= 1 && q.state === 'patrol') makeSuspicious(q, t);
+        if (q.susp >= 1 && q.state === 'patrol') {
+          if (why === 'radius' || why === 'breath' || why === 'step') hintFail(why);
+          makeSuspicious(q, t);
+        }
       }
       if (g.phase !== 'play') return g;
+
+      // 暗示階梯「聽聲辨位」的成功：背後的衛兵，3 秒內被你轉身面對（8 公尺內、正前方 ±40°）
+      for (const q of g.guards) {
+        if (!q.active) continue;
+        if (behindPlayer(q)) q.behindAt = t;
+        else if (q.behindAt != null && t - q.behindAt < 3) {
+          const d = dist2(q, pl), f = forward(pl.yaw || 0);
+          if (d > 0.3 && d <= K.HINT_BACK_R && ((q.x - pl.x) * f.x + (q.z - pl.z) * f.z) / d >= Math.cos(0.7)) { q.behindAt = null; hintOk('listen'); }
+        }
+      }
 
       // 衛兵行動
       for (const q of g.guards) {
@@ -940,7 +1111,7 @@
   }
 
   return {
-    T, HINTS, ZONE_NAMES, CAUSES,
+    T, HINTS, HINT_LADDER, ladderText, hintSignals, ZONE_NAMES, CAUSES,
     createLevel, buildLevel,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, cycleTargetFor, layerBeats, beatPhases, layerGain, beatsBetween, alertBlindAt, stepMasked, visualAidFor,

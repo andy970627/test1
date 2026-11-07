@@ -1310,3 +1310,192 @@ test('8.5 假驟降：警戒、追殺中不抽；追殺開始時取消已抽中�
   const { list: l2 } = handoffs(a, 0, 80, 1 / 30, (gg) => { gg.panic.active = true; gg.panic.start = 1e9; return {}; });
   assert.ok(l2.length > 5 && l2.every((x) => !x.fake), '警戒中不出現');
 });
+
+// ---------------- 暗示階梯（設計文件 2026-11-07-hint-guidance.md 第 1、2.1、5 節） ----------------
+
+const ladder = (g) => g.drain().filter((e) => e.type === 'hint' && e.key);
+
+test('暗示階梯：文字照設計文件 2.1 節「提示文字」欄；第 3 階多一段按鍵說明', () => {
+  const want = {
+    breath: '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
+    blind: '「鼓聲一斷，就是你移動的時候。」',
+    radius: '「火光照到的範圍，就是他聽得到的範圍。」',
+    step: '「踩著鼓點走，腳步聲會被蓋過。」',
+    calm: '「別跟著亂掉的鼓聲快。聽最低的那個聲音，跟著它按 Q。」',
+    takedown: '「鼓聲斷掉時，從背後靠近按 E。」',
+    fake: '「有時鼓聲只是換手，沒有那聲預告，就不要動。」',
+    listen: '「戴上耳機，聽聲音從哪邊來。」',
+    latch: '「節奏慢的時候才推，快的時候放手。」'
+  };
+  assert.deepEqual(Object.keys(R.HINT_LADDER).sort(), Object.keys(want).sort());
+  for (const [k, v] of Object.entries(want)) {
+    assert.equal(R.HINT_LADDER[k].text, v, k);
+    assert.equal(R.ladderText(k, 1), null, '第 1 階沒有文字');
+    assert.equal(R.ladderText(k, 2), v.slice(1, -1));
+    const l3 = R.ladderText(k, 3);
+    assert.ok(l3.startsWith(v.slice(1, -1)) && l3.length > v.length, k);
+    assert.ok(/空白鍵|W A S D|\bE\b|\bQ\b|滑鼠/.test(R.HINT_LADDER[k].keys), `${k} 的按鍵說明要寫出按鍵`);
+    assert.ok(!/電影|諾蘭|奧德賽/.test(R.HINT_LADDER[k].keys + v), k);
+  }
+  const g = lvl({ startZone: 1 });
+  for (const k of Object.keys(want)) assert.deepEqual(g.hints[k], { fails: 0, level: 1, lastFail: -1e9 }, '一開始都在第 1 階');
+});
+
+test('暗示階梯：暗殺失手 1 次只有世界內暗示，2 次第 2 階、3 次第 3 階；成功一次退回第 1 階', () => {
+  const g = lvl({ startZone: 3 });
+  const q = solo(g, 'g3a', 38, 23, 0);
+  place(g, 38, 21.9);                   // 站在他面前：按 E 一定失手
+  g.step(3, {});
+  g.step(3 + DT, { takedown: true });
+  assert.equal(g.hints.takedown.fails, 1);
+  assert.equal(g.hints.takedown.level, 1);
+  assert.equal(ladder(g).length, 0, '第 1 次：沒有文字');
+  g.step(3.5, { takedown: true });      // HINT_FAIL_GAP 內：不重複算
+  assert.equal(g.hints.takedown.fails, 1);
+  g.step(5.2, { takedown: true });
+  let h = ladder(g);
+  assert.equal(g.hints.takedown.level, 2);
+  assert.equal(h.length, 1);
+  assert.deepEqual({ key: h[0].key, level: h[0].level }, { key: 'takedown', level: 2 });
+  assert.equal(h[0].a, '鼓聲斷掉時，從背後靠近按 E。');
+  g.step(7.4, { takedown: true });
+  h = ladder(g);
+  assert.equal(g.hints.takedown.level, 3);
+  assert.equal(h[0].level, 3);
+  assert.ok(h[0].a.includes('按 E') && h[0].a.includes('1.5 公尺'), '第 3 階有按鍵說明');
+  // 成功：繞到背後，等盲區按 E（衛兵起疑中、還沒追殺）
+  assert.notEqual(q.state, 'hunted');
+  q.state = 'patrol'; q.yaw = 0; q.susp = 0; q.grace = 9; g.panic.active = false;
+  place(g, 38, 24.2);
+  run(g, 7.4, 10.1);
+  g.step(10.1 + DT, { takedown: true });
+  assert.equal(q.state, 'down');
+  assert.deepEqual([g.hints.takedown.fails, g.hints.takedown.level], [0, 1], '成功一次退回第 1 階');
+});
+
+test('暗示階梯：屏息憋太久（喘氣）算屏息失敗；跨重來也累積', () => {
+  const g = lvl({ startZone: 2 });
+  for (const q of g.guards) { q.state = 'down'; q.active = false; }
+  g.step(0, {});
+  run(g, 0, 6.5, () => ({ breath: true }));
+  assert.equal(g.hints.breath.fails, 1);
+  run(g, 6.5, 13, () => ({}));          // 換氣
+  run(g, 13, 19.5, () => ({ breath: true }));
+  const h = ladder(g);
+  assert.equal(g.hints.breath.level, 2);
+  assert.deepEqual(h.map((e) => [e.key, e.level]), [['breath', 2]]);
+  g.phase = 'fail'; g.retry();
+  assert.equal(g.hints.breath.level, 2, '重來不會清掉階梯');
+});
+
+test('暗示階梯：屏息救了你（最快時衛兵就在身邊）→ 屏息退回第 1 階', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 20, 20, 0);
+  place(g, 20, 21.5);
+  g.hints.breath.fails = 2; g.hints.breath.level = 2;
+  g.step(6, {});
+  run(g, 6, 9.9, (gg) => ({ breath: gg.cycle.p > 0.55 }));
+  assert.equal(q.state, 'patrol');
+  run(g, 9.9, 10.3, () => ({}));       // 盲區：放開換氣
+  assert.deepEqual([g.hints.breath.fails, g.hints.breath.level], [0, 1]);
+});
+
+test('暗示階梯：高頻推門閂（喀的一聲）算門閂失敗，低頻推進一格就退回第 1 階', () => {
+  const g = lvl({ startZone: 4 });
+  for (const q of g.guards) { q.state = 'down'; q.active = false; }
+  const L = g.level.gate.latch;
+  place(g, L.x - 0.5, L.z);
+  g.step(6, {});
+  run(g, 6, 9.5, () => ({ interact: true }));   // p 0.6～0.95：每 0.5 秒一聲，但 2 秒內只算一次
+  assert.equal(g.hints.latch.fails, 2);
+  assert.deepEqual(ladder(g).map((e) => [e.key, e.level]), [['latch', 2]]);
+  run(g, 9.5, 10, () => ({}));
+  run(g, 10, 12.5, () => ({ interact: true }));  // 低頻：推進 1/8 以上
+  assert.deepEqual([g.hints.latch.fails, g.hints.latch.level], [0, 1]);
+});
+
+test('暗示階梯：安撫失敗（按太急、錯拍）算安撫；高頻亂動被發現算驟降', () => {
+  const { g, beats } = panicSetup();
+  g.step(beats[0], { calm: true });
+  g.step(beats[0] + 0.3, { calm: true });         // 太急 → 追殺
+  assert.equal(g.hints.calm.fails, 1);
+  const h = lvl({ startZone: 2 });
+  solo(h, 'g2a', 20, 20, 0);
+  place(h, 20, 22);
+  h.step(7, {});
+  h.step(7.1, { mx: 1 });
+  assert.equal(h.hunted, true);
+  assert.equal(h.hints.blind.fails, 1);
+});
+
+test('暗示階梯：被背後的衛兵發現算「聽聲辨位」；轉身面對背後的衛兵就退回第 1 階', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 20, 22, 0);           // 衛兵在玩家背後（玩家面向 −z，衛兵在 +z）
+  place(g, 20, 20); g.player.yaw = 0;
+  g.step(7, { yaw: 0 });
+  g.step(7.1, { yaw: 0, mx: 1 });
+  assert.equal(g.hunted, true);
+  assert.equal(g.hints.listen.fails, 1);
+  const h = lvl({ startZone: 2 });
+  const q2 = solo(h, 'g2a', 20, 25, 0);
+  place(h, 20, 20); h.player.yaw = 0;
+  h.hints.listen.fails = 2; h.hints.listen.level = 2;
+  h.step(1, { yaw: 0 });
+  h.step(1.5, { yaw: Math.PI });                 // 轉身：衛兵到正前方
+  assert.equal(q2.state, 'patrol');
+  assert.deepEqual([h.hints.listen.fails, h.hints.listen.level], [0, 1]);
+  void q;
+});
+
+test('暗示階梯：不合拍的腳步被聽到算腳步；假驟降時動了被聽到算假驟降', () => {
+  const g = lvl({ startZone: 2 });
+  solo(g, 'g2a', 20, 20, 0);
+  place(g, 20, 21.6);
+  g.step(1.2, {});
+  // 低相位、在旁邊走：不合拍的腳步會被聽到
+  run(g, 1.2, 3.2, () => ({ mx: 0.15 }));
+  assert.ok(g.hints.step.fails >= 1, `腳步失敗 ${g.hints.step.fails}`);
+  // 假驟降：強制這一輪是假的
+  const f = lvl({ startZone: 3, T: { FAKE: false } });
+  solo(f, 'g3a', 38, 23, Math.PI);               // 面向 +z
+  place(f, 38, 24.3);
+  f.step(9.8, {});
+  f.cycle.nextFake = true;
+  run(f, 9.8, 10.05);
+  assert.equal(f.cycle.fake, true);
+  run(f, 10.05, 10.3, () => ({ mx: 1 }));
+  assert.ok(f.hints.fake.fails >= 1);
+});
+
+test('hintSignals：屏息警告、可暗殺、背後有人、門閂旁的高低頻、離盲區幾秒', () => {
+  const g = lvl({ startZone: 3 });
+  const q = solo(g, 'g3a', 38, 23, 0);           // 面向 −z
+  place(g, 38, 25); g.player.yaw = 0;             // 玩家在衛兵背後、面向 −z（看著衛兵的背）
+  g.step(5.8, { yaw: 0 });
+  let s = R.hintSignals(g);
+  assert.ok(s.breathWarn > 0, '節奏往最快走、衛兵在身邊：屏息警告');
+  assert.equal(s.warnGuard, 'g3a');
+  assert.equal(s.guards[0].killable, true);
+  assert.equal(s.guards[0].ready, false, '2 公尺：還要再靠近');
+  assert.ok(near(s.blindIn, 10 - 5.8, 1e-6));
+  g.step(5.9, { yaw: 0, breath: true });
+  assert.equal(R.hintSignals(g).breathWarn, 0, '屏息中不再警告');
+  // 背後有人
+  q.x = 38; q.z = 28; q.yaw = 0;
+  place(g, 38, 25.5); g.step(6, { yaw: 0 });
+  s = R.hintSignals(g);
+  assert.ok(s.back && s.back.id === 'g3a' && Math.abs(s.back.side) < 0.2, JSON.stringify(s.back));
+  q.x = 40.5; q.z = 27;
+  s = R.hintSignals(g);
+  assert.ok(s.back && s.back.side > 0.5, '右後方');
+  // 盲區：感知半徑 0
+  g.step(10.1, { yaw: 0 });
+  assert.equal(R.hintSignals(g).guards[0].r, 0);
+  // 門閂
+  const h = lvl({ startZone: 4 });
+  const L = h.level.gate.latch;
+  place(h, L.x - 0.5, L.z); h.step(2, {});
+  assert.deepEqual(Object.assign({}, R.hintSignals(h).latch, { d: 0 }), { near: true, low: true, d: 0 });
+  h.step(7, {});
+  assert.equal(R.hintSignals(h).latch.low, false);
+});
