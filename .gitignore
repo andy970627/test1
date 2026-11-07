@@ -116,3 +116,7 @@ InitTestScene*.unity*
 # itch.io 打包輸出（tools/build-itch.sh）
 dist/
 tools/playtest-recorder/out/
+
+# Python 編譯快取
+__pycache__/
+*.pyc
