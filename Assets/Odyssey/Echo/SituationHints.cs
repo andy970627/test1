@@ -3,8 +3,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 情境提示（規格第 17 節 C）：看著巨人、巨石、羊群、雜物與聲音，某件事第一次發生時講一句，
-/// 畫在畫面上方中央（文字加陰影、不加背景）。夜晚以外暫停。
+/// 情境提示（規格第 17 節 C）：看著巨人、巨石、羊群、雜物與聲音，某件事第一次發生時記一次，
+/// 用來解鎖紀事條目。少用文字設計（2026-11-07）後只有「詩句」風格才畫字（上方中央兩行詩）；
+/// 其他風格靠事件本身的聲音與畫面。夜晚以外暫停。
 /// </summary>
 public class SituationHints : MonoBehaviour
 {
@@ -38,6 +39,7 @@ public class SituationHints : MonoBehaviour
 
     bool lawShown;
     bool reachedBoulder;
+    bool windSurged;
 
     void OnSound(SoundEvent e, Vector3 at)
     {
@@ -47,7 +49,9 @@ public class SituationHints : MonoBehaviour
         if (SoundRules.Lights(e.Kind))
         {
             // 示範只給玩家自己發出的聲音（不含羊撞倒的奶桶等）。
-            bool mine = e.Kind is SoundKind.Clap or SoundKind.SnapShot or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge;
+            // 同伴示範的那一聲在身後（GuideCues.DemoBehindMeters），不算玩家自己做到。
+            bool mine = e.Kind is SoundKind.Clap or SoundKind.SnapShot or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge
+                && (e.Kind != SoundKind.Clap || GuideCues.IsOwnSound(Flat(at - loop.PlayerPosition).magnitude));
             if (mine)
                 loop.Essential.OnLit();
             if (!lawShown && mine)
@@ -138,11 +142,16 @@ public class SituationHints : MonoBehaviour
 
         // 找不到洞口：夜晚開始 15 秒還沒靠近過巨石。
         if (loop.Dawn.Elapsed < 0.1f)
-            reachedBoulder = false;
+            reachedBoulder = windSurged = false;
         if (Flat(loop.Layout.Boulder.PushPoint - me).magnitude <= FindExitDistance)
             reachedBoulder = true;
-        if (!reachedBoulder && loop.Dawn.Elapsed >= FindExitSeconds)
+        if (!reachedBoulder && loop.Dawn.Elapsed >= FindExitSeconds && !windSurged)
+        {
+            // 找不到洞口：海風從巨石那邊加強一陣，用聲音指方向（取代原本的文字）。
+            windSurged = true;
             loop.Hint(HintKind.FindExit);
+            (sounds ??= GetComponent<SoundPlayer>())?.PlayWindSurge(loop.Layout.Boulder.GapPoint);
+        }
         if (loop.Rush.Stuck)
             loop.Hint(HintKind.SheepStuck);
     }
@@ -159,18 +168,15 @@ public class SituationHints : MonoBehaviour
         float alpha = Mathf.Clamp01(hints.Remaining / FadeSeconds);
         float h = fontSize * 1.5f;
         var verse = VerseFor(kind);
-        if (verse.HasValue)
-        {
-            // 吟遊詩句（規格第 31 節 D）：兩行一行一行淡入。
-            float shown = HintQueue.ShowSeconds - hints.Remaining;
-            float a1 = alpha * Mathf.Clamp01(shown / BardVerse.LineFadeIn);
-            float a2 = alpha * Mathf.Clamp01((shown - BardVerse.LineFadeIn) / BardVerse.LineFadeIn);
-            Draw(new Rect(0f, Screen.height * 0.10f, Screen.width, h), verse.Value.Item1, a1);
-            if (!string.IsNullOrEmpty(verse.Value.Item2))
-                Draw(new Rect(0f, Screen.height * 0.10f + h, Screen.width, h), verse.Value.Item2, a2);
+        if (!verse.HasValue)
             return;
-        }
-        Draw(new Rect(0f, Screen.height * 0.12f, Screen.width, h), HintText.Of(kind), alpha);
+        // 吟遊詩句（規格第 31 節 D）：兩行一行一行淡入。
+        float shown = HintQueue.ShowSeconds - hints.Remaining;
+        float a1 = alpha * Mathf.Clamp01(shown / BardVerse.LineFadeIn);
+        float a2 = alpha * Mathf.Clamp01((shown - BardVerse.LineFadeIn) / BardVerse.LineFadeIn);
+        Draw(new Rect(0f, Screen.height * 0.10f, Screen.width, h), verse.Value.Item1, a1);
+        if (!string.IsNullOrEmpty(verse.Value.Item2))
+            Draw(new Rect(0f, Screen.height * 0.10f + h, Screen.width, h), verse.Value.Item2, a2);
     }
 
     void Draw(Rect rect, string text, float alpha)

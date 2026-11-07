@@ -23,13 +23,19 @@ public class SoundPlayer : MonoBehaviour
     AudioClip slingSnap, slingStretch, thunder, owl, wings, fire, cries, lowChord, gust;
     AudioSource seabirds;
     AudioClip clap, stone, grind, heavy, slip, wedge, pail, soft, hay, scrape, wedgePulled, twang, arrowHit;
+    AudioClip slap;
+    // 樂器身分音（docs/design/2026-11-07-sound-design-analysis.md 第 3 節）：只有玩家聽得到。
+    AudioClip lyreStrum, lyreTriad;
+    AudioSource band;
+    public AudioClip GongLow { get; private set; }
+    public AudioClip GongMid { get; private set; }
+    public AudioClip GongMuted { get; private set; }
 
     public AudioClip Twang => twang;
 
     public AudioClip PebbleClick { get; private set; }
     public AudioClip CrewReply { get; private set; }
     public AudioClip WoodTap { get; private set; }
-    public AudioClip LearnChime { get; private set; }
     public AudioClip BoulderSettle { get; private set; }
 
     /// <summary>openingFraction：巨石開口 ÷ 全開，磨擦聲的音高跟著變高。</summary>
@@ -63,13 +69,18 @@ public class SoundPlayer : MonoBehaviour
         hay = ProceduralAudio.WoolRustle();
         scrape = ProceduralAudio.WoodScrape();
         wedgePulled = ProceduralAudio.WedgePulled();
-        twang = ProceduralAudio.Twang();
+        twang = ProceduralAudio.BowTwang();
         arrowHit = ProceduralAudio.ArrowHit();
         PebbleClick = ProceduralAudio.PebbleClick();
         CrewReply = ProceduralAudio.CrewReply();
         WoodTap = ProceduralAudio.WoodTap();
-        LearnChime = ProceduralAudio.LearnChime();
         BoulderSettle = ProceduralAudio.BoulderSettle();
+        slap = ProceduralAudio.BoulderSlap();
+        lyreStrum = ProceduralAudio.LyreStrum();
+        lyreTriad = ProceduralAudio.LyreTriad();
+        GongLow = ProceduralAudio.GongLow();
+        GongMid = ProceduralAudio.GongMid();
+        GongMuted = ProceduralAudio.GongMuted();
 
         for (int i = 0; i < Voices; i++)
         {
@@ -84,12 +95,19 @@ public class SoundPlayer : MonoBehaviour
         local = NewSource(new GameObject("LocalVoice"), 1f, 2f);
         local.transform.SetParent(transform, false);
         local.spatialBlend = 0f;
+        band = NewSource(new GameObject("SlingBand"), 1f, 2f);
+        band.transform.SetParent(transform, false);
+        band.spatialBlend = 0f;
+        band.clip = ProceduralAudio.BandTone();
+        band.loop = true;
+        band.volume = 0f;
         seabirds = NewSource(new GameObject("Seabirds"), 2f, 40f);
         seabirds.transform.SetParent(transform, false);
         seabirds.clip = ProceduralAudio.Seabirds();
         seabirds.loop = true;
 
         cyclops.Sounded += OnGiant;
+        cyclops.SlappedBoulder += at => Play(slap, at, 0.9f, 1f, 3f, 30f);
         SoundBus.Emitted += OnSound;
     }
 
@@ -152,8 +170,9 @@ public class SoundPlayer : MonoBehaviour
             case SoundKind.Pant: Play(pant, at, v, 0.8f, 1f, 8f); break;
             case SoundKind.RockImpact: Play(rockImpact, at, v, 1f, 3f, 40f); break;
             // 彈弓（規格第 31 節 A）：空彈、射出石子的「啪」、拉皮筋的吱聲。
-            case SoundKind.Clap: Play(slingSnap, at, v, Random.Range(0.95f, 1.05f), 2f, 20f); break;
-            case SoundKind.SnapShot: Play(slingSnap, at, v, Random.Range(0.8f, 0.88f), 2f, 20f); break;
+            // 彈弓：皮筋的「啪」（世界裡）＋一聲短促的里拉琴撥弦（身分音，只有玩家聽得到；射出比空彈高五度）。
+            case SoundKind.Clap: Play(slingSnap, at, v, Random.Range(0.95f, 1.05f), 2f, 20f); PluckIfOwn(at, 0); break;
+            case SoundKind.SnapShot: Play(slingSnap, at, v, Random.Range(0.8f, 0.88f), 2f, 20f); PluckIfOwn(at, 4); break;
             case SoundKind.Stretch: Play(slingStretch, at, 0.25f, Random.Range(0.95f, 1.1f), 0.5f, 4f); break;
             case SoundKind.Stone: Play(stone, at, v, Random.Range(0.9f, 1.15f), 1f, 20f); break;
             case SoundKind.Grind: Play(grind, at, v, 0.8f + 0.5f * Mathf.Clamp01(openingFraction()), 2f, 15f); break;
@@ -168,6 +187,34 @@ public class SoundPlayer : MonoBehaviour
             case SoundKind.Arrow: Play(arrowHit, at, v, Random.Range(0.9f, 1.1f), 2f, 20f); break;
         }
     }
+
+    /// <summary>彈弓的身分音只給玩家自己的那一聲（同伴示範的在身後，不算）。</summary>
+    void PluckIfOwn(Vector3 at, int degree)
+    {
+        if (GuideCues.IsOwnSound(Vector3.Distance(at, listenerAt?.Invoke() ?? at)))
+            local.PlayOneShot(ProceduralAudio.LyreShort(degree), 0.45f);
+    }
+
+    Func<Vector3> listenerAt;
+    /// <summary>玩家（鏡頭）的位置，用來分辨哪一聲是玩家自己的。</summary>
+    public void SetListener(Func<Vector3> at) => listenerAt = at;
+
+    /// <summary>拉彈弓時皮筋的音高從 D 滑到 A（拉滿）；放開就停。</summary>
+    public void SetSlingDraw(bool drawing, float fraction)
+    {
+        if (drawing)
+        {
+            if (!band.isPlaying)
+                band.Play();
+            band.pitch = 1f + 0.5f * Mathf.Clamp01(fraction);
+            band.volume = 0.35f;
+        }
+        else if (band.isPlaying)
+            band.Stop();
+    }
+
+    /// <summary>學會一個動作：里拉琴上行三音（取代鈴聲）。</summary>
+    public void PlayLearned() => local.PlayOneShot(lyreTriad, 0.4f);
 
     /// <summary>巨人拔掉楔子：「喀」一聲加石子彈出，在巨石位置播。</summary>
     public void WedgePulled(Vector3 at) => Play(wedgePulled, at, 0.6f, 1f, 2f, 20f);
@@ -212,14 +259,22 @@ public class SoundPlayer : MonoBehaviour
     }
 
     /// <summary>同伴遇害（DbD 掛鉤慘叫的做法）：慘叫由 ScreenFeedback 在現場播，這裡補一聲只有玩家聽得到的低沉和弦。</summary>
-    public void PlayLossChord() => local.PlayOneShot(lowChord, 0.5f);
+    public void PlayLossChord()
+    {
+        local.PlayOneShot(lowChord, 0.5f);
+        local.PlayOneShot(GongMuted, 0.5f);
+    }
 
-    /// <summary>巨石全開（DbD 大門通電的做法）：海風灌進來，加上行琶音。</summary>
+    /// <summary>巨石全開（DbD 大門通電的做法）：海風灌進來，加里拉琴刷弦與一聲中鑼。</summary>
     public void PlayGust(Vector3 gap)
     {
         Play(gust, gap, 0.8f, 1f, 4f, 60f);
-        PlayArpeggio(true);
+        local.PlayOneShot(lyreStrum, 0.5f);
+        local.PlayOneShot(GongMid, 0.45f);
     }
+
+    /// <summary>找不到洞口時海風從縫那邊加強一陣：只有風，沒有琴（取代「海風從巨石那邊吹來」的文字）。</summary>
+    public void PlayWindSurge(Vector3 gap) => Play(gust, gap, 0.5f, 0.85f, 4f, 60f);
 
     /// <summary>天亮前從縫外傳來的海鳥與浪（DbD 終局崩塌的做法）。</summary>
     public void StartSeabirds(Vector3 gap)

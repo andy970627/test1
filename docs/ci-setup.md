@@ -35,7 +35,7 @@
 3. GitHub 同一個頁面：
    - **Secrets** 分頁新增 `BUTLER_API_KEY` ＝ 第 2 步的金鑰
    - **Variables** 分頁新增 `ITCH_GAME` ＝ `itch帳號/遊戲名`，例如 `andy970627/blind-cave`（全部小寫）
-4. 等第一次上傳成功後，回 itch.io 編輯專案：在 Uploads 裡把 `web` 那個檔案勾 **This file will be played in the browser**；Embed options 建議 960 × 600、勾 **Fullscreen button**；存檔。之後每次上傳都會自動換成最新版。
+4. 等第一次上傳成功後，回 itch.io 編輯專案：在 Uploads 裡把 `web` 那個檔案勾 **This file will be played in the browser**；Embed options 建議 960 × 600（16:10；網頁模板會讓畫面填滿嵌入框，其他尺寸也不會被裁切）、勾 **Fullscreen button**，**Mobile friendly** 不必勾；存檔。之後每次上傳都會自動換成最新版。
 
 ## 3. 怎麼看結果
 

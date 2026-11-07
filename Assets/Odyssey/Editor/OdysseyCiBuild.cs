@@ -18,6 +18,8 @@ public static class OdysseyCiBuild
         // 只在這次建置設定，不改版控裡的 ProjectSettings：Gzip＋解壓縮備援，itch.io 不必另設回應標頭。
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
         PlayerSettings.WebGL.decompressionFallback = true;
+        // 自適應模板：畫布填滿 itch.io 嵌入框，並把高解析度螢幕的算圖倍率固定在 1（見 Assets/WebGLTemplates/Odyssey）。
+        PlayerSettings.WebGL.template = "PROJECT:Odyssey";
 
         var options = new BuildPlayerOptions
         {

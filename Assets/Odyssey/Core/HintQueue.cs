@@ -86,41 +86,4 @@ namespace Odyssey.Core
             }
         }
     }
-
-    /// <summary>情境提示的文字（`docs/game-text.md` 第 5 節）：只描述發生了什麼，做法寫在洞中紀事。</summary>
-    public static class HintText
-    {
-        public static string Of(HintKind kind) => kind switch
-        {
-            HintKind.Decoy => "巨人朝你走來了",
-            HintKind.Guard => "他聽見巨石的聲音，跑回去守著",
-            HintKind.PulledWedge => "他拔掉了楔子",
-            HintKind.Catch => "巨石卡了一下，整個洞都聽得到",
-            HintKind.Heavy => "巨石動得好慢",
-            HintKind.RockWindup => "他舉起岩石，朝剛才的聲音瞄準",
-            HintKind.Whimper => "附近有同伴在嗚咽",
-            HintKind.CrewEaten => "巨人摸到一名同伴，把他吃了",
-            HintKind.Stake => "一根削尖的橄欖木樁，正是刺瞎他的那一根",
-            HintKind.Pail => "奶桶倒了，整個洞都聽得到",
-            HintKind.Pen => "乾草讓腳步變輕了",
-            HintKind.Pant => "你喘不過氣，他也聽得到",
-            HintKind.Dawn => "天快亮了",
-            HintKind.Rush => "羊群聞到外面的氣味，擠向縫口",
-            HintKind.SheepStuck => "有羊卡在縫裡",
-            HintKind.Prayer => "他在向父親波塞頓禱告，什麼都聽不到",
-            HintKind.Slip => "巨石在往回滑",
-            HintKind.Notch => "巨石卡進了地上的凹槽",
-            HintKind.Footstep => "腳步聲照不亮四周",
-            HintKind.HearingRing => "那道淡淡的邊，是他聽得到的地方",
-            HintKind.ArrowClutter => "箭落在奶桶、乳酪架、羊圈上，那裡也會響",
-            HintKind.FindExit => "海風從巨石那邊吹來，邊緣透著月光",
-            HintKind.Brace => "你頂著巨石，它沒有往回滑",
-            HintKind.FirstStone => "你撿起了一顆石子",
-            HintKind.FairHit => "他聽見了你，你才出手",
-            HintKind.Ambush => "他沒聽見你，雷聲卻響了",
-            HintKind.FavorRegained => "月光又照在巨石邊上",
-            HintKind.Horse => "岩壁上，木馬燒成了灰",
-            _ => null,
-        };
-    }
 }

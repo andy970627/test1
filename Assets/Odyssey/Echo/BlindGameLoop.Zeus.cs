@@ -21,6 +21,8 @@ public partial class BlindGameLoop
 
     TerrorMusic music;
     FirstPersonHands hands;
+    /// <summary>第一人稱雙手（WorldPrompts 設定手勢提示用）。</summary>
+    public FirstPersonHands Hands => hands;
     ZeusThunderScene thunderScene;
     float muffleCutoff = OpenCutoff;
     bool gustPlayed;
@@ -84,6 +86,7 @@ public partial class BlindGameLoop
 
         float dt = Time.deltaTime;
         bool hush = listening && distance <= TerrorRadius.ListenSilence;
+        music.DawnTension = 1f - Mathf.Clamp01((1f - Dawn.Fraction) * DawnClock.DefaultNightSeconds / SeabirdsBeforeDawn);
         music.Tick(Terror, Flags.Terror, hush, dt);
         feedback.LegacyHeartbeat = Flags.Terror == TerrorMode.Legacy;
         bool close = Flags.Terror == TerrorMode.Layered && Terror.Layer is TerrorLayer.Three or TerrorLayer.Chase;

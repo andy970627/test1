@@ -36,6 +36,9 @@ public class BlindCyclops : MonoBehaviour
     public event Action PulledWedge;
     /// <summary>巨人自己發出聲音的那一刻（腳步、掃摸、嚼食、呼吸），帶著當時的狀態；SoundPlayer 依狀態播音效。</summary>
     public event Action<CyclopsState> Sounded;
+    /// <summary>他跑回巨石、手按上去守著的那一刻：拍巨石兩下（取代「跑回去守著」的文字）。</summary>
+    public event Action<Vector3> SlappedBoulder;
+    bool wasHolding;
 
     /// <summary>飛行中岩石的落點（給除錯面板）；沒有為 null。</summary>
     public Vector3? IncomingRock => rock != null ? rock.Target : null;
@@ -157,6 +160,13 @@ public class BlindCyclops : MonoBehaviour
             SoundBus.Emit(SoundKind.Cyclops, HeadPosition);
         }
         lastState = Brain.State;
+        if (Brain.HoldingBoulder && !wasHolding)
+        {
+            Vector3 hands = transform.position + transform.forward * 1.2f + Vector3.up * 1.5f;
+            SoundBus.Emit(SoundKind.Cyclops, hands);
+            SlappedBoulder?.Invoke(hands);
+        }
+        wasHolding = Brain.HoldingBoulder;
         EmitOwnSounds();
 
         if (tick.RockReleased)

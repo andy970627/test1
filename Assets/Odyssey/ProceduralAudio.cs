@@ -299,18 +299,6 @@ public static partial class ProceduralAudio
         return Make("WoodTap", data);
     }
 
-    /// <summary>提示學會：輕柔的一聲鈴（只有玩家聽得到）。</summary>
-    public static AudioClip LearnChime()
-    {
-        var data = new float[(int)(SampleRate * 0.6f)];
-        for (int i = 0; i < data.Length; i++)
-        {
-            float t = (float)i / SampleRate;
-            data[i] = 0.2f * (Mathf.Sin(2f * Mathf.PI * 880f * t) + 0.5f * Mathf.Sin(2f * Mathf.PI * 1320f * t)) * Mathf.Exp(-6f * t);
-        }
-        return Make("LearnChime", data);
-    }
-
     /// <summary>巨石每推開 25%：低沉的一聲「咚」（只有玩家聽得到）。</summary>
     public static AudioClip BoulderSettle()
     {
@@ -318,6 +306,17 @@ public static partial class ProceduralAudio
         AddThump(data, 0f, 0.6f, 50f, 6f);
         AddThump(data, 0f, 0.25f, 100f, 8f);
         return Make("BoulderSettle", data);
+    }
+
+    /// <summary>巨人守石時手掌拍上巨石：兩下沉悶的拍擊（0.9 秒）。</summary>
+    public static AudioClip BoulderSlap()
+    {
+        var data = new float[(int)(SampleRate * 0.9f)];
+        AddThump(data, 0f, 0.7f, 90f, 18f);
+        AddThump(data, 0f, 0.4f, 180f, 30f);
+        AddThump(data, 0.42f, 0.6f, 90f, 18f);
+        AddThump(data, 0.42f, 0.35f, 180f, 30f);
+        return Make("BoulderSlap", data);
     }
 
     /// <summary>巨人拔掉楔子：一聲「喀」加石子彈出。</summary>

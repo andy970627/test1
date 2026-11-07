@@ -184,7 +184,7 @@ public class GameMenus : MonoBehaviour
                 loop.Flags.ZeusLaw = !loop.Flags.ZeusLaw;
                 break;
             case StyleItem:
-                loop.Flags.Guide = loop.Flags.Guide == GuideStyle.Verse ? GuideStyle.Plain : GuideStyle.Verse;
+                loop.Flags.Guide = (GuideStyle)Mathf.Clamp((int)loop.Flags.Guide + dir, (int)GuideStyle.Wordless, (int)GuideStyle.Verse);
                 break;
             case TerrorItem:
                 loop.Flags.Terror = (TerrorMode)Mathf.Clamp((int)loop.Flags.Terror + dir, (int)TerrorMode.Layered, (int)TerrorMode.Off);
@@ -287,7 +287,7 @@ public class GameMenus : MonoBehaviour
         PassiveItem => "巨人腳步、羊叫、同伴嗚咽、腳步聲要不要照亮四周",
         GuideItem => "製造聲音 → 推 → 塞楔子 → 鑽出去 的一步一步提示",
         ZeusItem => "打中沒聽見你的巨人算偷襲，招來宙斯的雷鳴；關掉時一律算正面出手",
-        StyleItem => "提示用吟遊詩人的詩句，或只有按鍵的一行",
+        StyleItem => "無字：只有手勢與聲音／鍵帽：多按鍵那一行／詩句：吟遊詩人的兩行詩",
         TerrorItem => "巨人靠近時的心跳與配樂：分層（16 m 起）／舊版（8 m 心跳）／關",
         Lab => "切換設計來比較，開關會記在實測紀錄裡",
         _ => null,

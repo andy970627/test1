@@ -32,7 +32,8 @@ public partial class BlindGameLoop : MonoBehaviour
     // 波塞頓禱告（規格第 20 節 B）
     readonly PrayerClock prayer = new();
     readonly System.Random prayRoll = new();
-    AudioSource prayVoice;
+    AudioSource prayVoice, prayAulos;
+    bool demoSnapped;
     float prayTimer = -1f;
     int prayJolts;
     const float PrayTremor = 0.02f;
@@ -197,6 +198,16 @@ public partial class BlindGameLoop : MonoBehaviour
         prayVoice.minDistance = 4f;
         prayVoice.maxDistance = 60f;
         prayVoice.playOnAwake = false;
+        // 禱告下面疊 aulos 的雙簧拍頻（音效分析第 3 節）。
+        prayAulos = Cyclops.gameObject.AddComponent<AudioSource>();
+        prayAulos.clip = ProceduralAudio.AulosDrone();
+        prayAulos.loop = true;
+        prayAulos.spatialBlend = 1f;
+        prayAulos.rolloffMode = AudioRolloffMode.Logarithmic;
+        prayAulos.minDistance = 4f;
+        prayAulos.maxDistance = 60f;
+        prayAulos.volume = 0.6f;
+        prayAulos.playOnAwake = false;
         shout = ProceduralAudio.Shout();
         shoreWaves = gameObject.AddComponent<AudioSource>();
         shoreWaves.clip = ProceduralAudio.SeaWind();
@@ -209,6 +220,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Arrow.IgnoreAlways.Add(Layout.Boulder.GapBlocker);
         sounds = gameObject.AddComponent<SoundPlayer>();
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
+        sounds.SetListener(() => body.CameraTransform.position);
         InitZeus();
         gameObject.AddComponent<CaveAtmosphere>().Init(Layout, Cyclops, body, () => Slide.Opening / BoulderSlide.FullOpen, seed);
 
@@ -231,7 +243,7 @@ public partial class BlindGameLoop : MonoBehaviour
     void MarkUsed(PromptKind kind)
     {
         if (Prompts.Used(kind, Time.time))
-            sounds?.PlayLocal(sounds.LearnChime, 0.35f);
+            sounds?.PlayLearned();
     }
 
     static AudioSource Loop3D(string name, Transform parent, Vector3 at, AudioClip clip, AudioRolloffMode rolloff,
@@ -369,12 +381,8 @@ public partial class BlindGameLoop : MonoBehaviour
         Unlock(HintGuide.EntryFor(kind));
     }
 
-    /// <summary>核心法則的示範：整場第一個會照亮的聲音，回聲邊緣浮現「他聽得到這麼遠」。</summary>
-    public void ShowLaw(Vector3 at, float radius)
-    {
-        feedback.ShowLaw(at, radius);
-        Unlock("law");
-    }
+    /// <summary>核心法則：整場第一個會照亮的聲音，解鎖紀事「聲音就是光」（回聲邊本身就是示範，不再浮現文字）。</summary>
+    public void ShowLaw(Vector3 at, float radius) => Unlock("law");
 
     public void Unlock(string entry)
     {
@@ -426,6 +434,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Rush.Reset();
         Prompts.NewNight();
         Hints.NewNight();
+        sounds?.SetSlingDraw(false, 0f);
         RescuedLastEscape = 0;
         pullNoiseTimer = 0f;
         Dawn.Reset();
@@ -480,12 +489,29 @@ public partial class BlindGameLoop : MonoBehaviour
             Essential.OnAtBoulder();
         if (player.AtGap)
             Essential.OnAtOpenGap();
+        sounds.SetSlingDraw(player.Slingshot.Drawing, player.Slingshot.Fraction);
+        UpdateDemoSnap();
         Dawn.Tick(Time.deltaTime);
         UpdatePrayer();
         UpdateZeus();
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
             Fail(FailReason.Dawn);
+    }
+
+    /// <summary>
+    /// 同伴示範（少用文字設計 A1 第 1 步）：夜晚開始 2 秒後，身後的同伴彈一聲，回聲照亮一圈，
+    /// 讓玩家看到「聲音就是光」。只在必要引導還停在第 1 步時做，整場一次。
+    /// </summary>
+    void UpdateDemoSnap()
+    {
+        if (demoSnapped || !Flags.EssentialGuide || Essential.Step != EssentialStep.Sound)
+            return;
+        if (Time.time - nightStart < GuideCues.DemoDelaySeconds)
+            return;
+        demoSnapped = true;
+        Vector3 behind = body.transform.position - Flat(body.CameraTransform.forward).normalized * GuideCues.DemoBehindMeters + Vector3.up * 1.3f;
+        SoundBus.Emit(SoundKind.Clap, behind);
     }
 
     /// <summary>
@@ -501,6 +527,7 @@ public partial class BlindGameLoop : MonoBehaviour
                 prayTimer = 0f;
                 prayJolts = 0;
                 prayVoice.Play();
+                prayAulos.Play();
             }
             return;
         }
@@ -523,6 +550,8 @@ public partial class BlindGameLoop : MonoBehaviour
             feel.Tremor = 0f;
         if (prayVoice != null)
             prayVoice.Stop();
+        if (prayAulos != null)
+            prayAulos.Stop();
     }
 
     /// <summary>推進巨石的滑動，依結果發出輕推、猛推、回滑的聲音。</summary>
@@ -548,6 +577,7 @@ public partial class BlindGameLoop : MonoBehaviour
         {
             Hint(HintKind.Notch);
             sounds.PlayLocal(sounds.BoulderSettle, 0.7f);
+            sounds.PlayLocal(sounds.GongLow, 0.4f);
             settleFlash = SettleFlashSeconds;
         }
         settleFlash = Mathf.Max(0f, settleFlash - Time.deltaTime);
