@@ -18,7 +18,7 @@
 | 位置 | 內容 |
 |---|---|
 | `Assets/`、`Packages/`、`ProjectSettings/` | Unity 專案（主線《雙盲洞穴》的完整版在 `blind-cave` 分支） |
-| `prototypes/` | 網頁原型。每個原型的規則是純邏輯檔（之後可翻成 C# 搬 Unity），畫面是 `index.html`，另有 Node 測試 |
+| `prototypes/` | 網頁原型。`index.html` 是列出所有原型的總首頁，`nav.js` 是各頁共用的「回總首頁」導覽；每個原型的規則是純邏輯檔（之後可翻成 C# 搬 Unity），畫面是 `index.html`，另有 Node 測試 |
 | `docs/design/` | 遊戲設計文件 |
 | `docs/process/` | 製作紀錄（和遊戲內容無關） |
 | `docs/superpowers/` | 主線《雙盲洞穴》早期的規格與實作計畫 |
@@ -48,7 +48,7 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90
 bash tools/build-itch.sh
 ```
 
-第一條跑規則測試（每個原型都有自己的 `*.test.js`）；第二條用程式玩家錄一輪有聲試玩並自動分析，輸出在 `tools/playtest-recorder/out/`；第三條打包網頁連作給 itch.io。
+第一條跑規則測試（每個原型都有自己的 `*.test.js`）；第二條用程式玩家錄一輪有聲試玩並自動分析，輸出在 `tools/playtest-recorder/out/`；第三條打包所有原型給 itch.io（結構和 `prototypes/` 相同，總首頁在根目錄）。
 
 ## 分支
 
