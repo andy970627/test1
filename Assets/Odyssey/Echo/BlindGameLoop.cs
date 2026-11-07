@@ -369,12 +369,8 @@ public partial class BlindGameLoop : MonoBehaviour
         Unlock(HintGuide.EntryFor(kind));
     }
 
-    /// <summary>核心法則的示範：整場第一個會照亮的聲音，回聲邊緣浮現「他聽得到這麼遠」。</summary>
-    public void ShowLaw(Vector3 at, float radius)
-    {
-        feedback.ShowLaw(at, radius);
-        Unlock("law");
-    }
+    /// <summary>核心法則：整場第一個會照亮的聲音，解鎖紀事「聲音就是光」（回聲邊本身就是示範，不再浮現文字）。</summary>
+    public void ShowLaw(Vector3 at, float radius) => Unlock("law");
 
     public void Unlock(string entry)
     {

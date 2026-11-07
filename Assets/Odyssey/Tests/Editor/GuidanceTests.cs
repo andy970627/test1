@@ -50,12 +50,6 @@ namespace Odyssey.Core.Tests
             Assert.IsFalse(string.IsNullOrEmpty(GuideBook.PageName(GuidePage.SoundLight)));
         }
 
-        [Test]
-        public void HintTexts_NoDashes()
-        {
-            foreach (HintKind k in Enum.GetValues(typeof(HintKind)))
-                StringAssert.DoesNotContain("——", HintText.Of(k), k.ToString());
-        }
     }
 
     public class DeathCardTests

@@ -23,6 +23,7 @@ public class SoundPlayer : MonoBehaviour
     AudioClip slingSnap, slingStretch, thunder, owl, wings, fire, cries, lowChord, gust;
     AudioSource seabirds;
     AudioClip clap, stone, grind, heavy, slip, wedge, pail, soft, hay, scrape, wedgePulled, twang, arrowHit;
+    AudioClip slap;
 
     public AudioClip Twang => twang;
 
@@ -70,6 +71,7 @@ public class SoundPlayer : MonoBehaviour
         WoodTap = ProceduralAudio.WoodTap();
         LearnChime = ProceduralAudio.LearnChime();
         BoulderSettle = ProceduralAudio.BoulderSettle();
+        slap = ProceduralAudio.BoulderSlap();
 
         for (int i = 0; i < Voices; i++)
         {
@@ -90,6 +92,7 @@ public class SoundPlayer : MonoBehaviour
         seabirds.loop = true;
 
         cyclops.Sounded += OnGiant;
+        cyclops.SlappedBoulder += at => Play(slap, at, 0.9f, 1f, 3f, 30f);
         SoundBus.Emitted += OnSound;
     }
 
@@ -220,6 +223,9 @@ public class SoundPlayer : MonoBehaviour
         Play(gust, gap, 0.8f, 1f, 4f, 60f);
         PlayArpeggio(true);
     }
+
+    /// <summary>找不到洞口時海風從縫那邊加強一陣：只有風，沒有琴（取代「海風從巨石那邊吹來」的文字）。</summary>
+    public void PlayWindSurge(Vector3 gap) => Play(gust, gap, 0.5f, 0.85f, 4f, 60f);
 
     /// <summary>天亮前從縫外傳來的海鳥與浪（DbD 終局崩塌的做法）。</summary>
     public void StartSeabirds(Vector3 gap)

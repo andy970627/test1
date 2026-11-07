@@ -5,7 +5,7 @@ using UnityEngine;
 /// 事件回饋（規格第 25 節 E）與核心法則的示範（第 25 節 A）：
 /// 同伴被吃（慘叫、紅邊脈動、方向弧、任務清單人數閃紅）、巨人靠近（心跳、暗角）、
 /// 撞到東西（鏡頭輕震、只有玩家聽得到的撞擊聲）、岩石落在附近（大震、耳鳴）、
-/// 第一次發聲時在回聲邊緣浮現「他聽得到這麼遠」。畫面效果只有暗角與色邊，不加背景。
+/// 畫面效果只有暗角與色邊，不加背景（第一次發聲的「他聽得到這麼遠」已依少用文字設計拿掉，回聲邊本身就是示範）。
 /// </summary>
 public class ScreenFeedback : MonoBehaviour
 {
@@ -15,10 +15,8 @@ public class ScreenFeedback : MonoBehaviour
     const float TinnitusSeconds = 1.5f;
     const float TinnitusVolume = 0.4f;
     const float BumpCooldown = 0.5f;
-    const float LawShowSeconds = 2f;
 
     static readonly Color Blood = OdysseyPalette.Blood;
-    static readonly Color LawColor = OdysseyPalette.Parchment;
 
     BlindGameLoop loop;
     FirstPersonPlayer body;
@@ -30,8 +28,6 @@ public class ScreenFeedback : MonoBehaviour
     Vector3 arcFrom;
     float tinnitusLeft;
     float lastBump = -10f;
-    float lawAt = -1f;
-    Vector3 lawPoint;
     float heartIntensity;
     float terrorVignette;
 
@@ -40,7 +36,6 @@ public class ScreenFeedback : MonoBehaviour
 
     /// <summary>恐懼半徑第 3 層與追殺時的四角變暗（0～1），由遊戲迴圈每幀設定。</summary>
     public void SetTerrorVignette(float amount) => terrorVignette = Mathf.Clamp01(amount);
-    GUIStyle lawStyle;
 
     public static float RockNear => RockNearMeters;
 
@@ -91,16 +86,6 @@ public class ScreenFeedback : MonoBehaviour
         feel.Kick(0.08f, 0.4f);
         tinnitusLeft = TinnitusSeconds;
         ring.Play();
-    }
-
-    /// <summary>整場第一個會照亮的聲音：波前到達邊緣時，在玩家前方的邊緣浮現一行字。</summary>
-    public void ShowLaw(Vector3 center, float radius)
-    {
-        Vector3 forward = body.CameraTransform.forward;
-        forward.y = 0f;
-        forward = forward.sqrMagnitude > 1e-4f ? forward.normalized : Vector3.forward;
-        lawPoint = center + forward * radius + Vector3.up * 1.2f;
-        lawAt = Time.time + EchoField.SpreadSeconds;
     }
 
     public void ResetAll()
@@ -173,34 +158,6 @@ public class ScreenFeedback : MonoBehaviour
         // 方向弧：螢幕邊緣指向事發的方向。
         if (arcLeft > 0f)
             DrawArc(arcFrom, Mathf.Clamp01(arcLeft / ArcSeconds));
-
-        DrawLaw();
-    }
-
-    void DrawLaw()
-    {
-        if (lawAt < 0f || Time.time < lawAt)
-            return;
-        float age = Time.time - lawAt;
-        if (age > LawShowSeconds)
-        {
-            lawAt = -1f;
-            return;
-        }
-        Vector3 s = body.Camera.WorldToScreenPoint(lawPoint);
-        if (s.z <= 0f)
-            return;
-        int size = Mathf.Max(20, Screen.height / 30);
-        if (lawStyle == null || lawStyle.fontSize != size)
-            lawStyle = new GUIStyle(GUI.skin.label) { fontSize = size, alignment = TextAnchor.MiddleCenter };
-        float a = Mathf.Clamp01((LawShowSeconds - age) / 0.5f) * Mathf.Clamp01(age / 0.2f);
-        var r = new Rect(s.x - 300f, Screen.height - s.y - size, 600f, size * 1.6f);
-        var shadow = r;
-        shadow.position += new Vector2(2f, 2f);
-        lawStyle.normal.textColor = OdysseyPalette.Fade(OdysseyPalette.TextShadow, a);
-        GUI.Label(shadow, "他聽得到這麼遠", lawStyle);
-        lawStyle.normal.textColor = new Color(LawColor.r, LawColor.g, LawColor.b, a);
-        GUI.Label(r, "他聽得到這麼遠", lawStyle);
     }
 
     /// <summary>事發方向（相對鏡頭水平角度）在螢幕邊緣畫一段暗紅弧。</summary>

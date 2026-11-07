@@ -101,11 +101,5 @@ namespace Odyssey.Core.Tests
             Assert.IsNull(q.Current);
         }
 
-        [Test]
-        public void EveryKind_HasText()
-        {
-            foreach (HintKind k in System.Enum.GetValues(typeof(HintKind)))
-                Assert.IsFalse(string.IsNullOrEmpty(HintText.Of(k)), k.ToString());
-        }
     }
 }

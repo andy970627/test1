@@ -14,7 +14,6 @@ public class WorldPrompts : MonoBehaviour
     const float GapLift = 0.1f;
     const float StakeLift = 0.6f;
     const float CrewLift = 1.45f;
-    const float StuckNoticeReach = 3f;
     const float EssentialHeight = 0.7f;
 
     static readonly Color Text = OdysseyPalette.Parchment;
@@ -82,16 +81,9 @@ public class WorldPrompts : MonoBehaviour
         // 巨石前不再列操作：推、塞楔子、鑽出去由必要引導那一行帶；猛推、拔楔子、插木樁讓玩家自己探索（規格第 26 節 A）。
         // 縫
         lines.Clear();
-        bool nearGap = Flat(boulder.GapPoint - me).magnitude <= StuckNoticeReach;
-        if (loop.Rush.Stuck && nearGap)
-            lines.Add(("有羊卡在縫裡", null));
-        else if (player.AtGap && !loop.Rush.GapClear)
-            lines.Add(("有羊擠在縫裡", null));
-        else if (player.AtGap)
-        {
-            if (loop.Crew.Crouching && loop.Crew.Followers.Count > 0)
-                lines.Add(("F 讓蹲著的隊伍跟上", null));
-        }
+        // 羊擠在縫裡、卡住：看得到也聽得到（咩叫、掙扎），不再寫字（少用文字設計 A2）。
+        if (player.AtGap && loop.Rush.GapClear && loop.Crew.Crouching && loop.Crew.Followers.Count > 0)
+            lines.Add(("F 讓蹲著的隊伍跟上", null));
         DrawAt(boulder.GapPoint + Vector3.up * GapLift);
 
         // 木樁

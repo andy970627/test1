@@ -2,8 +2,8 @@ namespace Odyssey.Core
 {
     public enum PassiveLight { Off, Dim, Full }
 
-    /// <summary>引導文字風格：詩句或簡潔。</summary>
-    public enum GuideStyle { Verse, Plain }
+    /// <summary>引導風格（少用文字設計第 7 節）：無字（只有手勢與事件本身）、鍵帽（多按鍵那一行）、詩句（吟遊詩人兩行詩）。</summary>
+    public enum GuideStyle { Wordless, Plain, Verse }
 
     /// <summary>恐懼半徑模式：分層（新）、舊版心跳、關閉。</summary>
     public enum TerrorMode { Layered, Legacy, Off }
@@ -26,8 +26,8 @@ namespace Odyssey.Core
         /// <summary>宙斯法則（箭與雷的規則）開關。</summary>
         public bool ZeusLaw { get; set; } = true;
 
-        /// <summary>引導文字風格。</summary>
-        public GuideStyle Guide { get; set; } = GuideStyle.Verse;
+        /// <summary>引導風格；預設無字。</summary>
+        public GuideStyle Guide { get; set; } = GuideStyle.Wordless;
 
         /// <summary>恐懼半徑模式；舊版沿用 Heartbeat。</summary>
         public TerrorMode Terror { get; set; } = TerrorMode.Layered;
@@ -59,7 +59,12 @@ namespace Odyssey.Core
 
         public static string Name(bool on) => on ? "開" : "關";
 
-        public static string Name(GuideStyle g) => g == GuideStyle.Plain ? "簡潔" : "詩句";
+        public static string Name(GuideStyle g) => g switch
+        {
+            GuideStyle.Plain => "鍵帽",
+            GuideStyle.Verse => "詩句",
+            _ => "無字",
+        };
 
         public static string Name(TerrorMode t) => t switch
         {
