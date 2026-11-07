@@ -30,6 +30,10 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .hud { position: fixed; pointer-events: none; }
 #noise { inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: 0; mix-blend-mode: screen; }
 #edge { inset: 0; box-shadow: inset 0 0 140px 30px var(--warn); opacity: 0; }
+/* 盲區凝結：冷灰偏藍的色罩（強度由程式依 visualAid 設定） */
+#chill { inset: 0; background: #4f6ea8; mix-blend-mode: color; opacity: 0; }
+/* 不合拍的腳步被聽到：畫面邊緣極淡的暖光一閃 */
+#stepEdge { inset: 0; box-shadow: inset 0 0 120px 24px rgba(240, 150, 70, .9); opacity: 0; }
 #red { inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 20, 10, .75) 100%); opacity: 0; transition: opacity .3s; }
 #cross { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: var(--ash); opacity: .45; border-radius: 50%; }
 #zone { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-family: var(--display); font-size: 15px; letter-spacing: .14em; color: var(--dim); text-shadow: 0 1px 3px #000; }
@@ -119,6 +123,8 @@ button:hover { filter: brightness(1.12); }
 
 <div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
 <canvas class="hud" id="noise" width="160" height="90" aria-hidden="true"></canvas>
+<div class="hud" id="chill"></div>
+<div class="hud" id="stepEdge"></div>
 <div class="hud" id="edge"></div>
 <div class="hud" id="red"></div>
 <div class="hud" id="cross"></div>
@@ -177,6 +183,7 @@ button:hover { filter: brightness(1.12); }
 <fieldset id="opts">
   <legend>實驗開關</legend>
   <label><input type="checkbox" id="oPhase"> 顯示相位條（除錯用）</label>
+  <label>視覺輔助 <select id="oAid"><option value="auto">自動（第 2 區減半、之後關閉）</option><option value="on">全開</option><option value="off">全關</option></select></label>
   <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
@@ -284,16 +291,60 @@ function flame(parent, x, y, z, s = 1) {
   for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, e = Math.random() * 1.2 + .15, r = 180; pos[i * 3] = Math.cos(a) * Math.cos(e) * r; pos[i * 3 + 1] = Math.sin(e) * r; pos[i * 3 + 2] = Math.sin(a) * Math.cos(e) * r; }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xc8d0e8, size: .8, fog: false })));
-  const moon = new THREE.Mesh(new THREE.SphereGeometry(5, 16, 12), new THREE.MeshBasicMaterial({ color: 0xdfe4f0, fog: false }));
-  moon.position.set(-70, 95, 120); scene.add(moon);
 })();
+
+// ============================================================
+// 月亮相位鐘（設計文件 8.2）：一個循環轉一圈的「缺口」＋外圈進度弧，
+// p 越接近 1 越紅，盲區時回到銀白。跟著鏡頭走（像天穹），永遠在同一個方位。
+// ============================================================
+const MOON_DIR = new THREE.Vector3(.78, .5, -.38).normalize();   // 東北方、仰角約 30°（往城門走時抬頭就看得到）
+const MOON_DIST = 150, MOON_SIZE = 34;
+const moonMat = new THREE.ShaderMaterial({
+  uniforms: { uP: { value: 0 }, uAid: { value: 1 }, uRed: { value: 0 }, uBlind: { value: 0 } },
+  transparent: true, depthWrite: false, fog: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    varying vec2 vUv; uniform float uP, uAid, uRed, uBlind;
+    const float TAU = 6.2831853, R = .5;
+    float crater(vec2 q, vec2 c, float r) { return smoothstep(r, r * .6, length(q - c)); }
+    void main() {
+      vec2 q = vUv * 2. - 1.; float r = length(q);
+      // 月色：銀白 → 接近盲區轉紅；盲區時更亮、更白
+      vec3 silver = vec3(.86, .89, .96), blood = vec3(.95, .32, .2);
+      vec3 tint = mix(silver, blood, uRed);
+      tint = mix(tint, vec3(1.), uBlind * .7);
+      // 月面：幾個固定的暗斑
+      float mar = crater(q, vec2(-.16, .12), .16) * .5 + crater(q, vec2(.14, -.1), .12) * .45 + crater(q, vec2(.05, .26), .07) * .4 + crater(q, vec2(-.1, -.24), .09) * .35;
+      vec3 surf = tint * (1. - mar * .28) * (1.0 - .18 * smoothstep(0., R, r));
+      float disk = smoothstep(R, R - .012, r);
+      // 繞一圈的缺口（像被咬掉一塊的陰影）：角度 = 2πp，從正上方順時針
+      float th = uP * TAU;
+      vec2 bc = vec2(sin(th), cos(th)) * R * 1.12;
+      float bite = smoothstep(R * .42, R * .36, length(q - bc)) * uAid * (1. - uBlind);
+      surf *= 1. - bite * .82;
+      // 外圈：12 個刻度＋已走過的進度弧
+      float a = mod(atan(q.x, q.y), TAU);
+      float ring = 1. - smoothstep(.008, .016, abs(r - .62));
+      float done = step(a, th);
+      float tick = (1. - smoothstep(.03, .045, abs(fract(a / TAU * 12. + .5) - .5))) * (1. - smoothstep(.02, .03, abs(r - .69)));
+      float ringA = (ring * (.12 + .75 * done) + tick * .45) * uAid;
+      // 光暈
+      float glow = exp(-max(r - R, 0.) * 7.) * (1. - disk) * (.28 + .35 * uBlind + .2 * uRed);
+      vec3 col = surf * disk + tint * (ringA + glow) * (1. - disk);
+      float alpha = clamp(disk + ringA + glow, 0., 1.);
+      gl_FragColor = vec4(col / max(alpha, .001), alpha);
+    }`,
+});
+const moon = new THREE.Mesh(new THREE.PlaneGeometry(MOON_SIZE, MOON_SIZE), moonMat);
+moon.renderOrder = 2;   // 畫在星星之後（蓋住月面後方的星），牆仍會用深度擋住月亮 scene.add(moon);
+moon.position.copy(MOON_DIR).multiplyScalar(MOON_DIST);
 
 let S = null;          // 目前場景的物件
 let builtFor = null;   // 已經建好場景的 level 物件
 const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
 function build(L) {
   scene.remove(world); world = new THREE.Group(); scene.add(world);
-  S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null };
+  S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null, horsePlanks: null, moonSlits: [] };
   builtFor = L;
   world.add(new THREE.HemisphereLight(0x3a4870, 0x0a0806, .55));
   const moonL = new THREE.DirectionalLight(0x8a9cd0, .35); moonL.position.set(-30, 50, 40); world.add(moonL);
@@ -477,10 +528,23 @@ function buildHorse(H, L) {
     const glow = new THREE.PointLight(0xff9040, .7, 3, 2); glow.position.set(td.x, fy - .5, td.z); g.add(glow);
   }
   // 側板：豎著的木條，縫隙透出外面的火光
-  for (const sz of [bz0, bz1]) for (let x = bx0; x < bx1 - .05; x += .34) { const p = box(.26, top - fy, .08, 0, x + .14, (fy + top) / 2, sz, g, plank); if (Math.random() < .3) p.material = dark; }
-  for (const sx of [bx0, bx1]) for (let z = bz0; z < bz1 - .05; z += .34) box(.08, top - fy, .28, 0, sx, (fy + top) / 2, z + .14, g, plank);
-  for (let x = bx0; x < bx1 - .05; x += .34) box(.28, .08, bd + .1, 0, x + .14, top, bzc, g, plank);       // 頂
-  for (const sx of [bx0 + 1, bxc, bx1 - 1]) box(.14, .14, bd, 0, sx, top - .2, bzc, g, dark);     // 橫樑
+  // 側板與頂板放在同一個群組：隨拍輕震（設計文件 8.2「世界隨拍跳動」）
+  const pl = new THREE.Group(); g.add(pl); S.horsePlanks = pl;
+  for (const sz of [bz0, bz1]) for (let x = bx0; x < bx1 - .05; x += .34) { const p = box(.26, top - fy, .08, 0, x + .14, (fy + top) / 2, sz, pl, plank); if (Math.random() < .3) p.material = dark; }
+  for (const sx of [bx0, bx1]) for (let z = bz0; z < bz1 - .05; z += .34) box(.08, top - fy, .28, 0, sx, (fy + top) / 2, z + .14, pl, plank);
+  for (let x = bx0; x < bx1 - .05; x += .34) box(.28, .08, bd + .1, 0, x + .14, top, bzc, pl, plank);       // 頂
+  for (const sx of [bx0 + 1, bxc, bx1 - 1]) box(.14, .14, bd, 0, sx, top - .2, bzc, pl, dark);     // 橫樑
+  // 頂板縫透進的月光：腹中看不到月亮，改由這些光縫呈現月亮相位鐘（顏色同月亮；一道亮帶隨 p 由後往前掃過）
+  S.moonSlits = [];
+  const gaps = []; for (let x = bx0; x < bx1 - .05; x += .34) gaps.push(x + .31);
+  gaps.forEach((gx, i) => {
+    if (i % 2) return;
+    const line = box(.05, .02, bd - .1, 0, gx, top - .03, bzc, pl, new THREE.MeshBasicMaterial({ color: 0xc8d4ee, transparent: true, opacity: .5, fog: false }));
+    const beamMat = new THREE.MeshBasicMaterial({ color: 0xc8d4ee, transparent: true, opacity: .05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const beam = new THREE.Mesh(new THREE.PlaneGeometry(bd - .3, top - fy - .1), beamMat);
+    beam.rotation.y = Math.PI / 2; beam.rotation.x = .18; beam.position.set(gx - .12, (fy + top) / 2, bzc); pl.add(beam);
+    S.moonSlits.push({ line, beam, u: (gx - bx0) / bw });
+  });
   // 從地板縫往上透的火光
   const shaftMat = new THREE.MeshBasicMaterial({ color: 0xff9a50, transparent: true, opacity: .07, blending: THREE.AdditiveBlending, depthWrite: false });
   for (let i = 0; i < 9; i++) { const s = box(rand(.3, 1.2), 1.7, .05, 0, rand(bx0 + .4, bx1 - .4), fy + .85, bz0 + (Math.floor(rand(1, n)) * bd / n), g, shaftMat); s.rotation.x = rand(-.25, .25); S.shafts.push(s); }
@@ -593,6 +657,7 @@ function makeAudio(T) {
     update: s => (a && a.update ? a.update(s) : AudioMod.update && AudioMod.update(s)),
     cue: n => (a && a.cue ? a.cue(n) : AudioMod.cue && AudioMod.cue(n)),
     stop: () => (a && a.stop ? a.stop() : a && a.dispose ? a.dispose() : null),
+    setListener: o => { try { if (a && typeof a.setListener === 'function') a.setListener(o); } catch (e) {} },
     raw: a,
   };
   applyMusic(true);
@@ -669,9 +734,14 @@ $('btnTrackClear').onclick = () => {
 };
 function newGame() {
   // 規則：opts.T 是常數覆寫；從開場字卡（區 0）進入區 1，讓第一個提示照規則出現
-  const g = Rules.createLevel({ t0, startZone: 0, T: { CYCLE: curT } });
+  const aidMode = $('oAid').value;
+  const qz = +new URLSearchParams(location.search).get('startZone');     // 實驗：?startZone=1..4 直接從某一區開始
+  const opts = { t0, startZone: qz >= 1 && qz <= 4 ? qz | 0 : 0, T: { CYCLE: curT } };
+  if (aidMode !== 'auto') opts.visualAid = aidMode === 'on' ? 1 : 0;   // 自動＝交給規則依區域決定
+  const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
+  VIS.prevT = VIS.prevP = VIS.prevI = null; VIS.beats = []; VIS.aid = aidTarget();
   if (game.level !== builtFor) build(game.level);
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
@@ -750,6 +820,7 @@ function drain() {
   const evs = out.splice(0, out.length);
   for (const e of evs) {
     if (!e) continue;
+    if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) VIS.stepFlash = 1;   // 這一步被聽到了
     if (e.type === 'sfx') { audio.cue(e.a); if (e.a === 'takedown' || e.a === 'down') lag(() => flash(.25)); }
     else if (e.type === 'hint') lag(() => queueHint(e.a));
     else if (e.type === 'msg') lag(() => showMsg(e.a));
@@ -786,13 +857,17 @@ function loop() {
   if (playing) {
     const t = audio.now();
     game.step(t, readInput());
+    VIS.beats.push(...collectBeats(t));
+    // 3D 聽聲辨位：聆聽者跟著玩家（聲音層沒有這個函式時略過）
+    const P = game.player;
+    if (P) audio.setListener({ x: P.x, z: P.z, yaw: Number.isFinite(P.yaw) ? P.yaw : V.yaw });
     audio.update(game);
     // 盲區開始時一聲很輕的提示（鼓點斷掉的那一下）
     const blindNow = !!(game.cycle && game.cycle.blind);
     if (blindNow && !loop.wasBlind && game.phase === 'play') { try { audio.cue('blind'); } catch (e) {} }
     loop.wasBlind = blindNow;
     drain();
-  }
+  } else VIS.prevT = null;
   if (game && !paused && (game.phase === 'fail' || game.phase === 'win')) {
     if (game.out && game.out.length) drain();
     audio.update(game);
@@ -820,11 +895,16 @@ function sync(dt, now) {
   camera.position.set(P.x + rand(-shake, shake), V.eye + bob, P.z);
   camera.rotation.set(V.pitch, V.yaw, 0);
 
+  // 視覺輔助：凝結（火焰停住）、拍點（火焰縮放）、月亮
+  const playingNow = g.phase === 'play' && !paused;
+  const fz = visFrame(dt, inHorse ? fy : 0, playingNow);
+  const motion = 1 - fz, jitter = motion * (1 + p * VIS.aid * .8);          // 拍子越快整體越躁動
+  const bp = VIS.pulse * .45, bw = 1 + bp * .5;
   // 火光閃動
-  const fl = () => 1 + Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08;
-  for (const F of S.fires) { F.f.scale.set(1, fl(), 1); F.light.intensity = F.base * (.88 + Math.random() * .2); }
-  for (const s of S.shafts) s.material.opacity = .05 + Math.random() * .03;
-  if (S.horseLight) S.horseLight.intensity = .35 + Math.random() * .2;
+  const fl = () => 1 + (Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08) * jitter;
+  for (const F of S.fires) { F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25); }
+  for (const s of S.shafts) s.material.opacity = .05 + Math.random() * .03 * motion;
+  if (S.horseLight) S.horseLight.intensity = .35 + Math.random() * .2 * motion + VIS.pulse * .15;
 
   // 衛兵
   const seen = new Set();
@@ -848,8 +928,8 @@ function sync(dt, now) {
     // 倒下
     F.fall += ((down ? 1 : 0) - F.fall) * Math.min(1, dt * 5);
     F.up.rotation.z = F.fall * 1.5; F.up.position.y -= F.fall * .2;
-    F.light.intensity = (down ? .5 : 1.6) * (.85 + Math.random() * .25);
-    F.tf.scale.set(1, fl() * (down ? .6 : 1), 1);
+    F.light.intensity = (down ? .5 : 1.6) * (1 + (Math.random() * .25 - .15) * jitter) * (1 + VIS.pulse * .25);
+    F.tf.scale.set(bw, fl() * (down ? .6 : 1) * (1 + bp), bw);
     // 頭上的微光：起疑時黃、追殺時紅，跟著低音拍輕輕脈動
     const on = hunted || susp;
     const beat = g.bass && Number.isFinite(g.bass.nextBeat) ? 1 - clamp((g.bass.nextBeat - audio.now()) / (g.bass.period || 2.4), 0, 1) : 0;
@@ -882,6 +962,163 @@ function sync(dt, now) {
     S.invaders.light.intensity = won ? Math.min(3, winT * 1.2) : 0;
     if (won) for (const v of S.invaders.list) { v.f.position.x -= v.sp * dt; if (v.f.position.x < S.invaders.gx - 14) v.f.position.x += 42; v.f.scale.y = fl(); }
   }
+}
+
+// ============================================================
+// 視覺輔助（設計文件 8.2）：盲區凝結、世界隨拍跳動、月亮相位鐘。強度一律 × visualAid
+// 規則新欄位（cycle.anchor、beatsBetween、visualAid）不存在時退回舊行為：用 cycle.p 與相位估拍點
+// ============================================================
+const VIS = {
+  aid: 1, freeze: 0, pulse: 0, rate: 1, stepFlash: 0, filter: '',
+  prevT: null, prevP: null, prevI: null, beats: [],
+  force: { p: null, blind: null },        // 測試用：強制相位／盲區（只影響畫面）
+};
+const bellG = x => { const d = (x - .5) / .22; return Math.exp(-d * d); };   // 和聲音層同一條鐘形增益
+const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
+function aidTarget() {
+  const m = $('oAid').value;
+  if (m === 'on') return 1;
+  if (m === 'off') return 0;
+  if (game && Number.isFinite(game.visualAid)) return clamp(game.visualAid, 0, 1);
+  const z = game ? game.zone | 0 : 0;                 // 規則還沒提供時：0、1 區 1，2 區 0.5，之後 0
+  return z <= 1 ? 1 : z === 2 ? .5 : 0;
+}
+// 相位：依 cycle.anchor 外推（和聲音層同一條公式），沒有 anchor 就用 cycle.p
+function visPhase(t) {
+  if (VIS.force.p != null) return VIS.force.p;
+  const c = game && game.cycle; if (!c) return 0;
+  const A = c.anchor;
+  if (A && Number.isFinite(A.t) && Number.isFinite(A.p) && A.T > 0 && Number.isFinite(t)) { const v = A.p + (t - A.t) / A.T; return v - Math.floor(v); }
+  return c.p || 0;
+}
+const visBlind = () => VIS.force.blind != null ? !!VIS.force.blind : !!(game && game.cycle && game.cycle.blind);
+// 這一幀經過的 Risset 拍點：優先用規則的 beatsBetween，沒有就用相位估
+function collectBeats(t) {
+  const out = [], c = (game && game.cycle) || {}, T = num(c.T, curT, 10);
+  const prev = VIS.prevT, p = visPhase(t), pPrev = VIS.prevP, iPrev = VIS.prevI;
+  VIS.prevT = t; VIS.prevP = p; VIS.prevI = c.index;
+  if (prev == null || !(t > prev) || t - prev > .5 || visBlind()) return out;
+  if (typeof Rules.beatsBetween === 'function') {
+    let list = null; try { list = Rules.beatsBetween(prev, t, game); } catch (e) { list = null; }
+    if (Array.isArray(list)) {
+      for (const b of list) {
+        const o = typeof b === 'number' ? { t: b } : (b || {});
+        const k = num(o.k, o.layer, 2), bp = Number.isFinite(o.p) ? o.p : p;
+        out.push({ k, p: bp, g: num(o.g, o.gain, bellG((k + bp) / 4)), T });
+      }
+      return out;
+    }
+  }
+  // 相位估：第 k 層每循環 7·2^k 拍，第 n 拍落在 p = log2(1 + n / Mk)；盲區內不算
+  if (pPrev == null || VIS.force.p != null) return out;
+  const wrapped = (iPrev != null && c.index != null && c.index !== iPrev) || p < pPrev - .5;
+  const segs = wrapped ? [[pPrev, 1], [0, p]] : p > pPrev ? [[pPrev, p]] : [];
+  const BL = num(K().BLIND_LEN, K().BLIND, .6);
+  for (const [a, b] of segs) for (let k = 0; k < 4; k++) {
+    const Mk = 7 * Math.pow(2, k);
+    const nA = Math.ceil(Mk * (Math.pow(2, a) - 1) - 1e-9), nB = Math.ceil(Mk * (Math.pow(2, b) - 1) - 1e-9) - 1;
+    for (let n = nA; n <= nB; n++) {
+      const bp = Math.log2(1 + n / Mk); if (bp * T < BL) continue;
+      const g = bellG((k + bp) / 4); if (g < .05) continue;
+      out.push({ k, p: bp, g, T });
+    }
+  }
+  return out;
+}
+
+// ---------- 空中塵埃與地上塵土（跟著鏡頭繞圈重複，低成本的點） ----------
+const AIR_N = 360, AIR_HALF = 7, GND_N = 260, GND_HALF = 6;
+const airPos = new Float32Array(AIR_N * 3), airVel = new Float32Array(AIR_N * 3);
+for (let i = 0; i < AIR_N; i++) {
+  airPos[i * 3] = rand(-AIR_HALF, AIR_HALF); airPos[i * 3 + 1] = rand(.2, 4); airPos[i * 3 + 2] = rand(-AIR_HALF, AIR_HALF);
+  airVel[i * 3] = rand(-.06, .06); airVel[i * 3 + 1] = rand(-.03, .03); airVel[i * 3 + 2] = rand(-.06, .06);
+}
+const airGeo = new THREE.BufferGeometry(); airGeo.setAttribute('position', new THREE.BufferAttribute(airPos, 3));
+const airMat = new THREE.PointsMaterial({ color: 0xe8c89a, size: .035, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending });
+const airPts = new THREE.Points(airGeo, airMat); airPts.frustumCulled = false; scene.add(airPts);
+const gndPos = new Float32Array(GND_N * 3), gndH = new Float32Array(GND_N), gndV = new Float32Array(GND_N);
+for (let i = 0; i < GND_N; i++) { gndPos[i * 3] = rand(-GND_HALF, GND_HALF); gndPos[i * 3 + 2] = rand(-GND_HALF, GND_HALF); }
+const gndGeo = new THREE.BufferGeometry(); gndGeo.setAttribute('position', new THREE.BufferAttribute(gndPos, 3));
+const gndMat = new THREE.PointsMaterial({ color: 0xc0a47a, size: .04, transparent: true, opacity: .6, depthWrite: false, blending: THREE.AdditiveBlending });
+const gndPts = new THREE.Points(gndGeo, gndMat); gndPts.frustumCulled = false; scene.add(gndPts);
+const AIR_WARM = new THREE.Color(0xe8c89a), AIR_COLD = new THREE.Color(0xa8b8d8);
+function kickDust(amp) {                     // 一個拍點：一部分地上塵土跳起來
+  const n = Math.floor(GND_N * Math.min(1, amp) * .45);
+  for (let j = 0; j < n; j++) { const i = (Math.random() * GND_N) | 0; if (gndH[i] < .01) gndV[i] = rand(.6, 1.4) * (.6 + amp); }
+}
+const wrapTo = (v, c, h) => v - c > h ? v - 2 * h : v - c < -h ? v + 2 * h : v;
+function updateDust(dt, motion, floorY) {
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z, d = dt * motion;
+  for (let i = 0; i < AIR_N; i++) {
+    const j = i * 3;
+    airPos[j] = wrapTo(airPos[j] + airVel[j] * d, cx, AIR_HALF);
+    airPos[j + 2] = wrapTo(airPos[j + 2] + airVel[j + 2] * d, cz, AIR_HALF);
+    let y = airPos[j + 1] + airVel[j + 1] * d;
+    if (y < floorY + .1) y += 3.8; else if (y > floorY + 3.9) y -= 3.8;
+    airPos[j + 1] = y;
+  }
+  airGeo.attributes.position.needsUpdate = true;
+  for (let i = 0; i < GND_N; i++) {
+    const j = i * 3;
+    gndPos[j] = wrapTo(gndPos[j], cx, GND_HALF); gndPos[j + 2] = wrapTo(gndPos[j + 2], cz, GND_HALF);
+    if (gndH[i] > 0 || gndV[i] > 0) {                // 凝結時懸在半空
+      gndH[i] += gndV[i] * d; gndV[i] -= 12 * d;
+      if (gndH[i] <= 0) { gndH[i] = 0; gndV[i] = 0; }
+    }
+    gndPos[j + 1] = floorY + .03 + gndH[i];
+  }
+  gndGeo.attributes.position.needsUpdate = true;
+  gndPts.visible = cy - floorY < 2.5;                // 鏡頭離地面太高（例如從腹中看外面）就不畫
+}
+
+// 每幀：視覺輔助的狀態（在 sync 開頭呼叫）
+const MOON_SILVER = new THREE.Color(0xc8d4ee), MOON_RED = new THREE.Color(0xf05a3a), MOON_WHITE = new THREE.Color(0xffffff);
+const tmpC = new THREE.Color();
+function visFrame(dt, floorY, playing) {
+  const g = game;
+  VIS.aid += (aidTarget() - VIS.aid) * Math.min(1, dt * 1.5);
+  const aid = VIS.aid;
+  // 凝結：進出各約 0.08 秒
+  const ft = playing && visBlind() ? 1 : 0;
+  VIS.freeze = ft > VIS.freeze ? Math.min(1, VIS.freeze + dt / .08) : Math.max(0, VIS.freeze - dt / .08);
+  const fz = VIS.freeze * aid;
+  const f = fz > .002 ? `saturate(${(1 - .85 * fz).toFixed(3)}) brightness(${(1 - .1 * fz).toFixed(3)})` : '';
+  if (f !== VIS.filter) { canvas.style.filter = f; VIS.filter = f; }
+  $('chill').style.opacity = (fz * .32).toFixed(3);
+  // 隨拍：拍子越快振幅越小（每拍振幅 ∝ 1/√每秒拍數），但更頻繁
+  for (const b of VIS.beats) {
+    const rate = 7 * Math.pow(2, b.k) * Math.LN2 * Math.pow(2, b.p) / b.T;
+    const amp = clamp(b.g, 0, 1) * clamp(Math.sqrt(1.1 / rate), .28, 1);
+    VIS.pulse = Math.min(1.3, VIS.pulse + amp * aid);
+    if (b.g > .3) VIS.rate += (rate - VIS.rate) * .4;
+    if (aid > .01) kickDust(amp * aid);
+  }
+  VIS.beats = [];
+  VIS.pulse *= Math.exp(-dt * (9 + VIS.rate * 1.5));
+  updateDust(dt, 1 - fz, floorY);
+  tmpC.copy(AIR_WARM).lerp(AIR_COLD, fz); airMat.color.copy(tmpC); gndMat.color.setHex(0xc0a47a).lerp(AIR_COLD, fz);
+  // 月亮相位鐘：月面缺口繞一圈、外圈進度弧；p 越接近 1 越紅，盲區時銀白
+  const pv = g ? visPhase(audio ? audio.now() : 0) : 0;
+  const red = smooth(.55, 1, pv) * (1 - VIS.freeze) * aid;
+  const U = moonMat.uniforms; U.uP.value = pv; U.uAid.value = aid; U.uRed.value = red; U.uBlind.value = fz;
+  moon.position.copy(camera.position).addScaledVector(MOON_DIR, MOON_DIST);
+  moon.quaternion.copy(camera.quaternion);
+  // 腹中：頂板縫的月光同樣變色，一道亮帶隨 p 由木馬尾往頭掃過
+  if (S && S.moonSlits.length) {
+    tmpC.copy(MOON_SILVER).lerp(MOON_RED, red).lerp(MOON_WHITE, fz * .6);
+    for (const M of S.moonSlits) {
+      let d = Math.abs(M.u - pv); d = Math.min(d, 1 - d);
+      const band = Math.exp(-d * d / .006) * aid;
+      M.line.material.color.copy(tmpC); M.beam.material.color.copy(tmpC);
+      M.line.material.opacity = .3 + .6 * band + .2 * fz;
+      M.beam.material.opacity = .025 + .09 * band + .04 * fz;
+    }
+  }
+  // 木板輕震
+  if (S && S.horsePlanks) { const a = VIS.pulse * .014, ts = performance.now() / 1000; S.horsePlanks.position.set(Math.sin(ts * 73) * a, Math.sin(ts * 91 + 1) * a * .6, Math.sin(ts * 67 + 2) * a); }
+  VIS.stepFlash = Math.max(0, VIS.stepFlash - dt * 3);
+  $('stepEdge').style.opacity = (VIS.stepFlash * .16 * aid).toFixed(3);
+  return fz;
 }
 
 // ---------- 介面 ----------
@@ -1034,7 +1271,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene };
+window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS };
 requestAnimationFrame(loop);
 })();
 </script>
