@@ -103,7 +103,7 @@
     // 衛兵 3D
     MAX_GUARD_VOICES: 6,       // 同時有聲音的衛兵上限（HRTF 很吃 CPU）
     GUARD_FAR: 30,             // 超過這個距離（公尺）不出聲；最後 8 公尺淡出
-    GUARD_BLIND_FLOOR: 0.35,   // 盲區時衛兵聲音壓到多少（不全靜音：聽聲辨位仍有用）
+    GUARD_BLIND_FLOOR: 0.08,   // 盲區時衛兵聲音壓到多少（約 −22 dB：盲區要聽起來是空檔，貼身的衛兵仍隱約可辨）
     EAR_Y: 1.6                 // 聽者耳朵高度（公尺）
   };
 
@@ -880,9 +880,9 @@
         var tb = an + m * per;
         if (tb >= b) break;
         if (tb < a || tb < nowT || tb < st.bassAnchor - 1e-4 || tb < st.lastBass + 0.25) continue;
-        // 巡邏時（沒有警戒、沒有追殺）：會落進盲區、或餘音拖進盲區的低音拍不排，讓盲區真的空掉。
-        // 警戒時保留：那時低音是安撫要跟的拍子。
-        if (st.alarm <= 0.01 && !st.hunted) {
+        // 一般盲區（不是警戒、不是追殺）：會落進盲區、或餘音拖進盲區的低音拍不排，讓盲區真的空掉。
+        // 警戒時保留：那時低音是安撫要跟的拍子（盲區改在兩拍正中央，餘音 1.1 秒碰不到）。
+        if (!bassMode && !st.hunted) {
           var skip = false;
           for (var i = 0; i < ws.length; i++) if (tb > ws[i].s - C.BASS_TAIL && tb < ws[i].e) { skip = true; break; }
           if (skip) continue;
