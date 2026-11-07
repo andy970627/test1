@@ -23,7 +23,8 @@
  *   沒拉弓：平靜心跳，每 restPeriod 秒一下。
  *   開始拉弓：心跳變成 Risset 節奏。循環 j 從驟降那一刻 S_j 開始、長 C_j 秒；相位 p = (t − S_j) ÷ C_j。
  *     第 k 層第 n 拍在 p = log2(1 + n ÷ (M·2^k))，音量 = 鐘形 bell((k + p) ÷ LAYERS)（同木馬之夜）。
- *     p → 1 時最快的一層最響（最高速），p 跳回 0 的頭 dropLen（0.5）秒不排拍＝驟降：心跳斷掉、全場靜止、準心最穩。
+ *     和純 Risset 不同：最快一層在 p 0.5 → 1 額外拉高、整體力度跟著 p 變大（heartGain），所以 p → 1 真的最急（最高速）；
+ *     p 跳回 0 的頭 dropLen（0.5）秒不排拍＝驟降：心跳斷掉、全場靜止、準心最穩，重來的接縫正好藏在這段靜默裡。
  *   第一次驟降在開始拉弓後 firstDrop 秒（拉弓 1 秒＋拉滿後 2 秒）；之前是一段「預備循環」（j = −1，沒有驟降）。
  *   之後每一輪 C_j = max(cycleMin, cycle0 × cycleMul^(j+1))：越撐越急。
  *
@@ -111,6 +112,8 @@
       M: 4,                  // 最慢層每循環拍數
       bellSigma: 0.22,
       minGain: 0.02,
+      urgent: 0.75,          // 最快一層在 p 0.5 → 1 額外拉高到這個音量（真的在加速；驟降把重來的接縫藏住）
+      tensionLo: 0.6,        // 整體力度：p = 0 時 × 0.6，p = 1 時 × 1
       maxCycles: 60
     },
 
@@ -220,6 +223,18 @@
     return Math.exp(-d * d);
   }
 
+  /**
+   * 心跳用的音量【改編】：純 Risset 的總密度是固定的（聽起來永遠在加速、其實不變），
+   * 這裡要「最高速」真的最急：最快一層在 p 0.5 → 1 拉高到 urgent，整體力度 × (tensionLo … 1)。
+   * 重來的接縫落在驟降（0.5 秒全靜）裡，聽不出跳回去。
+   */
+  function heartGain(k, p, H) {
+    H = H || TUNING.heart;
+    var g = layerGain(k, p, H);
+    if (k === H.layers - 1) g = Math.max(g, H.urgent * smooth((p - 0.5) / 0.5));
+    return g * (H.tensionLo + (1 - H.tensionLo) * p);
+  }
+
   // ---------------------------------------------------------------- 心跳【改編】
   // heart = { mode: 'rest'|'risset'|'still', t0, seq, cyc: [{s, C}] }（cyc[0] 是預備循環 j = −1）
   var heartSeq = 0;
@@ -288,7 +303,7 @@
           var ph = log2(1 + n / Mk), t = c.s + ph * c.C;
           if (t < a || t >= b || t < h.t0) continue;
           if (i >= 1 && ph * c.C < H.dropLen) continue;
-          var g = layerGain(k, ph, H);
+          var g = heartGain(k, ph, H);
           if (g < H.minGain) continue;
           out.push({ t: t, k: k, n: n, j: i - 1, p: ph, x: (k + ph) / H.layers, gain: g });
         }
@@ -806,7 +821,7 @@
     createRng: createRng, createNoise: createNoise, clamp: clamp, hash01: hash01,
     holeRadius: holeRadius, axeZ: axeZ, axePositions: axePositions,
     // Risset
-    layerBeats: layerBeats, beatPhase: beatPhase, layerGain: layerGain,
+    layerBeats: layerBeats, beatPhase: beatPhase, layerGain: layerGain, heartGain: heartGain,
     createHeart: createHeart, cycleLen: cycleLen, heartAt: heartAt, heartBeatsBetween: heartBeatsBetween,
     heartDropsBetween: heartDropsBetween, crowdLevel: crowdLevel, heartKick: heartKick,
     // 上弦、拉弓
