@@ -18,7 +18,7 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90
 | `audio.wav` | 遊戲實際輸出，44.1 kHz 立體聲 16-bit |
 | `spectrogram.png` | 頻譜圖（含座標軸；時間軸從 WAV 開頭算） |
 | `spectrogram-marked.png` | 頻譜圖疊上盲區（藍）、警戒（橘）、追殺（紅）、低音拍（底部黃刻度） |
-| `envelope.png`／`.svg` | 50 ms RMS 音量包絡＋區段＋規則拍點＋偵測到的起音＋cue 名稱 |
+| `envelope.png`／`.svg` | 50 ms RMS 音量包絡＋區段＋規則拍點＋偵測到的起音＋提示音（cue）名稱 |
 | `report.md` | 自動檢查（通過／不通過＋數字）、每次盲區明細、事件摘要、檔案路徑 |
 | `timeline.json` | 每幀狀態（音訊時間 t、相位 p、盲區、警戒、追殺、位置、低音拍…）、事件、排程起音 |
 | `analysis.json`、`meta.json` | 全部數字、錄製設定（幀率、音訊斷塊、對齊位移、外部資源） |
@@ -74,4 +74,4 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90
 - 錄到的是喇叭前的數位訊號，不含作業系統混音、喇叭與房間。
 - 起音偵測是能量法；殘響、多層同時響時會漏偵或合併。數字適合比較前後版本。
 - 程式玩家派送的鍵盤事件 `isTrusted = false`；遊戲若檢查這點要改用劇本。
-- 程式玩家自己的動作也會發聲（屏息、衝刺）；`report.md` 的「每次盲區」表會列出盲區內還在響的 cue，判讀時要看。
+- 程式玩家自己的動作也會發聲（屏息、衝刺）；`report.md` 的「每次盲區」表會列出盲區內還在響的提示音（cue），判讀時要看。

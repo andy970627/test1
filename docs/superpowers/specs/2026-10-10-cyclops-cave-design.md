@@ -1,7 +1,7 @@
 # 獨眼巨人的洞穴 — 羊肚底下的潛行（設計規格）
 
 日期：2026-10-10
-專案：`C:\Users\恩\test1`（Unity 6000.3 LTS、URP Forward+、Input System only）
+專案：`C:\Users\恩\test1`（Unity 6000.3 LTS、URP Forward+、只用 Input System）
 
 ## 1. 目標與限制
 
@@ -12,7 +12,7 @@
 - 不做異常判斷玩法（舊的 Exit 8 式迴廊整個拆掉）。
 - 第一人稱。
 - 無美術資源：幾何用程式產生的佔位物件，音效用程式合成。
-- 恐怖感來源是「看不見、只能聽」與「努力不累積」，不是 Jump Scare。
+- 恐怖感來源是「看不見、只能聽」與「努力不累積」，不是突然跳出來的驚嚇（Jump Scare）。
 
 **成功標準**
 - 從 Unity 選單一鍵建好場景、按 Play 即可玩完整一輪。
@@ -116,7 +116,7 @@
 
 ## 6. 實測與驗證
 
-- **建置驗證**：每次交付前以 dotnet 對專案參考組件完整編譯（runtime 與 editor 兩個組件），零錯誤才交付。
+- **建置驗證**：每次交付前以 dotnet 對專案參考組件完整編譯（執行期 runtime 與編輯器 editor 兩個組件），零錯誤才交付。
 - **實測流程**：選單 `Odyssey → Create Playtest Scene` → Play。
 - **F1 除錯面板**：握力、呼吸、聲量的實際數值；巨人下一次摸哪一側；目前狀態機階段。
 - **CSV 紀錄**（`Application.persistentDataPath/cyclops_playtest.csv`）：每輪的夜數、剩餘同伴、所選羊（普通／大公羊）、結束階段、結果（逃出／被手摸到／摔下／喘出聲／羊走光／選羊時被掃到）、耗時秒數。

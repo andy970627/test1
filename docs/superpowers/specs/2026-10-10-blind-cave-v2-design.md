@@ -458,7 +458,7 @@ v2 第 4 節的「撬 1.5 秒＝2 格」與 `Lever` 聲音取消。逃出條件�
 
 - `Difficulty`：三段倍率正確、名稱與說明不為空。
 - `CyclopsBrain`：熟悉時移動速度 ×0.7、困難 ×1.2；同一個聲音在 20 m × 0.6 外熟悉聽不到、普通聽得到；困難在 20 m × 1.3 內聽得到。
-- `PlaytestCsv`：表頭與一列都含 difficulty。
+- `PlaytestCsv`：表頭與一列都含難度欄位（`difficulty`）。
 
 實測要確認：熟悉是否真的能放心練操作、困難是否太難、那道邊看不看得懂。
 
@@ -518,7 +518,7 @@ v2 第 4 節的「撬 1.5 秒＝2 格」與 `Lever` 聲音取消。逃出條件�
 - 禱告 8 秒：巨人停下、不動、**什麼都聽不到**；發出迴盪、聽不清的低沉人聲加地底低頻（只有聲音、不照亮、巨人自己不算）。
 - 整個洞震動：鏡頭抖 0.02 m；第 3、6 秒巨石各往回滑 0.05 m（停在最外面的楔子，同羊撞的規則）。
 - 禱告完回到聆聽。
-- 情境提示新增 Prayer：「他在向父親波塞頓禱告——這時他什麼都聽不到」。
+- 情境提示新增「禱告」（Prayer）：「他在向父親波塞頓禱告——這時他什麼都聽不到」。
 - F1 巨人狀態顯示「禱告」。
 - 規則：`CyclopsState.Pray`、`CyclopsBrain.TryPray()`（守石、蓄力、吃人時回傳 false）、`PrayerClock`（給定骰子，回傳這一夜的禱告時間）。
 
@@ -540,7 +540,7 @@ v2 第 4 節的「撬 1.5 秒＝2 格」與 `Lever` 聲音取消。逃出條件�
 | 默默離開 | 無 | 「你沒有回頭。」／「帶出 X 名同伴。」 |
 
 - 規則寫成 `ShoreChoice`（`ShoreAction { Shoot, Name, Leave }`、`Resolve(action, rescued, roll)` 回傳失去人數、`TimeLimit`）。
-- F1 每夜一行：「第 N 夜  逃出去・帶出 X（射箭 −Y）」；CSV outcome 為 `Escaped_Shoot`／`Escaped_Name`／`Escaped_Leave`，rescued 為扣掉之後的人數。
+- F1 每夜一行：「第 N 夜  逃出去・帶出 X（射箭 −Y）」；CSV 的結果欄位（`outcome`）為 `Escaped_Shoot`／`Escaped_Name`／`Escaped_Leave`，救出人數欄位（`rescued`）為扣掉之後的人數。
 
 ### D. 測試
 

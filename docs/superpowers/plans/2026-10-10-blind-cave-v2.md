@@ -1,58 +1,58 @@
-# 雙盲洞穴 v2 Implementation Plan
+# 雙盲洞穴 v2 實作計畫
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **給代理執行者：** 必要的子技能：使用 superpowers:subagent-driven-development（建議）或 superpowers:executing-plans，逐項工作執行本計畫。步驟用核取方塊（`- [ ]`）語法追蹤進度。
 
-**Goal:** 在雙盲洞穴加入同伴（找、帶、被吃）、巨人丟岩石、會滑回的巨石與楔子、橄欖木樁、剛體雜物（石子、奶桶、乳酪）、柳條羊圈、天光引羊，並讓守石的巨人接著追巨石附近的聲音。
+**目標：** 在雙盲洞穴加入同伴（找、帶、被吃）、巨人丟岩石、會滑回的巨石與楔子、橄欖木樁、剛體雜物（石子、奶桶、乳酪）、柳條羊圈、天光引羊，並讓守石的巨人接著追巨石附近的聲音。
 
-**Architecture:** 新規則全部放進 `Odyssey.Core`，先寫 NUnit 測試：聲音種類、`CrewRoster.Lose`、`BoulderSlide`（連續開口、楔子、回滑）、`ImpactSound`（撞擊聲量）、`FollowTrail`、`CyclopsBrain`（丟岩石、吃同伴、守石追聲、拔楔子）。Unity 層在 `Assets/Odyssey/Echo/` 新增同伴、木樁、剛體雜物、岩石元件，`BlindGameLoop` 負責串接。
+**架構：** 新規則全部放進 `Odyssey.Core`，先寫 NUnit 測試：聲音種類、`CrewRoster.Lose`、`BoulderSlide`（連續開口、楔子、回滑）、`ImpactSound`（撞擊聲量）、`FollowTrail`、`CyclopsBrain`（丟岩石、吃同伴、守石追聲、拔楔子）。Unity 層在 `Assets/Odyssey/Echo/` 新增同伴、木樁、剛體雜物、岩石元件，`BlindGameLoop` 負責串接。
 
-**Tech Stack:** Unity 6000.3.14f1、URP 17.3、Input System、C#、NUnit（`dotnet test tools/CoreTests`）。
+**技術組成：** Unity 6000.3.14f1、URP 17.3、Input System、C#、NUnit（`dotnet test tools/CoreTests`）。
 
-**Spec:** `docs/superpowers/specs/2026-10-10-blind-cave-v2-design.md`（第 13 節優先於第 4、5 節被取代的部分；未提到的規則沿用 `2026-10-10-blind-cave-design.md`）
+**規格：** `docs/superpowers/specs/2026-10-10-blind-cave-v2-design.md`（第 13 節優先於第 4、5 節被取代的部分；未提到的規則沿用 `2026-10-10-blind-cave-design.md`）
 
-## Global Constraints
+## 全域限制
 
 - 內容只能出自《奧德賽》；玩家可見文字一律繁體中文。
-- 只 `git add` 明確路徑。不要 stage：
+- 只 `git add` 明確路徑。不要加入暫存區（stage）：
   - `Assets/Editor*`、`Assets/Settings/PC_RPAsset.asset`、`ProjectSettings/*`
   - `Assets/Scenes/*`、`Assets/UI/LoopFail/LoopFailScreen.prefab`
   - `docs/design/`、`handoff-odyssey-cyclops-cave.md`
 - `Odyssey.Core` 不引用 UnityEngine；平面座標用 `System.Numerics.Vector2`（X＝x，Y＝z）。
 - 每個任務結束：`dotnet test tools/CoreTests` 全過，`powershell -ExecutionPolicy Bypass -File tools/compile-check.ps1` 0 錯誤。
 - 新增的 `.cs` 若 Unity 沒有自動產生 `.meta`，自行產生（`fileFormatVersion: 2` 加上新 GUID）並一起提交。
-- 檔案是 CRLF：用 Edit 工具改，不要用 perl／sed 跨行取代。
+- 檔案是 CRLF 換行：用 Edit 工具改，不要用 perl／sed 跨行取代。
 - 提交訊息結尾：`Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。
 
-## Review Focus
+## 審查重點
 
-1. **同一次摸索同時碰到玩家和同伴**：算玩家被抓，同伴不額外扣。測試見 Task 5。
-2. **巨人在吃同伴或蓄力丟岩石時，聽到巨石的聲音**：要立刻轉為守石，不能卡在吃或丟的狀態。測試見 Task 5。
-3. **巨石開口的邊界**：開口永遠在「最外面的楔子」與 1.44 之間；全開時塞楔子、沒有石子楔子時拔、只有木樁時巨人拔，都不能讓開口跳動或丟例外。測試見 Task 2。
-4. **巨人拔楔子時玩家正在推**：拔完巨石照樣往回滑到下一個楔子，玩家的推力在滑回期間無效，滑完才恢復。測試見 Task 2。
-5. **全部同伴都被吃光後才逃出**：結局顯示「帶出 0 名同伴」，不丟例外；這一夜之後再被抓就是全滅。由 Task 9 的 `BlindGameLoop.Escape` 處理，`CaveLoopState` 測試確認 `Remaining == 0` 時 `Fail` 會進入 Wiped（Task 1）。
+1. **同一次摸索同時碰到玩家和同伴**：算玩家被抓，同伴不額外扣。測試見 工作 5。
+2. **巨人在吃同伴或蓄力丟岩石時，聽到巨石的聲音**：要立刻轉為守石，不能卡在吃或丟的狀態。測試見 工作 5。
+3. **巨石開口的邊界**：開口永遠在「最外面的楔子」與 1.44 之間；全開時塞楔子、沒有石子楔子時拔、只有木樁時巨人拔，都不能讓開口跳動或丟例外。測試見 工作 2。
+4. **巨人拔楔子時玩家正在推**：拔完巨石照樣往回滑到下一個楔子，玩家的推力在滑回期間無效，滑完才恢復。測試見 工作 2。
+5. **全部同伴都被吃光後才逃出**：結局顯示「帶出 0 名同伴」，不丟例外；這一夜之後再被抓就是全滅。由 工作 9 的 `BlindGameLoop.Escape` 處理，`CaveLoopState` 測試確認 `Remaining == 0` 時 `Fail` 會進入 Wiped（工作 1）。
 
 ---
 
-### Task 0: 實測回饋：巨石外觀、體力 ✅ 完成（`4102bb8`）
+### 工作 0：實測回饋：巨石外觀、體力 ✅ 完成（`4102bb8`）
 
 `Stamina`（`DrainPerSec 0.25`、`RegenPerSec 0.15`、`ResumeAt 0.3`、`PantBelow 0.25`、`PantSeconds 1.2`；`bool Tick(float dt, bool wantRun)`、`bool PantDue(float dt)`、`CanRun`、`Value`、`Reset()`）、`SoundKind.Pant` 0.2、`EchoPlayer.Stamina`、左下角體力條、赭黃巨石與刻痕。
 
-### Task 1: 聲音、人數、死因、CSV
+### 工作 1：聲音、人數、死因、CSV
 
-**Files:**
-- Modify:
+**檔案：**
+- 修改：
   - `Assets/Odyssey/Core/SoundEvent.cs`：`SoundKind` 新增 `Whimper, RockImpact, Drag, Clatter, Cheese, Wicker, Grind, Slip, Wedge`；`SoundSource` 新增 `Crew`
   - `Assets/Odyssey/Core/SoundRules.cs`
   - `Assets/Odyssey/Core/CrewRoster.cs`
   - `Assets/Odyssey/Core/FailReason.cs`、`FailReasonText.cs`
   - `Assets/Odyssey/Core/PlaytestCsv.cs`
   - `Assets/Odyssey/Echo/SoundBus.cs`
-- Test:
+- 測試：
   - `SoundRulesTests.cs`、`CaveLoopStateTests.cs`、`PlaytestCsvTests.cs`、`FailReasonTextTests.cs`（既有測試會自動涵蓋新的 `Crushed`）
   - 新增 `CrewRosterTests` 的案例
 
-**Interfaces:**
-- Produces:
+**介面：**
+- 產出：
   - `SoundRules.Loudness`：Whimper 0.2、RockImpact 0.8、Drag 0.25、Clatter 0.7、Cheese 0.4、Wicker 0.25、Grind 0.3、Slip 0.15、Wedge 0.25
   - `SoundRules.Source`：Whimper → Crew、RockImpact → Cyclops，其餘新聲音 → Player
   - `SoundRules.CanHear`：`Cyclops` 和 `RockImpact` 都永遠回傳 false
@@ -65,7 +65,7 @@
     - `Header = "time,night,crew,boulder,rescued,lost,phase,outcome,seconds"`
     - `Line(DateTime, int night, int crew, int boulderCm, int rescued, int lost, LoopPhase, string outcome, float seconds)`
 
-- [ ] **Step 1: 寫失敗測試**
+- [ ] **步驟 1：寫失敗測試**
   - `Loudness_V2Kinds`：九個新數值。
   - `Source_WhimperIsCrew_RockIsCyclops`
   - `CanHear_RockImpactNeverHeard`
@@ -74,26 +74,26 @@
   - `Roster_Lose_KeepsNight`：Lose 兩次 → Remaining 10、Night 1；Lose 到 0 以下仍是 0。
   - `Loop_FailWithNoCrewLeft_Wipes`：Lose 12 次 → IntroDone → Fail → Wiped。
   - `Line_UsesInvariantFormat`：改成新欄位，`Line(..., 3, 10, 72, 2, 1, LoopPhase.Night, "Dawn", 12.34f)` 預期 `"2026-10-10 12:00:00,3,10,72,2,1,Night,Dawn,12.3"`。
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests`
   預期：編譯失敗。
-- [ ] **Step 3: 實作**
-  `BlindGameLoop.Log` 的呼叫：`boulderCm` 暫用 `Progress * 18`，`rescued` 與 `lost` 先傳 0，Task 9 再接上。
-- [ ] **Step 4: 驗證**
+- [ ] **步驟 3：實作**
+  `BlindGameLoop.Log` 的呼叫：`boulderCm` 暫用 `Progress * 18`，`rescued` 與 `lost` 先傳 0，工作 9 再接上。
+- [ ] **步驟 4：驗證**
   - `dotnet test tools/CoreTests` → 全過
   - `compile-check` → 0 錯誤
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   訊息：`feat(blind2): new sound kinds, crew loss, crushed reason, csv columns`
 
-### Task 2: 會滑回的巨石（`BoulderSlide`）
+### 工作 2：會滑回的巨石（`BoulderSlide`）
 
-**Files:**
-- Create: `Assets/Odyssey/Core/BoulderSlide.cs`
-- Test: `Assets/Odyssey/Tests/Editor/BoulderSlideTests.cs`
-- `BoulderModel.cs` 與它的測試在 Task 8 換掉 Unity 端引用後刪除。
+**檔案：**
+- 新增：`Assets/Odyssey/Core/BoulderSlide.cs`
+- 測試：`Assets/Odyssey/Tests/Editor/BoulderSlideTests.cs`
+- `BoulderModel.cs` 與它的測試在 工作 8 換掉 Unity 端引用後刪除。
 
-**Interfaces:**
-- Produces:
+**介面：**
+- 產出：
   - `enum PushMode { None, Light, Heavy }`
   - `readonly struct BoulderNoise { bool Grind; bool Heavy; bool Slip; }`：這一幀該發的聲音
   - `sealed class BoulderSlide`
@@ -113,7 +113,7 @@
 - 巨人拔楔子：`PullingBack` 期間無視推力，以 0.3 m/s 滑到 `Floor` 後結束，**不回傳 `Slip`**（Unity 端改發巨人聲音）。
 - 移除楔子（玩家拔、拔木樁）之後，照一般回滑規則慢慢滑回。
 
-- [ ] **Step 1: 寫失敗測試**
+- [ ] **步驟 1：寫失敗測試**
 
   | 測試 | 情境 | 預期 |
   |---|---|---|
@@ -133,76 +133,76 @@
   | `Wedge_AtFullOpen_NoJump` | 推到全開後塞楔子 | Opening == 1.44、Floor == 1.44 |
   | `MaxOpening_RemembersPeak` | 推到 0.6 後滑回 | MaxOpening == 0.6 |
   | `Reset_ClearsEverything` | 有楔子與木樁 | Opening 0、MaxOpening 0、沒有楔子、StakeWedge null |
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests`
   預期：編譯失敗。
-- [ ] **Step 3: 實作 `BoulderSlide`**
-- [ ] **Step 4: 驗證**
+- [ ] **步驟 3：實作 `BoulderSlide`**
+- [ ] **步驟 4：驗證**
   `dotnet test tools/CoreTests` → 全過
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   訊息：`feat(blind2): sliding boulder with wedges and slip-back`
 
-### Task 3: 撞擊聲（`ImpactSound`）
+### 工作 3：撞擊聲（`ImpactSound`）
 
-**Files:**
-- Create: `Assets/Odyssey/Core/ImpactSound.cs`
-- Test: `Assets/Odyssey/Tests/Editor/ImpactSoundTests.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Core/ImpactSound.cs`
+- 測試：`Assets/Odyssey/Tests/Editor/ImpactSoundTests.cs`
 
-**Interfaces:**
-- Produces:
+**介面：**
+- 產出：
   - `static class ImpactSound`
     - 常數：`MinSpeed = 1.5f`、`ReferenceSpeed = 9f`、`MinLoudness = 0.1f`、`Cooldown = 0.3f`
-    - `static float Loudness(float maxLoudness, float speed)`：速度 < 1.5 回傳 0；否則 clamp(max × speed ÷ 9, 0.1, max)
+    - `static float Loudness(float maxLoudness, float speed)`：速度 < 1.5 回傳 0；否則限制在範圍內：clamp(max × speed ÷ 9, 0.1, max)
   - `sealed class ImpactGate`：`bool TryFire(float time)`，距上次成功 < 0.3 秒回傳 false
 
-- [ ] **Step 1: 寫失敗測試**
+- [ ] **步驟 1：寫失敗測試**
   - `BelowThreshold_Silent`：(0.6, 1.4) → 0
   - `Proportional`：(0.6, 4.5) → 0.3
   - `ClampsToMax`：(0.6, 20) → 0.6
   - `ClampsToMin`：(0.25, 1.5) → 0.1
   - `Gate_CooldownThreeTenths`：TryFire(0) true、(0.2) false、(0.31) true
-- [ ] **Step 2: 執行測試確認失敗**
-- [ ] **Step 3: 實作**
-- [ ] **Step 4: 驗證**：`dotnet test tools/CoreTests` → 全過
-- [ ] **Step 5: 提交**
+- [ ] **步驟 2：執行測試確認失敗**
+- [ ] **步驟 3：實作**
+- [ ] **步驟 4：驗證**：`dotnet test tools/CoreTests` → 全過
+- [ ] **步驟 5：提交**
   訊息：`feat(blind2): impact loudness rule for physics props`
 
-### Task 4: 隊伍路線
+### 工作 4：隊伍路線
 
-**Files:**
-- Create: `Assets/Odyssey/Core/FollowTrail.cs`
-- Test: `Assets/Odyssey/Tests/Editor/FollowTrailTests.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Core/FollowTrail.cs`
+- 測試：`Assets/Odyssey/Tests/Editor/FollowTrailTests.cs`
 
-**Interfaces:**
-- Produces: `sealed class FollowTrail`
+**介面：**
+- 產出：`sealed class FollowTrail`
   - 常數 `Spacing = 1f`
   - `FollowTrail(Vector2 start)`
   - `void Record(Vector2 leader)`：與上一筆相距 ≥ 0.1 m 才記錄
-  - `Vector2 PositionAt(int index)`：第 index 位跟隨者（0 起算）的位置，在路線上距離玩家 `(index + 1) * Spacing` 處；路線長度不夠時停在路線起點
+  - `Vector2 PositionAt(int index)`：第 index 個跟隨者（0 起算）的位置，在路線上距離玩家 `(index + 1) * Spacing` 處；路線長度不夠時停在路線起點
   - `void Reset(Vector2 start)`
 
-- [ ] **Step 1: 寫失敗測試**
-  - `StraightLine_SpacedOneMeter`：start (0,0)，依序記錄 (0,1)…(0,5) → `PositionAt(0) ≈ (0,4)`、`PositionAt(2) ≈ (0,2)`。
+- [ ] **步驟 1：寫失敗測試**
+  - `StraightLine_SpacedOneMeter`：起點 (0,0)，依序記錄 (0,1)…(0,5) → `PositionAt(0) ≈ (0,4)`、`PositionAt(2) ≈ (0,2)`。
   - `ShortTrail_ClampsToStart`：只記錄到 (0,1) → `PositionAt(3) == (0,0)`。
   - `LeaderStandingStill_NoNaN`：同一點記錄 10 次 → `PositionAt(0) == start`，不是 NaN。
   - `Corner_FollowsPath`：(0,0)→(0,2)→(2,2) → `PositionAt(0) ≈ (1,2)`、`PositionAt(1) ≈ (0,2)`。
-- [ ] **Step 2: 執行測試確認失敗**
-- [ ] **Step 3: 實作**
-  路線存成 List（最新的點在尾端），從尾端往回累積距離，在線段上內插。超過 `(人數上限 12 + 2) * Spacing` 的舊點可以刪掉。
-- [ ] **Step 4: 驗證**：`dotnet test tools/CoreTests` → 全過
-- [ ] **Step 5: 提交**
+- [ ] **步驟 2：執行測試確認失敗**
+- [ ] **步驟 3：實作**
+  路線存成串列（最新的點在尾端），從尾端往回累積距離，在線段上內插。超過 `(人數上限 12 + 2) * Spacing` 的舊點可以刪掉。
+- [ ] **步驟 4：驗證**：`dotnet test tools/CoreTests` → 全過
+- [ ] **步驟 5：提交**
   訊息：`feat(blind2): follow trail for the crew line`
 
-### Task 5: 巨人：守石追聲、拔楔子、丟岩石、吃同伴
+### 工作 5：巨人：守石追聲、拔楔子、丟岩石、吃同伴
 
-**Files:**
-- Modify: `Assets/Odyssey/Core/CyclopsBrain.cs`
-- Modify: `Assets/Odyssey/Echo/BlindCyclops.cs`：讓它能編譯就好（傳入 `rng.NextDouble` 與空的同伴清單），Task 9 再完整接上
-- Test: `Assets/Odyssey/Tests/Editor/CyclopsBrainTests.cs`
+**檔案：**
+- 修改：`Assets/Odyssey/Core/CyclopsBrain.cs`
+- 修改：`Assets/Odyssey/Echo/BlindCyclops.cs`：讓它能編譯就好（傳入 `rng.NextDouble` 與空的同伴清單），工作 9 再完整接上
+- 測試：`Assets/Odyssey/Tests/Editor/CyclopsBrainTests.cs`
 
-**Interfaces:**
-- Consumes: Task 1 的新聲音種類與 `SoundRules.IsBoulder`。
-- Produces:
+**介面：**
+- 使用：工作 1 的新聲音種類與 `SoundRules.IsBoulder`。
+- 產出：
   - `enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat }`
   - 常數：
     - 丟岩石：`ThrowMinDistance = 8f`、`ThrowChance = 0.35f`、`ThrowCooldown = 10f`、`WindupSeconds = 1.2f`、`FlightSeconds = 1f`、`ImpactRadius = 1.5f`、`Scatter = 1f`
@@ -242,7 +242,7 @@
 - **冷卻**：每次 Tick 遞減，最低 0。
 - **遊走**：Listen（未守石）超過 5 秒 → 以 `roll()` 選 6 m 內一點，用走路速度過去；到了直接 Listen，不摸索。遊走中聽到聲音照一般規則處理。
 
-- [ ] **Step 1: 寫失敗測試**
+- [ ] **步驟 1：寫失敗測試**
   - 先把既有測試改成 `new CyclopsBrain(Vector2.Zero, memory, () => 0.99)`（永遠不丟），`Tick` 加上空的同伴清單，斷言改讀 `.Player`，秒數改成 2／4。
   - 新增測試（巨石聲音一律放在 (10,0)，巨人從原點出發）：
 
@@ -268,31 +268,31 @@
     | `Eat_BoulderInterruptsToGuard` | 吃的時候聽到 Grind | Guard |
     | `Throw_BoulderInterruptsToGuard` | 蓄力時聽到 Boulder | Guard |
     | `RockHits_Radius` | (1.5,0) / (1.6,0) | true / false |
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests`
   預期：編譯失敗或斷言失敗。
-- [ ] **Step 3: 實作，並修改 `BlindCyclops` 讓它可編譯**
-- [ ] **Step 4: 驗證**
+- [ ] **步驟 3：實作，並修改 `BlindCyclops` 讓它可編譯**
+- [ ] **步驟 4：驗證**
   - `dotnet test tools/CoreTests` → 全過
   - `compile-check` → 0 錯誤
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   訊息：`feat(blind2): cyclops chases sounds near the boulder, pulls wedges, throws rocks, eats crew`
 
-### Task 6: 同伴
+### 工作 6：同伴
 
-**Files:**
-- Modify: `Assets/Odyssey/Echo/EchoField.cs`：`ColorFor(Crew)` = (0.55, 0.9, 0.6)
-- Create: `Assets/Odyssey/Echo/CrewMember.cs`、`CrewLine.cs`
+**檔案：**
+- 修改：`Assets/Odyssey/Echo/EchoField.cs`：`ColorFor(Crew)` = (0.55, 0.9, 0.6)
+- 新增：`Assets/Odyssey/Echo/CrewMember.cs`、`CrewLine.cs`
 
-**Interfaces:**
-- Consumes: Task 4 的 `FollowTrail`；Task 1 的 `Whimper`、`Step`、`Run`、`SoundBus.Emit(..., scale)`。
-- Produces:
+**介面：**
+- 使用：工作 4 的 `FollowTrail`；工作 1 的 `Whimper`、`Step`、`Run`、`SoundBus.Emit(..., scale)`。
+- 產出：
   - `class CrewMember : MonoBehaviour`
     - `enum Mode { Hiding, Following, Crouching }`
     - `Mode Current`
     - `void Init(Vector3 hidePos, int seed)`：基本形狀組成蹲著的人形，回聲材質 (0.5, 0.45, 0.4)
     - `void Follow()`、`void Crouch()`、`void Kill()`（播放短暫倒地後 Destroy）
-    - Hiding 時每 15～30 秒 `SoundBus.Emit(Whimper)`
+    - 躲藏（Hiding）時每 15～30 秒 `SoundBus.Emit(Whimper)`
   - `class CrewLine : MonoBehaviour`
     - `void Init(Transform player, Func<Vector3, float> stepScale)`：`stepScale` 回傳該位置的腳步倍率（羊圈為 0.5）
     - `IReadOnlyList<CrewMember> Members`、`IReadOnlyList<CrewMember> Followers`
@@ -301,30 +301,30 @@
     - `void Recruit(CrewMember m)`、`void ToggleCrouch()`、`void Remove(CrewMember m)`
     - `bool Running`：玩家是否在跑，由 `EchoPlayer` 設定
     - `List<Vector2> Positions()`：給巨人大腦用的平面位置清單，順序與 `Members` 相同
-  - **CrewLine.Update**：
+  - **`CrewLine.Update`**：
     - 玩家位置寫入 `FollowTrail`。
     - 未蹲下的跟隨者移到 `PositionAt(i)`（貼地）。
     - 有移動的跟隨者，依跑或走的步頻發出 `Step`／`Run`，帶上 `stepScale`。
 
-- [ ] **Step 1: 實作三個檔案的修改與新增**
-- [ ] **Step 2: 驗證**
+- [ ] **步驟 1：實作三個檔案的修改與新增**
+- [ ] **步驟 2：驗證**
   - `compile-check` → 0 錯誤
   - `dotnet test tools/CoreTests` → 全過
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind2): hiding, whimpering, following crew`
 
-### Task 7: 剛體雜物與羊圈
+### 工作 7：剛體雜物與羊圈
 
-**Files:**
-- Create：
+**檔案：**
+- 新增：
   - `Assets/Odyssey/Echo/ImpactEmitter.cs`
   - `Assets/Odyssey/Echo/LooseStone.cs`（取代 `ThrownStone.cs`，刪除舊檔與 `.meta`）
   - `Assets/Odyssey/Echo/MilkPail.cs`、`CheeseRack.cs`、`WickerPen.cs`
-- Modify: `Assets/Odyssey/Echo/BlindCaveBuilder.cs`、`EchoPlayer.cs`（丟石子改用 `LooseStone`，撿起也包含 `LooseStone`）
+- 修改：`Assets/Odyssey/Echo/BlindCaveBuilder.cs`、`EchoPlayer.cs`（丟石子改用 `LooseStone`，撿起也包含 `LooseStone`）
 
-**Interfaces:**
-- Consumes: Task 3 的 `ImpactSound`、`ImpactGate`；Task 1 的 `SoundBus.Emit(..., scale)`。
-- Produces:
+**介面：**
+- 使用：工作 3 的 `ImpactSound`、`ImpactGate`；工作 1 的 `SoundBus.Emit(..., scale)`。
+- 產出：
   - `class ImpactEmitter : MonoBehaviour`
     - `void Init(SoundKind kind, float maxLoudness)`
     - `OnCollisionEnter`：`ImpactSound.Loudness(max, collision.relativeVelocity.magnitude)` > 0 且 `ImpactGate.TryFire(Time.time)` → `SoundBus.Emit(kind, 接觸點, loudness / SoundRules.Loudness(kind))`
@@ -351,34 +351,34 @@
     - 位置用 `seed` 產生：同伴點至少 12 個、彼此 ≥ 3 m、離巨石 ≥ 5 m；木樁離巨石 ≥ 6 m；羊圈 2 塊 4×3 m、不重疊、離巨石 ≥ 5 m
     - 原有的奶桶圓柱改成 `MilkPail`，另外新增 2 個；原有的乳酪架改成 `CheeseRack`
   - `static float BlindCaveBuilder.StepScale(BlindCaveLayout layout, Vector3 p)`：任一羊圈包含 p 時回傳 0.5，否則 1
-  - **觸發由 `BlindGameLoop` 每幀檢查**（Task 9）：
+  - **觸發由 `BlindGameLoop` 每幀檢查**（工作 9）：
     - 玩家或跟隨者移動中且在奶桶 0.6 m 內 → `Knock(人的位置)`
     - 玩家在乳酪架 0.8 m 內移動 → `Brush`
     - 玩家跨越羊圈邊界 → `Wicker`
 
-- [ ] **Step 1: 實作**
-- [ ] **Step 2: 驗證**
+- [ ] **步驟 1：實作**
+- [ ] **步驟 2：驗證**
   - `compile-check` → 0 錯誤
   - `dotnet test tools/CoreTests` → 全過
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind2): rigidbody stones, pails and cheese with impact sounds; wicker pens`
 
-### Task 8: 推巨石、楔子、木樁與玩家操作
+### 工作 8：推巨石、楔子、木樁與玩家操作
 
-**Files:**
-- Create: `Assets/Odyssey/Echo/OliveStake.cs`
-- Modify: `Assets/Odyssey/Echo/EchoPlayer.cs`、`Boulder.cs`
-- Delete: `Assets/Odyssey/Core/BoulderModel.cs`（含 `.meta`），以及 `BoulderDawnDecoyTests.cs` 裡的 `BoulderModel` 測試
+**檔案：**
+- 新增：`Assets/Odyssey/Echo/OliveStake.cs`
+- 修改：`Assets/Odyssey/Echo/EchoPlayer.cs`、`Boulder.cs`
+- 刪除：`Assets/Odyssey/Core/BoulderModel.cs`（含 `.meta`），以及 `BoulderDawnDecoyTests.cs` 裡的 `BoulderModel` 測試
 
-**Interfaces:**
-- Consumes: Task 2 的 `BoulderSlide`、`PushMode`；Task 6 的 `CrewLine`；Task 7 的 `LooseStone`；Task 0 的 `Stamina`。
-- Produces:
+**介面：**
+- 使用：工作 2 的 `BoulderSlide`、`PushMode`；工作 6 的 `CrewLine`；工作 7 的 `LooseStone`；工作 0 的 `Stamina`。
+- 產出：
   - `Boulder`：
-    - `void SetOpening(float meters)`：取代 `SetProgress(int)`，body 往 +X 滑 `meters`，縫光寬度同步
+    - `void SetOpening(float meters)`：取代 `SetProgress(int)`，本體往 +X 滑 `meters`，縫光寬度同步
     - `void ShowWedges(IReadOnlyList<float> stones, float? stake)`：在縫裡、各楔子位置顯示小石塊（灰）與木樁（棕）
   - `class OliveStake : MonoBehaviour`
     - `void Init()`：細長圓柱，長 2 m，回聲材質 (0.35, 0.26, 0.15)；放下時是剛體，帶 `ImpactEmitter(Drag, 0.25)`
-    - `void PlaceAt(Vector3 groundPos)`、`void AttachTo(Transform hand)`、`void PlantAt(Vector3 gapPos)`（插在縫裡，kinematic）
+    - `void PlaceAt(Vector3 groundPos)`、`void AttachTo(Transform hand)`、`void PlantAt(Vector3 gapPos)`（插在縫裡，設為 kinematic 不受物理推動）
     - `bool Carried`、`bool Planted`
   - `EchoPlayer`：
     - `Init(FirstPersonPlayer body, Boulder boulder, BoulderSlide slide, IReadOnlyList<StonePickup> pickups, OliveStake stake, CrewLine crew, Func<Vector3, float> stepScale)`
@@ -398,22 +398,22 @@
   - 所有腳步都乘上 `stepScale(transform.position)`。
   - 每幀設定 `crew.Running`。
 
-- [ ] **Step 1: 實作**
-- [ ] **Step 2: 驗證**
+- [ ] **步驟 1：實作**
+- [ ] **步驟 2：驗證**
   - `compile-check` → 0 錯誤
   - `dotnet test tools/CoreTests` → 全過
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind2): light/heavy push, stone wedges, olive stake, crew controls`
 
-### Task 9: 接上一夜的流程
+### 工作 9：接上一夜的流程
 
-**Files:**
-- Create: `Assets/Odyssey/Echo/ThrownRock.cs`
-- Modify: `Assets/Odyssey/Echo/BlindCyclops.cs`、`BlindGameLoop.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Echo/ThrownRock.cs`
+- 修改：`Assets/Odyssey/Echo/BlindCyclops.cs`、`BlindGameLoop.cs`
 
-**Interfaces:**
-- Consumes: Task 1～8 的全部介面。
-- Produces:
+**介面：**
+- 使用：工作 1～8 的全部介面。
+- 產出：
   - `class ThrownRock : MonoBehaviour`
     - `void Launch(Vector3 from, Vector3 to, float seconds, Action<Vector3> landed)`：沿拋物線飛行 1 秒，落地時回呼
   - `BlindCyclops`：
@@ -430,7 +430,7 @@
       - `Layout.Boulder.SetOpening(Slide.Opening)`、`ShowWedges(...)`
       - `noise.Grind` → 在 `PushPoint` 發 `Grind`；`noise.Heavy` → 發 `Boulder`；`noise.Slip` → 發 `Slip`
       - `Slide.PullingBack` 期間每 0.5 秒在 `PushPoint` 發一次巨人聲音
-      - 觸發雜物（規則見 Task 7）
+      - 觸發雜物（規則見 工作 7）
     - `PulledWedge`：`Slide.GiantPull()` 為 true 時，在 `GapPoint` 以朝洞內（−Z）3 m/s＋向上 2 m/s `LooseStone.Spawn`，並發一次巨人聲音
     - `ResetNight`：
       - `Slide.Reset()`、`LooseStone.ClearAll()`、`Rack.ClearWheels()`、奶桶 `Stand()`
@@ -451,29 +451,29 @@
     - 推巨石的中央長條改顯示 `Slide.Opening / FullOpen`（在巨石前才顯示）
     - 操作提示改成規格第 6 節的文字
 
-- [ ] **Step 1: 實作**
-- [ ] **Step 2: 驗證**
+- [ ] **步驟 1：實作**
+- [ ] **步驟 2：驗證**
   - `compile-check` → 0 錯誤
   - `dotnet test tools/CoreTests` → 全過
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind2): wire boulder slide, crew, rocks, stake and clutter into the night loop`
 
-### Task 10: 天光引羊（規格第 14 節）
+### 工作 10：天光引羊（規格第 14 節）
 
-**Files:**
-- Create: `Assets/Odyssey/Core/SheepRush.cs`
-- Test: `Assets/Odyssey/Tests/Editor/SheepRushTests.cs`
-- Modify: `Assets/Odyssey/Core/BoulderSlide.cs`（新增 `Jolt`）、`BoulderSlideTests.cs`、`Assets/Odyssey/Echo/WanderingSheep.cs`、`BlindGameLoop.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Core/SheepRush.cs`
+- 測試：`Assets/Odyssey/Tests/Editor/SheepRushTests.cs`
+- 修改：`Assets/Odyssey/Core/BoulderSlide.cs`（新增 `Jolt`）、`BoulderSlideTests.cs`、`Assets/Odyssey/Echo/WanderingSheep.cs`、`BlindGameLoop.cs`
 
-**Interfaces:**
-- Consumes: Task 2 的 `BoulderSlide`（`Opening`、`Floor`、`GiantPull()`）；Task 7 的 `LooseStone.Spawn`；Task 9 的 `BlindGameLoop` 每幀流程。
-- Produces:
+**介面：**
+- 使用：工作 2 的 `BoulderSlide`（`Opening`、`Floor`、`GiantPull()`）；工作 7 的 `LooseStone.Spawn`；工作 9 的 `BlindGameLoop` 每幀流程。
+- 產出：
   - `BoulderSlide.Jolt(float meters)`：開口退 `meters`，不低於 `Floor`
   - `sealed class SheepRush`
     - 常數：`RushSpeed = 1.2f`、`JostleReach = 1.5f`、`JostleMin = 2f`、`JostleMax = 4f`、`JoltMeters = 0.05f`、`KnockChance = 0.3f`、`SqueezeWidth = 1.0f`、`SqueezeReach = 1.5f`、`SqueezeSeconds = 2f`、`FreeWidth = 1.2f`、`StuckBleatSeconds = 1.5f`
     - `SheepRush(int sheepCount, Func<double> roll)`
     - `bool Active`（第一次全開後為 true，之後不再變回 false，直到 `Reset`）
-    - `int Squeezing`（正在鑽或卡住的羊 index，沒有為 −1）、`bool Stuck`、`IReadOnlyList<bool> Gone`
+    - `int Squeezing`（正在鑽或卡住的羊的索引，沒有為 −1）、`bool Stuck`、`IReadOnlyList<bool> Gone`
     - `bool GapClear => Squeezing < 0`
     - `RushTick Tick(float dt, float opening, IReadOnlyList<float> distToPushFace, IReadOnlyList<float> distToGap)`
     - `void Reset()`
@@ -486,7 +486,7 @@
   - `BlindGameLoop`：
     - `Slide.Opening >= FullOpen` 讓 `SheepRush` 啟動的那一幀，對每隻羊呼叫 `RushTo(GapPoint)`
     - 每個 `Jostled` → 在該羊位置發 `Bleat`，`Slide.Jolt(0.05)`
-    - `Knock` 且 `Slide.GiantPull()` 為 true → 照 Task 9 從縫口彈出 `LooseStone`，並在 `PushPoint` 發一次 `Slip`
+    - `Knock` 且 `Slide.GiantPull()` 為 true → 照 工作 9 從縫口彈出 `LooseStone`，並在 `PushPoint` 發一次 `Slip`
     - `Escaped` → 該羊 `Leave()`
     - `StuckBleat` → 在 `GapPoint` 發 `Bleat`
     - `Escape` 條件加上 `Rush.GapClear`；不通過時底部提示「有羊擠在縫裡」
@@ -500,36 +500,36 @@
 - 鑽完 → `Gone[i] = true`，`Escaped = i`，`Squeezing = −1`。
 - 還沒 `Active` 時 `Tick` 什麼都不做（開口第一次 ≥ 1.44 那一幀啟動）。
 
-- [ ] **Step 1: 寫失敗測試**
+- [ ] **步驟 1：寫失敗測試**
 
   | 測試 | 情境 | 預期 |
   |---|---|---|
   | `Jolt_StopsAtFloor` | 開口 0.52、楔子 0.5，`Jolt(0.05)` | Opening == 0.5 |
-  | `Inactive_UntilFullOpen` | opening 1.4，羊都在 1 m 內，Tick 10 秒 | `Active` false，沒有任何撞擊或鑽 |
-  | `Activates_OnceAtFullOpen` | opening 1.44 Tick 一次後 opening 0.5 | `Active` 仍為 true |
+  | `Inactive_UntilFullOpen` | 開口 1.4，羊都在 1 m 內，Tick 10 秒 | `Active` false，沒有任何撞擊或鑽 |
+  | `Activates_OnceAtFullOpen` | 開口 1.44 Tick 一次後開口 0.5 | `Active` 仍為 true |
   | `Jostle_EveryRolledInterval` | roll 恆為 0.5（間隔 3 秒、不擲中 30%），一隻羊在 1 m 內，每次 Tick 0.5 共 12 次 | `Jostled` 含 0 的幀剛好 2 次，`Knock` 從未為 true |
   | `Jostle_LowRoll_Knocks` | roll 恆為 0.0（間隔 2 秒、擲中） | 第一次撞擊那幀 `Knock` true |
   | `OutOfReach_NoJostle` | 羊在 2 m 外 | 從不撞 |
-  | `Squeeze_StartsAtOneMeter_TakesTwoSeconds` | opening 1.44 後羊在縫 1 m 內，Tick 2.1 秒 | `Escaped == 0`、`Gone[0]`、`GapClear` |
+  | `Squeeze_StartsAtOneMeter_TakesTwoSeconds` | 開口 1.44 後羊在縫 1 m 內，Tick 2.1 秒 | `Escaped == 0`、`Gone[0]`、`GapClear` |
   | `Squeeze_OneAtATime` | 兩隻羊都在縫旁 | 第一隻鑽完前 `Squeezing` 不變 |
-  | `Narrowing_Sticks_AndBleats` | 鑽 1 秒時 opening 0.9，再 Tick 3 秒（每 0.5） | `Stuck`、`StuckBleat` 剛好 2 次、`!GapClear` |
-  | `Reopen_FreesAndRestartsSqueeze` | 承上，opening 1.2 再 Tick 1.9 秒 | 還沒鑽完；再 0.2 秒 → `Escaped` |
-  | `Between_StaysStuck` | 卡住後 opening 1.1 | 仍 `Stuck` |
+  | `Narrowing_Sticks_AndBleats` | 鑽 1 秒時開口 0.9，再 Tick 3 秒（每 0.5） | `Stuck`、`StuckBleat` 剛好 2 次、`!GapClear` |
+  | `Reopen_FreesAndRestartsSqueeze` | 承上，開口 1.2 再 Tick 1.9 秒 | 還沒鑽完；再 0.2 秒 → `Escaped` |
+  | `Between_StaysStuck` | 卡住後開口 1.1 | 仍 `Stuck` |
   | `Reset_ClearsAll` | 有羊離開、有羊卡住 | `Active` false、`GapClear`、`Gone` 全 false |
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests`
   預期：編譯失敗。
-- [ ] **Step 3: 實作 `Jolt`、`SheepRush`、`WanderingSheep`、`BlindGameLoop` 的串接**
-- [ ] **Step 4: 驗證**
+- [ ] **步驟 3：實作 `Jolt`、`SheepRush`、`WanderingSheep`、`BlindGameLoop` 的串接**
+- [ ] **步驟 4：驗證**
   - `dotnet test tools/CoreTests` → 全過
   - `compile-check` → 0 錯誤
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   訊息：`feat(blind2): sheep rush the gap at full open, jostle wedges loose, get stuck`
 
-### Task 11: 除錯面板
+### 工作 11：除錯面板
 
-**Files:**
-- Modify: `Assets/Odyssey/Echo/DebugPanel.cs`
+**檔案：**
+- 修改：`Assets/Odyssey/Echo/DebugPanel.cs`
 
 **內容**（規格第 8 節、第 13 節 D）
 - 巨石長條：`Opening / FullOpen`，上面標出楔子（石子灰點、木樁棕條），旁邊文字「輕推／猛推／回滑／被拔回」
@@ -544,16 +544,16 @@
 - 長條：「岩石」＝ 1 − `ThrowCooldownLeft / ThrowCooldown`
 - 不加背景（使用者規則）。
 
-- [ ] **Step 1: 實作**
-- [ ] **Step 2: 驗證**：`compile-check` → 0 錯誤
-- [ ] **Step 3: 提交**
+- [ ] **步驟 1：實作**
+- [ ] **步驟 2：驗證**：`compile-check` → 0 錯誤
+- [ ] **步驟 3：提交**
   訊息：`feat(blind2): debug panel shows boulder wedges, crew, stake, clutter and rocks`
 
-### Task 12: 收尾
+### 工作 12：收尾
 
-- [ ] **Step 1: 對照規格**
+- [ ] **步驟 1：對照規格**
   規格 v2 第 2～14 節逐條對照實作，數值完全一致。
-- [ ] **Step 2: 審查**
-  找一個新的審查者（Opus）審查 `00b4e11..HEAD`，一次修完 Critical 與 Important 的問題（每個修正都先寫失敗測試）。
-- [ ] **Step 3: 回報使用者**
+- [ ] **步驟 2：審查**
+  找一個新的審查者（Opus）審查 `00b4e11..HEAD`，一次修完嚴重（Critical）與重要（Important）等級的問題（每個修正都先寫失敗測試）。
+- [ ] **步驟 3：回報使用者**
   列出還沒實測的項目（規格第 10 節、第 13 節 E、第 14 節）。

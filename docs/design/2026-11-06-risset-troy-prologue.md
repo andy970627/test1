@@ -96,16 +96,16 @@
 ### 6.3 三個代理之間的介面
 
 **`risset.js`（規則，UMD 全域 `RissetRules`，Node 可測）**
-- `createLevel(opts)` 會回傳 game。
+- `createLevel(opts)` 會回傳遊戲物件（game）。
 - `game.step(audioTime, input)`：以音訊時鐘的絕對時間推進，不用畫面的 dt。
 - 輸入 `input`：`{yaw, mx, mz, breath, dash, takedown, calm}`。其中 `dash`、`takedown`、`calm` 是只維持一幀的按下事件；`breath` 是按住的狀態。
 - 狀態：
-  - `phase`：'intro'｜'play'｜'fail'｜'win'
+  - `phase`：`'intro'`｜`'play'`｜`'fail'`｜`'win'`（開場／遊玩／失敗／勝利）
   - `zone`：0～4
   - `cycle`：`{T, t0, p, blind, index}`
   - `bass`：`{period, nextBeat}`
   - `player`：`{x, z, yaw, breathing, breathT, hidden}`
-  - `guards`：每個 `{id, x, z, yaw, state, susp, calm}`，`state` 是 'patrol'｜'suspicious'｜'hunted'｜'down'
+  - `guards`：每個 `{id, x, z, yaw, state, susp, calm}`，`state` 是 `'patrol'`｜`'suspicious'`｜`'hunted'`｜`'down'`（巡邏／起疑／追殺／倒下）
   - `alarm`：0～1，給音訊用的失控程度
   - `hunted`：是否在追殺中
   - `level`：關卡資料，牆、陰影區、路線、木馬、城門
@@ -141,5 +141,5 @@
 ### 7.1 測試階段：自備配樂（11/06 使用者決定）
 
 - 測試階段先用電影配樂找感覺，之後再做自己的搭配版本（上表四項延後）。
-- **版權**：電影配樂不放進 repo、不打包、不上傳 itch.io。做法是選單裡的「載入音樂檔」，讓使用者選自己電腦上擁有的音檔，只在瀏覽器本機播放。
+- **版權**：電影配樂不放進儲存庫、不打包、不上傳 itch.io。做法是選單裡的「載入音樂檔」，讓使用者選自己電腦上擁有的音檔，只在瀏覽器本機播放。
 - 自備音檔只取代音樂層：功能層照舊；盲區時音檔壓到幾乎無聲；警戒時音檔退後，讓慢低音最清楚。
