@@ -30,7 +30,6 @@ public static class CaveBuilder
         Physics.SyncTransforms();
         BuildDome(root, noiseOffset);
         BuildTunnel(root, rng);
-        BuildStalactites(root, rng);
 
         var layout = new CaveLayout
         {
@@ -137,28 +136,6 @@ public static class CaveBuilder
                 : new Vector3(1.2f + (float)rng.NextDouble(), 2.6f + (float)rng.NextDouble(), 1.4f + (float)rng.NextDouble());
             var go = Primitive(PrimitiveType.Cube, "TunnelRock", root, position, size, rock);
             go.transform.rotation = Quaternion.Euler((float)rng.NextDouble() * 10f, (float)rng.NextDouble() * 30f, (float)rng.NextDouble() * 10f);
-        }
-    }
-
-    static void BuildStalactites(Transform root, System.Random rng)
-    {
-        var rock = OdysseyPalette.RockDark;
-        // 洞頂邊緣散落 16 根石灰岩鐘乳石，向洞穴中央倒懸，回聲波掃過時呈現倒刺輪廓
-        for (int i = 0; i < 16; i++)
-        {
-            float angle = (float)rng.NextDouble() * Mathf.PI * 2f;
-            float distRatio = 0.55f + 0.35f * (float)rng.NextDouble();
-            float x = RadiusX * Mathf.Cos(angle) * distRatio;
-            float z = RadiusZ * Mathf.Sin(angle) * distRatio;
-            if (z > 6f && Mathf.Abs(x) < 3.5f)
-                continue; // 避開洞口通道
-            float topY = 4.8f + (float)rng.NextDouble() * 1.6f;
-            float len = 1.0f + (float)rng.NextDouble() * 1.4f;
-            float width = 0.22f + (float)rng.NextDouble() * 0.18f;
-
-            var go = Primitive(PrimitiveType.Cylinder, "Stalactite", root, new Vector3(x, topY - len / 2f, z), new Vector3(width, len / 2f, width), rock);
-            Object.Destroy(go.GetComponent<Collider>());
-            go.transform.rotation = Quaternion.Euler((float)(rng.NextDouble() * 12 - 6), (float)(rng.NextDouble() * 360), (float)(rng.NextDouble() * 12 - 6));
         }
     }
 

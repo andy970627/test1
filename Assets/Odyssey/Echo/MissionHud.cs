@@ -15,11 +15,6 @@ public class MissionHud : MonoBehaviour
     static readonly Color Text = OdysseyPalette.Parchment;
     static readonly Color Dim = OdysseyPalette.ParchmentMuted;
     static readonly Color Shadow = OdysseyPalette.TextShadow;
-    static readonly Color Track = OdysseyPalette.Track;
-    static readonly Color BoulderBar = OdysseyPalette.BoulderBar;
-    static readonly Color DoneColor = OdysseyPalette.Done;
-    static readonly Color NightBar = OdysseyPalette.NightBar;
-    static readonly Color DawnBar = OdysseyPalette.DawnBar;
 
     BlindGameLoop loop;
     Action onStart;
@@ -28,12 +23,6 @@ public class MissionHud : MonoBehaviour
     GUIStyle titleStyle, startStyle, bodyStyle, listStyle, choiceStyle;
 
     public bool BriefingOpen { get; private set; }
-
-    float crewFlashUntil = -1f;
-    static readonly Color FlashRed = OdysseyPalette.FlashRed;
-
-    /// <summary>同伴被吃：「帶同伴」那行閃紅 1 秒。</summary>
-    public void FlashCrew() => crewFlashUntil = Time.time + 1f;
 
     public void Init(BlindGameLoop loop) => this.loop = loop;
 
@@ -46,6 +35,18 @@ public class MissionHud : MonoBehaviour
     }
 
     bool CanStart => Time.time - briefingSince >= BriefingLockSeconds;
+
+    /// <summary>直接關掉開場卡片並開始夜晚（實測捷徑用）。</summary>
+    public void SkipBriefing()
+    {
+        if (!BriefingOpen)
+            return;
+        BriefingOpen = false;
+        fadingSince = Time.time;
+        var start = onStart;
+        onStart = null;
+        start?.Invoke();
+    }
 
     void Update()
     {
@@ -63,6 +64,7 @@ public class MissionHud : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null)
             return;
         // 簡報要蓋在 F1 除錯面板上面（depth 越小越上層）。
@@ -123,35 +125,6 @@ public class MissionHud : MonoBehaviour
 
     static Color Fade(Color c, float alpha) => new(c.r, c.g, c.b, c.a * alpha);
 
-    /// <summary>右上角任務清單：推開巨石、帶同伴、天亮前。</summary>
-    void DrawObjectives()
-    {
-        int font = listStyle.fontSize;
-        float line = font * 1.5f;
-        float width = Mathf.Max(Screen.width * 0.22f, listStyle.CalcSize(new GUIContent("帶同伴：跟隨 12／洞裡還有 12")).x);
-        float x = Screen.width - width - 20f;
-        float y = 20f;
-        float barH = font * 0.35f;
-
-        var slide = loop.Slide;
-        bool open = slide.IsOpen;
-        Label(new Rect(x, y, width, line), open ? "已推開：到縫前 E 鑽出去" : "推開巨石", listStyle, open ? DoneColor : Text);
-        y += line;
-        Bar(new Rect(x, y, width, barH), slide.Opening / BoulderSlide.FullOpen, open ? DoneColor : BoulderBar);
-        y += barH + font * 0.6f;
-
-        int following = loop.Crew.Followers.Count;
-        int hiding = loop.Crew.Members.Count - following;
-        Label(new Rect(x, y, width, line), $"帶同伴：跟隨 {following}／洞裡還有 {hiding}", listStyle,
-            Time.time < crewFlashUntil && Mathf.Repeat(Time.time * 6f, 1f) < 0.6f ? FlashRed : Text);
-        y += line;
-
-        Label(new Rect(x, y, width, line), "天亮前", listStyle, Text);
-        y += line;
-        float dawn = loop.Dawn.Fraction;
-        Bar(new Rect(x, y, width, barH), dawn, Color.Lerp(NightBar, DawnBar, dawn));
-    }
-
     static void Label(Rect r, string text, GUIStyle style, Color color)
     {
         var shadow = r;
@@ -160,12 +133,6 @@ public class MissionHud : MonoBehaviour
         GUI.Label(shadow, text, style);
         style.normal.textColor = color;
         GUI.Label(r, text, style);
-    }
-
-    static void Bar(Rect r, float value, Color color)
-    {
-        Fill(r, Track);
-        Fill(new Rect(r.x, r.y, r.width * Mathf.Clamp01(value), r.height), color);
     }
 
     static void Fill(Rect r, Color c)

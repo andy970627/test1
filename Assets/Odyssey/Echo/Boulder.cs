@@ -31,6 +31,10 @@ public class Boulder : MonoBehaviour
     public Collider GapBlocker { get; private set; }
     float dawn;
     Material gapMaterial;
+
+    // 雅典娜的眷顧（規格第 31 節 B3）：失去時縫光與月光邊在 2 秒內熄滅，重新得到時亮回來。
+    const float FavorFadeSeconds = 2f;
+    float favor = 1f, favorTarget = 1f;
     Vector3 center;
     float slide;
 
@@ -42,6 +46,29 @@ public class Boulder : MonoBehaviour
 
     /// <summary>巨石朝洞內那一面的中心（離地 1 m）。</summary>
     public Vector3 PushPoint => center + new Vector3(slide, 1f - Height / 2f, -Depth / 2f);
+
+    /// <summary>推開時繞前後軸滾動：每開 1 m 轉 0.12 弧度（規格第 32 節 C）。</summary>
+    const float RollPerMeter = 0.12f;
+    /// <summary>站在石面前這麼近（公尺）才碰得到。</summary>
+    public const float FaceReach = 1.2f;
+
+    /// <summary>巨石目前的滾動角度（BoulderFeel 疊上晃動）。</summary>
+    public Quaternion Roll => Quaternion.Euler(0f, 0f, -slide * RollPerMeter * Mathf.Rad2Deg);
+
+    /// <summary>
+    /// 手碰不碰得到石面（規格第 32 節 A）：站在朝洞內那一面前 1.2 m 內、左右在石面範圍內。
+    /// lateral：−1＝左緣、0＝中間、+1＝右緣；facing：面向與石面法線（+Z）夾角的 cos。
+    /// </summary>
+    public bool FaceContact(Vector3 feet, Vector3 forward, out float lateral, out float facing)
+    {
+        float faceZ = center.z - Depth / 2f;
+        float dz = faceZ - feet.z;
+        float dx = feet.x - (center.x + slide);
+        lateral = Mathf.Clamp(dx / (Width / 2f), -1f, 1f);
+        var flat = new Vector3(forward.x, 0f, forward.z);
+        facing = flat.sqrMagnitude > 1e-6f ? Vector3.Dot(flat.normalized, Vector3.forward) : 0f;
+        return dz >= -0.2f && dz <= FaceReach && Mathf.Abs(dx) <= Width / 2f + 0.3f;
+    }
 
     /// <summary>縫的中心（離地 1 m）。</summary>
     public Vector3 GapPoint => center + new Vector3(-Width / 2f + slide / 2f, 1f - Height / 2f, -Depth / 2f);
@@ -57,7 +84,14 @@ public class Boulder : MonoBehaviour
         body = bodyGo.transform;
         body.SetParent(transform, false);
         body.localScale = new Vector3(Width, Height, Depth);
-        bodyGo.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(StoneColor);
+        Material stone = EchoMaterials.Create(StoneColor);
+        bodyGo.GetComponent<Renderer>().sharedMaterial = stone;
+        // 看起來是一整塊不規則的岩石，不是長方體；碰撞仍用原本的方塊（規格第 32 節 C）。
+        bodyGo.GetComponent<Renderer>().enabled = false;
+        var rock = new GameObject("RockMesh");
+        rock.transform.SetParent(body, false);
+        rock.AddComponent<MeshFilter>().sharedMesh = BoulderMesh.Build(5, 2024);
+        rock.AddComponent<MeshRenderer>().sharedMaterial = stone;
         AddGrooves(body);
         AddMegalithFacets(body);
         rimMaterial = OdysseyMaterials.Create(Color.black, MoonGlow);
@@ -145,6 +179,8 @@ public class Boulder : MonoBehaviour
     {
         slide = meters;
         body.localPosition = new Vector3(slide, 0f, 0f);
+        // 夜晚中 BoulderFeel 每幀會再疊上晃動；這裡先套滾動，夜晚以外（天亮被推回時）也看得到它滾回去。
+        body.localRotation = Roll;
         float gap = Mathf.Max(slide, 0.01f);
         gapLight.localPosition = new Vector3(-Width / 2f + slide / 2f, 0f, Depth / 2f + 0.05f);
         gapLight.localScale = new Vector3(gap, Height, 1f);
@@ -184,7 +220,7 @@ public class Boulder : MonoBehaviour
         if (gapMaterial == null)
             return;
         float open = Mathf.Clamp01(slide / Odyssey.Core.BoulderSlide.FullOpen);
-        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open));
+        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open) * favor);
     }
 
     /// <summary>fraction：0 = 入夜，1 = 天亮；縫裡的光從深藍漸變到灰白。</summary>
@@ -192,6 +228,24 @@ public class Boulder : MonoBehaviour
     {
         dawn = Mathf.Clamp01(fraction);
         UpdateGapGlow();
-        OdysseyMaterials.SetEmission(rimMaterial, Color.Lerp(MoonGlow, DawnGlow, Mathf.Clamp01(fraction)));
+        OdysseyMaterials.SetEmission(rimMaterial, Color.Lerp(MoonGlow, DawnGlow, Mathf.Clamp01(fraction)) * favor);
+    }
+
+    /// <summary>有沒有雅典娜的眷顧：縫光與巨石邊的月光 2 秒內淡出或淡入。</summary>
+    public void SetFavor(bool has) => favorTarget = has ? 1f : 0f;
+
+    /// <summary>立刻套用（新的一場遊戲）。</summary>
+    public void SetFavorNow(bool has)
+    {
+        favorTarget = favor = has ? 1f : 0f;
+        SetDawn(dawn);
+    }
+
+    void Update()
+    {
+        if (Mathf.Approximately(favor, favorTarget))
+            return;
+        favor = Mathf.MoveTowards(favor, favorTarget, Time.deltaTime / FavorFadeSeconds);
+        SetDawn(dawn);
     }
 }

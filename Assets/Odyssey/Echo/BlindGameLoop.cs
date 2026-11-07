@@ -9,9 +9,10 @@ using UnityEngine.InputSystem;
 /// 雙盲洞穴的一夜：火熄了，巨人瞎了，玩家要在天亮前把巨石推出縫鑽出去。
 /// 被抓或天亮就吃掉一名同伴，巨石回到原位，下一夜重來。負責過場、操作提示與 CSV 紀錄。
 /// </summary>
-public class BlindGameLoop : MonoBehaviour
+public partial class BlindGameLoop : MonoBehaviour
 {
-    public const int SheepCount = 9;
+    /// <summary>羊群（規格第 33 節 C：參考電影的 40 隻真羊，從 9 隻增加到 18 隻）。</summary>
+    public const int SheepCount = 18;
 
     [Tooltip("過場播放速度倍率；2 = 所有淡入淡出與停留時間減半。")]
     public float transitionSpeed = 2f;
@@ -100,6 +101,21 @@ public class BlindGameLoop : MonoBehaviour
     /// <summary>主選單「實驗」頁的設計開關（規格第 28 節）。</summary>
     public DesignFlags Flags { get; } = new();
 
+    /// <summary>雅典娜的眷顧（規格第 31 節 B3）：整場保留；失去時縫光熄滅、詩句只剩按鍵。</summary>
+    public AthenaFavor Favor { get; } = new();
+
+    /// <summary>宙斯的雷鳴（規格第 31 節 B1）：每夜第一次偷襲才照亮全洞。</summary>
+    public ZeusThunder Thunder { get; } = new();
+
+    /// <summary>巨人是否正在追殺你（規格第 31 節 H2），給配樂用。</summary>
+    public ChaseState Chase { get; } = new();
+
+    /// <summary>這一幀的恐懼半徑讀數（規格第 31 節 H1），給配樂與畫面四角變暗用。</summary>
+    public TerrorReading Terror { get; private set; }
+
+    /// <summary>引導用詩句（規格第 31 節 D）且還有雅典娜的眷顧時為 true；否則只顯示按鍵。</summary>
+    public bool VersesShown => Flags.Guide == GuideStyle.Verse && Favor.Has;
+
     GameMenus menus;
     DeathScreen deathScreen;
     ScreenFeedback feedback;
@@ -156,7 +172,7 @@ public class BlindGameLoop : MonoBehaviour
         };
         player.PickedUpStone += () => sounds?.PlayLocal(sounds.PebbleClick, 0.5f);
         player.PickedUpArrow += () => sounds?.PlayLocal(sounds.WoodTap, 0.6f);
-        var hands = body.gameObject.AddComponent<FirstPersonHands>();
+        hands = new GameObject("Hands").AddComponent<FirstPersonHands>();
         hands.Init(player, Slide, body.CameraTransform);
         gameObject.AddComponent<WorldPrompts>().Init(this, Prompts);
         gameObject.AddComponent<SituationHints>().Init(this, Hints);
@@ -193,6 +209,8 @@ public class BlindGameLoop : MonoBehaviour
         Arrow.IgnoreAlways.Add(Layout.Boulder.GapBlocker);
         sounds = gameObject.AddComponent<SoundPlayer>();
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
+        InitZeus();
+        gameObject.AddComponent<CaveAtmosphere>().Init(Layout, Cyclops, body, () => Slide.Opening / BoulderSlide.FullOpen, seed);
 
         // 洞外的海風從巨石後面傳來：整個洞都聽得到，越接近洞口越大聲、左右聲道分得清；
         // 縫旁再加一道從縫鑽進來的細呼嘯聲。
@@ -246,6 +264,7 @@ public class BlindGameLoop : MonoBehaviour
         feedback.Init(this, body);
         body.gameObject.AddComponent<BumpSensor>().Init(feedback);
         menus.ShowMain(Difficulty);
+        gameObject.AddComponent<PlaytestDriver>().Init(this);
     }
 
     void BeginIntro()
@@ -271,6 +290,7 @@ public class BlindGameLoop : MonoBehaviour
         ApplyDifficulty();
         State.Restart();
         Nights.Clear();
+        Favor.Reset();
         BeginIntro();
     }
 
@@ -319,6 +339,7 @@ public class BlindGameLoop : MonoBehaviour
 
     void EndRun(string title, string subtitle)
     {
+        subtitle += ZeusEpilogue();
         ResetRun();
         menus.ShowEnd(title, subtitle, Difficulty);
     }
@@ -337,6 +358,7 @@ public class BlindGameLoop : MonoBehaviour
         Cyclops.Active = false;
         State.Restart();
         Nights.Clear();
+        Favor.Reset();
         ResetNight();
     }
 
@@ -383,6 +405,7 @@ public class BlindGameLoop : MonoBehaviour
     /// </summary>
     void ResetNight()
     {
+        ZeusNewNight();
         Slide.Reset();
         milestones.Reset();
         settleFlash = 0f;
@@ -459,6 +482,7 @@ public class BlindGameLoop : MonoBehaviour
             Essential.OnAtOpenGap();
         Dawn.Tick(Time.deltaTime);
         UpdatePrayer();
+        UpdateZeus();
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
             Fail(FailReason.Dawn);
@@ -486,6 +510,7 @@ public class BlindGameLoop : MonoBehaviour
         {
             prayJolts++;
             Slide.Jolt(SheepRush.JoltMeters);
+            feel.Bump(1.2f);
         }
         if (prayTimer >= CyclopsBrain.PraySeconds || Cyclops.Brain.State != CyclopsState.Pray)
             StopPrayer();
@@ -508,7 +533,14 @@ public class BlindGameLoop : MonoBehaviour
         bool braced = player.AtBoulder && player.PushMode == PushMode.None;
         if (braced && Slide.Opening > BraceHintOpening)
             Hint(HintKind.Brace);
-        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake, braced);
+        // 怎麼推（規格第 32 節 A、B）：手的位置、身體正不正、幾個同伴一起推。
+        Crew.SetPushHelp(player.PushMode != PushMode.None);
+        PushContact contact = player.PushMode != PushMode.None
+            ? PushContact.Evaluate(player.PushLateral, player.PushFacing, Crew.Helpers)
+            : PushContact.Neutral;
+        BoulderNoise noise = Slide.Tick(Time.deltaTime, player.PushMode, player.CarryingStake, braced, contact);
+        if (noise.HandsSlipped)
+            feel.Kick(0.03f, 0.25f);
         Layout.Boulder.SetOpening(Slide.Opening);
         gapWhistle.position = Layout.Boulder.GapPoint + Vector3.up;
         // 每推開 25%（這一夜第一次）巨石沉一聲、進度條閃一下（規格第 22 節 C）。
@@ -524,7 +556,7 @@ public class BlindGameLoop : MonoBehaviour
         Vector3 face = Layout.Boulder.PushPoint;
         // 卡住時只發 Boulder（巨響），不再同時發 Grind，避免兩聲疊在一起。
         if (noise.Grind && !noise.Catch)
-            SoundBus.Emit(SoundKind.Grind, face);
+            SoundBus.Emit(SoundKind.Grind, face, contact.NoiseMultiplier);
         if (noise.Heavy || noise.Catch)
             SoundBus.Emit(SoundKind.Boulder, face);
         if (noise.Catch)
@@ -576,6 +608,7 @@ public class BlindGameLoop : MonoBehaviour
         {
             sheep[i].Bleat();
             Slide.Jolt(SheepRush.JoltMeters);
+            feel.Bump(2f);
         }
         if (t.Knock && Slide.GiantPull())
         {
@@ -651,8 +684,8 @@ public class BlindGameLoop : MonoBehaviour
             return;
         var eaten = Crew.Members[index];
         feedback.CrewEaten(eaten.transform.position);
-        hud.FlashCrew();
         LoseCrew(eaten);
+        sounds.PlayLossChord();
         Hint(HintKind.CrewEaten);
     }
 
@@ -684,6 +717,7 @@ public class BlindGameLoop : MonoBehaviour
     {
         if (State.Phase != LoopPhase.Night || !Slide.GiantPull())
             return;
+        feel.Bump(1.5f);
         Vector3 gap = Layout.Boulder.GapPoint + new Vector3(0f, 0f, -0.3f);
         LooseStone.Spawn(gap, new Vector3(0f, 2f, -3f), null, knockedLoose: true);
         SoundBus.Emit(SoundKind.Cyclops, gap);
@@ -692,6 +726,33 @@ public class BlindGameLoop : MonoBehaviour
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
+
+    /// <summary>
+    /// 天亮（規格第 32 節 D）：巨人站到巨石前，1.5 秒把它推回原位，聽得到沉重的磨擦；死亡畫面的字照常疊在上面。
+    /// </summary>
+    System.Collections.IEnumerator GiantClosesBoulder()
+    {
+        Boulder boulder = Layout.Boulder;
+        Vector3 face = boulder.PushPoint;
+        var ground = new Vector3(face.x, boulder.BaseCenter.y, face.z - 1.2f);
+        Cyclops.PlaceSleeping(ground, face + Vector3.forward);
+        body.FaceTowards(face + Vector3.up);
+        float from = Slide.Opening;
+        float noiseTimer = 0f;
+        const float seconds = 1.5f;
+        for (float t = 0f; t < seconds; t += Time.deltaTime)
+        {
+            boulder.SetOpening(Mathf.Lerp(from, 0f, Mathf.SmoothStep(0f, 1f, t / seconds)));
+            noiseTimer += Time.deltaTime;
+            if (from > 0.01f && noiseTimer >= 0.4f)
+            {
+                noiseTimer = 0f;
+                sounds.PulledBack(boulder.PushPoint);
+            }
+            yield return null;
+        }
+        boulder.SetOpening(0f);
+    }
 
     void Fail(FailReason reason)
     {
@@ -707,6 +768,8 @@ public class BlindGameLoop : MonoBehaviour
         Cyclops.Roar();
         if (reason != FailReason.Dawn)
             body.FaceTowards(Cyclops.HeadPosition);
+        else
+            StartCoroutine(GiantClosesBoulder());
 
         string cause = FailReasonText.Describe(reason);
         Nights.End(night, NightLog.From(reason), eaten: record.Crew > 0);
@@ -815,6 +878,7 @@ public class BlindGameLoop : MonoBehaviour
         Transform cam = body.CameraTransform;
         if (action == ShoreAction.Shoot)
         {
+            ShoreAmbush();
             sounds.PlayLocal(sounds.Twang, 0.8f);
             Arrow.Shoot(cam.position + cam.forward * 0.5f, (Cyclops.HeadPosition - cam.position).normalized * BowDraw.MaxSpeed, null);
         }
@@ -837,6 +901,8 @@ public class BlindGameLoop : MonoBehaviour
         string how = action == ShoreAction.Shoot ? "射箭" : "喊名字";
         Nights.End(Roster.Night, NightOutcome.Escaped, rescued, note: lost > 0 ? $"（{how} −{lost}）" : null);
         string endTitle = ShoreChoice.Title(action), endSubtitle = ShoreChoice.Subtitle(action, rescued, lost);
+        if (action == ShoreAction.Shoot && Flags.ZeusLaw)
+            endSubtitle += "\n" + VerseBook.ShoreShoot.Item1;
         QuickFade(() => EndRun(endTitle, endSubtitle), null);
         Log($"Escaped_{action}", Roster.Night, Roster.Remaining);
     }
@@ -876,6 +942,7 @@ public class BlindGameLoop : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         // 字級跟著螢幕高度放大，Game 視窗縮小時也讀得到。
         int fontSize = Mathf.Max(22, Screen.height / 28);
         var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = true };

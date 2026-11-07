@@ -147,6 +147,7 @@ public static class OdysseyPalette
         public static readonly Color Throw = new(1f, 0.45f, 0.1f);
         public static readonly Color Eat = new(0.6f, 0.05f, 0.05f);
         public static readonly Color Pray = new(0.3f, 0.45f, 0.9f);
+        public static readonly Color Stagger = new(0.4f, 0.9f, 0.9f);
         public static readonly Color Idle = new(0.6f, 0.6f, 0.6f);
         public static readonly Color Dawn = new(0.55f, 0.65f, 0.95f);
         public static readonly Color DawnBar = new(0.7f, 0.75f, 0.95f);

@@ -14,7 +14,8 @@ public class GameMenus : MonoBehaviour
     const float ToastSeconds = 3f;
     const string Start = "開始", Continue = "繼續", Restart = "重新開始", DifficultyItem = "難度",
         Chronicle = "紀事", Lab = "實驗", ToMenu = "回主選單", Quit = "離開", Back = "返回",
-        Yes = "確定", No = "取消", PassiveItem = "被動聲音照亮", GuideItem = "必要引導";
+        Yes = "確定", No = "取消", PassiveItem = "被動聲音照亮", GuideItem = "必要引導",
+        ZeusItem = "宙斯法則", StyleItem = "引導風格", TerrorItem = "恐懼半徑";
 
     static readonly Color Text = OdysseyPalette.Parchment;
     static readonly Color Dim = OdysseyPalette.ParchmentDim;
@@ -25,7 +26,7 @@ public class GameMenus : MonoBehaviour
     static readonly string[] MainItems = { Start, DifficultyItem, Chronicle, Lab, Quit };
     static readonly string[] PauseItems = { Continue, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
     static readonly string[] EndItems = { Restart, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
-    static readonly string[] LabItems = { PassiveItem, GuideItem, Back };
+    static readonly string[] LabItems = { PassiveItem, GuideItem, ZeusItem, StyleItem, TerrorItem, Back };
     static readonly string[] ConfirmItems = { Yes, No };
 
     BlindGameLoop loop;
@@ -64,6 +65,15 @@ public class GameMenus : MonoBehaviour
     }
 
     /// <summary>紀事第一次多了一則：小字 3 秒。</summary>
+    /// <summary>直接關掉選單（實測捷徑用）；暫停中則照「繼續」恢復。</summary>
+    public void Close()
+    {
+        bool paused = view is View.Pause or View.Confirm or View.Chronicle or View.Lab;
+        view = View.None;
+        if (paused)
+            loop.Resume();
+    }
+
     public void NotifyNewEntry() => toastUntil = Time.unscaledTime + ToastSeconds;
 
     void Go(View next, int at = 0)
@@ -170,6 +180,15 @@ public class GameMenus : MonoBehaviour
             case GuideItem:
                 loop.Flags.EssentialGuide = !loop.Flags.EssentialGuide;
                 break;
+            case ZeusItem:
+                loop.Flags.ZeusLaw = !loop.Flags.ZeusLaw;
+                break;
+            case StyleItem:
+                loop.Flags.Guide = loop.Flags.Guide == GuideStyle.Verse ? GuideStyle.Plain : GuideStyle.Verse;
+                break;
+            case TerrorItem:
+                loop.Flags.Terror = (TerrorMode)Mathf.Clamp((int)loop.Flags.Terror + dir, (int)TerrorMode.Layered, (int)TerrorMode.Off);
+                break;
         }
     }
 
@@ -255,6 +274,9 @@ public class GameMenus : MonoBehaviour
         DifficultyItem => $"難度：{Difficulty.Name(difficulty)}（A／D）",
         PassiveItem => $"被動聲音照亮：{DesignFlags.Name(loop.Flags.Passive)}（A／D）",
         GuideItem => $"必要引導：{(loop.Flags.EssentialGuide ? "開" : "關")}（A／D）",
+        ZeusItem => $"宙斯法則：{DesignFlags.Name(loop.Flags.ZeusLaw)}（A／D）",
+        StyleItem => $"引導風格：{DesignFlags.Name(loop.Flags.Guide)}（A／D）",
+        TerrorItem => $"恐懼半徑：{DesignFlags.Name(loop.Flags.Terror)}（A／D）",
         Restart => "重新開始（R）",
         _ => item,
     };
@@ -264,12 +286,16 @@ public class GameMenus : MonoBehaviour
         DifficultyItem => Difficulty.Blurb(difficulty) + (view == View.Pause ? "（立刻套用）" : ""),
         PassiveItem => "巨人腳步、羊叫、同伴嗚咽、腳步聲要不要照亮四周",
         GuideItem => "製造聲音 → 推 → 塞楔子 → 鑽出去 的一步一步提示",
+        ZeusItem => "打中沒聽見你的巨人算偷襲，招來宙斯的雷鳴；關掉時一律算正面出手",
+        StyleItem => "提示用吟遊詩人的詩句，或只有按鍵的一行",
+        TerrorItem => "巨人靠近時的心跳與配樂：分層（16 m 起）／舊版（8 m 心跳）／關",
         Lab => "切換設計來比較，開關會記在實測紀錄裡",
         _ => null,
     };
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null)
             return;
         GUI.depth = -20;
@@ -314,7 +340,7 @@ public class GameMenus : MonoBehaviour
                 break;
             case View.End:
                 Label(new Rect(0, Screen.height * 0.16f, Screen.width, titleStyle.fontSize * 1.6f), endTitle, titleStyle, Gold);
-                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.16f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 3f), endSubtitle, bodyStyle, Text);
+                Label(new Rect(Screen.width * 0.1f, Screen.height * 0.16f + titleStyle.fontSize * 1.8f, Screen.width * 0.8f, bodyStyle.fontSize * 4.5f), endSubtitle, bodyStyle, Text);
                 break;
         }
 
@@ -370,7 +396,7 @@ public class GameMenus : MonoBehaviour
                 continue;
             cursor = i;
             e.Use();
-            if (items[i] is DifficultyItem or PassiveItem or GuideItem)
+            if (items[i] is DifficultyItem or PassiveItem or GuideItem or ZeusItem or StyleItem or TerrorItem)
                 Adjust(items[i], 1);
             else
                 Choose(items[i]);

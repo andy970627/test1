@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>程式產生的佔位音效，不需要任何音檔。</summary>
-public static class ProceduralAudio
+public static partial class ProceduralAudio
 {
     const int SampleRate = 44100;
 

@@ -30,75 +30,83 @@ namespace Odyssey.Core
     }
 
     /// <summary>
-    /// 畫面分區定義（規格第 26 節 C）：每個介面只在自己的保護區塊內，彼此不重疊；
-    /// 世界內物體提示落入保護區時會被推出。
+    /// 畫面分區（規格第 26 節 C）：每個介面只在自己的保護區塊內，彼此不重疊；
+    /// 世界內的物體提示（WorldPrompts）落進保護區時，用 PushOut 往上或往下推到最近的空位。
+    /// 數值要跟實際畫的位置一致（0..1，左上為原點），改介面位置時一起改。
     /// </summary>
     public static class HudZones
     {
-        // 各獨立 UI 區塊定義（x, y, w, h，以 0..1 歸一化螢幕坐標）
+        const float Margin = 0.01f;
+
+        /// <summary>F1 除錯面板：左上，寬不超過 28%、高不超過 55%（DebugPanel）。只在面板開著時保護。</summary>
         public static readonly HudRect DebugZone = new(0f, 0f, 0.30f, 0.55f);
-        public static readonly HudRect HintZone = new(0.31f, 0.08f, 0.38f, 0.10f);
-        public static readonly HudRect ToastZone = new(0.70f, 0f, 0.30f, 0.18f);
-        public static readonly HudRect PushBarZone = new(0.35f, 0.58f, 0.30f, 0.08f);
-        public static readonly HudRect EssentialZone = new(0.25f, 0.68f, 0.50f, 0.08f);
-        public static readonly HudRect StaminaZone = new(0f, 0.82f, 0.22f, 0.16f);
-        public static readonly HudRect StonesZone = new(0.75f, 0.82f, 0.25f, 0.16f);
+        /// <summary>情境提示與詩句：上方中央兩行（SituationHints，y 0.10～0.12 起）。</summary>
+        public static readonly HudRect HintZone = new(0.31f, 0.08f, 0.38f, 0.13f);
+        /// <summary>巨石進度條：中央 y 0.6（BlindGameLoop.DrawPushBar）。</summary>
+        public static readonly HudRect PushBarZone = new(0.38f, 0.585f, 0.24f, 0.04f);
+        /// <summary>「紀事多了一則（Tab）」：右側 y 0.62（GameMenus）。</summary>
+        public static readonly HudRect ToastZone = new(0.79f, 0.59f, 0.21f, 0.07f);
+        /// <summary>必要引導：下方中央一行，或兩行詩加按鍵小字（WorldPrompts，y 0.64～0.76）。</summary>
+        public static readonly HudRect EssentialZone = new(0.2f, 0.63f, 0.58f, 0.14f);
+        /// <summary>體力條：左下（BlindGameLoop.DrawStamina）。</summary>
+        public static readonly HudRect StaminaZone = new(0f, 0.85f, 0.16f, 0.12f);
+        /// <summary>石子：右下（BlindGameLoop.DrawStones）。</summary>
+        public static readonly HudRect StonesZone = new(0.8f, 0.85f, 0.2f, 0.12f);
 
         public static readonly HudRect[] ProtectedZones =
         {
             DebugZone,
             HintZone,
-            ToastZone,
             PushBarZone,
+            ToastZone,
             EssentialZone,
             StaminaZone,
-            StonesZone
+            StonesZone,
         };
 
-        /// <summary>
-        /// 檢查物體提示的矩形是否與任何受保護區塊相交。
-        /// </summary>
-        public static bool IntersectsAny(HudRect rect)
+        static bool Active(int i, bool debugVisible) => debugVisible || i != 0;
+
+        /// <summary>候選矩形是否和任何（啟用中的）保護區相交。</summary>
+        public static bool IntersectsAny(HudRect rect, bool debugVisible = true)
         {
             for (int i = 0; i < ProtectedZones.Length; i++)
-            {
-                if (rect.Intersects(ProtectedZones[i]))
+                if (Active(i, debugVisible) && rect.Intersects(ProtectedZones[i]))
                     return true;
-            }
             return false;
         }
 
         /// <summary>
-        /// 若候選提示位置與任何保護區相交，將其向垂直方向推開至最近的未佔用空間。
+        /// 把候選矩形上下移到離原位最近、不碰任何保護區、也不出畫面的位置（只改 Y）。
+        /// 候選位置是原位，以及每個保護區的正上方、正下方；全都不行時退回夾在畫面內的原位。
         /// </summary>
-        public static HudRect PushOut(HudRect candidate)
+        public static HudRect PushOut(HudRect candidate, bool debugVisible = true)
         {
-            HudRect current = candidate;
+            float maxY = Math.Max(0f, 1f - candidate.Height);
+            float startY = Math.Clamp(candidate.Y, 0f, maxY);
+            HudRect At(float y) => new(candidate.X, y, candidate.Width, candidate.Height);
+
+            if (!IntersectsAny(At(startY), debugVisible))
+                return At(startY);
+
+            float bestY = startY, bestMove = float.MaxValue;
             for (int i = 0; i < ProtectedZones.Length; i++)
             {
+                if (!Active(i, debugVisible))
+                    continue;
                 HudRect zone = ProtectedZones[i];
-                if (current.Intersects(zone))
+                foreach (float y in new[] { zone.Top - candidate.Height - Margin, zone.Bottom + Margin })
                 {
-                    // 若靠上方重疊則往下推，若靠下方則往上推
-                    if (current.Top < zone.Top + zone.Height * 0.5f)
+                    if (y < 0f || y > maxY)
+                        continue;
+                    float move = Math.Abs(y - candidate.Y);
+                    if (move < bestMove && !IntersectsAny(At(y), debugVisible))
                     {
-                        float newY = zone.Top - current.Height - 0.01f;
-                        if (newY >= 0f)
-                            current = new HudRect(current.X, newY, current.Width, current.Height);
-                        else
-                            current = new HudRect(current.X, zone.Bottom + 0.01f, current.Width, current.Height);
-                    }
-                    else
-                    {
-                        float newY = zone.Bottom + 0.01f;
-                        if (newY + current.Height <= 1f)
-                            current = new HudRect(current.X, newY, current.Width, current.Height);
-                        else
-                            current = new HudRect(current.X, zone.Top - current.Height - 0.01f, current.Width, current.Height);
+                        bestMove = move;
+                        bestY = y;
                     }
                 }
             }
-            return current;
+            return At(bestY);
         }
     }
 }

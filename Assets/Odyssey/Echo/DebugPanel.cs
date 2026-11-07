@@ -29,15 +29,30 @@ public class DebugPanel : MonoBehaviour
 
     BlindGameLoop loop;
     GUIStyle cachedStyle, cachedLegend;
+    string shortcutText;
+
+    static string BuildShortcutText()
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        foreach (var sc in PlaytestDriver.Shortcuts)
+            parts.Add($"{sc.Key} {sc.Label}");
+        return "實測捷徑：" + string.Join("・", parts);
+    }
     int cachedFontSize = -1;
 
+    /// <summary>面板現在開著（世界內提示要避開左上那一塊，HudZones.DebugZone）。</summary>
+    public static bool Showing { get; private set; }
+
     public void Init(BlindGameLoop loop) => this.loop = loop;
+
+    void OnDisable() => Showing = false;
 
     void Update()
     {
         var keyboard = Keyboard.current;
         if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
             showDebug = !showDebug;
+        Showing = showDebug;
     }
 
     static Color StateColor(CyclopsState s) => s switch
@@ -48,6 +63,7 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Throw => OdysseyPalette.DebugMap.Throw,
         CyclopsState.Eat => OdysseyPalette.DebugMap.Eat,
         CyclopsState.Pray => OdysseyPalette.DebugMap.Pray,
+        CyclopsState.Stagger => OdysseyPalette.DebugMap.Stagger,
         _ => OdysseyPalette.DebugMap.Idle,
     };
 
@@ -78,11 +94,13 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Throw => "丟岩石",
         CyclopsState.Eat => "吃同伴",
         CyclopsState.Pray => "禱告",
+        CyclopsState.Stagger => "踉蹌",
         _ => "聆聽",
     };
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (!showDebug || loop == null || loop.Cyclops == null)
             return;
 
@@ -127,6 +145,13 @@ public class DebugPanel : MonoBehaviour
         Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, OdysseyPalette.BoulderBar, ref y, line, barW, style);
         DrawBoulderMarks(boulderRow, line, barW, style);
         Bar("天亮", loop.Dawn.Fraction, 0, OdysseyPalette.DebugMap.DawnBar, ref y, line, barW, style);
+        // 實測捷徑（編輯器與開發版）：F2～F10 直接跳到要測的情況。
+        if (PlaytestDriver.ManualEnabled)
+        {
+            shortcutText ??= BuildShortcutText();
+            GUI.Label(new Rect(20, y, panelW, legend.fontSize * 2.8f), shortcutText, legend);
+            y += legend.fontSize * 2.8f;
+        }
         // 「丟岩石冷卻」「箭的引誘力」暫放在洞中紀事的巨人頁（使用者指定，規格第 25 節 F）。
 
         int following = loop.Crew.Followers.Count;

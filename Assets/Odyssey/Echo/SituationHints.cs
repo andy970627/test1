@@ -47,7 +47,7 @@ public class SituationHints : MonoBehaviour
         if (SoundRules.Lights(e.Kind))
         {
             // 示範只給玩家自己發出的聲音（不含羊撞倒的奶桶等）。
-            bool mine = e.Kind is SoundKind.Clap or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge;
+            bool mine = e.Kind is SoundKind.Clap or SoundKind.SnapShot or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge;
             if (mine)
                 loop.Essential.OnLit();
             if (!lawShown && mine)
@@ -149,6 +149,7 @@ public class SituationHints : MonoBehaviour
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (loop == null || hints.Current is not HintKind kind)
             return;
         int fontSize = Mathf.Max(20, Screen.height / 34);
@@ -156,15 +157,77 @@ public class SituationHints : MonoBehaviour
             style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, alignment = TextAnchor.MiddleCenter, wordWrap = false };
 
         float alpha = Mathf.Clamp01(hints.Remaining / FadeSeconds);
-        string text = HintText.Of(kind);
         float h = fontSize * 1.5f;
-        var rect = new Rect(0f, Screen.height * 0.12f, Screen.width, h);
+        var verse = VerseFor(kind);
+        if (verse.HasValue)
+        {
+            // 吟遊詩句（規格第 31 節 D）：兩行一行一行淡入。
+            float shown = HintQueue.ShowSeconds - hints.Remaining;
+            float a1 = alpha * Mathf.Clamp01(shown / BardVerse.LineFadeIn);
+            float a2 = alpha * Mathf.Clamp01((shown - BardVerse.LineFadeIn) / BardVerse.LineFadeIn);
+            Draw(new Rect(0f, Screen.height * 0.10f, Screen.width, h), verse.Value.Item1, a1);
+            if (!string.IsNullOrEmpty(verse.Value.Item2))
+                Draw(new Rect(0f, Screen.height * 0.10f + h, Screen.width, h), verse.Value.Item2, a2);
+            return;
+        }
+        Draw(new Rect(0f, Screen.height * 0.12f, Screen.width, h), HintText.Of(kind), alpha);
+    }
+
+    void Draw(Rect rect, string text, float alpha)
+    {
         var shadow = rect;
         shadow.position += new Vector2(2f, 2f);
         style.normal.textColor = new Color(Shadow.r, Shadow.g, Shadow.b, Shadow.a * alpha);
         GUI.Label(shadow, text, style);
         style.normal.textColor = new Color(Text.r, Text.g, Text.b, alpha);
         GUI.Label(rect, text, style);
+    }
+
+    /// <summary>有詩句的提示（宙斯法則、雅典娜、巨人吃人、禱告），在「詩句」風格且有眷顧時改用詩句。</summary>
+    (string, string)? VerseFor(HintKind kind)
+    {
+        // 偷襲與燃燒的木馬是失去眷顧的那一刻，照樣用詩句（只看引導風格）。
+        if (kind is HintKind.Ambush or HintKind.Horse && loop.Flags.Guide == GuideStyle.Verse)
+            return kind == HintKind.Ambush ? VerseBook.Ambush : VerseBook.Horse;
+        if (!loop.VersesShown)
+            return null;
+        return kind switch
+        {
+            HintKind.FirstStone => VerseBook.FirstStone,
+            HintKind.FairHit => VerseBook.FairHit,
+            HintKind.Ambush => VerseBook.Ambush,
+            HintKind.FavorRegained => VerseBook.Regained,
+            HintKind.CrewEaten => VerseBook.CrewEaten,
+            HintKind.Prayer => VerseBook.Prayer,
+            _ => ((string, string)?)null,
+        };
+    }
+
+    HintKind? plucked;
+    bool secondPlucked;
+    SoundPlayer sounds;
+
+    /// <summary>詩句每行開頭撥一聲里拉琴（只有玩家聽得到）。</summary>
+    void LateUpdate()
+    {
+        if (loop == null || hints.Current is not HintKind kind || !VerseFor(kind).HasValue)
+        {
+            plucked = null;
+            return;
+        }
+        sounds ??= GetComponent<SoundPlayer>();
+        if (plucked != kind)
+        {
+            plucked = kind;
+            secondPlucked = false;
+            sounds?.PlayLyre(4, 0.3f);
+            GetComponent<TerrorMusic>()?.Duck(HintQueue.ShowSeconds);
+        }
+        if (!secondPlucked && HintQueue.ShowSeconds - hints.Remaining >= BardVerse.LineFadeIn)
+        {
+            secondPlucked = true;
+            sounds?.PlayLyre(2, 0.3f);
+        }
     }
 
     static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);

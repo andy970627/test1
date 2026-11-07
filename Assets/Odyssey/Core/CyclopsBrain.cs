@@ -6,9 +6,10 @@ namespace Odyssey.Core
 {
     /// <summary>
     /// Listen＝原地聆聽；Investigate＝走向聲音（或遊走、走回巨石）；Search＝雙手掃摸；Guard＝聽到巨石，跑回洞口；
-    /// Throw＝蓄力朝遠處的聲音丟岩石；Eat＝吃掉摸到的同伴；Pray＝向父親波塞頓禱告（聽不到、不動）。
+    /// Throw＝蓄力朝遠處的聲音丟岩石；Eat＝吃掉摸到的同伴；Pray＝向父親波塞頓禱告（聽不到、不動）；
+    /// Stagger＝被石頭或箭打到的僵直（不動、聽不到），結束後去查來襲的方向。
     /// </summary>
-    public enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat, Pray }
+    public enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat, Pray, Stagger }
 
     /// <summary>巨人這一幀的結果。</summary>
     public readonly struct CyclopsTick
@@ -63,6 +64,12 @@ namespace Odyssey.Core
         public const float Scatter = 1f;
         public const float EatSeconds = 5f;
         public const float PraySeconds = 8f;
+        /// <summary>僵直秒數（被打到之後）。</summary>
+        public const float StaggerSeconds = 2.5f;
+        /// <summary>宙斯雷鳴後衝鋒的速度倍率（只用在走向目標時）。</summary>
+        public const float ChargeMultiplier = 1.3f;
+        /// <summary>衝刺目標的「聲量」：比箭、石子、腳步都大，只有巨石的聲音會改變他。</summary>
+        const float ChargeHoldLoudness = 1f;
 
         readonly DecoyMemory memory;
         readonly Func<double> roll;
@@ -79,6 +86,7 @@ namespace Odyssey.Core
         bool chasingNearBoulder;
         bool returning;
         bool wandering;
+        Vector2 staggerFrom;
 
         public CyclopsState State { get; private set; }
         public Vector2 Position { get; private set; }
@@ -86,6 +94,15 @@ namespace Odyssey.Core
         public float StateElapsed { get; private set; }
         public bool IsMoving => State == CyclopsState.Investigate || State == CyclopsState.Guard;
         public float ThrowCooldownLeft { get; private set; }
+
+        /// <summary>距離上次「聽見」玩家發出的聲音幾秒（宙斯法則用）；即使他沒理會那個聲音也會歸零。</summary>
+        public float SecondsSinceHeardPlayer { get; private set; } = 999f;
+
+        /// <summary>目前的目標是不是來自玩家的聲音（遊走、走回巨石為 false；衝鋒為 true）。</summary>
+        public bool TargetIsPlayerSound { get; private set; }
+
+        /// <summary>宙斯雷鳴後的衝鋒中：走向目標與摸索期間為 true，摸索結束或換目標就清掉。</summary>
+        public bool Charging { get; private set; }
 
         /// <summary>守住巨石中（摸完巨石之後到 15 秒或被引開為止）。</summary>
         public bool HoldingBoulder { get; private set; }
@@ -105,11 +122,35 @@ namespace Odyssey.Core
         /// </summary>
         public bool TryPray()
         {
-            if (State is CyclopsState.Guard or CyclopsState.Throw or CyclopsState.Eat or CyclopsState.Pray || OnGuard)
+            if (State is CyclopsState.Guard or CyclopsState.Throw or CyclopsState.Eat or CyclopsState.Pray or CyclopsState.Stagger || OnGuard)
                 return false;
             wandering = false;
             Enter(CyclopsState.Pray);
             return true;
+        }
+
+        /// <summary>被打到：停下僵直，取消丟石、守石、禱告與遊走；結束後以普通速度去查 hitFrom。</summary>
+        public void Stagger(Vector2 hitFrom)
+        {
+            EndGuard();
+            wandering = false;
+            Charging = false;
+            staggerFrom = hitFrom;
+            Enter(CyclopsState.Stagger);
+        }
+
+        /// <summary>宙斯雷鳴後：結束守石，以 1.3 倍速度衝向 at，到了照常摸索。</summary>
+        public void Charge(Vector2 at)
+        {
+            EndGuard();
+            wandering = false;
+            Target = at;
+            // 衝刺中只有比一切都響的聲音（巨石，走守石那條路）能改變目標；打中時落在他腳邊的箭與石子不會取消衝刺。
+            targetLoudness = ChargeHoldLoudness;
+            targetKind = SoundKind.Step;
+            TargetIsPlayerSound = true;
+            Charging = true;
+            Enter(CyclopsState.Investigate);
         }
 
         public CyclopsBrain(Vector2 start, DecoyMemory memory, Func<double> roll)
@@ -125,6 +166,9 @@ namespace Odyssey.Core
             Target = start;
             EndGuard();
             wandering = false;
+            Charging = false;
+            TargetIsPlayerSound = false;
+            SecondsSinceHeardPlayer = 999f;
             ThrowCooldownLeft = 0f;
             Enter(CyclopsState.Listen);
         }
@@ -134,10 +178,13 @@ namespace Odyssey.Core
         public void Hear(SoundEvent e)
         {
             // 禱告中什麼都聽不到（禱告聲蓋過一切）。
-            if (State == CyclopsState.Pray)
+            // 僵直中同樣什麼都聽不到。
+            if (State == CyclopsState.Pray || State == CyclopsState.Stagger)
                 return;
             if (!SoundRules.CanHear(e, Position, HearingMultiplierFor(e.Kind)))
                 return;
+            if (RevealsPlayer(e.Kind))
+                SecondsSinceHeardPlayer = 0f;
 
             // 巨石自己往回滑（Slip）時，已經守在旁邊的巨人不必重新摸一次：只記下巨石現在的位置。
             if (e.Kind == SoundKind.Slip && (guarding || HoldingBoulder) && Vector2.Distance(e.Position, holdPoint) <= HoldLeash)
@@ -200,6 +247,7 @@ namespace Odyssey.Core
         /// <summary>推進時間並判斷是否抓到玩家或同伴；碰撞優先於摸到，玩家優先於同伴。</summary>
         public CyclopsTick Tick(float dt, Vector2 player, IReadOnlyList<Vector2> crew = null)
         {
+            SecondsSinceHeardPlayer += dt;
             if (Vector2.Distance(player, Position) <= BumpDistance)
                 return new CyclopsTick(FailReason.Bumped, -1, false, default, false);
 
@@ -236,6 +284,18 @@ namespace Odyssey.Core
                     if (StateElapsed >= PraySeconds)
                         Enter(CyclopsState.Listen);
                     break;
+                case CyclopsState.Stagger:
+                    if (StateElapsed >= StaggerSeconds)
+                    {
+                        Target = staggerFrom;
+                        targetLoudness = 0f;
+                        targetKind = SoundKind.Step;
+                        TargetIsPlayerSound = true;
+                        // 被打中的那一下他已經知道你在哪：之後追過來時再打他，仍算正面出手。
+                        SecondsSinceHeardPlayer = 0f;
+                        Enter(CyclopsState.Investigate);
+                    }
+                    break;
                 case CyclopsState.Listen:
                     if (!OnGuard && StateElapsed >= WanderAfter)
                         Wander();
@@ -255,7 +315,7 @@ namespace Odyssey.Core
             }
 
             int eaten = -1;
-            if (crew != null && State != CyclopsState.Eat)
+            if (crew != null && State != CyclopsState.Eat && State != CyclopsState.Stagger)
                 for (int i = 0; i < crew.Count; i++)
                 {
                     float d = Vector2.Distance(crew[i], Position);
@@ -274,7 +334,8 @@ namespace Odyssey.Core
 
         void Move(float dt)
         {
-            float speed = (State == CyclopsState.Guard ? RunSpeed : WalkSpeed) * Difficulty.SpeedMultiplier(Level);
+            float speed = (State == CyclopsState.Guard ? RunSpeed : WalkSpeed) * Difficulty.SpeedMultiplier(Level)
+                * (Charging && State == CyclopsState.Investigate ? ChargeMultiplier : 1f);
             Vector2 toTarget = Target - Position;
             float distance = toTarget.Length();
             float step = Math.Min(speed * dt, distance);
@@ -306,6 +367,7 @@ namespace Odyssey.Core
         /// <summary>摸索結束；回傳是否該拔楔子（守石摸索完整摸完）。</summary>
         bool EndSearch()
         {
+            Charging = false;
             if (guarding)
             {
                 guarding = false;
@@ -346,6 +408,7 @@ namespace Odyssey.Core
             returning = true;
             Target = holdPoint;
             targetLoudness = 0f;
+            TargetIsPlayerSound = false;
             Enter(CyclopsState.Investigate);
         }
 
@@ -384,6 +447,7 @@ namespace Odyssey.Core
             Target = Position + new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * radius;
             targetLoudness = 0f;
             wandering = true;
+            TargetIsPlayerSound = false;
             Enter(CyclopsState.Investigate);
         }
 
@@ -409,7 +473,20 @@ namespace Odyssey.Core
             Target = target;
             targetLoudness = e.Loudness;
             targetKind = e.Kind;
+            TargetIsPlayerSound = SoundRules.Source(e.Kind) == SoundSource.Player && !IsLure(e.Kind);
+            Charging = false;
         }
+
+        /// <summary>石子、箭、奶桶、乳酪：落點在別處的誘餌，不是你所在的位置。</summary>
+        static bool IsLure(SoundKind kind) =>
+            kind is SoundKind.Stone or SoundKind.Arrow or SoundKind.Clatter or SoundKind.Cheese;
+
+        /// <summary>
+        /// 這個聲音算不算「聽見你」（宙斯法則的 3 秒）：玩家這邊的聲音，但不含誘餌的落點、
+        /// 巨石自己往回滑（Slip），以及彈弓出手的「啪」（規格第 31 節 C1：要先彈一下讓他聽見，再出手）。
+        /// </summary>
+        public static bool RevealsPlayer(SoundKind kind) =>
+            SoundRules.Source(kind) == SoundSource.Player && !IsLure(kind) && kind != SoundKind.Slip && kind != SoundKind.SnapShot;
 
         void Enter(CyclopsState state)
         {

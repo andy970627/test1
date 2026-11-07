@@ -8,6 +8,7 @@ namespace Odyssey.Core
         Decoy, Guard, PulledWedge, Catch, Heavy, RockWindup, Whimper, CrewEaten,
         Stake, Pail, Pen, Pant, Dawn, Rush, SheepStuck, Prayer, Slip,
         Notch, Footstep, HearingRing, ArrowClutter, FindExit, Brace,
+        FirstStone, FairHit, Ambush, FavorRegained, Horse,
     }
 
     /// <summary>
@@ -114,6 +115,11 @@ namespace Odyssey.Core
             HintKind.ArrowClutter => "箭落在奶桶、乳酪架、羊圈上，那裡也會響",
             HintKind.FindExit => "海風從巨石那邊吹來，邊緣透著月光",
             HintKind.Brace => "你頂著巨石，它沒有往回滑",
+            HintKind.FirstStone => "你撿起了一顆石子",
+            HintKind.FairHit => "他聽見了你，你才出手",
+            HintKind.Ambush => "他沒聽見你，雷聲卻響了",
+            HintKind.FavorRegained => "月光又照在巨石邊上",
+            HintKind.Horse => "岩壁上，木馬燒成了灰",
             _ => null,
         };
     }

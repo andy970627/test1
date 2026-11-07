@@ -5,6 +5,7 @@ using UnityEngine;
 /// <summary>
 /// 地上會滾的石子（丟出去的、被拔掉的楔子）：剛體，每次彈跳依撞擊力道發出漸小的聲音；
 /// 停下來後留在地上，走近就撿得回來。打到奶桶會把它撞倒。
+/// 彈弓射出的石子（規格第 31 節 A）飛行中碰到巨人的觸發範圍就回報「打中巨人」，然後掉下來。
 /// </summary>
 public class LooseStone : MonoBehaviour
 {
@@ -16,6 +17,8 @@ public class LooseStone : MonoBehaviour
 
     Rigidbody body;
     float spawnTime;
+    bool fromSlingshot;
+    bool hitSomething;
 
     public static IReadOnlyList<LooseStone> All => all;
 
@@ -24,11 +27,13 @@ public class LooseStone : MonoBehaviour
 
     /// <param name="knockedLoose">被巨人拔掉或被羊撞掉的楔子：彈跳聲算巨人那邊的聲音（暗紅），巨人聽不到，
     /// 不會把剛拔完楔子的巨人引開，也不算玩家騙他的石子。</param>
-    public static LooseStone Spawn(Vector3 pos, Vector3 velocity, Collider ignore, bool knockedLoose = false)
+    /// <param name="fromSlingshot">彈弓射出的：飛行中第一次碰到巨人算打中他（宙斯法則）。</param>
+    public static LooseStone Spawn(Vector3 pos, Vector3 velocity, Collider ignore, bool knockedLoose = false, bool fromSlingshot = false)
     {
         var go = new GameObject("LooseStone");
         go.transform.position = pos;
         var stone = go.AddComponent<LooseStone>();
+        stone.fromSlingshot = fromSlingshot;
         stone.Build(velocity, ignore, knockedLoose);
         all.Add(stone);
         return stone;
@@ -71,9 +76,20 @@ public class LooseStone : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
+        hitSomething = true;
         var pail = collision.collider.GetComponentInParent<MilkPail>();
         if (pail != null)
             pail.Knock(transform.position);
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (!fromSlingshot || hitSomething || other.GetComponentInParent<BlindCyclops>() == null)
+            return;
+        hitSomething = true;
+        CyclopsHits.Report(transform.position);
+        // 打中後掉在他腳邊。
+        body.linearVelocity = new Vector3(0f, -1f, 0f);
     }
 
     void OnDestroy() => all.Remove(this);
