@@ -65,6 +65,10 @@ canvas#cv { position: fixed; inset: 0; display: block; width: 100%; height: 100%
 #phase .bass { position: absolute; top: -3px; width: 4px; height: 14px; margin-left: -2px; background: var(--bronze); border-radius: 2px; }
 #title { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-family: var(--display); font-size: 14px; letter-spacing: .14em; color: var(--dim); text-shadow: 0 1px 3px #000; }
 #title b { display: block; color: var(--ash); font-size: 18px; font-weight: 600; }
+#title .diff { display: inline-block; margin-top: 4px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 3px; font-family: var(--text); font-size: 11px; letter-spacing: .06em; color: var(--ash); background: rgba(12, 9, 7, .55); }
+#title .diff.hard { border-color: var(--danger); color: #f0a090; }
+#title .diff.easy { border-color: var(--still); color: var(--still); }
+#title .diff.dyn { border-color: var(--fire); }
 #warn { left: 50%; top: 58%; transform: translateX(-50%); font-size: 20px; font-family: var(--display); color: var(--warn); text-shadow: 0 1px 3px #000, 0 0 10px #000; text-align: center; white-space: nowrap; }
 #warn .k, #hint .k { display: inline-block; border: 1px solid currentColor; padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: .8em; font-family: var(--text); }
 #hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 16px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(680px, calc(100vw - 32px)); }
@@ -88,6 +92,16 @@ canvas#cv { position: fixed; inset: 0; display: block; width: 100%; height: 100%
 .keys dt { color: var(--fire); white-space: nowrap; }
 .keys dd { margin: 0; min-width: 0; }
 label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.opts { display: grid; gap: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--line); }
+.seg button { border: 0; border-right: 1px solid var(--line); padding: 7px 18px; color: var(--dim); background: transparent; font-size: 15px; }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--fire); color: #1a1008; font-weight: 500; }
+.seg button.on[data-diff="hard"] { background: var(--danger); color: #fff3ee; }
+.seg button.on[data-diff="easy"] { background: var(--still); color: #0c1424; }
+.optrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.optrow .label { color: var(--fire); font-size: 14px; white-space: nowrap; }
+#diffDesc { min-height: 1.6em; }
 input { accent-color: var(--fire); }
 .row { display: flex; flex-wrap: wrap; gap: 10px; }
 button { font: inherit; font-size: 16px; background: transparent; color: var(--ash); border: 1px solid var(--fire); padding: 9px 18px; cursor: pointer; }
@@ -103,7 +117,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="edgeL"></div><div class="hud" id="edgeR"></div><div class="hud" id="edgeC"></div>
 <div class="hud" id="tags"></div>
 <div class="hud" id="cross"><i></i><i></i><i></i><i></i></div>
-<div class="hud" id="title"><b>大廳復仇</b><span id="left">頭目 4 名</span></div>
+<div class="hud" id="title"><b>大廳復仇</b><span id="left">頭目 4 名</span><br><span class="diff" id="diffHud">標準・3 拍</span></div>
 <div class="hud" id="phase"><span>節奏（藍＝空檔，金＝低音拍）</span><div class="track"><div class="fill"></div><div class="gapw"></div></div></div>
 <div class="hud" id="status">
   <div class="row" id="hp"></div>
@@ -131,7 +145,19 @@ button:hover { filter: brightness(1.12); }
       <dt>W A S D／E</dt><dd>在門檻前走動／撿起地上的箭（箭只有 12 支）</dd>
       <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
-    <label><input type="checkbox" id="oPhase" checked> 顯示節奏條（視覺輔助）</label>
+    <div class="opts">
+      <div class="optrow">
+        <span class="label">難度</span>
+        <div class="seg" id="diffSeg" role="radiogroup" aria-label="難度">
+          <button type="button" data-diff="easy" role="radio" aria-checked="false">輕鬆</button>
+          <button type="button" data-diff="normal" role="radio" aria-checked="true" class="on">標準</button>
+          <button type="button" data-diff="hard" role="radio" aria-checked="false">殘酷</button>
+        </div>
+      </div>
+      <p class="dim" id="diffDesc"></p>
+      <label><input type="checkbox" id="oDynamic"> 越危險越快：每倒一名頭目，一輪就少一個低音拍（最短 2 拍）<span class="dim" id="dynNote"></span></label>
+      <label><input type="checkbox" id="oPhase" checked> 顯示節奏條（視覺輔助）</label>
+    </div>
     <div class="row"><button class="primary" id="btnStart">關上門，開始</button></div>
     <p class="dim">建議戴耳機。所有聲音都是即時合成。</p>
   </div>
@@ -339,6 +365,7 @@ const V = { yaw: 0, pitch: -.04 };
 const keys = {};
 let pend = {};
 let showPhase = true;
+let difficulty = 'normal', dynamic = false;   // 開場字卡選的；重來（R）沿用，回到開場可以再選
 let lastFrame = performance.now();
 let paused = false, pausedAt = 0;   // Esc 暫停；pausedAt：解鎖觸發暫停的時刻（同一下 Esc 不立刻又繼續）
 const hintState = { tele: false, shot: false, shown: 0 };
@@ -350,24 +377,52 @@ function msg(text, color) {
   $('msgs').appendChild(d); setTimeout(() => d.remove(), 4100);
   while ($('msgs').children.length > 3) $('msgs').firstChild.remove();
 }
-function buildHud() {
-  $('hp').innerHTML = '<span>生命</span>' + Array.from({ length: K.HP }, () => '<b></b>').join('');
-  $('quiver').innerHTML = Array.from({ length: K.ARROWS }, () => '<b></b>').join('');
+// HUD 依這一局的常數（KT = game.T）；節奏條與低音圓點依目前循環的長度（動態模式下每輪可能不同）
+function buildHud(KT) {
+  $('hp').innerHTML = '<span>生命</span>' + Array.from({ length: KT.HP }, () => '<b></b>').join('');
+  $('quiver').innerHTML = Array.from({ length: KT.ARROWS }, () => '<b></b>').join('');
+  setPhaseBar(KT, KT.CYCLE);
+}
+function setPhaseBar(KT, len) {
+  const beats = Math.max(1, Math.round(len / KT.BASS_PERIOD));
   const tr = $('phase').querySelector('.track');
   tr.querySelectorAll('.bass').forEach(b => b.remove());
-  for (let i = 0; i < 3; i++) { const b = document.createElement('div'); b.className = 'bass'; b.style.left = ((K.BASS_OFFSET + i * K.BASS_PERIOD) / K.CYCLE * 100) + '%'; tr.appendChild(b); }
-  tr.querySelector('.gapw').style.width = (K.GAP_LEN / K.CYCLE * 100) + '%';
+  for (let i = 0; i < beats; i++) { const b = document.createElement('div'); b.className = 'bass'; b.style.left = ((KT.BASS_OFFSET + i * KT.BASS_PERIOD) / len * 100) + '%'; tr.appendChild(b); }
+  tr.querySelector('.gapw').style.width = (KT.GAP_LEN / len * 100) + '%';
+  $('beat').innerHTML = Array.from({ length: beats }, () => '<b></b>').join('');
+  updateDiffHud(KT, len);
 }
-buildHud();
+const DIFF_DESC = {
+  easy: '4 拍一輪（9.6 秒）・閃避窗口寬・求婚者每輪只出手一次・箭 14・生命 4',
+  normal: '3 拍一輪（7.2 秒）・倒下 2 名頭目後每輪出手兩次・箭 12・生命 3',
+  hard: '2 拍一輪（4.8 秒）・閃避窗口窄・倒下 1 名頭目就每輪出手兩次・箭 10・生命 2・鼓聲裡放箭更不準'
+};
+function updateDiffHud(KT, len) {
+  const el = $('diffHud'), label = (Rules.DIFFICULTY[difficulty] || {}).label || '標準';
+  const beats = Math.round(len / KT.BASS_PERIOD);
+  el.textContent = label + (dynamic ? '・越危險越快' : '') + '・' + beats + ' 拍';
+  el.className = 'diff ' + difficulty + (dynamic ? ' dyn' : '');
+}
+function setDifficulty(d) {
+  difficulty = Rules.DIFFICULTY[d] ? d : 'normal';
+  $('diffSeg').querySelectorAll('button').forEach(b => { const on = b.dataset.diff === difficulty; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  $('diffDesc').textContent = DIFF_DESC[difficulty];
+  $('dynNote').textContent = difficulty === 'hard' ? '（殘酷本來就是 2 拍，開了也不會更快）' : '';
+  updateDiffHud(Rules.constantsFor(difficulty), Rules.constantsFor(difficulty).CYCLE);
+}
 
 function startGame() {
   if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
   if (actx.state === 'suspended') actx.resume();
   const t0 = actx.currentTime + 0.4;
-  game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0, hints: hintsCarry });
+  game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0, hints: hintsCarry, difficulty, dynamic });
   hintsCarry = game.hints; ladder = null; laterCues.length = 0;
-  if (!audio) audio = AudioMod.createAudio(actx, { t0, cycle: K.CYCLE, gap: K.GAP_LEN, bassPeriod: K.BASS_PERIOD, bassOffset: K.BASS_OFFSET });
-  else audio.setClock({ t0, cycle: K.CYCLE, gap: K.GAP_LEN });
+  const KT = game.T;
+  // 聲音層的循環由規則給（cycleAt）：動態模式下每個循環長度不同，聲音照規則的循環表排
+  const cycleAt = t => (game ? Rules.cycleOf(game, t) : null);
+  if (!audio) audio = AudioMod.createAudio(actx, { t0, cycle: KT.CYCLE, gap: KT.GAP_LEN, bassPeriod: KT.BASS_PERIOD, bassOffset: KT.BASS_OFFSET, cycleAt });
+  else audio.setClock({ t0, cycle: KT.CYCLE, gap: KT.GAP_LEN, cycleAt });
+  buildHud(KT);
   buildFigures(game);
   V.yaw = 0; V.pitch = -.04;
   pend = {};
@@ -386,7 +441,7 @@ function setHint(h) { $('hint').innerHTML = h || ''; }
 const nameOf = id => { const s = game.suitors.find(x => x.id === id); return s ? (s.leader ? s.title + s.name : '一名求婚者') : ''; };
 function onEvent(e) {
   if (e.type === 'attack_warn') e.pan = panOf(e.x, e.z);
-  if (audio && e.type !== 'hint') audio.cue(e.type, null, e);
+  if (audio && e.type !== 'hint' && e.type !== 'cycle') audio.cue(e.type, null, e);
   const f = e.by ? figs.get(e.by) : e.id ? figs.get(e.id) : null;
   switch (e.type) {
     case 'shoot': flyArrow(e); if (!e.gap) msg('鼓聲裡放箭：手在晃，弓弦聲也暴露了你的位置', 'var(--warn)'); else hintState.shot = true; break;
@@ -410,6 +465,7 @@ function onEvent(e) {
     case 'surrender': for (const s of game.suitors) if (!s.down) { const g = figs.get(s.id); if (g) g.kneel = 0.001; } break;
     case 'win': onWin(); break;
     case 'fall': onFail(); break;
+    case 'cycle': setPhaseBar(game.T, e.len); if (dynamic && e.len < (game.cycles[game.cycles.length - 2] || e).len) msg(`鼓聲更急了：一輪只剩 ${e.beats} 拍`, 'var(--fire)'); break;
   }
 }
 // 暗示階梯：第 2 階一行文字、第 3 階加按鍵；第 1 階（或成功退回）收起同一個機制的文字
@@ -446,10 +502,10 @@ function onFail() {
 // 箭的飛行：從弓到命中點（或落點），0.15 秒
 function flyArrow(e) {
   const P = game.player;
-  const from = new THREE.Vector3(P.x + .2, K.EYE_Y - .15, P.z - .3);
+  const from = new THREE.Vector3(P.x + .2, game.T.EYE_Y - .15, P.z - .3);
   let to;
   if (e.target) { const q = Rules.suitorPos(game, game.suitors.find(s => s.id === e.target), game.time); to = new THREE.Vector3(q.x, 1.2, q.z); }
-  else { const fw = Rules.forward(e.yaw); const d = 9; to = new THREE.Vector3(P.x + fw.x * d, K.EYE_Y + Math.tan(e.pitch) * d, P.z + fw.z * d); }
+  else { const fw = Rules.forward(e.yaw); const d = 9; to = new THREE.Vector3(P.x + fw.x * d, game.T.EYE_Y + Math.tan(e.pitch) * d, P.z + fw.z * d); }
   const m = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .8, 4), MB(0xe8d8b8));
   scene.add(m);
   transient.push({ mesh: m, from, to, t0: performance.now(), dur: 150, kind: 'arrow' });
@@ -639,15 +695,16 @@ function updateHud(t) {
   $('hp').querySelectorAll('b').forEach((b, i) => b.classList.toggle('on', i < P.hp));
   const qb = $('quiver').querySelectorAll('b');
   qb.forEach((b, i) => b.classList.toggle('off', i >= P.arrows));
-  $('qn').textContent = P.arrows > K.ARROWS ? P.arrows : P.arrows + ' 支箭' + (game.floorArrows.length ? `（地上 ${game.floorArrows.length}）` : '');
-  $('breath').firstElementChild.style.width = ((1 - P.breathT / K.BREATH_MAX) * 100) + '%';
+  $('qn').textContent = P.arrows > game.T.ARROWS ? P.arrows : P.arrows + ' 支箭' + (game.floorArrows.length ? `（地上 ${game.floorArrows.length}）` : '');
+  $('breath').firstElementChild.style.width = ((1 - P.breathT / game.T.BREATH_MAX) * 100) + '%';
   $('left').textContent = `頭目還剩 ${Rules.leadersLeft(game)} 名`;
   // 忒勒馬科斯
   const T = game.tele, up = T.until >= t && t >= T.coolUntil, cool = t < T.coolUntil;
   $('tele').classList.toggle('up', up); $('tele').classList.toggle('cool', cool);
   $('teleState').textContent = cool ? `盾被撞開，${Math.ceil(T.coolUntil - t)} 秒後才能再舉` : up ? '盾舉著（下一擊他會擋）' : '跟著低音按 Q';
-  const bi = ((Math.round((t - game.bass.anchor) / game.bass.period) % 3) + 3) % 3;
+  // 低音圓點：這一輪的第幾拍（圓點數 = 這一輪的拍數）
   const bb = Rules.bassBeatNear(t, game.bass.anchor, game.bass.period);
+  const bi = Math.round((bb.beat - cy.start - game.T.BASS_OFFSET) / game.bass.period);
   $('beat').querySelectorAll('b').forEach((b, i) => b.classList.toggle('now', i === bi && Math.abs(bb.off) < .2));
   // 節奏條
   $('phase').hidden = !showPhase;
@@ -785,6 +842,9 @@ $('btnRetry').onclick = startGame;
 $('btnAgain').onclick = startGame;
 $('btnResume').onclick = resume;
 $('oPhase').onchange = e => { showPhase = e.target.checked; };
+$('oDynamic').onchange = e => { dynamic = e.target.checked; setDifficulty(difficulty); };
+$('diffSeg').querySelectorAll('button').forEach(b => { b.onclick = () => setDifficulty(b.dataset.diff); });
+setDifficulty('normal');
 const NAV = window.OdysseyNav;
 const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
 document.querySelectorAll('.btnIntro').forEach(b => { b.onclick = backToIntro; });
@@ -795,7 +855,8 @@ document.querySelectorAll('.btnHub').forEach(b => {
 
 showPreview();
 
-window.VengeanceDebug = { pause, resume, backToIntro, get paused() { return paused; }, get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
+window.VengeanceDebug = { pause, resume, backToIntro, setDifficulty, get difficulty() { return difficulty; }, get dynamic() { return dynamic; }, set dynamic(v) { dynamic = !!v; $('oDynamic').checked = dynamic; setDifficulty(difficulty); },
+  get paused() { return paused; }, get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
 requestAnimationFrame(loop);
 })();
 </script>

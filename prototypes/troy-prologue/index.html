@@ -973,8 +973,9 @@ function readInput() {
     mx: 0, mz: 0,
     breath: k('Space'),
     dash: !!pend.dash, takedown: !!pend.takedown, calm: !!pend.calm,
-    // 按下 Q 的那一刻（音訊時鐘，扣掉輸出延遲＝玩家聽到的時間）；規則有 calmAt 就用它判定，不用幀時間
-    calmAt: pend.calmAt,
+    // 按鍵的那一刻（音訊時鐘，扣掉輸出延遲＝玩家聽到的時間）；規則用 actAt ?? game.time 判定衝刺、暗殺、門閂、安撫
+    // calmAt 是舊欄位名，和 actAt 同值，規則還在讀的話照用
+    actAt: pend.actAt, calmAt: pend.calmAt,
     interact: k('KeyE'),
   };
   // 規則要世界座標的移動方向：前方 (−sin yaw, −cos yaw)、右方 (cos yaw, −sin yaw)
@@ -1133,7 +1134,20 @@ const VIS = {
 };
 // 選單改變時立即生效：同步給規則的 visualAidMode（執行中可以改）
 $('oAid').addEventListener('change', () => { if (game && 'visualAidMode' in game) game.visualAidMode = $('oAid').value; });
-const bellG = x => { const d = (x - .5) / .22; return Math.exp(-d * d); };   // 和聲音層同一條鐘形增益
+// V1：拍點音量、層數、每層拍數一律從規則讀（規則是唯一來源）；規則沒有對應函式時才用備援公式
+const layerGainOf = (k, p, hunted) => {
+  if (typeof Rules.layerGain === 'function') { try { return Rules.layerGain(k, p, !!hunted, K()); } catch (e) {} }
+  const L = num(K().RISSET_LAYERS, 4), d = ((k + p) / L - .5) / num(K().BELL_SIGMA, .22); return Math.exp(-d * d);
+};
+const layerCount = hunted => {                                                      // 追殺時多一層（第 5 層）
+  if (typeof Rules.layerCount === 'function') { try { const v = Rules.layerCount(!!hunted, K()); if (Number.isFinite(v)) return v; } catch (e) {} }
+  return hunted ? num(K().HUNT_LAYERS, num(K().RISSET_LAYERS, 4) + 1) : num(K().RISSET_LAYERS, 4);
+};
+const layerBeatsOf = k => {
+  if (typeof Rules.layerBeats === 'function') { try { const v = Rules.layerBeats(k, K()); if (Number.isFinite(v)) return v; } catch (e) {} }
+  return num(K().RISSET_M, 7) * Math.pow(2, k);
+};
+const beatMinGain = () => num(K().BEAT_MIN_GAIN, .02);
 const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 function aidTarget() {
   const m = $('oAid').value;
@@ -1157,29 +1171,34 @@ function collectBeats(t) {
   const out = [], c = (game && game.cycle) || {}, T = num(c.T, curT, 10);
   const prev = VIS.prevT, p = visPhase(t), pPrev = VIS.prevP, iPrev = VIS.prevI;
   VIS.prevT = t; VIS.prevP = p; VIS.prevI = c.index;
-  if (prev == null || !(t > prev) || t - prev > .5 || visBlind()) return out;
+  // V2：盲區那一幀不再整幀回空——區間 [上一幀, 這一幀) 交給規則，盲區內的拍由 beatsBetween 自己略過，
+  // 盲區結束那一幀內已經響過的拍（通常是盲區後最響的那拍）就補得到。測試用的強制盲區仍整幀回空。
+  if (prev == null || !(t > prev) || t - prev > .5 || VIS.force.blind) return out;
+  const hunted = !!(game && game.hunted);
   if (typeof Rules.beatsBetween === 'function') {
     let list = null; try { list = Rules.beatsBetween(prev, t, game); } catch (e) { list = null; }
     if (Array.isArray(list)) {
       for (const b of list) {
         const o = typeof b === 'number' ? { t: b } : (b || {});
+        if (o.tail) continue;                                   // 假驟降的金屬尾音極輕，畫面不跳
         const k = num(o.k, o.layer, 2), bp = Number.isFinite(o.p) ? o.p : p;
-        out.push({ k, p: bp, g: num(o.g, o.gain, bellG((k + bp) / 4)), T });
+        out.push({ k, p: bp, g: num(o.g, o.gain, layerGainOf(k, bp, hunted)), T });
       }
       return out;
     }
   }
-  // 相位估：第 k 層每循環 7·2^k 拍，第 n 拍落在 p = log2(1 + n / Mk)；盲區內不算
-  if (pPrev == null || VIS.force.p != null) return out;
+  // 相位估（規則沒有 beatsBetween 時的備援）：第 k 層每循環 layerBeats(k) 拍，第 n 拍落在 p = log2(1 + n / Mk)；
+  // 盲區內不算（假驟降那一輪開頭照響）；追殺時多一層；音量門檻用規則的 BEAT_MIN_GAIN
+  if (pPrev == null || VIS.force.p != null || visBlind()) return out;
   const wrapped = (iPrev != null && c.index != null && c.index !== iPrev) || p < pPrev - .5;
   const segs = wrapped ? [[pPrev, 1], [0, p]] : p > pPrev ? [[pPrev, p]] : [];
-  const BL = num(K().BLIND_LEN, K().BLIND, .6);
-  for (const [a, b] of segs) for (let k = 0; k < 4; k++) {
-    const Mk = 7 * Math.pow(2, k);
+  const BL = num(K().BLIND_LEN, K().BLIND, .6), nL = layerCount(hunted), gMin = beatMinGain(), fake = !!c.fake;
+  for (const [a, b] of segs) for (let k = 0; k < nL; k++) {
+    const Mk = layerBeatsOf(k);
     const nA = Math.ceil(Mk * (Math.pow(2, a) - 1) - 1e-9), nB = Math.ceil(Mk * (Math.pow(2, b) - 1) - 1e-9) - 1;
     for (let n = nA; n <= nB; n++) {
-      const bp = Math.log2(1 + n / Mk); if (bp * T < BL) continue;
-      const g = bellG((k + bp) / 4); if (g < .05) continue;
+      const bp = Math.log2(1 + n / Mk); if (!fake && bp * T < BL) continue;
+      const g = layerGainOf(k, bp, hunted); if (g < gMin) continue;
       out.push({ k, p: bp, g, T });
     }
   }
@@ -1252,7 +1271,7 @@ function visFrame(dt, floorY, playing) {
   $('chill').style.opacity = (fz * .32).toFixed(3);
   // 隨拍：拍子越快振幅越小（每拍振幅 ∝ 1/√每秒拍數），但更頻繁
   for (const b of VIS.beats) {
-    const rate = 7 * Math.pow(2, b.k) * Math.LN2 * Math.pow(2, b.p) / b.T;
+    const rate = layerBeatsOf(b.k) * Math.LN2 * Math.pow(2, b.p) / b.T;      // 第 k 層在相位 p 的每秒拍數 = Mk·ln2·2^p ÷ T
     const amp = clamp(b.g, 0, 1) * clamp(Math.sqrt(1.1 / rate), .28, 1);
     VIS.pulse = Math.min(1.3, VIS.pulse + amp * aid);
     if (b.g > .3) VIS.rate += (rate - VIS.rate) * .4;
@@ -1495,11 +1514,11 @@ window.addEventListener('keydown', e => {
   if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
   if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
   if (paused || e.repeat || was) return;
+  // 按鍵當下的音訊時間（扣掉輸出延遲＝玩家聽到的時間）：衝刺、暗殺、門閂、安撫的時間判定都用它，不用幀時間
+  const isAct = e.code === 'KeyE' || e.code === 'KeyQ' || e.code === 'ShiftLeft' || e.code === 'ShiftRight';
+  if (isAct && actx) pend.actAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
   if (e.code === 'KeyE') pend.takedown = true;          // 點一下＝暗殺事件；按住的狀態另外以 interact 送出
-  if (e.code === 'KeyQ') {
-    pend.calm = true;
-    if (actx) pend.calmAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
-  }
+  if (e.code === 'KeyQ') { pend.calm = true; pend.calmAt = pend.actAt; }
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') pend.dash = true;
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -1561,7 +1580,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW };
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats };   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>

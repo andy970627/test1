@@ -11,7 +11,8 @@
  *     讓慢低音最清楚；追殺時略提高。所有音量變化都用 ctx.currentTime 排程的 ramp。
  *
  * Risset 節奏【改編】：
- *   - 4 層打擊（k = 0..3），每層在一個循環內速度從 v·2^k 指數加速到 v·2^(k+1)。
+ *   - 4 層打擊（k = 0..3，層數、M、σ、門檻全部讀 RissetRules.T），每層在一個循環內速度從 v·2^k 指數加速到 v·2^(k+1)。
+ *     追殺時規則多給第 5 層（k = 4），5 層都走鐘形曲線（音量由 RissetRules.layerGain 決定，這裡不自己算）。
  *   - 節拍唯一來源是規則（設計文件 8.1、8.4）：循環長度 T 跟著危險程度變，聲音層不自己算相位，
  *     每次 update(state) 讀 state.cycle.anchor {t, p, T}，用 p(t) = anchor.p + (t − anchor.t) ÷ anchor.T 外推排程
  *     （另外由相鄰兩次 anchor 估 T 的變化率，外推更準；新 anchor 一到，已預排還沒響的拍偏差超過 1 ms 就取消重排）。
@@ -20,16 +21,20 @@
  *   - 第 k 層第 n 拍落在 p = log2(1 + n ÷ (M·2^k))，n = 0 .. M·2^k − 1。
  *     （速度 f(p) = f0·2^(k+p)，積分後拍數 = M·2^k·(2^p − 1)，M = f0·T ÷ ln2 取整數）
  *     所以每層每個循環剛好整數拍，p = 1 時第 k 層的速度、拍點和下一循環第 k+1 層 p = 0 完全接上。
- *   - 增益是「速度位置」x = (k + p) ÷ 4 的鐘形曲線：最慢的從無聲淡入、最快的淡出到無聲。
+ *   - 增益是「速度位置」x = (k + p) ÷ 層數 的鐘形曲線：最慢的從無聲淡入、最快的淡出到無聲。
+ *     每拍的實際響度和規則的 gain 成正比：不抖音量（只抖音色：頻率 ±3%），節奏匯流排也不隨 p 變。
  *   - 音色跟著 x 走（低鼓 → 框鼓 → 手拍 → 金屬敲擊），交接時音色也連續，聽起來一直加速卻不會變快。
  *   - 例外（遊戲要的）：p 從接近 1 跳回 0 的盲區（長度跟規則 BLIND_LEN 同值，目前 0.6 秒，以秒計、不隨 T 變）：
  *     不排拍、節奏匯流排（含殘響）壓到幾乎無聲，音樂層（夜風、低吟或自備音檔）也一起壓到約 −40 dB，聽得出「斷掉、空掉 → 現在可以動」。
  *     警戒時（規則的 panic）快速循環的盲區暫停，改在兩個低音拍正中央（規則決定；有 RissetRules.blindWindows 就用它）。
  *     預測的盲區用來精準排 gate；規則每幀給的 state.cycle.blind 是最後裁決，連續兩幀不一致就以規則為準強制靜音／打開。
- *   - p 越大，節奏匯流排越響（0.7 → 1.0），讓「越來越危險」聽得出來。
+ *   - 節奏匯流排的音量固定（RHYTHM_GAIN）：以前隨 p 從 0.7 漲到 1.0、交接掉回 0.7（−3.1 dB），假驟降時那 3 dB 就是接縫。
+ *     「越來越危險」交給拍點越來越密、音色往金屬走，以及音樂層（謝帕德音階本來就隨 p 上升）。
  *   - 假驟降（設計文件 8.5）：規則的 cycle.fake（這一輪開頭）／cycle.nextFake（下一次交接）為真時，那次交接照常排拍、
  *     不排盲區靜音（節奏、音樂、衛兵都不壓）、謝帕德音階不留空；規則也不會發 pre_blind。
- *     聽得出差別：最高層（金屬）不淡到全靜，交接前後留一絲極輕的金屬尾音（FAKE_TAIL_*），專心聽就不會上當。
+ *     聽得出差別：交接處多兩拍極輕的金屬尾音。尾音拍由規則給：beatsBetween(a, b, game, { includeFakeTail: true })
+ *     回傳 tail: true 的拍（k = 3 與 k = 4 各一拍，gain = T.FAKE_TAIL_GAIN），這裡只負責排程，不自己算。
+ *     交接必須無縫：除了尾音以外，交接前後的響度差 < 0.5 dB（匯流排不隨 p 變＋規則的層音量交接連續）。
  *
  * 聲音互動（設計文件 8.3）：腳步 step_masked／step_loud、安撫哼唱 calm_ok／calm_bad（低吟唱主題第 index 個音）、
  *   門閂 latch_step（里拉琴奏主題第 index 個音，8 音）、衛兵 3D 聽聲辨位（setListener＋每名衛兵一個 HRTF PannerNode，最多 6 名）。
@@ -57,12 +62,13 @@
     T: 10,             // 循環週期（秒），規則同值
     BASS_TAIL: 1.1,    // 低音拍的餘音長度（秒）：巡邏時離盲區開始不到這麼久的拍不排
     BLIND: 0.6,        // 盲區預設（秒）；實際值以規則為準：createAudio 的 opts.blind，或 update(state) 讀 state.T.BLIND_LEN
-    LAYERS: 4,         // 打擊層數
-    M: 7,              // 最慢層每循環拍數；f0 = M·ln2 ÷ T ≈ 0.485 拍/秒（29→58 BPM），最快層 233→466 BPM
-    BELL_SIGMA: 0.22,  // 鐘形曲線寬度（x 為 0..1）
-    MIN_GAIN: 0.02,    // 低於這個增益的拍不排
-    TENSION_LO: 0.7,   // 盲區後節奏匯流排起始增益
-    TENSION_HI: 1.0,   // p 接近 1 時
+    // 下面四個只是規則還沒載入時的備援預設；執行時一律讀 RissetRules.T（RISSET_LAYERS、RISSET_M、BELL_SIGMA、BEAT_MIN_GAIN）
+    LAYERS: 4,         // 打擊層數（備援）
+    M: 7,              // 最慢層每循環拍數（備援）；f0 = M·ln2 ÷ T ≈ 0.485 拍/秒（29→58 BPM），最快層 233→466 BPM
+    BELL_SIGMA: 0.22,  // 鐘形曲線寬度（備援；x 為 0..1）
+    MIN_GAIN: 0.02,    // 低於這個增益的拍不排（備援）
+    RHYTHM_GAIN: 1.0,  // 節奏匯流排固定增益：不隨 p 變，假驟降交接才無縫
+    TIMBRE_JITTER: 0.03, // 每拍音色抖動：所有頻率 ×(1 ± 3%)；音量不抖，實際響度 ∝ 規則 gain
     GATE_FLOOR: 0.03,  // 盲區時節奏匯流排殘留增益
     GATE_FALL: 0.08,   // 進盲區前的下滑時間（秒）
     GATE_RISE: 0.12,   // 出盲區後的回升時間（秒）
@@ -71,7 +77,6 @@
     TICK_MS: 25,       // 補排程間隔
     BASS_PERIOD: 2.4,  // 低音週期，規則同值
     BASS_BASE: 0.22,   // 巡邏時低音增益
-    HUNT_FLOOR: 0.55,  // 追殺時每層最低增益（所有層疊加）
     // 音樂層（合成與自備音檔共用）
     MUSIC_BLIND_FLOOR: 0.01,   // 盲區時音樂層增益（−40 dB）
     MUSIC_FALL: 0.05,          // 進盲區前的下滑時間（秒）
@@ -100,9 +105,7 @@
     LYRE_LEN: 1.8,             // 里拉琴撥弦長度（秒）
     LYRE_DECAY: 0.996,         // Karplus-Strong 每週期衰減
     LYRE_VEL: 0.09,            // 里拉琴音量
-    FAKE_TAIL_GAIN: 0.035,     // 假驟降的金屬尾音音量（約 −29 dB，相對最響的拍）
-    FAKE_TAIL_PRE: 0.5,        // 交接前多少秒起，最高層不再淡到全靜
-    FAKE_TAIL_LEN: 0.6,        // 交接後金屬尾音延續多少秒（逐漸變輕）
+    FAKE_TAIL_GAIN: 0.035,     // 假驟降的金屬尾音音量（備援；正本是規則 T.FAKE_TAIL_GAIN，尾音拍本身也由規則給）
     THEME_N0: 4,               // 主題第一個音最早落在第 3 層第幾拍；循環短時往後找，直到盲區＋回升之後
     // 跟隨規則節拍
     RESCHED_TOL: 0.001,        // 已預排的拍和新預測差超過這麼多秒就取消重排
@@ -175,7 +178,7 @@
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function frac(v) { return v - Math.floor(v); }
-  function bell(x) { var d = (x - 0.5) / C.BELL_SIGMA; return Math.exp(-d * d); }
+  function bell(x, sigma) { var d = (x - 0.5) / (sigma || C.BELL_SIGMA); return Math.exp(-d * d); }
   function log2(v) { return Math.log(v) / Math.LN2; }
 
   function phaseAt(t, T, t0) { return frac((t - t0) / T); }
@@ -230,9 +233,9 @@
     master.connect(comp);
 
     // 節奏：rhythmBus → 高通（警戒時讓出低頻給低音）→ 乾 / 殘響 / 失真 → gate → master
-    // gate 只管盲區（精準排程）；tension 管「越接近循環尾越響」（每個 tick 平滑跟著相位）
-    var tension = ctx.createGain(); tension.gain.value = C.TENSION_LO; tension.connect(master);
-    var gate = ctx.createGain(); gate.gain.value = 1; gate.connect(tension);
+    // gate 只管盲區（精準排程）；rhythmOut 是節奏匯流排的固定總增益（A1：不隨 p 變，假驟降交接才沒有接縫）
+    var rhythmOut = ctx.createGain(); rhythmOut.gain.value = C.RHYTHM_GAIN; rhythmOut.connect(master);
+    var gate = ctx.createGain(); gate.gain.value = 1; gate.connect(rhythmOut);
     var rhythmBus = ctx.createGain(); rhythmBus.gain.value = mute.rhythm ? 0 : 1;
     var rhythmHP = ctx.createBiquadFilter(); rhythmHP.type = 'highpass'; rhythmHP.frequency.value = 30; rhythmHP.Q.value = 0.5;
     rhythmBus.connect(rhythmHP);
@@ -264,6 +267,7 @@
 
     // ---------- 合成小工具 ----------
     var collect = null;                  // 不是 null 時，tone／noise 建出的音源都記進來（一拍可以整個取消）
+    var jit = 1;                         // 音色抖動：playHit 期間所有 tone／noise 的頻率乘這個值（A3：抖音色不抖音量）
     function env(param, t, peak, att, dec) {
       param.setValueAtTime(0.0001, t);
       param.exponentialRampToValueAtTime(Math.max(peak, 0.0002), t + att);
@@ -271,8 +275,8 @@
     }
     function tone(dest, t, type, f1, f2, glide, peak, att, dec) {
       var o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = type; o.frequency.setValueAtTime(f1, t);
-      if (f2 && f2 !== f1) o.frequency.exponentialRampToValueAtTime(f2, t + glide);
+      o.type = type; o.frequency.setValueAtTime(f1 * jit, t);
+      if (f2 && f2 !== f1) o.frequency.exponentialRampToValueAtTime(f2 * jit, t + glide);
       env(g.gain, t, peak, att, dec);
       o.connect(g); g.connect(dest); o.start(t); o.stop(t + att + dec + 0.05);
       if (collect) collect.push(o);
@@ -281,7 +285,7 @@
     function noise(dest, t, ftype, freq, q, peak, att, dec, rate) {
       var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
       s.buffer = noiseBuf; s.loop = true; if (rate) s.playbackRate.value = rate;
-      f.type = ftype; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+      f.type = ftype; f.frequency.setValueAtTime(freq * jit, t); f.Q.value = q;
       env(g.gain, t, peak, att, dec);
       s.connect(f); f.connect(g); g.connect(dest);
       var off = Math.random() * 1.5;
@@ -316,8 +320,10 @@
       var pos = clamp(x, 0, 1) * 4 - 0.5;           // 0..3 之間線性交叉
       var i0 = clamp(Math.floor(pos), 0, 3), i1 = clamp(i0 + 1, 0, 3), w = clamp(pos - i0, 0, 1);
       if (pos < 0) { i0 = i1 = 0; w = 0; }
+      jit = 1 + (Math.random() * 2 - 1) * C.TIMBRE_JITTER;    // 只抖音色（頻率），音量照 g
       if (1 - w > 0.05) INST[i0](dest, t, g * (1 - w));
       if (w > 0.05 && i1 !== i0) INST[i1](dest, t, g * w);
+      jit = 1;
     }
 
     var bassPending = [];                 // 已排程、還沒響的低音拍（重新對齊時取消舊網格）
@@ -539,8 +545,28 @@
     // 就用它；只有 beatsBetween(a, b, game) 時，拿一個 T = 1 的假循環問一次；都沒有或格式不對，用自己的公式。
     var R = opts.rules || null;
     function getRules() { if (!R && typeof self !== 'undefined' && self.RissetRules) R = self.RissetRules; return R; }
+    // 規則常數：優先用 update(state) 傳進來的 state.T，其次全域 RissetRules.T，都沒有才用本檔備援（A2）
+    function RK() { var Rr = getRules(); return (lastState && lastState.T && typeof lastState.T === 'object') ? lastState.T : (Rr && Rr.T) || null; }
+    // 層數：規則的 layerCount(hunted)（巡邏 4、追殺 5；追殺層數是 T.HUNT_LAYERS），都沒有才用備援
+    function layerCount(hunted) {
+      var Rr = getRules(), K = RK();
+      if (Rr && typeof Rr.layerCount === 'function') { try { var n = Rr.layerCount(!!hunted, K || undefined); if (isFinite(n) && n > 0) return n | 0; } catch (e) {} }
+      if (hunted && K && isFinite(K.HUNT_LAYERS) && K.HUNT_LAYERS > 0) return K.HUNT_LAYERS | 0;
+      var base = (K && isFinite(K.RISSET_LAYERS) && K.RISSET_LAYERS > 0) ? K.RISSET_LAYERS | 0 : C.LAYERS;
+      return hunted ? base + 1 : base;
+    }
+    function nLayers() { return layerCount(false); }
+    function ruleM() { var K = RK(); return (K && isFinite(K.RISSET_M) && K.RISSET_M > 0) ? K.RISSET_M | 0 : C.M; }
+    function minGain() { var K = RK(); return (K && isFinite(K.BEAT_MIN_GAIN)) ? +K.BEAT_MIN_GAIN : C.MIN_GAIN; }
+    // 第 k 層在相位 p 的音量：以規則的 layerGain 為準（追殺時 5 層都走鐘形），沒有規則才用備援鐘形
+    function beatGain(k, p, hunted) {
+      var Rr = getRules(), K = RK();
+      if (Rr && typeof Rr.layerGain === 'function') { try { var g = Rr.layerGain(k, p, hunted, K || undefined); if (isFinite(g)) return g; } catch (e) {} }
+      var nL = layerCount(hunted), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA;
+      return bell((k + p) / nL, sig * nLayers() / nL);         // 備援：層距隨層數縮，σ 同比例
+    }
     var tables = [], tabFromRules = false;
-    function ownTable(k, M) { var Mk = (M || C.M) * Math.pow(2, k), a = []; for (var n = 0; n < Mk; n++) a.push(log2(1 + n / Mk)); return a; }
+    function ownTable(k, M) { var Mk = (M || ruleM()) * Math.pow(2, k), a = []; for (var n = 0; n < Mk; n++) a.push(log2(1 + n / Mk)); return a; }
     function validTab(a) {
       if (!a || a.length < 2) return false;
       for (var i = 0; i < a.length; i++) if (!(isFinite(a[i]) && a[i] >= 0 && a[i] < 1) || (i && a[i] <= a[i - 1])) return false;
@@ -560,9 +586,9 @@
           if (out[0]) return out;
         }
         if (typeof Rr.beatsBetween === 'function') {
-          var fake = { time: 0, phase: 'play', alarm: 0, hunted: false, T: Rr.T || {},
+          var fake = { time: 0, phase: 'play', alarm: 0, hunted: true, T: Rr.T || {},   // hunted：連追殺的第 5 層一起問
                        cycle: { T: 1, targetT: 1, t0: 0, p: 0, index: 0, blind: false, anchor: { t: 0, p: 0, T: 1 } } };
-          var list = Rr.beatsBetween(0, 1 - 1e-9, fake) || [];
+          var list = Rr.beatsBetween(0, 1 - 1e-9, fake, { includeQuiet: true, includeBlind: true }) || [];
           out = []; for (k = 0; k < nk; k++) out.push([]);
           for (i = 0; i < list.length; i++) {
             var b = list[i]; if (!b) continue;
@@ -576,9 +602,9 @@
       return null;
     }
     function refreshTables() {
-      var nk = C.LAYERS + 1, rt = rulesTables(C.LAYERS) || [];
+      var nk = Math.max(layerCount(true), nLayers()), rt = rulesTables(nk) || [];   // 含追殺的額外層
       tabFromRules = !!rt[0];
-      var M0 = rt[0] ? rt[0].length : C.M;              // 追殺額外層（規則沒有）照規則的最慢層拍數擴展
+      var M0 = rt[0] ? rt[0].length : ruleM();          // 規則沒給的層照最慢層拍數擴展
       tables = [];
       for (var k = 0; k < nk; k++) tables.push(rt[k] || ownTable(k, M0));
     }
@@ -970,36 +996,51 @@
     }
     var hintSig = null;                      // 規則的 hintSignals(state)：可暗殺的衛兵、離盲區幾秒
 
-    // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排
+    // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排。
+    // 拍點時間用本檔的外推（tAt），音量用規則的 layerGain（A2），追殺時 5 層、音色位置 x = (k + p) ÷ 層數。
     function scheduleBeats(from, end, ws) {
-      var Pa = Pof(from), Pb = Pof(end), nL = C.LAYERS + 1;   // 第 LAYERS 層：追殺額外層，或假驟降的金屬尾音
+      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), gMin = minGain();   // 追殺 5 層、巡邏 4 層（規則決定）
+      if (tables.length < nL) refreshTables();
       for (var k = 0; k < nL; k++) {
         if (solo != null && k !== solo) continue;
         var tab = tables[k];
+        if (!tab) continue;
         for (var c = Math.floor(Pa); c <= Math.floor(Pb); c++) {
           for (var n = lowerBound(tab, Pa - c); n < tab.length && c + tab[n] < Pb; n++) {
             var key = 'b' + c + ':' + k + ':' + n;
             if (evs[key]) continue;
             var p = tab[n], P = c + p, t = tAt(P);
             if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;   // 盲區不排拍
-            var x = (k + p) / C.LAYERS, g;
-            if (k >= C.LAYERS) {
-              if (st.hunted) g = 0.4;                          // 追殺額外層
-              else if (fakeC[c] && t - tAt(c) < C.FAKE_TAIL_LEN) // 假驟降：交接後金屬尾音延續、逐漸變輕
-                g = C.FAKE_TAIL_GAIN * (1 - 0.6 * (t - tAt(c)) / C.FAKE_TAIL_LEN);
-              else continue;
-            } else {
-              g = bell(x); if (st.hunted) g = Math.max(g, C.HUNT_FLOOR);
-              // 假驟降：最高層（金屬）在交接前不淡到全靜，留一絲極輕的尾音
-              if (k === C.LAYERS - 1 && !st.hunted && fakeC[c + 1] && tAt(c + 1) - t < C.FAKE_TAIL_PRE) g = Math.max(g, C.FAKE_TAIL_GAIN);
-            }
-            if (g < C.MIN_GAIN) continue;
-            g *= 0.95 + Math.random() * 0.1;                  // 只抖音量，不抖時間
+            var x = (k + p) / nL, g = beatGain(k, p, st.hunted);
+            if (g < gMin) continue;                             // 音量不抖（A3）：實際響度 ∝ 規則 gain
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
             if (le) log.push(le);
             (function (x, g) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(x, g);
           }
         }
+      }
+      scheduleFakeTails(from, end);
+    }
+    // 假驟降的金屬尾音（A4）：規則 beatsBetween(..., { includeFakeTail: true }) 回傳 tail: true 的拍，這裡只排程。
+    // 規則的時間是線性外推；這裡用拍的 cycle/p 換成本檔外推的時間（和其他拍同一個時鐘），
+    // 循環編號用本檔累計相位對齊（規則的 index 和本檔的 c 可能差一個常數）。
+    function scheduleFakeTails(from, end) {
+      var Rr = getRules();
+      if (!lastState || !Rr || typeof Rr.beatsBetween !== 'function' || !lastState.cycle) return;
+      var list;
+      try { list = Rr.beatsBetween(from - 0.1, end + 0.1, lastState, { includeFakeTail: true }) || []; } catch (e) { return; }
+      var K = RK(), gTail = (K && isFinite(K.FAKE_TAIL_GAIN)) ? +K.FAKE_TAIL_GAIN : C.FAKE_TAIL_GAIN;
+      for (var i = 0; i < list.length; i++) {
+        var b = list[i];
+        if (!b || !b.tail || !isFinite(b.t)) continue;
+        var ph = isFinite(b.p) ? frac(b.p) : 0, c = Math.round(Pof(b.t) - ph);   // 交接處：整數相位附近
+        var P = c + ph, t = tAt(P), key = 'tail' + c + ':' + (b.k | 0) + ':' + (b.n | 0);
+        if (evs[key] || t < from || t >= end || gateR.forced) continue;
+        var g = isFinite(b.gain) ? +b.gain : gTail;
+        if (!(g > 0)) continue;
+        var le = log ? { type: 'beat', tail: true, k: b.k | 0, n: b.n | 0, c: c, t: t, p: ph, g: g } : null;
+        if (le) log.push(le);
+        (function (g) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, 1, tt, g); }, true, le); })(g);   // x = 1：純金屬
       }
     }
 
@@ -1045,8 +1086,6 @@
       if (dead) return;
       var ws = windowsBetween(now - 1, end + C.BASS_TAIL + 0.2);
       gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now); gateH.plan(ws, now);
-      // 越接近循環尾越響（0.7 → 1.0），平滑跟著相位
-      tension.gain.setTargetAtTime(C.TENSION_LO + (C.TENSION_HI - C.TENSION_LO) * frac(Pof(now + 0.05)), now, 0.06);
       var from = now + 0.004;
       scheduleBeats(from, end, ws);
       scheduleMusic(from, end);

@@ -247,7 +247,8 @@ if (expected.length) {
   const s = beatStats.risset;
   add('onset', '起音時間與規則拍點的誤差', s.n ? s.medianAbsMs != null && s.medianAbsMs <= TH.onsetMedianMs && s.hitRate30 >= TH.onsetHitRate : null,
     `Risset：中位 |誤差| ${s.medianAbsMs} ms、P90 ${s.p90AbsMs} ms、帶正負號中位 ${s.medianSignedMs} ms、±30 ms 命中 ${(s.hitRate30 * 100).toFixed(0)}%（${s.n} 拍）；` +
-    `低音：中位 ${beatStats.bass.medianAbsMs} ms、命中 ${beatStats.bass.hitRate30 == null ? '—' : (beatStats.bass.hitRate30 * 100).toFixed(0) + '%'}（${beatStats.bass.n} 拍）`,
+    `低音：中位 ${beatStats.bass.medianAbsMs} ms、命中 ${beatStats.bass.hitRate30 == null ? '—' : (beatStats.bass.hitRate30 * 100).toFixed(0) + '%'}（${beatStats.bass.n} 拍）` +
+    `；期望拍另含追殺第 5 層 ${expected.filter(b => b.hunt).length} 拍（顯著的 ${strong.filter(b => b.hunt).length}）、假驟降尾音 ${expected.filter(b => b.tail).length} 拍（極輕，不比對）`,
     `門檻：Risset 中位 |誤差| ≤ ${TH.onsetMedianMs} ms 且 ±30 ms 命中 ≥ ${TH.onsetHitRate * 100}%。正號＝聲音比規則晚。起音偵測解析度約 3 ms；殘響、多層同時響會讓偵測漏掉一些拍。`);
 }
 // 2b. 通用：偵測到的起音 vs 實際排程的 start(when)

@@ -26,16 +26,20 @@
  *   cycle.fake = 這一輪開頭的交接是假驟降（沒有盲區、感知照常）；cycle.nextFake = 下一次交接是假驟降
  *   （提早一整個循環決定，聲音才來得及不排靜音、不發 pre_blind）。警戒、追殺中不抽；追殺開始時取消已抽中的。
  *   Risset 拍點公式（從聲音層移過來，兩邊共用）：第 k 層第 n 拍在 p = log2(1 + n ÷ (M·2^k))，
- *   n = 0 .. M·2^k − 1；音量 = 鐘形曲線 bell((k + p) ÷ LAYERS)。
- *   腳步（第 8.3 節）：移動時每 STEP_GAP 秒一步；落在音量夠大的拍點 ±STEP_WIN 秒內 → 'step_masked'（不出聲），
- *   否則 'step_loud'，半徑 STEP_R 內的衛兵疑心 + SUSP_STEP。
+ *   n = 0 .. M·2^k − 1；音量 = 鐘形曲線 bell((k + p) ÷ 層數)，平常 4 層、追殺 5 層（σ 按層距等比例縮），
+ *   沒有固定底限，所以交接連續、各層音量和恆定，追殺時 Risset 錯覺照樣成立。
+ *   腳步（第 8.3 節，跟著鼓走）：起步那一步照 stepMasked 判（拍點 ±STEP_WIN 秒內、音量 ≥ MASK_GAIN → 'step_masked'，
+ *   否則 'step_loud'）；之後每一步對齊 nextStepAt 預測的下一個可聽拍（STEP_GAP × STEP_GAP_MIN 之後第一拍，被蓋過），
+ *   STEP_GAP × STEP_GAP_MAX 內沒拍就照時間落一步（出聲）。'step_loud' 時半徑 STEP_R 內的衛兵疑心 + SUSP_STEP。
+ *   盲區前沿：真盲區開始前 BLIND_LEAD_GRACE 秒內，移動、衝刺、暗殺照盲區規則（聽到預告就動不會被冤枉）；假驟降前沒有。
+ *   按鍵時間：衝刺、暗殺、門閂、安撫用 input.actAt（按鍵當下的音訊時間，畫面層給），沒有才用幀時間。
  *   低音拍點：anchor + k × BASS_PERIOD（k 為整數）。平常 anchor = t0；
  *   每次「新的一次起疑」開始時，anchor 重設為「當下 + BASS_LEAD」，讓第一拍在 1.5 秒後響
  *   （先讓玩家讀完提示）；CALM_TIMEOUT 12 秒內有 5 拍，對準 4 拍就成功，可以漏一拍。
  *   起疑那一幀 bass.nextBeat 就會更新。聲音模組每幀讀 bass.nextBeat／bass.anchor 排程即可。
  *   安撫判定時間：有 input.calmAt（按鍵當下的音訊時間減輸出延遲）就用它，沒有才用幀時間。
  *
- *   事件附帶欄位：step_* 帶 {x, z}；calm_ok／calm_bad 帶 index；latch_step 帶 index（0～7）。
+ *   事件附帶欄位：step_* 帶 {x, z, beatT（對齊到的拍時間，沒有 = null）}；calm_ok／calm_bad 帶 index；latch_step 帶 index（0～7）。
  *
  * 暗示階梯（設計文件 2026-11-07-hint-guidance.md 第 1、2.1 節）：game.hints[key] = {fails, level, lastFail}，
  *   key：breath 屏息（喘氣、最快時站著被聽到）｜blind 驟降（最快時亂動被發現）｜radius 感知範圍（慢時在火光圈裡走到起疑）｜
@@ -77,17 +81,20 @@
     CLOCK_MAX_GAP: 30,    // 兩幀相隔超過這麼多秒（分頁休眠）就不分段平滑，直接接上
     RISSET_LAYERS: 4,     // Risset 打擊層數（聲音層同值）
     RISSET_M: 7,          // 最慢層每循環拍數
-    BELL_SIGMA: 0.22,     // 層音量鐘形曲線寬度
+    BELL_SIGMA: 0.22,     // 層音量鐘形曲線寬度（4 層時；追殺 5 層時按層距等比例縮成 0.22 × 4/5）
     BEAT_MIN_GAIN: 0.02,  // 低於這個音量的拍不排、不算
-    HUNT_FLOOR: 0.55,     // 追殺時每層最低音量
-    HUNT_LAYER_GAIN: 0.4, // 追殺時額外第 5 層（k = 4）的音量
-    STEP_GAP: 0.45,       // 腳步間隔（秒）
+    HUNT_LAYERS: 5,       // 追殺時的層數（多一層 k = 4 純金屬）；5 層都走鐘形曲線，沒有固定底限，交接才連續（修 R1）
+    FAKE_TAIL_GAIN: 0.035, // 假驟降交接處的金屬尾音音量（約 −29 dB），beatsBetween({includeFakeTail}) 回傳 tail 拍用
+    STEP_GAP: 0.45,       // 腳步的基準間隔（秒）：腳步跟著鼓走，實際落在下一個可聽拍上
+    STEP_GAP_MIN: 0.6,    // 下一步最早在 STEP_GAP × 0.6 之後（不會因為拍很密而變成小跑）
+    STEP_GAP_MAX: 1.6,    // STEP_GAP × 1.6 內沒有可聽拍，就在那時落一步（這一步沒拍可蓋，會出聲）
     STEP_WIN: 0.08,       // 腳步落在拍點 ±0.08 秒內就被蓋過
     MASK_GAIN: 0.3,       // 只有音量 ≥ 0.3 的拍點蓋得住腳步
     STEP_R: 2.5,          // 不合拍腳步聲傳多遠
     SUSP_STEP: 0.2,       // 聽到一次不合拍腳步增加的疑心
     BLIND_LEN: 0.6,       // 盲區秒數（感知 = 0）：相位跳回 0 之後；警戒時是兩個低音拍正中央
     BLIND: 0.6,           // 舊名，等於 BLIND_LEN（畫面、聲音還在讀）；只改 BLIND_LEN 時會跟著改
+    BLIND_LEAD_GRACE: 0.15, // 真盲區開始前這麼多秒內，移動、衝刺、暗殺都照盲區規則處理（聽到預告就動的人不會被判 move_high）；假驟降前沒有寬限
     PRE_BLIND: 0.4,       // 盲區前幾秒發出 sfx 'pre_blind'（預告）
     FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉
     FAKE_FROM_ZONE: 3,    // 從第 3 區（窄巷）起才會出現
@@ -119,12 +126,12 @@
     CALM_GRACE: 3,        // 安撫或擺脫後，衛兵幾秒內不累積疑心
     HUNT_SPEED: 3.0,      // 追殺時衛兵速度
     CATCH_R: 1.0,         // 被追到 1 m 內 = 失敗
-    ESCAPE_STILL: 10,     // 躲在陰影裡不動多久擺脫（= 一整個循環）
+    ESCAPE_STILL: 10,     // 躲在陰影裡不動多少秒擺脫（以秒計；追殺循環 3 秒，約 3 個多循環，提示文字由這個常數生成）
     PATROL_SPEED: 1.2,    // 巡邏速度
     PATROL_PAUSE: 1.0,    // 到路線點停多久（×0.8～1.2 隨機）
     SEARCH_TURN: 2.0,     // 追到最後位置後原地張望的轉速 rad/s
     GATE_LOW_P: 0.5,      // 城門：p ≤ 0.5 時推門閂才安靜
-    GATE_NEED: 15,        // 需要累積的低頻推門秒數（每 1/8 發一次 latch_step）
+    GATE_NEED: 7,         // 需要累積的低頻推門秒數（每 1/8 發一次 latch_step）；城門區循環約 4.4 秒、每循環可推一半，約 3 個循環
     LATCH_R: 1.6,         // 離門閂多近才推得到
     LATCH_NOISE_GAP: 0.5, // 高頻時按住，每隔幾秒響一次門閂聲
     TRAPDOOR_R: 0.6,      // 木馬暗門觸發半徑
@@ -207,13 +214,21 @@
     for (let i = 0; i < Mk; i++) out.push(log2(1 + i / Mk));
     return out;
   }
-  /** 第 k 層在相位 p 的音量：bell((k + p) ÷ LAYERS)；追殺時至少 HUNT_FLOOR，額外層（k ≥ LAYERS）固定 HUNT_LAYER_GAIN。 */
+  /** 目前的 Risset 層數：平常 RISSET_LAYERS（4），追殺 HUNT_LAYERS（5）。 */
+  function layerCount(hunted, K) { K = K || T; return hunted ? (K.HUNT_LAYERS || K.RISSET_LAYERS + 1) : K.RISSET_LAYERS; }
+  /**
+   * 第 k 層在相位 p 的音量：bell((k + p) ÷ 層數)，σ 按層距等比例（BELL_SIGMA × RISSET_LAYERS ÷ 層數），
+   * 所以 4 層與 5 層的「層距 ÷ σ」一樣：各層音量和幾乎恆定（起伏 < 1%）、追殺開始時總音量不跳，
+   * 而且 p → 1 的第 k 層等於 p → 0 的第 k + 1 層（交接連續，Risset 錯覺在追殺時也成立）。
+   * 超出層數的層（平常的 k = 4）回 0。
+   */
   function layerGain(k, p, hunted, K) {
     K = K || T;
-    if (k >= K.RISSET_LAYERS) return K.HUNT_LAYER_GAIN;
-    const d = ((k + p) / K.RISSET_LAYERS - 0.5) / K.BELL_SIGMA;
-    const g = Math.exp(-d * d);
-    return hunted ? Math.max(g, K.HUNT_FLOOR) : g;
+    const L = layerCount(hunted, K);
+    if (k >= L || k < 0) return 0;
+    const sigma = K.BELL_SIGMA * K.RISSET_LAYERS / L;
+    const d = ((k + p) / L - 0.5) / sigma;
+    return Math.exp(-d * d);
   }
   /** 警戒時的盲區：低音第一拍之後，每兩拍正中央 BLIND_LEN 秒。回傳 {blind, k, from, to}（from/to 是目前或下一段）。 */
   function alertBlindAt(t, anchor, period, K) {
@@ -229,26 +244,41 @@
    * [a, b) 內的 Risset 拍點（依 game.cycle.anchor 外推），照時間排序。
    * 每個 {t（音訊時間）, k（層）, n, cycle（第幾個循環）, p（相位）, x（音色位置 (k+p)/LAYERS）, gain}。
    * 預設略過音量 < BEAT_MIN_GAIN 的拍，以及落在盲區的拍（一般：循環開頭 BLIND_LEN 秒；警戒：低音拍正中央）。
-   * opts：{includeBlind, includeQuiet, minGain}。game 只需要 {T, cycle:{anchor}, bass, panic, hunted}。
+   * 盲區用「時間落在哪一段 [開始, 開始 + BLIND_LEN)」判：本輪的開始取 anchor.start（和 updateClock 同一個基準；修 R2），
+   * 其他輪用外推的 p = 0 時刻。T 在循環內變過時，上一輪尾端外推出來、卻已經落進本輪盲區的拍，也照盲區略過。
+   * opts：{includeBlind, includeQuiet, minGain, includeFakeTail}。
+   *   includeFakeTail：標記為假驟降的循環，另外回傳交接處的金屬尾音 2 拍
+   *   {t（交接時刻）, k: 3 與 4, n, cycle, p, x, gain: FAKE_TAIL_GAIN, tail: true}（聲音層排尾音、錄音工具當期望拍）。
+   * game 只需要 {T, cycle:{anchor, fake, nextFake}, bass, panic, hunted}。
    */
   function beatsBetween(a, b, game, opts) {
     opts = opts || {};
     const K = (game && game.T) || T, c = game.cycle;
-    const an = c.anchor || { t: game.time || 0, p: c.p || 0, T: c.T || K.CYCLE, index: c.index || 0 };
+    const an = c.anchor || { t: game.time || 0, p: c.p || 0, T: c.T || K.CYCLE, index: c.index || 0, start: c.start };
     const u0 = (an.index != null ? an.index : (c.index || 0)) + an.p;
     const ua = u0 + (a - an.t) / an.T, ub = u0 + (b - an.t) / an.T;
     const hunted = !!game.hunted;
     const alert = !!(game.panic && game.panic.active) && !hunted;
-    const nL = K.RISSET_LAYERS + (hunted ? 1 : 0);
+    const nL = layerCount(hunted, K);
     const BL = blindLen(K);
     const aIdx = an.index != null ? an.index : (c.index || 0);
     const fakeCyc = (cyc) => (cyc === aIdx && !!c.fake) || (cyc === aIdx + 1 && !!c.nextFake);
+    /** 第 cyc 輪 p = 0 的音訊時間：本輪用 anchor.start，其他輪外推。 */
+    const startOf = (cyc) => (cyc === aIdx && Number.isFinite(an.start)) ? an.start : an.t + (cyc - u0) * an.T;
+    const curStart = startOf(aIdx);
+    /** 時間 t（屬於第 cyc 輪的拍）是否落在一般盲區（含假驟降例外）。 */
+    const inBlindAt = (t, cyc) => {
+      if (t >= curStart - 1e-9 && t - curStart < BL) return !fakeCyc(aIdx);          // 本輪的真盲區（updateClock 同一個算法）
+      if (cyc !== aIdx && t - startOf(cyc) < BL) return !fakeCyc(cyc);              // 其他輪：外推的開頭
+      return false;
+    };
     const minGain = opts.minGain != null ? opts.minGain : (opts.includeQuiet ? 0 : K.BEAT_MIN_GAIN);
     const out = [];
     if (!(ub > ua)) return out;
     for (let cyc = Math.floor(ua); cyc <= Math.floor(ub); cyc++) {
       const pa = Math.max(0, Math.min(1, ua - cyc)), pb = Math.max(0, Math.min(1, ub - cyc));
       if (pb <= pa) continue;
+      const t0c = startOf(cyc);
       for (let k = 0; k < nL; k++) {
         const Mk = layerBeats(k, K);
         const nA = Math.max(0, Math.floor(Mk * (Math.pow(2, pa) - 1)) - 1);
@@ -261,10 +291,18 @@
           if (gain < minGain) continue;
           if (!opts.includeBlind) {
             if (alert) { if (game.bass && alertBlindAt(t, game.bass.anchor, game.bass.period, K).blind) continue; }
-            else if (ph * an.T < BL && !fakeCyc(cyc)) continue;   // 假驟降：交接照常，開頭的拍照響
+            else if (inBlindAt(t, cyc)) continue;   // 假驟降：交接照常，開頭的拍照響
           }
-          out.push({ t, k, n, cycle: cyc, p: ph, x: (k + ph) / K.RISSET_LAYERS, gain });
+          out.push({ t, k, n, cycle: cyc, p: ph, x: (k + ph) / nL, gain });
         }
+      }
+      // 假驟降的金屬尾音：交接處 k = 3（上一輪最高層收尾）與 k = 4（新一輪的金屬餘韻）各一拍
+      if (opts.includeFakeTail && !alert && fakeCyc(cyc) && t0c >= a && t0c < b) {
+        const tails = [
+          { t: t0c, k: K.RISSET_LAYERS - 1, n: layerBeats(K.RISSET_LAYERS - 1, K), cycle: cyc - 1, p: 1 },
+          { t: t0c, k: K.RISSET_LAYERS, n: 0, cycle: cyc, p: 0 }
+        ];
+        for (const tl of tails) out.push(Object.assign(tl, { x: (tl.k + tl.p) / (K.RISSET_LAYERS + 1), gain: K.FAKE_TAIL_GAIN, tail: true }));
       }
     }
     out.sort((x, y) => x.t - y.t || x.k - y.k);
@@ -274,6 +312,26 @@
   function stepMasked(t, game) {
     const K = (game && game.T) || T;
     return beatsBetween(t - K.STEP_WIN - 1e-9, t + K.STEP_WIN + 1e-9, game, { minGain: K.MASK_GAIN }).length > 0;
+  }
+  /**
+   * 腳步跟著鼓走（審議 A 席：腳步掩護方向要對）。上一步在 lastT，下一步落在哪：
+   * 回傳 {t, beatT}：lastT + STEP_GAP × STEP_GAP_MIN 之後第一個可聽拍（音量 ≥ MASK_GAIN、不在盲區）；
+   * 到 lastT + STEP_GAP × STEP_GAP_MAX（再多 STEP_WIN 的餘裕）都沒有拍，就在 MAX 那時落一步（beatT = null，這一步會出聲）。
+   */
+  function nextStepAt(lastT, game) {
+    const K = (game && game.T) || T;
+    const lo = lastT + K.STEP_GAP * K.STEP_GAP_MIN, hi = lastT + K.STEP_GAP * K.STEP_GAP_MAX;
+    const bs = beatsBetween(lo, hi + K.STEP_WIN, game, { minGain: K.MASK_GAIN });
+    return bs.length ? { t: bs[0].t, beatT: bs[0].t } : { t: hi, beatT: null };
+  }
+  /** 時間 t 附近（±STEP_WIN）最近的可聽拍時間，沒有 = null（起步那一步的 beatT）。 */
+  function nearestMaskBeat(t, game) {
+    const K = (game && game.T) || T;
+    const bs = beatsBetween(t - K.STEP_WIN - 1e-9, t + K.STEP_WIN + 1e-9, game, { minGain: K.MASK_GAIN });
+    if (!bs.length) return null;
+    let best = bs[0];
+    for (const b of bs) if (Math.abs(b.t - t) < Math.abs(best.t - t)) best = b;
+    return best.t;
   }
   /** 視覺輔助強度：'on' = 1，'off' = 0，數字照用，'auto'：區 0、1 = 1，區 2 = 0.5，其後 0。 */
   function visualAidFor(zone, mode) {
@@ -304,47 +362,58 @@
   }
 
   // ---------- 提示（每個機制第一次出現時一行；畫面層可以覆寫 HINTS 改按鍵說法） ----------
-  const HINTS = {
-    breath: '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
-    blind: '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
-    trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
-    gasp: '憋太久，喘出聲了！屏息最多約 6 秒，節奏慢下來時記得換氣。',
-    dash: '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
-    panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，連續四次。',
-    hunted: '被發現了！快躲進陰影裡，一動也不動撐過一整個循環（約 10 秒）。被追到身邊就失敗。',
-    takedown: '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
-    gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
-    lockedExit: '還在被追，先甩掉追兵才能往前走。',
-    step: '腳步要踩在鼓點上，聲音才會被蓋過；亂踩的腳步，身邊的衛兵聽得到。',
-    alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
-    fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
-  };
+  // 文字裡的數字一律從常數生成（hintsFor(K)），改常數提示跟著變，不會「說一套做一套」（修 R3、審議 1.5 節第 2 項）。
+  /** 秒數的寫法：整數照印，小數去掉尾零（0.6、2.4、1.5）。 */
+  const num = (v) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
+  function hintsFor(K) {
+    K = K || T;
+    return {
+      breath: '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
+      blind: '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
+      trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
+      gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
+      dash: '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
+      panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。',
+      hunted: '被發現了！快躲進陰影裡，不動 ' + num(K.ESCAPE_STILL) + ' 秒。被追到身邊就失敗。',
+      takedown: '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
+      gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
+      lockedExit: '還在被追，先甩掉追兵才能往前走。',
+      step: '起步踩在鼓點上，之後腳步會自己跟著鼓走、被蓋過；離拍起步、或鼓很稀疏時走，身邊的衛兵聽得到。',
+      alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
+      fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
+    };
+  }
+  const HINTS = hintsFor(T);
   // ---------- 暗示階梯（設計文件 2026-11-07-hint-guidance.md 第 1、2.1 節）----------
   // 同一種失敗：第 1 次只有世界內暗示（聲音、畫面，畫面層與聲音層負責）；第 2 次發 level 2（text）；
-  // 第 3 次起發 level 3（text＋keys）；成功一次退回第 1 階。text 照設計文件 2.1 節「提示文字」欄。
-  const HINT_LADDER = {
-    breath: { name: '屏息', text: '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
-      keys: '按住 空白鍵 屏息，放開就換氣；最多撐約 6 秒，節奏慢下來就放開。' },
-    blind: { name: '驟降（盲區）', text: '「鼓聲一斷，就是你移動的時候。」',
-      keys: '鼓聲斷掉的那半秒才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' },
-    radius: { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他聽得到的範圍。」',
-      keys: '火光圈外才按 W A S D 移動；被照到時停下，或按住 空白鍵。' },
-    step: { name: '腳步合拍', text: '「踩著鼓點走，腳步聲會被蓋過。」',
-      keys: '靠近衛兵時，等鼓點密起來才按住 W A S D 走；鼓聲稀疏就放開、停下。' },
-    calm: { name: '警戒與安撫', text: '「別跟著亂掉的鼓聲快。聽最低的那個聲音，跟著它按 Q。」',
-      keys: '最低的那聲約 2.4 秒響一次，每響一聲按一下 Q，對準 4 次；不要連按。' },
-    takedown: { name: '衝刺與暗殺', text: '「鼓聲斷掉時，從背後靠近按 E。」',
-      keys: '用 W A S D 繞到他背後 1.5 公尺內，鼓聲一斷就按 E。' },
-    fake: { name: '假驟降', text: '「有時鼓聲只是換手，沒有那聲預告，就不要動。」',
-      keys: '沒聽到那聲預告的輕響，就不要按 W A S D；等下一次真的斷掉再走。' },
-    listen: { name: '3D 聽聲辨位', text: '「戴上耳機，聽聲音從哪邊來。」',
-      keys: '移動滑鼠（或拖曳畫面）轉身，把腳步聲轉到正前方。' },
-    latch: { name: '城門門閂', text: '「節奏慢的時候才推，快的時候放手。」',
-      keys: '站在門閂旁按住 E 推；節奏一快就放開 E，等慢下來再按住。' }
-  };
-  /** 暗示階梯第 level 階的文字：1 = 沒有文字（null），2 = 提示文字，3 = 提示文字＋按鍵說明。 */
-  function ladderText(key, level) {
-    const L = HINT_LADDER[key];
+  // 第 3 次起發 level 3（text＋keys）；成功一次退回第 1 階。text 照設計文件 2.1 節「提示文字」欄；keys 裡的數字從常數生成。
+  function hintLadderFor(K) {
+    K = K || T;
+    return {
+      breath: { name: '屏息', text: '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
+        keys: '按住 空白鍵 屏息，放開就換氣；最多撐約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來就放開。' },
+      blind: { name: '驟降（盲區）', text: '「鼓聲一斷，就是你移動的時候。」',
+        keys: '鼓聲斷掉的那 ' + num(K.BLIND_LEN) + ' 秒才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' },
+      radius: { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他聽得到的範圍。」',
+        keys: '火光圈外才按 W A S D 移動；被照到時停下，或按住 空白鍵。' },
+      step: { name: '腳步合拍', text: '「踩著鼓點走，腳步聲會被蓋過。」',
+        keys: '起步踩在鼓點上，然後按住 W A S D 不放、跟著鼓走，腳步會自己落在鼓點上；離拍起步或鼓很稀疏時才會出聲。' },
+      calm: { name: '警戒與安撫', text: '「別跟著亂掉的鼓聲快。聽最低的那個聲音，跟著它按 Q。」',
+        keys: '最低的那聲約 ' + num(K.BASS_PERIOD) + ' 秒響一次，每響一聲按一下 Q，對準 ' + num(K.CALM_NEED) + ' 次（' + num(K.CALM_TIMEOUT) + ' 秒內，漏一拍沒關係）；不要連按。' },
+      takedown: { name: '衝刺與暗殺', text: '「鼓聲斷掉時，從背後靠近按 E。」',
+        keys: '用 W A S D 繞到他背後 ' + num(K.TAKEDOWN_R) + ' 公尺內，鼓聲一斷就按 E。' },
+      fake: { name: '假驟降', text: '「有時鼓聲只是換手，沒有那聲預告，就不要動。」',
+        keys: '沒聽到那聲預告的輕響，就不要按 W A S D；等下一次真的斷掉再走。' },
+      listen: { name: '3D 聽聲辨位', text: '「戴上耳機，聽聲音從哪邊來。」',
+        keys: '移動滑鼠（或拖曳畫面）轉身，把腳步聲轉到正前方。' },
+      latch: { name: '城門門閂', text: '「節奏慢的時候才推，快的時候放手。」',
+        keys: '站在門閂旁按住 E 推；節奏一快就放開 E，等慢下來再按住。' }
+    };
+  }
+  const HINT_LADDER = hintLadderFor(T);
+  /** 暗示階梯第 level 階的文字：1 = 沒有文字（null），2 = 提示文字，3 = 提示文字＋按鍵說明。ladder 不給就用預設常數的。 */
+  function ladderText(key, level, ladder) {
+    const L = (ladder || HINT_LADDER)[key];
     if (!L || level < 2) return null;
     const t = L.text.replace(/^「|」$/g, '');
     return level >= 3 ? t + '　' + L.keys : t;
@@ -526,12 +595,16 @@
     let blindHintGate = null; // {i, t}：進區 1 時的循環與時間；盲區提示要等到下一個循環以後
     let huntCause = null;
     let clockT = null;    // 循環時鐘上次推進到的音訊時間
-    let stepAcc = 0;      // 腳步計時
+    let lastStepT = -1e9; // 上一步的音訊時間（腳步跟著鼓走：下一步由 nextStepAt 決定）
+    let walking = false;  // 上一幀有沒有在走（起步那一步照 stepMasked 判）
     let radiusOkT = 0;    // 暗示階梯「感知範圍」：在火光圈外、但就在旁邊安全走了幾秒
     let fakeWatch = null; // 暗示階梯「假驟降」：{index, moved}，這一輪假驟降的頭 BLIND_LEN 秒有沒有動
 
+    // 提示文字：沒改常數就用共用的 HINTS／HINT_LADDER（畫面層可覆寫按鍵說法）；改了常數就照改過的數字重新生成
+    const HTXT = opts.T ? hintsFor(K) : HINTS;
+    const LADDER = opts.T ? hintLadderFor(K) : HINT_LADDER;
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
-    const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HINTS[key]); } };
+    const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HTXT[key]); } };
     /** 暗示階梯：key 這件事失敗一次（HINT_FAIL_GAP 秒內重複的只算一次）。第 2 次起發 hint {key, level}。 */
     function hintFail(key) {
       const H = g.hints[key]; if (!H) return;
@@ -539,7 +612,7 @@
       if (t - H.lastFail < K.HINT_FAIL_GAP) return;
       H.lastFail = t; H.fails++;
       H.level = Math.max(1, Math.min(3, H.fails));
-      if (H.level >= 2) emit('hint', ladderText(key, H.level), { key, level: H.level });
+      if (H.level >= 2) emit('hint', ladderText(key, H.level, LADDER), { key, level: H.level });
     }
     /** 暗示階梯：key 這件事成功一次 → 退回第 1 階。 */
     function hintOk(key) {
@@ -587,7 +660,7 @@
       clearPanic();
       g.player.inBelly = !!level.zones[z].belly;
       g.visualAid = visualAidFor(z, g.visualAidMode);
-      stepAcc = 0;
+      walking = false; lastStepT = -1e9;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
       if (z === 1) { hint('breath'); blindHintGate = null; }
       if (z === 2) hint('dash');
@@ -688,6 +761,7 @@
         mx: +i.mx || 0, mz: +i.mz || 0,
         breath: !!i.breath, dash: !!i.dash, takedown: !!i.takedown, calm: !!i.calm,
         calmAt: Number.isFinite(i.calmAt) ? i.calmAt : null,
+        actAt: Number.isFinite(i.actAt) ? i.actAt : null,   // 按鍵當下的音訊時間（衝刺、暗殺、門閂、安撫用）
         interact: !!i.interact, start: !!i.start
       };
     }
@@ -781,6 +855,17 @@
 
       const pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
       if (inp.yaw != null) pl.yaw = inp.yaw;
+      // 按鍵的判定時間：按鍵當下的音訊時間（畫面層給 actAt），沒有才用幀時間；不會晚於本幀
+      const actT = inp.actAt != null ? Math.min(inp.actAt, t) : t;
+      /** 時間 tt 是否算盲區：真盲區本身，或真盲區開始前 BLIND_LEAD_GRACE 秒內（假驟降前 blindFrom 在再下一輪，自然沒有寬限）。 */
+      const blindLike = (tt) => {
+        if (c.alertBlind) return alertBlindAt(tt, g.bass.anchor, K.BASS_PERIOD, K).blind;
+        if (!c.fake && tt >= c.start - 1e-9 && tt - c.start < K.BLIND_LEN) return true;
+        return !blind && tt < c.blindFrom && c.blindFrom - tt <= K.BLIND_LEAD_GRACE + 1e-9;
+      };
+      const lead = !blind && !c.alertBlind && blindLike(t);   // 本幀在盲區前沿的寬限裡（移動照盲區規則）
+      /** 時間 tt 的相位（本幀外推，門閂用）。 */
+      const pAt = (tt) => Math.max(0, Math.min(1, p + (tt - t) / c.T));
       // 盲區預告：循環最後 PRE_BLIND 秒發一次
       // 假驟降之前不預告（聽得出差別：沒有預告音就不是真的斷）
       if (!c.alertBlind && !c.nextFake && (1 - p) * c.T <= K.PRE_BLIND + 1e-9 && preBlindCycle !== c.index) {
@@ -821,33 +906,45 @@
           walked = Math.hypot(pl.x - bx, pl.z - bz) > 1e-6;
         }
         if (inp.dash) {
-          if (blind && dashCycle !== c.blindId) {
-            dashCycle = c.blindId;
+          // 衝刺：按鍵當下在盲區（或盲區前沿寬限）才算；寬限裡衝的算下一段盲區那一次
+          const dashBlind = blindLike(actT);
+          const dashId = blind || c.alertBlind || !dashBlind ? c.blindId : 'c' + (c.index + 1);
+          if (dashBlind && dashCycle !== dashId) {
+            dashCycle = dashId;
             let dx = mx, dz = mz;
             const l = Math.hypot(dx, dz);
             if (l < 1e-6) { const f = forward(pl.yaw); dx = f.x; dz = f.z; } else { dx /= l; dz /= l; }
             const n = Math.ceil(K.DASH / 0.1);
             for (let k = 0; k < n; k++) moveBody(pl, dx * K.DASH / n, dz * K.DASH / n);
             emit('sfx', 'dash'); hintOk('blind');
-          } else if (!blind) hint('dash');
+          } else if (!dashBlind) hint('dash');
         }
       }
       const moved = Math.hypot(pl.x - ox, pl.z - oz) > 1e-4;
       pl.moving = moved;
       pl.hidden = isHidden(pl);
 
-      // 腳步（第 8.3 節）：走路時每 STEP_GAP 秒一步，合拍被蓋過，不合拍出聲
+      // 腳步（第 8.3 節，腳步跟著鼓走）：起步那一刻先落一步，照 stepMasked 判（在拍上安靜、離拍出聲）；
+      // 之後每一步對齊 nextStepAt 預測的下一個可聽拍（被蓋過）；STEP_GAP × STEP_GAP_MAX 內沒拍就照時間落一步（出聲）。
+      // 事件 step_masked／step_loud 帶 {x, z, beatT}，beatT = 對齊到的拍時間（沒有 = null）。
       let stepLoud = false;
       if (walked) {
-        stepAcc += dt;
-        if (stepAcc >= K.STEP_GAP - 1e-9) {
-          stepAcc -= K.STEP_GAP;
+        let stepNow = null;   // {masked, beatT}
+        if (!walking && t - lastStepT >= K.STEP_GAP * K.STEP_GAP_MIN - 1e-9) {
           const masked = stepMasked(t, g);
-          stepLoud = !masked;
-          emit('sfx', masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z });
-          if (masked && g.guards.some((q) => q.active && dist2(q, pl) < K.STEP_R * 2)) hintOk('step');
+          stepNow = { masked, beatT: masked ? nearestMaskBeat(t, g) : null };
+        } else {
+          const nx = nextStepAt(lastStepT, g);
+          if (t >= nx.t - 1e-9) stepNow = nx.beatT != null ? { masked: true, beatT: nx.beatT } : { masked: stepMasked(t, g), beatT: null };
+        }
+        if (stepNow) {
+          lastStepT = t;
+          stepLoud = !stepNow.masked;
+          emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z, beatT: stepNow.beatT });
+          if (stepNow.masked && g.guards.some((q) => q.active && dist2(q, pl) < K.STEP_R * 2)) hintOk('step');
         }
       }
+      walking = walked;
       // 暗示階梯的成功：盲區裡在衛兵附近走動（驟降）；在火光圈外、但就在旁邊走（感知範圍）；假驟降時沒動
       if (walked && g.guards.some((q) => q.active && dist3(q, pl) <= radiusAt(1, false, K))) {
         if (blind) hintOk('blind');
@@ -884,7 +981,7 @@
         if (best) {
           const f = forward(best.yaw);
           const behind = f.x * (pl.x - best.x) + f.z * (pl.z - best.z) < 0;
-          if (blind && behind) {
+          if (blindLike(actT) && behind) {   // 按鍵當下在盲區（含前沿寬限）
             best.state = 'down'; best.active = false; best.susp = 0;
             emit('sfx', 'takedown'); hintOk('takedown');
           } else {
@@ -899,7 +996,7 @@
       if (g.zone === 4 && inp.interact && !g.gate.open) {
         const L = level.gate.latch;
         if (Math.hypot(pl.x - L.x, pl.z - L.z) <= K.LATCH_R) {
-          if (p <= K.GATE_LOW_P) {
+          if (pAt(actT) <= K.GATE_LOW_P) {   // 按住的判定用按鍵當下的相位
             g.gate.pushing = true;
             const before = g.gate.progress;
             g.gate.progress = Math.min(K.GATE_NEED, g.gate.progress + dt);
@@ -913,8 +1010,8 @@
       }
 
       // 安撫（機制 B）
-      // 判定時間：按鍵當下的音訊時間（calmAt），沒有才用幀時間；比起疑還早的按鍵不算
-      const calmT = inp.calmAt != null ? Math.min(inp.calmAt, t) : t;
+      // 判定時間：按鍵當下的音訊時間（calmAt，沒有就 actAt），再沒有才用幀時間；比起疑還早的按鍵不算
+      const calmT = inp.calmAt != null ? Math.min(inp.calmAt, t) : actT;
       if (inp.calm && g.panic.active && calmT >= g.panic.start) {
         const P = g.panic;
         const b = bassBeatNear(calmT, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN, K.LATENCY_GRACE);
@@ -960,7 +1057,8 @@
         const fa = Math.atan2(f.x, f.z);
         const inFov = d < 1e-6 || angDiff(toward, fa) <= K.FOV;
         const seen = !pl.hidden && d <= r && inFov;
-        const heardMove = moved && d <= r;
+        const mv = moved && !lead;   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
+        const heardMove = mv && d <= r;
         const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
         const heardStep = stepLoud && d < K.STEP_R;
@@ -976,7 +1074,7 @@
         }
         if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
         let why = heardStep ? 'step' : null;
-        if (moved && (heardMove || seen)) {
+        if (mv && (heardMove || seen)) {
           if (p > K.HIGH_P) { startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！'); continue; }
           // 假驟降的頭 BLIND_LEN 秒裡動了，被聽見 → 算「假驟降」；平常 → 算「感知範圍」
           why = (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN + 0.3) ? 'fake' : 'radius';
@@ -1111,10 +1209,11 @@
   }
 
   return {
-    T, HINTS, HINT_LADDER, ladderText, hintSignals, ZONE_NAMES, CAUSES,
+    T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES,
     createLevel, buildLevel,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
-    zoneMul, cycleTargetFor, layerBeats, beatPhases, layerGain, beatsBetween, alertBlindAt, stepMasked, visualAidFor,
+    zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt,
+    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
     forward, yawTo, angDiff, inRect, mulberry32
   };
 });

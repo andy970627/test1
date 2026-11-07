@@ -18,11 +18,21 @@
  *   pitch：往上為正。
  *
  * 時間：一律用音訊時鐘的絕對時間（AudioContext.currentTime）。
- *   循環長度固定 CYCLE（7.2 秒 = 3 個低音拍），循環 c 從 t0 + c·CYCLE 開始，相位 p = 經過秒數 ÷ CYCLE。
- *   空檔（驟降）＝第 1 個循環起，每個循環開頭的 GAP_LEN（0.6）秒：Risset 打擊斷掉、全場靜止。
+ *   循環長度 = 整數個低音拍（CYCLE_BEATS × BASS_PERIOD；標準 3 拍 = 7.2 秒）。每個循環的實際長度記在 g.cycles
+ *   （[{index, start, len}]），只在循環交接時決定下一個的長度（cycleLenFor）；cycleOf(g, t) 查任何時間的循環資訊，
+ *   還沒交接的未來循環先用目前的目標長度估。固定模式下 cycleOf 和 cycleAt(t, t0, K)（t0 + c·CYCLE）完全一樣。
+ *   空檔（驟降）＝第 1 個循環起，每個循環開頭的 GAP_LEN（0.6）秒：Risset 打擊斷掉、全場靜止。三段難度都一樣。
  *   第 0 個循環沒有空檔（還沒有「驟降」），也沒有攻擊（求婚者慌忙找武器）。
- *   低音拍：t0 + BASS_OFFSET + k·BASS_PERIOD（錯開半拍）：一個循環 3 拍，落在 p = 1/6、1/2、5/6，
- *   空檔裡沒有低音（尾音約 1.15 秒，最後一拍在驟降前 1.2 秒），按 Q 和放箭也不會擠在同一瞬間。
+ *   低音拍：t0 + BASS_OFFSET + k·BASS_PERIOD（錯開半拍）。循環永遠是整數拍，所以每次驟降都落在低音網格的同一個
+ *   相位（兩拍正中間），網格從頭到尾不中斷；空檔裡沒有低音（尾音約 1.15 秒），按 Q 和放箭也不會擠在同一瞬間。
+ *
+ * 難度預設【改編】（DIFFICULTY，createGame({difficulty}) 覆寫 T 成 game.T；數字見設計文件第 3 節）：
+ *   輕鬆 easy：循環 4 拍 9.6 秒、閃避窗口 0.5 秒、永遠只出手一次、箭 14、生命 4。
+ *   標準 normal：3 拍 7.2 秒、閃避 0.35、倒下 2 名頭目後每循環出手兩次、箭 12、生命 3。
+ *   殘酷 hard：2 拍 4.8 秒、閃避 0.25（冷卻 0.4，兩下相隔 0.43 秒才躲得掉）、倒下 1 名就出手兩次、箭 10、生命 2、
+ *     空檔外放箭偏差 ±0.3 弧度、預備提早 0.7 秒。
+ * 越危險越快【改編】（createGame({dynamic: true})）：循環拍數 = 該難度的基準拍數 − 倒下的頭目數，最少 DYN_MIN_BEATS（2）拍；
+ *   只在交接時換，聲音層照 cycleOf 排程，低音網格不受影響。殘酷本來就是 2 拍，開了也不會更短。
  *
  * 一個循環裡（「越快越近越兇」）：
  *   求婚者從自己的位置往門檻逼近，前進量 a(p) = p²；空檔裡全場凍結在最近的位置（a = 1）。
@@ -30,7 +40,7 @@
  *     擲矛 spear：Shift 閃避（impact −0.35 ～ +0.12 秒內按）。
  *     撲上來 lunge：Shift 閃避，或按住空白鍵屏息（impact 前 0.2 秒起憋住，他撲空）。
  *     都沒躲 → 忒勒馬科斯的盾舉著就替你擋下（盾被撞開，SHIELD_COOL 秒後才能再舉）；沒盾 → 受傷。
- *   頭目倒下 2 名以上：每個循環出手兩次（p ≈ 0.88、0.97）。
+ *   頭目倒下 TWO_ATTACKS_FROM（標準 2）名以上：每個循環出手兩次（p ≈ 0.88、0.97）。
  *
  * 放箭：
  *   空檔內：準心最穩，箭照瞄準方向飛（SPREAD_GAP = 0）。一個空檔只能射一箭（拉弓要時間）。
@@ -59,12 +69,13 @@
  *   暴露位置引來的擲矛：預備若會落進空檔，延到空檔結束後（空檔裡不出預備聲）。
  *
  * 介面：
- *   createGame({t0, seed, cycle}) → game
+ *   createGame({t0, seed, difficulty: 'easy'|'normal'|'hard', dynamic, cycle, K, hints}) → game（game.T 是這一局的常數）
+ *   cycleOf(game, t) → {index, p, start, len, sinceStart, gap}；cycleLenFor(game) → 下一個循環的長度
  *   step(game, t, input) → game；本幀事件在 game.events（陣列，每筆 {type, t, ...}）
  *   input = { yaw, pitch, mx, mz（世界座標移動方向）, shoot, shootAt, dodge, dodgeAt, breath（按住）, tele, teleAt, pick }
  *   事件 type：shoot、miss、shield_hit、down、bow_busy、empty、exposed、attack_warn、dodge、dodge_ok、breath_ok、
  *     block、hurt、tele_ok、tele_miss、tele_busy、breath_in、breath_out、gasp、pick、pick_none、gap、pre_gap、
- *     surrender、win、fall、hint
+ *     surrender、win、fall、hint、cycle（交接：{index, start, len, beats}）
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -74,8 +85,10 @@
 
   // ---------- 常數（全部可調） ----------
   const T = Object.freeze({
-    CYCLE: 7.2,           // 循環秒數 = 3 個低音拍，驟降落在低音拍上
-    GAP_LEN: 0.6,         // 空檔（驟降）秒數，以秒計
+    CYCLE_BEATS: 3,       // 一個循環幾個低音拍（循環長度 = CYCLE_BEATS × BASS_PERIOD）
+    CYCLE: 7.2,           // 循環秒數（由 CYCLE_BEATS 算出；createGame 會重算）
+    DYN_MIN_BEATS: 2,     // 越危險越快：最短幾拍
+    GAP_LEN: 0.6,         // 空檔（驟降）秒數，三段難度都不變
     PRE_GAP: 0.4,         // 空檔前幾秒發 pre_gap（預告）
     RISSET_LAYERS: 4,     // Risset 打擊層數（聲音層同值）
     RISSET_M: 7,          // 最慢層每循環拍數
@@ -117,6 +130,24 @@
     PICK_R: 1.3,          // 撿箭半徑
     MAX_DT: 0.1
   });
+
+  // ---------- 難度預設【改編】：只列和 T 不同的值；label 給畫面用 ----------
+  const DIFFICULTY = Object.freeze({
+    easy:   Object.freeze({ label: '輕鬆', CYCLE_BEATS: 4, DODGE_EARLY: 0.5, TWO_ATTACKS_FROM: Infinity, ARROWS: 14, HP: 4 }),
+    normal: Object.freeze({ label: '標準', CYCLE_BEATS: 3 }),
+    hard:   Object.freeze({ label: '殘酷', CYCLE_BEATS: 2, DODGE_EARLY: 0.25, DODGE_COOL: 0.4, TWO_ATTACKS_FROM: 1, ARROWS: 10, HP: 2,
+      SPREAD_OFF: 0.3, PITCH_SPREAD_OFF: 0.15, WARN_LEAD: 0.7 })
+  });
+  const DIFFICULTY_ORDER = Object.freeze(['easy', 'normal', 'hard']);
+  /** 把難度預設套在 T 上（再套 extra），回傳這一局的常數表；CYCLE 一律重算成整數拍。 */
+  function constantsFor(difficulty, extra) {
+    const preset = DIFFICULTY[difficulty] || DIFFICULTY.normal;
+    const K = Object.assign({}, T);
+    for (const k in preset) if (k !== 'label') K[k] = preset[k];
+    if (extra) Object.assign(K, extra);
+    K.CYCLE = Math.round(K.CYCLE_BEATS * K.BASS_PERIOD * 1e6) / 1e6;   // 避免 3 × 2.4 = 7.1999…
+    return K;
+  }
 
   // ---------- 暗示階梯【改編】 ----------
   // text：設計文件第 4 節「提示文字（第 2 階）」；keys：第 3 階加上的按鍵說明。
@@ -261,12 +292,16 @@
 
   function createGame(opts) {
     opts = opts || {};
-    const K = Object.assign({}, T, opts.cycle ? { CYCLE: +opts.cycle } : null, opts.K || null);
+    const difficulty = DIFFICULTY[opts.difficulty] ? opts.difficulty : 'normal';
+    const K = constantsFor(difficulty, opts.K);
+    if (opts.cycle) K.CYCLE = +opts.cycle;          // 明確指定循環秒數（錄音放慢用）：不保證整數拍
     const t0 = opts.t0 != null ? +opts.t0 : 0;
     const g = {
       T: K, t0, time: t0, phase: 'play', seed: opts.seed != null ? opts.seed : 7,
+      difficulty, dynamic: !!opts.dynamic,
       rng: makeRng(opts.seed != null ? opts.seed : 7),
-      cycle: cycleAt(t0, t0, K),
+      cycles: [{ index: 0, start: t0, len: K.CYCLE }],   // 已交接的循環；長度只在交接時決定
+      cycle: null,
       player: { x: 0, z: -0.8, yaw: 0, pitch: 0, hp: K.HP, arrows: K.ARROWS,
         dodgeAt: -1e9, breathing: false, breathStart: -1e9, breathEnd: -1e9, breathT: 0, breathLock: false, hurtAt: -1e9 },
       tele: { until: -1e9, coolUntil: -1e9, lockUntil: -1e9, lastBeat: null, streak: 0, blocks: 0 },
@@ -280,17 +315,56 @@
       events: [], log: [],
       hints: createHints(opts.hints)
     };
+    g.cycle = cycleOf(g, t0);
     return g;
   }
 
   const leadersLeft = (g) => g.suitors.filter((s) => s.leader && !s.down).length;
   const leadersDown = (g) => g.suitors.filter((s) => s.leader && s.down).length;
 
+  // ---------- 這一局的循環表（越危險越快）【改編】 ----------
+  /** 下一個循環的長度：固定模式 = K.CYCLE；動態 = 基準減掉每倒 1 名頭目 1 拍，最少 DYN_MIN_BEATS 拍。 */
+  function cycleLenFor(g) {
+    const K = g.T;
+    if (!g.dynamic) return K.CYCLE;
+    return Math.round(Math.max(K.DYN_MIN_BEATS * K.BASS_PERIOD, K.CYCLE - leadersDown(g) * K.BASS_PERIOD) * 1e6) / 1e6;
+  }
+  /**
+   * 時間 t 的循環資訊 {index, p, start, len, sinceStart, gap}。
+   * 已交接的循環查 g.cycles；還沒交接的未來循環先用目前的目標長度估（交接時才定案）。
+   */
+  function cycleOf(g, t) {
+    const K = g.T, H = g.cycles;
+    if (t < g.t0) return { index: -1, p: 0, start: g.t0 - H[0].len, len: H[0].len, sinceStart: 0, gap: false };
+    let c = H[H.length - 1];
+    if (t < c.start) {
+      let i = H.length - 1;
+      while (i > 0 && t < H[i].start) i--;
+      c = H[i];
+    } else if (t >= c.start + c.len) {
+      let start = c.start, len = c.len, index = c.index;
+      while (t >= start + len) { start += len; index++; len = cycleLenFor(g); }
+      c = { index, start, len };
+    }
+    const since = t - c.start;
+    return { index: c.index, p: since / c.len, start: c.start, len: c.len, sinceStart: since, gap: c.index >= 1 && since < K.GAP_LEN };
+  }
+  /** 交接：時間跨過循環結尾就定下一個循環的長度（此刻的頭目數），發 cycle 事件。 */
+  function commitCycles(g, t) {
+    const H = g.cycles;
+    let c = H[H.length - 1];
+    while (t >= c.start + c.len) {
+      c = { index: c.index + 1, start: c.start + c.len, len: cycleLenFor(g) };
+      H.push(c);
+      emit(g, 'cycle', t, { index: c.index, start: c.start, len: c.len, beats: Math.round(c.len / g.T.BASS_PERIOD * 1000) / 1000 });
+    }
+  }
+
   /** 求婚者 s 在時間 t 的位置 {x, z}（倒下的停在倒下處；撲上來的往玩家衝）。 */
   function suitorPos(g, s, t) {
     if (s.down) return { x: s.dx, z: s.dz };
     const K = g.T, P = g.player;
-    const cy = cycleAt(t, g.t0, K);
+    const cy = cycleOf(g, t);
     let a;
     if (g.phase === 'win') a = 0.35;                      // 投降：退開一點跪下
     else if (cy.index < 0) a = 0;
@@ -370,19 +444,18 @@
     return pool[pool.length - 1];
   }
 
-  function planCycle(g, c) {
-    const K = g.T;
+  function planCycle(g, cy) {
+    const K = g.T, c = cy.index;
     g.plannedCycle = c;
     if (c < 1) return;                       // 第 0 個循環：求婚者慌忙找武器，不出手
     const phases = leadersDown(g) >= K.TWO_ATTACKS_FROM ? K.IMPACT_P2 : K.IMPACT_P1;
     const used = [];
-    const start = g.t0 + c * K.CYCLE;
     phases.forEach((ph, i) => {
       const s = chooseAttacker(g, used);
       if (!s) return;
       used.push(s.id);
       const type = phases.length === 2 ? (i === 0 ? 'spear' : (g.rng() < 0.5 ? 'lunge' : 'spear')) : (g.rng() < 0.5 ? 'spear' : 'lunge');
-      const impact = start + ph * K.CYCLE;
+      const impact = cy.start + ph * cy.len;     // 用這個循環的實際長度（動態模式下每輪可能不同）
       g.attacks.push({ id: ++g.attackSeq, by: s.id, type, warn: impact - K.WARN_LEAD, impact, warned: false, done: false, cancelled: false, cycle: c, reason: 'cycle' });
     });
   }
@@ -391,7 +464,7 @@
   function expose(g, t, why) {
     const K = g.T;
     let impact = t + K.EXPOSE_LEAD;
-    const cy = cycleAt(impact, g.t0, K);
+    const cy = cycleOf(g, impact);
     if (cy.gap) impact = cy.start + K.GAP_LEN + 0.3;
     const busy = g.attacks.filter((A) => !A.done && !A.cancelled).map((A) => A.by);
     const s = chooseAttacker(g, busy);
@@ -399,7 +472,7 @@
     emit(g, 'exposed', t, { why, by: s ? s.id : null, impact });
     if (!s) return;
     let warn = Math.max(t + 0.2, impact - K.WARN_LEAD);
-    const wc = cycleAt(warn, g.t0, K);
+    const wc = cycleOf(g, warn);
     if (wc.gap) warn = Math.min(impact - 0.05, wc.start + K.GAP_LEN + 0.02);   // 空檔裡不出預備（聲音、動作都延到空檔後）
     g.attacks.push({ id: ++g.attackSeq, by: s.id, type: 'spear', warn, impact, warned: false, done: false, cancelled: false, cycle: cy.index, reason: why });
   }
@@ -424,7 +497,7 @@
   function shoot(g, t, at, yaw, pitch) {
     const K = g.T, P = g.player;
     if (P.arrows <= 0) { emit(g, 'empty', t); hintFail(g, 'arrows', t); return; }
-    const cy = cycleAt(at, g.t0, K);
+    const cy = cycleOf(g, at);
     if (cy.gap && g.lastShotCycle === cy.index) { emit(g, 'bow_busy', t); return; }
     P.arrows--;
     g.stats.shots++;
@@ -500,7 +573,8 @@
     const K = g.T, P = g.player;
     const dt = clamp(t - g.time, 0, K.MAX_DT);
     g.time = Math.max(g.time, t);
-    g.cycle = cycleAt(t, g.t0, K);
+    if (g.phase === 'play') commitCycles(g, t);          // 交接：下一個循環的長度在這一刻定案
+    g.cycle = cycleOf(g, t);
     const bb = bassBeatNear(t, g.bass.anchor, g.bass.period);
     g.bass.nextBeat = bb.next;
     if (g.phase !== 'play') return g;
@@ -510,9 +584,9 @@
     if (input.pitch != null) P.pitch = input.pitch;
 
     // 循環開始：排這一輪的攻擊；空檔與預告事件
-    if (cy.index >= 0 && cy.index !== g.plannedCycle) planCycle(g, cy.index);
+    if (cy.index >= 0 && cy.index !== g.plannedCycle) planCycle(g, cy);
     if (cy.gap && g.gapSent !== cy.index) { g.gapSent = cy.index; emit(g, 'gap', t, { cycle: cy.index }); }
-    const nextStart = cy.start + K.CYCLE;
+    const nextStart = cy.start + cy.len;
     if (nextStart - t <= K.PRE_GAP && g.preGapSent !== cy.index + 1 && cy.index + 1 >= 1) { g.preGapSent = cy.index + 1; emit(g, 'pre_gap', t, { at: nextStart }); }
 
     // 走路（限制在門檻前）
@@ -616,29 +690,40 @@
    * 程式玩家：只在空檔射箭、照低音按 Q、看預備動作閃避或屏息、箭少了去撿。
    * 回傳 input（含 shoot/yaw/pitch 等）；st 是程式玩家自己的記憶（跨幀）。
    * opts.relyShield：盾舉著時不閃，讓忒勒馬科斯擋（展示用，預設 true）。
+   * opts.skill（0～1，預設 1 = 完美）：模擬一般玩家的失手，用來比較三段難度的勝率。
+   *   每個低音拍有 (1 − skill) 的機率忘了按 Q；每次攻擊有 (1 − skill) 的機率反應慢 0.3 秒（閃避、屏息都一樣）。
+   *   失手用 st.rng（opts.seed 種出來），不動遊戲自己的亂數。
    */
   function botInput(g, t, st, opts) {
     opts = opts || {};
     const relyShield = opts.relyShield !== false;
+    const skill = opts.skill == null ? 1 : clamp(+opts.skill, 0, 1);
+    if (skill < 1 && !st.rng) st.rng = makeRng((opts.seed != null ? opts.seed : g.seed) * 7919 + 13);
     const K = g.T, P = g.player, inp = { yaw: P.yaw, pitch: P.pitch };
     if (g.phase !== 'play') return inp;
     st.dodged = st.dodged || {};
-    const cy = cycleAt(t, g.t0, K);
+    st.slow = st.slow || {};
+    const cy = cycleOf(g, t);
     // 忒勒馬科斯：每個低音拍按一次（早 0.08～晚 0.12 秒內）
     if (t >= g.tele.coolUntil) {
       const b = bassBeatNear(t, g.bass.anchor, g.bass.period);
-      if (b.off >= -0.08 && b.off <= 0.12 && st.teleBeat !== b.beat) { inp.tele = true; inp.teleAt = t; st.teleBeat = b.beat; }
+      if (b.off >= -0.08 && b.off <= 0.12 && st.teleBeat !== b.beat) {
+        st.teleBeat = b.beat;
+        if (skill >= 1 || st.rng() < skill) { inp.tele = true; inp.teleAt = t; }
+      }
     }
     // 攻擊：盾舉著就交給盾；擲矛閃避；撲上來屏息
     let wantBreath = false;
     for (const A of g.attacks) {
       if (A.done || A.cancelled || t < A.warn) continue;
+      if (st.slow[A.id] == null) st.slow[A.id] = skill < 1 && st.rng() >= skill ? 0.3 : 0;   // 這一次反應慢多少
+      const late = st.slow[A.id];
       const shield = relyShield && g.tele.until >= A.impact && A.impact >= g.tele.coolUntil &&
         !g.attacks.some((B) => B !== A && !B.done && !B.cancelled && B.impact < A.impact);
       if (shield) continue;
       if (A.type === 'lunge' && P.breathT < K.BREATH_MAX - 1.5 && !P.breathLock) {
-        if (t >= A.impact - 0.75) wantBreath = true;
-      } else if (!st.dodged[A.id] && t >= A.impact - 0.18 && t <= A.impact + 0.08) {
+        if (t >= A.impact - 0.75 + late) wantBreath = true;
+      } else if (!st.dodged[A.id] && t >= A.impact - 0.18 + late && t <= A.impact + 0.08 + late) {
         inp.dodge = true; inp.dodgeAt = t; st.dodged[A.id] = true;
       }
     }
@@ -666,9 +751,9 @@
   }
 
   return {
-    T, SUITORS, HINTS, createHints, hintLevel,
+    T, DIFFICULTY, DIFFICULTY_ORDER, constantsFor, SUITORS, HINTS, createHints, hintLevel,
     yawTo, forward, wrapAngle, makeRng,
-    cycleAt, inGap, gapsBetween, bassBeatNear,
+    cycleAt, inGap, gapsBetween, bassBeatNear, cycleOf, cycleLenFor,
     layerBeats, beatPhases, layerGain, beatsBetween,
     createGame, step, suitorPos, traceShot, pickTarget, activeAttacks, botInput,
     leadersLeft, leadersDown
