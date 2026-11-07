@@ -27,6 +27,9 @@
  *     警戒時（規則的 panic）快速循環的盲區暫停，改在兩個低音拍正中央（規則決定；有 RissetRules.blindWindows 就用它）。
  *     預測的盲區用來精準排 gate；規則每幀給的 state.cycle.blind 是最後裁決，連續兩幀不一致就以規則為準強制靜音／打開。
  *   - p 越大，節奏匯流排越響（0.7 → 1.0），讓「越來越危險」聽得出來。
+ *   - 假驟降（設計文件 8.5）：規則的 cycle.fake（這一輪開頭）／cycle.nextFake（下一次交接）為真時，那次交接照常排拍、
+ *     不排盲區靜音（節奏、音樂、衛兵都不壓）、謝帕德音階不留空；規則也不會發 pre_blind。
+ *     聽得出差別：最高層（金屬）不淡到全靜，交接前後留一絲極輕的金屬尾音（FAKE_TAIL_*），專心聽就不會上當。
  *
  * 聲音互動（設計文件 8.3）：腳步 step_masked／step_loud、安撫哼唱 calm_ok／calm_bad（低吟唱主題第 index 個音）、
  *   門閂 latch_step（里拉琴奏主題第 index 個音，8 音）、衛兵 3D 聽聲辨位（setListener＋每名衛兵一個 HRTF PannerNode，最多 6 名）。
@@ -89,6 +92,9 @@
     LYRE_LEN: 1.8,             // 里拉琴撥弦長度（秒）
     LYRE_DECAY: 0.996,         // Karplus-Strong 每週期衰減
     LYRE_VEL: 0.09,            // 里拉琴音量
+    FAKE_TAIL_GAIN: 0.035,     // 假驟降的金屬尾音音量（約 −29 dB，相對最響的拍）
+    FAKE_TAIL_PRE: 0.5,        // 交接前多少秒起，最高層不再淡到全靜
+    FAKE_TAIL_LEN: 0.6,        // 交接後金屬尾音延續多少秒（逐漸變輕）
     THEME_N0: 4,               // 主題第一個音最早落在第 3 層第幾拍；循環短時往後找，直到盲區＋回升之後
     // 跟隨規則節拍
     RESCHED_TOL: 0.001,        // 已預排的拍和新預測差超過這麼多秒就取消重排
@@ -562,6 +568,7 @@
     // 巡邏／追殺：每個循環開頭（相位跳回 0）起 BL 秒。警戒（bassMode）：兩個低音拍正中央 BLB 秒。
     // 規則若匯出 blindWindows(a, b, game) 就以它為準。suppress：規則說「不是盲區」而預測說是的時段（以規則為準，排除）。
     var BLB = BL, bassMode = false, lastState = null, suppress = [], mismN = 0;
+    var fakeC = {};                           // 假驟降：累計相位的循環編號 c → 那一輪開頭的交接是假的（沒有盲區）
     function windowsBetween(a, b) {
       var out = [], i, Rr = getRules();
       if (Rr && typeof Rr.blindWindows === 'function' && lastState) {
@@ -588,6 +595,7 @@
         for (var c = Math.floor(Pof(a - BL)); out.length < 64; c++) {
           var s1 = tAt(c);
           if (s1 >= b) break;
+          if (fakeC[c]) continue;                // 假驟降：照常交接，沒有盲區
           if (s1 + BL > a) out.push({ s: s1, e: s1 + BL });
         }
       }
@@ -699,7 +707,7 @@
         stats.jumps++;
         for (var i = 0; i < pending.length; i++) if (pending[i].t > now + C.RESCHED_MARGIN) kill(pending[i], now);
         pending = pending.filter(function (r) { return r.t <= now + C.RESCHED_MARGIN; });
-        evs = {}; themePlan = {}; chorusDone = {};
+        evs = {}; themePlan = {}; chorusDone = {}; fakeC = {};
         if (log) log.push({ type: 'jump', t: now, from: Pp, to: Pn });
       }
       return true;
@@ -735,7 +743,7 @@
     function shepValues(t) {
       var P = Pof(t), c = Math.floor(P), f = P - c;
       var since = t - tAt(c), to = tAt(c + 1) - t;
-      var edge = clamp((since - BL) / 0.2, 0, 1) * clamp((to - 0.06) / 0.1, 0, 1);
+      var edge = clamp((since - (fakeC[c] ? 0 : BL)) / 0.2, 0, 1) * clamp((to - 0.06) / 0.1, 0, 1);   // 假驟降不留空
       var g = [];
       for (var i = 0; i < C.SHEP_VOICES; i++) g.push(C.SHEP_GAIN * shepBell((i + f) / C.SHEP_VOICES) * (0.5 + 0.5 * f) * edge);
       return { det: 1200 * f, g: g, lp: C.SHEP_LP_LO * Math.pow(C.SHEP_LP_HI / C.SHEP_LP_LO, f) };
@@ -831,7 +839,7 @@
 
     // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排
     function scheduleBeats(from, end, ws) {
-      var Pa = Pof(from), Pb = Pof(end), nL = C.LAYERS + (st.hunted ? 1 : 0);
+      var Pa = Pof(from), Pb = Pof(end), nL = C.LAYERS + 1;   // 第 LAYERS 層：追殺額外層，或假驟降的金屬尾音
       for (var k = 0; k < nL; k++) {
         if (solo != null && k !== solo) continue;
         var tab = tables[k];
@@ -842,8 +850,16 @@
             var p = tab[n], P = c + p, t = tAt(P);
             if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;   // 盲區不排拍
             var x = (k + p) / C.LAYERS, g;
-            if (k >= C.LAYERS) g = 0.4;                        // 追殺額外層
-            else { g = bell(x); if (st.hunted) g = Math.max(g, C.HUNT_FLOOR); }
+            if (k >= C.LAYERS) {
+              if (st.hunted) g = 0.4;                          // 追殺額外層
+              else if (fakeC[c] && t - tAt(c) < C.FAKE_TAIL_LEN) // 假驟降：交接後金屬尾音延續、逐漸變輕
+                g = C.FAKE_TAIL_GAIN * (1 - 0.6 * (t - tAt(c)) / C.FAKE_TAIL_LEN);
+              else continue;
+            } else {
+              g = bell(x); if (st.hunted) g = Math.max(g, C.HUNT_FLOOR);
+              // 假驟降：最高層（金屬）在交接前不淡到全靜，留一絲極輕的尾音
+              if (k === C.LAYERS - 1 && !st.hunted && fakeC[c + 1] && tAt(c + 1) - t < C.FAKE_TAIL_PRE) g = Math.max(g, C.FAKE_TAIL_GAIN);
+            }
             if (g < C.MIN_GAIN) continue;
             g *= 0.95 + Math.random() * 0.1;                  // 只抖音量，不抖時間
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
@@ -1264,6 +1280,7 @@
       INSTRUMENTS: INST_NAME,
       get T() { return Tof(ctx.currentTime); }, get t0() { return tAt(Math.floor(Pof(ctx.currentTime))); }, get blindLen() { return BL; },
       get beatSource() { return tabFromRules ? 'rules' : 'audio'; },   // 拍點公式來自規則還是本檔
+      isFakeAt: function (t) { var c = Math.floor(Pof(t == null ? ctx.currentTime : t)); return !!fakeC[c]; },   // 測試用：t 所在這一輪是不是假驟降
       now: function () { return ctx.currentTime; },
       phase: function (t) { return frac(Pof(t == null ? ctx.currentTime : t)); },
       cyclePhase: function (t) { return Pof(t == null ? ctx.currentTime : t); },   // 累計相位（測試用）
@@ -1308,8 +1325,14 @@
         var cy = s.cycle || {};
         var bm = cy.alertBlind != null ? !!cy.alertBlind : !!(s.panic && typeof s.panic === 'object' && s.panic.active && !s.hunted);
         var changed = bm !== bassMode; bassMode = bm;
-        // 節拍：讀 anchor 外推；有新 anchor 或盲區規則改了，就把已預排的拍對到新預測
-        if (takeAnchor(cy, now) || changed) replan(now);
+        // 節拍：讀 anchor 外推；有新 anchor、盲區規則或假驟降改了，就把已預排的拍對到新預測
+        var took = takeAnchor(cy, now);
+        if (cy.fake != null || cy.nextFake != null) {   // 假驟降：規則提早一個循環決定，這裡記到累計相位的循環編號上
+          var c0 = Math.floor(seg.P + 1e-9), f0 = !!cy.fake, f1 = !!cy.nextFake;
+          if (!!fakeC[c0] !== f0 || !!fakeC[c0 + 1] !== f1) { fakeC[c0] = f0; fakeC[c0 + 1] = f1; changed = true; }
+          for (var fk in fakeC) if (+fk < c0 - 3) delete fakeC[fk];
+        }
+        if (took || changed) replan(now);
         // 規則的 cycle.blind 是最後裁決：在規則自己的時間點比對預測，連續兩幀不一致就以規則為準
         if (cy.blind != null) {
           var ts = cy.anchor && isFinite(cy.anchor.t) ? +cy.anchor.t : (isFinite(s.time) ? +s.time : now);

@@ -1153,23 +1153,28 @@ function playthrough(seed, t0, jitter) {
   let t = 2;
   const fails = [], sounds = {};
   let Tmin = Infinity, Tmax = 0;
+  const fakeByZone = {}; let lastIdx = null;
   g.step(t, {});
   g.step(t, { start: true });
   while (g.phase !== 'win' && t < 600) {
     t += jitter ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : DT;
     g.step(t, bot(g));
     Tmin = Math.min(Tmin, g.cycle.T); Tmax = Math.max(Tmax, g.cycle.T);
+    if (g.cycle.index !== lastIdx) { lastIdx = g.cycle.index; if (g.cycle.fake) fakeByZone[g.zone] = (fakeByZone[g.zone] || 0) + 1; }
     for (const e of g.drain()) if (e.type === 'sfx') sounds[e.a] = (sounds[e.a] || 0) + 1;
     if (g.phase === 'fail') { fails.push(g.zone + ' ' + g.failReason); g.retry(); }
   }
-  return { g, t, fails, sounds, Tmin, Tmax };
+  return { g, t, fails, sounds, Tmin, Tmax, fakeByZone };
 }
 
 test('程式玩家用固定策略通關整關（動態循環；不同 t0、種子、不穩定幀率）', () => {
   const cases = [[1, 0, false], [2, 3.7, false], [3, 8.2, true], [4, 5.5, true], [5, 1.1, true],
     [6, 2.2, false], [7, 6.6, true], [8, 9.4, true]];
+  let fakes = 0;
   for (const [seed, t0, jitter] of cases) {
-    const { g, t, fails, sounds, Tmin, Tmax } = playthrough(seed, t0, jitter);
+    const { g, t, fails, sounds, Tmin, Tmax, fakeByZone } = playthrough(seed, t0, jitter);
+    assert.ok(!fakeByZone[1] && !fakeByZone[2], `seed ${seed}：前兩區出現假驟降`);
+    fakes += (fakeByZone[3] || 0) + (fakeByZone[4] || 0);
     assert.equal(g.phase, 'win', `seed ${seed}：沒過關（停在區 ${g.zone}）`);
     assert.deepEqual(fails, [], `seed ${seed} 失敗過`);
     assert.ok(t < 400, `seed ${seed} 花太久：${t}`);
@@ -1184,6 +1189,7 @@ test('程式玩家用固定策略通關整關（動態循環；不同 t0、種�
     assert.equal(sounds.latch_step, 8, '門閂奏完八個音');
     assert.ok(Tmin < 8 && Tmax > 10, `循環長度有隨危險變化：${Tmin.toFixed(2)}～${Tmax.toFixed(2)}`);
   }
+  assert.ok(fakes >= cases.length, `通關過程中第 3、4 區有遇到假驟降（共 ${fakes} 次）`);
 });
 
 // ---------------- 第 8.5 節：假驟降 ----------------
@@ -1244,53 +1250,63 @@ test('8.5 假驟降：第 3 區起約每 4 個循環 1 次、不會連續；沒�
 test('8.5 假驟降：nextFake 提早一個循環決定；blindFrom 指向再下一輪；beatsBetween 照常回傳開頭的拍', () => {
   const g = allDown(lvl({ startZone: 3, seed: 2 }));
   let t = 0; g.step(t, {});
-  while (!g.cycle.nextFake && t < 2000) { t += 1 / 30; g.step(t, {}); }
+  // 抽中的那一幀正是真盲區的開頭（剛跳回 0）；等盲區過了再看預估
+  while (!(g.cycle.nextFake && !g.cycle.blind) && t < 2000) { t += 1 / 30; g.step(t, {}); }
   assert.ok(g.cycle.nextFake, '找到假驟降');
-  const c = g.cycle, next = t + (1 - c.p) * c.T;
+  const c = g.cycle, idx = c.index, next = t + (1 - c.p) * c.T;
   assert.ok(near(c.blindFrom, next + c.T, 1e-6), '下一段盲區在假驟降的再下一輪');
   const bs = R.beatsBetween(next - 0.01, next + K.BLIND_LEN, g);
-  assert.ok(bs.length > 3 && bs.some((b) => b.t >= next && b.t < next + K.BLIND_LEN && b.k === 1), '假驟降開頭 0.6 秒照常有拍');
+  assert.ok(bs.length > 3 && bs.some((b) => b.t >= next + 0.1 && b.t < next + K.BLIND_LEN && b.k === 2), '假驟降開頭 0.6 秒照常有拍');
   // 到了假驟降那一輪：fake = true、nextFake = false（不連續）、blind = false
-  while (g.cycle.index === c.index) { t += 1 / 30; g.step(t, {}); }
+  while (g.cycle.index === idx) { t += 1 / 30; g.step(t, {}); }
   assert.equal(g.cycle.fake, true); assert.equal(g.cycle.nextFake, false); assert.equal(g.cycle.blind, false);
   const bs2 = R.beatsBetween(g.cycle.start, g.cycle.start + K.BLIND_LEN, g);
-  assert.ok(bs2.length > 3, '這一輪開頭照常有拍');
+  assert.ok(bs2.length >= 3, '這一輪開頭照常有拍');
+  assert.equal(bs2.length, R.beatsBetween(g.cycle.start, g.cycle.start + K.BLIND_LEN, g, { includeBlind: true }).length, '一拍都沒略過');
   // 對照：真的交接，開頭 0.6 秒沒有拍
-  while (g.cycle.index === c.index + 1) { t += 1 / 30; g.step(t, {}); }
+  while (g.cycle.index === idx + 1) { t += 1 / 30; g.step(t, {}); }
   assert.equal(g.cycle.fake, false);
   assert.equal(R.beatsBetween(g.cycle.start, g.cycle.start + K.BLIND_LEN - 1e-6, g).length, 0);
 });
 
+/** 不放衛兵一路跑到條件成立（最多 maxT 秒），回傳時間。 */
+function runUntil(g, t, cond, maxT = 3000) { while (!cond(g) && t < maxT) { t += 1 / 30; g.step(t, {}); } assert.ok(cond(g), '條件沒有成立'); return t; }
+
 test('8.5 假驟降：衛兵照常聽得到、衝刺沒有用', () => {
-  const g = lvl({ startZone: 3, seed: 2 });
-  const q = solo(g, 'g3a', 38, 23, 0);
-  place(g, 38, 21);    // 在衛兵背後 2 公尺：低頻時在感知範圍內
+  const g = allDown(lvl({ startZone: 3, seed: 2 }));
   let t = 0; g.step(t, {});
-  while (!(g.cycle.nextFake && g.cycle.p > 0.9) && t < 2000) { t += 1 / 30; g.step(t, {}); }
-  while (!g.cycle.fake) { t += 1 / 30; g.step(t, {}); }
+  t = runUntil(g, t, (gg) => gg.cycle.fake);          // 假驟降剛開始
+  assert.ok(t - g.cycle.start < 0.1);
+  const q = solo(g, 'g3a', 38, 23, 0); q.state = 'patrol'; q.active = true;
+  place(g, 38, 22);    // 在衛兵背後 1 公尺：低頻時也在感知範圍（2 公尺）內
   const s0 = q.susp, x0 = g.player.x;
-  g.step(t + 0.05, { mx: -1, dash: true });
+  g.step(t + 0.03, { mx: 1, dash: true });
   assert.ok(Math.abs(g.player.x - x0) < 0.5, '沒有衝刺');
-  run(g, t + 0.05, t + 0.4, () => ({ mx: -0.3 }));
+  run(g, t + 0.03, t + 0.4, () => ({ mx: 0.2 }));
+  assert.equal(g.cycle.blind, false);
   assert.ok(q.susp > s0, `移動被聽到（疑心 ${s0} → ${q.susp}）`);
   assert.ok(!sfx(g).includes('dash'));
 });
 
 test('8.5 假驟降：警戒、追殺中不抽；追殺開始時取消已抽中的', () => {
-  const g = allDown(lvl({ startZone: 3, seed: 2 }));
-  let t = 0; g.step(t, {});
-  while (!g.cycle.nextFake && t < 2000) { t += 1 / 30; g.step(t, {}); }
-  g.hunted = true; g.stillT = 0;
-  // 直接呼叫內部的 startHunt 不方便：用「警戒中按錯拍」走正常流程
   const h = lvl({ startZone: 3, seed: 2 });
-  solo(h, 'g3a', 38, 23, 0); place(h, 38, 24.2);
+  const q = solo(h, 'g3a', 38, 23, 0);
+  place(h, 33, 26);                                   // 先待在遠處
   let u = 0; h.step(u, {});
-  while (!h.cycle.nextFake && u < 2000) { u += 1 / 30; h.step(u, {}); }
-  h.step(u + 0.01, { takedown: true });    // 盲區外按 → 起疑
+  u = runUntil(h, u, (gg) => gg.cycle.nextFake && gg.cycle.p > 0.1 && gg.cycle.p < 0.5);
+  place(h, 38, 24.2);
+  h.step(u + 0.01, { takedown: true });               // 盲區外按 → 起疑
   assert.equal(h.panic.active, true);
-  h.step(u + 0.3, { calm: true });         // 不在拍上 → 追殺
+  assert.equal(q.state, 'suspicious');
+  h.step(u + 0.3, { calm: true });                    // 不在拍上 → 追殺
   assert.equal(h.hunted, true);
   assert.equal(h.cycle.nextFake, false, '追殺開始時取消');
-  const { list } = handoffs(h, u + 0.3, u + 60, 1 / 30, (gg) => { gg.hunted = true; gg.stillT = 0; return {}; });
+  const { list } = handoffs(h, u + 0.3, u + 80, 1 / 30, (gg) => { gg.hunted = true; gg.stillT = 0; return {}; });
   assert.ok(list.length > 5 && list.every((x) => !x.fake), '追殺中不出現');
+  // 警戒中也不抽
+  const a = lvl({ startZone: 3, seed: 2 });
+  solo(a, 'g3a', 38, 23, 0); place(a, 33, 26);
+  let v = 0; a.step(v, {});
+  const { list: l2 } = handoffs(a, 0, 80, 1 / 30, (gg) => { gg.panic.active = true; gg.panic.start = 1e9; return {}; });
+  assert.ok(l2.length > 5 && l2.every((x) => !x.fake), '警戒中不出現');
 });
