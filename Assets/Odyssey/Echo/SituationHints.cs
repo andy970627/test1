@@ -49,7 +49,9 @@ public class SituationHints : MonoBehaviour
         if (SoundRules.Lights(e.Kind))
         {
             // 示範只給玩家自己發出的聲音（不含羊撞倒的奶桶等）。
-            bool mine = e.Kind is SoundKind.Clap or SoundKind.SnapShot or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge;
+            // 同伴示範的那一聲在身後（GuideCues.DemoBehindMeters），不算玩家自己做到。
+            bool mine = e.Kind is SoundKind.Clap or SoundKind.SnapShot or SoundKind.Arrow or SoundKind.Grind or SoundKind.Boulder or SoundKind.Wedge
+                && (e.Kind != SoundKind.Clap || GuideCues.IsOwnSound(Flat(at - loop.PlayerPosition).magnitude));
             if (mine)
                 loop.Essential.OnLit();
             if (!lawShown && mine)

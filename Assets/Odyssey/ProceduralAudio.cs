@@ -299,18 +299,6 @@ public static partial class ProceduralAudio
         return Make("WoodTap", data);
     }
 
-    /// <summary>提示學會：輕柔的一聲鈴（只有玩家聽得到）。</summary>
-    public static AudioClip LearnChime()
-    {
-        var data = new float[(int)(SampleRate * 0.6f)];
-        for (int i = 0; i < data.Length; i++)
-        {
-            float t = (float)i / SampleRate;
-            data[i] = 0.2f * (Mathf.Sin(2f * Mathf.PI * 880f * t) + 0.5f * Mathf.Sin(2f * Mathf.PI * 1320f * t)) * Mathf.Exp(-6f * t);
-        }
-        return Make("LearnChime", data);
-    }
-
     /// <summary>巨石每推開 25%：低沉的一聲「咚」（只有玩家聽得到）。</summary>
     public static AudioClip BoulderSettle()
     {

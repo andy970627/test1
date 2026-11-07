@@ -45,6 +45,18 @@ public class FirstPersonHands : MonoBehaviour
     /// <summary>雙手垂下（0～1）：偷襲過場裡奧德修斯低頭的那一刻。</summary>
     public float Lower { get; set; }
 
+    /// <summary>手勢提示（少用文字設計第 3 節 A）：沒有真的在做動作時，雙手擺出「可以這樣做」的姿勢。由 WorldPrompts 每幀設定。</summary>
+    public Gesture Hint { get; set; }
+
+    /// <summary>ReachOut 手勢伸向的世界座標（木樁、同伴、縫）。</summary>
+    public Vector3 ReachTarget { get; set; }
+
+    /// <summary>手勢正在畫的那一幀，鍵帽要跟著的世界座標（手或石子的位置）。</summary>
+    public Vector3 CueAnchor { get; private set; }
+
+    /// <summary>這一幀手勢有沒有真的畫出來（真的在推、拉弓時讓給真動作）。</summary>
+    public bool HintShown { get; private set; }
+
     public void Init(EchoPlayer player, BoulderSlide slide, Transform cameraTransform)
     {
         this.player = player;
@@ -262,7 +274,85 @@ public class FirstPersonHands : MonoBehaviour
         UpdateBowState(dt);
         UpdatePushHands(dt);
         UpdateSlingshot(dt);
+        UpdateHintPose();
         UpdateTremble();
+    }
+
+    /// <summary>
+    /// 手勢提示：真動作（推、頂、塞楔子、拉弓、拉彈弓）優先；都沒有時依 Hint 擺姿勢，帶一點慢慢的起伏。
+    /// </summary>
+    void UpdateHintPose()
+    {
+        bool busy = (player.AtBoulder && player.PushMode != PushMode.None)
+            || (player.AtBoulder && player.PushMode == PushMode.None && slide.Opening > 0.05f)
+            || player.Wedging || player.Bow.Drawing || slingShown > 0f;
+        HintShown = !busy && Hint != Gesture.None;
+        if (!HintShown)
+            return;
+        float bob = Mathf.Sin(Time.time * 2f) * 0.012f;
+        switch (Hint)
+        {
+            case Gesture.Sling:
+            {
+                // 左手把彈弓舉到畫面中央偏下，皮筋微微顫動。
+                if (player.CarryingStake)
+                    break;
+                bowRoot.gameObject.SetActive(false);
+                slingRoot.gameObject.SetActive(true);
+                slingRoot.localPosition = new Vector3(-0.02f, -0.10f + bob, 0.42f);
+                slingRoot.localRotation = Quaternion.identity;
+                leftArm.gameObject.SetActive(true);
+                leftArm.localPosition = slingRoot.localPosition + new Vector3(0f, -0.12f, -0.02f);
+                leftArm.localRotation = Quaternion.Euler(75f, 10f, 0f);
+                rightArm.gameObject.SetActive(false);
+                float tremble = Mathf.Sin(Time.time * 25f) * 0.004f;
+                Vector3 fork = new(0f, 0.12f, 0f);
+                Vector3 hand = new(0f, 0.09f, -0.03f + tremble);
+                Vector3 span = hand - fork;
+                slingBand.localPosition = (hand + fork) / 2f;
+                slingBand.localRotation = span.sqrMagnitude > 1e-6f ? Quaternion.LookRotation(span) : Quaternion.identity;
+                slingBand.localScale = new Vector3(0.012f, 0.008f, Mathf.Max(0.01f, span.magnitude));
+                CueAnchor = slingRoot.TransformPoint(new Vector3(0.08f, 0.16f, 0f));
+                break;
+            }
+            case Gesture.PushReady:
+            {
+                // 雙手抬到石面前，還沒貼上。
+                float spread = ViewPose.NormalSpread;
+                leftArm.gameObject.SetActive(true);
+                rightArm.gameObject.SetActive(true);
+                leftArm.localPosition = new Vector3(-spread * 0.5f, -0.12f + bob, 0.5f);
+                leftArm.localRotation = Quaternion.Euler(75f, 10f, 0f);
+                rightArm.localPosition = new Vector3(spread * 0.5f, -0.12f + bob, 0.5f);
+                rightArm.localRotation = Quaternion.Euler(75f, -10f, 0f);
+                CueAnchor = rightArm.TransformPoint(new Vector3(0.08f, 0.2f, 0f));
+                break;
+            }
+            case Gesture.OfferStone:
+            {
+                // 右手拿著石子伸向縫底。
+                leftArm.gameObject.SetActive(false);
+                rightArm.gameObject.SetActive(true);
+                wedgeStone.gameObject.SetActive(true);
+                rightArm.localPosition = new Vector3(0.14f, -0.22f + bob, 0.45f);
+                rightArm.localRotation = Quaternion.Euler(85f, -15f, 0f);
+                CueAnchor = wedgeStone.position + Vector3.up * 0.06f;
+                break;
+            }
+            case Gesture.ReachGap:
+            case Gesture.ReachOut:
+            {
+                // 右手伸向目標（縫、木樁、同伴）：把目標轉到鏡頭座標，夾在畫面裡。
+                leftArm.gameObject.SetActive(false);
+                rightArm.gameObject.SetActive(true);
+                Vector3 local = transform.parent != null ? transform.parent.InverseTransformPoint(ReachTarget) : new Vector3(0f, 0f, 1f);
+                Vector3 dir = local.sqrMagnitude > 1e-4f ? local.normalized : Vector3.forward;
+                rightArm.localPosition = new Vector3(Mathf.Clamp(dir.x * 0.5f, -0.3f, 0.3f) + 0.12f, Mathf.Clamp(dir.y * 0.4f, -0.3f, 0.05f) - 0.1f + bob, 0.5f);
+                rightArm.localRotation = Quaternion.Euler(80f, -15f, 0f);
+                CueAnchor = rightArm.TransformPoint(new Vector3(0.08f, 0.22f, 0f));
+                break;
+            }
+        }
     }
 
     /// <summary>拉彈弓時：弓收起，左手把彈弓舉到畫面中下方，右手把皮筋往後拉；放開後再留 0.25 秒。</summary>

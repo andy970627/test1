@@ -13,9 +13,9 @@ public class TerrorMusic : MonoBehaviour
     const float SilenceFade = 1f;
     const float BaseDrone = 0.08f;
 
-    AudioSource drone, chant, chase, beats;
+    AudioSource drone, chant, chase, beats, scrape;
     AudioClip heartbeat, drum;
-    float droneVol, chantVol, chaseVol, heartVol, drumVol;
+    float droneVol, chantVol, chaseVol, heartVol, drumVol, scrapeVol;
     float beatTimer;
     int beatCount;
     float duckLeft, dronePauseLeft;
@@ -32,6 +32,7 @@ public class TerrorMusic : MonoBehaviour
         drone = Loop(ProceduralAudio.Drone());
         chant = Loop(ProceduralAudio.Chant());
         chase = Loop(ProceduralAudio.ChaseLyre());
+        scrape = Loop(ProceduralAudio.GongScrape());
         beats = gameObject.AddComponent<AudioSource>();
         beats.spatialBlend = 0f;
         beats.playOnAwake = false;
@@ -51,6 +52,9 @@ public class TerrorMusic : MonoBehaviour
     /// <summary>詩句出現時其他聲音降 6 dB（規格第 31 節 H6）。</summary>
     public void Duck(float seconds) => duckLeft = Mathf.Max(duckLeft, seconds);
 
+    /// <summary>天亮前的緊張（0～1）：背景的 D 持續低音慢慢升半音（規格第 31 節 H5）。</summary>
+    public float DawnTension { get; set; }
+
     /// <summary>雷鳴之後背景低音停 3 秒。</summary>
     public void PauseDrone(float seconds) => dronePauseLeft = Mathf.Max(dronePauseLeft, seconds);
 
@@ -58,11 +62,12 @@ public class TerrorMusic : MonoBehaviour
     public void StopAll()
     {
         layer = TerrorLayer.Silent;
-        droneVol = chantVol = chaseVol = heartVol = drumVol = 0f;
+        droneVol = chantVol = chaseVol = heartVol = drumVol = scrapeVol = 0f;
         Apply(1f);
         drone.Stop();
         chant.Stop();
         chase.Stop();
+        scrape.Stop();
     }
 
     /// <summary>
@@ -75,13 +80,13 @@ public class TerrorMusic : MonoBehaviour
         bpm = mode == TerrorMode.Layered ? reading.Bpm : 0f;
         bool off = mode != TerrorMode.Layered;
 
-        float tDrone = off || hush ? 0f : BaseDrone, tChant = 0f, tChase = 0f, tHeart = 0f, tDrum = 0f;
+        float tDrone = off || hush ? 0f : BaseDrone, tChant = 0f, tChase = 0f, tHeart = 0f, tDrum = 0f, tScrape = 0f;
         switch (layer)
         {
             case TerrorLayer.One: tDrone = 0.3f; tHeart = 0.35f; break;
             case TerrorLayer.Two: tDrone = 0.35f; tHeart = 0.5f; tDrum = 0.35f; break;
-            case TerrorLayer.Three: tDrone = 0.4f; tHeart = 0.7f; tDrum = 0.5f; tChant = 0.3f; break;
-            case TerrorLayer.Chase: tDrone = 0.25f; tHeart = 0.85f; tDrum = 0.65f; tChase = 0.45f; break;
+            case TerrorLayer.Three: tDrone = 0.4f; tHeart = 0.7f; tDrum = 0.5f; tChant = 0.3f; tScrape = 0.25f; break;
+            case TerrorLayer.Chase: tDrone = 0.25f; tHeart = 0.85f; tDrum = 0.65f; tChase = 0.45f; tScrape = 0.2f; break;
             case TerrorLayer.Prayer: tDrone = 0f; break;
         }
 
@@ -97,6 +102,9 @@ public class TerrorMusic : MonoBehaviour
         chaseVol = Mathf.MoveTowards(chaseVol, tChase, step * 0.5f);
         heartVol = Mathf.MoveTowards(heartVol, tHeart, step);
         drumVol = Mathf.MoveTowards(drumVol, tDrum, step);
+        scrapeVol = Mathf.MoveTowards(scrapeVol, tScrape, step * 0.5f);
+        // 天亮前 30 秒：D 慢慢升到 D♯（×2^(1/12)），時間不對了。
+        drone.pitch = Mathf.Lerp(1f, 1.0595f, Mathf.Clamp01(DawnTension));
 
         float duck = 1f;
         if (duckLeft > 0f)
@@ -113,6 +121,7 @@ public class TerrorMusic : MonoBehaviour
         SetLoop(drone, droneVol * duck);
         SetLoop(chant, chantVol * duck);
         SetLoop(chase, chaseVol * duck);
+        SetLoop(scrape, scrapeVol * duck);
     }
 
     static void SetLoop(AudioSource s, float volume)
