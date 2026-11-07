@@ -5,7 +5,10 @@
  *   prepare(page,o)   載入後的準備：調參、按「開始」；o 是命令列選項
  *   probe()           在頁面裡每幀執行，回傳一筆狀態（必須含 t＝音訊時間；可含 blind、alert、events）
  *   bot(api,s,st)     程式玩家，每幀在頁面裡執行；api.down/up/press(code) 派送鍵盤事件
+ *   intervals(tl,m,ev) 在 Node 端回傳 {blind, alert, hunted, fake} 區段（音訊時間）；一律用規則時間軸記錄的實際值，
+ *                    不可用 t0 + k × T 推算（循環長度會變）
  *   expectedBeats(tl) 在 Node 端由時間軸算出「規則上的拍點」{t, w, kind}，給分析比對起音
+ *   summary(tl,m,ev,IV) 可選：報告多加一節（這裡是循環長度隨危險變化、盲區長度、假驟降）
  * probe 與 bot 會被 toString() 送進頁面，所以只能用頁面裡的全域變數，不能引用本檔的東西。
  */
 
@@ -37,8 +40,11 @@ export default {
     return page.evaluate(() => {
       const C = window.RissetAudio.CONST || {};
       const g = window.TroyDebug.game;
-      return { audioConst: { M: C.M, LAYERS: C.LAYERS, BELL_SIGMA: C.BELL_SIGMA, MIN_GAIN: C.MIN_GAIN, BLIND: C.BLIND },
-        rules: { CYCLE: g.T.CYCLE, BLIND: g.T.BLIND_LEN != null ? g.T.BLIND_LEN : g.T.BLIND, BASS_PERIOD: g.T.BASS_PERIOD, BASS_WIN: g.T.BASS_WIN } };
+      const T = g.T;
+      return { audioConst: { M: C.M, LAYERS: C.LAYERS, BELL_SIGMA: C.BELL_SIGMA, MIN_GAIN: C.MIN_GAIN, BLIND: C.BLIND, BASS_TAIL: C.BASS_TAIL, HUNT_FLOOR: C.HUNT_FLOOR },
+        rules: { CYCLE: T.CYCLE, DYNAMIC: T.DYNAMIC, BLIND: T.BLIND_LEN != null ? T.BLIND_LEN : T.BLIND, BASS_PERIOD: T.BASS_PERIOD, BASS_WIN: T.BASS_WIN,
+          CYCLE_FAR: T.CYCLE_FAR, CYCLE_NEAR: T.CYCLE_NEAR, CYCLE_ALERT: T.CYCLE_ALERT, CYCLE_HUNT: T.CYCLE_HUNT, DIST_FAR: T.DIST_FAR, DIST_NEAR: T.DIST_NEAR,
+          ZONE_MUL: T.ZONE_MUL, FAKE_FROM_ZONE: T.FAKE_FROM_ZONE, FAKE_EVERY: T.FAKE_EVERY } };
     });
   },
 
@@ -76,7 +82,11 @@ export default {
       hidden: !!P.hidden, moving: !!P.moving,
       gd: near ? +nd.toFixed(2) : null, gs: near ? near.state : null, gsusp: near ? +near.susp.toFixed(2) : null,
       bassAnchor: +g.bass.anchor.toFixed(4), bassNext: +g.bass.nextBeat.toFixed(4), bassPer: g.bass.period,
-      cT: g.cycle.T, ct0: g.cycle.t0,
+      cT: g.cycle.T, ct0: g.cycle.t0, tT: +(g.cycle.targetT || 0).toFixed(4),
+      // 規則實際的循環與盲區（音訊時間）：本循環 p = 0 的時間、目前或下一段盲區、警戒盲區模式、假驟降
+      cs: +(g.cycle.start != null ? g.cycle.start : g.cycle.t0).toFixed(5),
+      bf: g.cycle.blindFrom != null ? +g.cycle.blindFrom.toFixed(5) : null, bt: g.cycle.blindTo != null ? +g.cycle.blindTo.toFixed(5) : null,
+      bid: g.cycle.blindId || null, ab: !!g.cycle.alertBlind, fake: !!g.cycle.fake, nfake: !!g.cycle.nextFake,
       events: evs
     };
   },
@@ -150,18 +160,26 @@ export default {
     api.set('KeyS', fwd < 0);
   },
 
-  /* 精確區段（給分析）：盲區由 (t0, CYCLE, BLIND) 算出；警戒＝panic.active、追殺＝hunted（以取樣幀為界，起點用 alert cue 的實際時間）。 */
+  /* 精確區段（給分析）：一律以規則時間軸記錄的實際值為準，不假設固定週期。
+   *   盲區：規則說 blind 的幀，依 blindId 分組，區段取規則當時給的 [blindFrom, blindTo]（音訊時間，精確到樣本）；
+   *         取樣漏掉的一般盲區（幀間隔 > 0.6 秒才會發生）用循環編號變化時的 cycle.start 補上。
+   *   假驟降：循環編號變化、而且 cycle.fake 為真的那一輪，[start, start + BLIND]（應該沒有空檔，給分析對照）。
+   *   警戒＝panic.active、追殺＝hunted（以取樣幀為界，起點用 alert cue 的實際時間）。 */
   intervals(timeline, meta, events) {
-    const B = ((meta.prepared || {}).rules || {}).BLIND || 0.5;
-    const blind = [];
-    const segs = [];
+    const B = ((meta.prepared || {}).rules || {}).BLIND || 0.6;
+    const blind = [], fake = [], seen = new Set();
+    let prevCyc = null;
     for (const s of timeline) {
-      const L = segs[segs.length - 1];
-      if (!L || L.t0 !== s.ct0 || L.T !== s.cT) segs.push({ t0: s.ct0, T: s.cT, a: s.t, b: s.t }); else L.b = s.t;
+      if (s.blind && s.bid != null && !seen.has(s.bid) && s.bf != null && s.bt != null) {
+        seen.add(s.bid); blind.push([s.bf, s.bt]);
+      }
+      if (prevCyc != null && s.cyc !== prevCyc && s.cs != null) {
+        if (s.fake) fake.push([s.cs, s.cs + B]);
+        else if (!s.ab && !seen.has('c' + s.cyc) && s.t - s.cs > B) { seen.add('c' + s.cyc); blind.push([s.cs, s.cs + B]); }
+      }
+      prevCyc = s.cyc;
     }
-    for (const S of segs) for (let c = Math.floor((S.a - S.t0) / S.T); S.t0 + c * S.T <= S.b; c++) {
-      const a = S.t0 + c * S.T; if (a + B >= S.a) blind.push([a, a + B]);
-    }
+    blind.sort((a, b) => a[0] - b[0]);
     const run = (key) => {
       const out = []; let cur = null;
       for (const s of timeline) {
@@ -174,50 +192,101 @@ export default {
     const alert = run('alert');
     const cues = (events || []).filter(e => e.type === 'cue' && /^alert$/i.test(e.name));
     for (const iv of alert) { const c = cues.find(e => e.at <= iv[0] + 1e-3 && e.at > iv[0] - 1); if (c) iv[0] = c.at; }
-    return { blind, alert, hunted: run('hunted') };
+    return { blind, fake, alert, hunted: run('hunted') };
   },
 
-  /* 規則上的拍點（給分析比對）：Risset 4 層（盲區不排）＋低音網格。常數取自 prepare 回傳的 RissetAudio.CONST。 */
+  /* 規則上的拍點（給分析比對）：循環長度會變，所以不能用 t0 + k × T。
+   * 規則每幀記下 (gt, 累計相位 U = cycle.index + p)；相鄰兩幀之間 T 最多變 20%/秒 × 幀間隔，
+   * 在這之間對 U 線性內插求「U = 第 c 輪 + 拍點相位」的時間（誤差 < 0.1 ms）。拍點相位與音量公式和規則 beatPhases／layerGain 相同。
+   * 落在規則實際盲區（intervals）裡的拍不算（聲音本來就不排）。
+   * 低音：每段相同 anchor 的網格；巡邏時聲音刻意不排「會落進盲區、或餘音（BASS_TAIL）拖進盲區」的低音拍，這裡同樣排除。 */
   expectedBeats(timeline, meta) {
-    const C = Object.assign({ M: 7, LAYERS: 4, BELL_SIGMA: 0.22, MIN_GAIN: 0.02, BLIND: 0.5 }, (meta.prepared || {}).audioConst || {});
-    for (const k in C) if (C[k] == null) delete C[k];
-    const Cd = Object.assign({ M: 7, LAYERS: 4, BELL_SIGMA: 0.22, MIN_GAIN: 0.02, BLIND: 0.5 }, C);
+    const C = Object.assign({ M: 7, LAYERS: 4, BELL_SIGMA: 0.22, MIN_GAIN: 0.02, BASS_TAIL: 1.1, HUNT_FLOOR: 0.55 }, (meta.prepared || {}).audioConst || {});
+    for (const k of Object.keys(C)) if (C[k] == null) delete C[k];
+    const Cd = Object.assign({ M: 7, LAYERS: 4, BELL_SIGMA: 0.22, MIN_GAIN: 0.02, BASS_TAIL: 1.1, HUNT_FLOOR: 0.55 }, C);
     const out = [];
     if (!timeline.length) return out;
-    const tA = timeline[0].t, tB = timeline[timeline.length - 1].t;
-    // 依 (t0, T) 分段（重新開局時會變）
-    const segs = [];
-    for (const s of timeline) {
-      const L = segs[segs.length - 1];
-      if (!L || L.t0 !== s.ct0 || L.T !== s.cT) segs.push({ t0: s.ct0, T: s.cT, a: s.t, b: s.t, hunted: [] });
-      else L.b = s.t;
-    }
+    const IV = this.intervals(timeline, meta, []);
+    const inIv = (t, arr, pre = 0) => arr.some(([a, b]) => t >= a - pre && t < b);
     const bell = (x) => { const d = (x - 0.5) / Cd.BELL_SIGMA; return Math.exp(-d * d); };
-    for (const S of segs) {
-      const c0 = Math.floor((S.a - S.t0) / S.T), c1 = Math.floor((S.b - S.t0) / S.T);
-      for (let c = c0; c <= c1; c++) for (let k = 0; k < Cd.LAYERS; k++) {
+    const pts = [];
+    for (const s of timeline) {
+      const g = s.gt != null ? s.gt : s.t, U = s.cyc + s.p;
+      const L = pts[pts.length - 1];
+      if (L && (g <= L.g + 1e-6)) continue;
+      pts.push({ g, U, hunted: s.hunted });
+    }
+    for (let i = 1; i < pts.length; i++) {
+      const A = pts[i - 1], Bp = pts[i];
+      if (!(Bp.U > A.U) || Bp.g - A.g > 1.0) continue;   // 時鐘跳躍（分頁休眠）不內插
+      for (let c = Math.floor(A.U); c <= Math.floor(Bp.U); c++) for (let k = 0; k < Cd.LAYERS; k++) {
         const Mk = Cd.M * Math.pow(2, k);
         for (let n = 0; n < Mk; n++) {
-          const ph = Math.log2(1 + n / Mk), t = S.t0 + (c + ph) * S.T;
-          if (t < S.a || t > S.b || ph * S.T < Cd.BLIND) continue;
-          const w = bell((k + ph) / Cd.LAYERS);
+          const ph = Math.log2(1 + n / Mk), U = c + ph;
+          if (U < A.U || U >= Bp.U) continue;
+          const t = A.g + (U - A.U) / (Bp.U - A.U) * (Bp.g - A.g);
+          if (inIv(t, IV.blind)) continue;
+          let w = bell((k + ph) / Cd.LAYERS);
+          if (A.hunted) w = Math.max(w, Cd.HUNT_FLOOR);
           if (w < Cd.MIN_GAIN) continue;
-          out.push({ t, w, kind: 'risset', layer: k });
+          out.push({ t, w, kind: 'risset', layer: k, cycle: c });
         }
       }
     }
     // 低音：每段相同 anchor 的網格
+    const tA = timeline[0].t, tB = timeline[timeline.length - 1].t;
     let i = 0;
     while (i < timeline.length) {
       const an = timeline[i].bassAnchor, per = timeline[i].bassPer || 2.4;
       let j = i; while (j + 1 < timeline.length && timeline[j + 1].bassAnchor === an) j++;
       const a = timeline[i].t, b = timeline[j].t;
       for (let m = Math.ceil((a - an) / per); an + m * per <= b; m++) {
-        const t = an + m * per; if (t >= an - 1e-6 && t >= tA && t <= tB) out.push({ t, w: 1, kind: 'bass' });
+        const t = an + m * per;
+        if (!(t >= an - 1e-6 && t >= tA && t <= tB)) continue;
+        const s = timeline[Math.min(j, i + Math.max(0, timeline.slice(i, j + 1).findIndex(x => x.t >= t)))];
+        if (s && !s.alert && !s.hunted && inIv(t, IV.blind, Cd.BASS_TAIL)) continue;   // 巡邏：聲音刻意不排
+        out.push({ t, w: 1, kind: 'bass' });
       }
       i = j + 1;
     }
     out.sort((x, y) => x.t - y.t);
     return out;
+  },
+
+  /* 報告加一節：循環長度隨危險變化（各狀態、各區的平均 T，以時間加權）、每次盲區的長度、假驟降。 */
+  summary(timeline, meta, events, IV) {
+    const R = (meta.prepared || {}).rules || {};
+    const B = R.BLIND || 0.6;
+    const acc = {}, add = (k, T, tT, dt) => { const a = acc[k] || (acc[k] = { sec: 0, T: 0, tT: 0, min: Infinity, max: 0 }); a.sec += dt; a.T += T * dt; a.tT += tT * dt; a.min = Math.min(a.min, T); a.max = Math.max(a.max, T); };
+    const far = R.DIST_FAR || 20, nearD = R.DIST_NEAR || 4;
+    for (let i = 1; i < timeline.length; i++) {
+      const s = timeline[i - 1], dt = timeline[i].t - s.t;
+      if (!(dt > 0 && dt < 1) || s.phase !== 'play') continue;
+      const st = s.hunted ? '追殺' : s.alert ? '警戒' : (s.gd == null || s.gd >= far) ? `巡邏：附近沒有衛兵（≥ ${far} m）` : s.gd <= nearD ? `巡邏：衛兵很近（≤ ${nearD} m）` : `巡邏：衛兵在 ${nearD}～${far} m`;
+      add(st, s.cT, s.tT || s.cT, dt);
+      if (!s.hunted && !s.alert) add(`巡邏（第 ${s.zone} 區）`, s.cT, s.tT || s.cT, dt);
+    }
+    const order = ['追殺', '警戒', `巡邏：衛兵很近（≤ ${nearD} m）`, `巡邏：衛兵在 ${nearD}～${far} m`, `巡邏：附近沒有衛兵（≥ ${far} m）`, '巡邏（第 1 區）', '巡邏（第 2 區）', '巡邏（第 3 區）', '巡邏（第 4 區）'];
+    const rows = order.filter(k => acc[k]).map(k => { const a = acc[k]; return { state: k, sec: +a.sec.toFixed(1), meanT: +(a.T / a.sec).toFixed(2), meanTarget: +(a.tT / a.sec).toFixed(2), minT: +a.min.toFixed(2), maxT: +a.max.toFixed(2) }; });
+    // 盲區長度直接讀規則時間軸（IV 已被裁到錄音範圍內，頭尾那段會被截短）
+    const lens = [], seenB = new Set();
+    for (const x of timeline) if (x.blind && x.bid != null && !seenB.has(x.bid) && x.bf != null) { seenB.add(x.bid); lens.push(+(x.bt - x.bf).toFixed(4)); }
+    const allOk = lens.length > 0 && lens.every(L => Math.abs(L - B) < 1e-3);
+    // 每次一般盲區前有沒有 pre_blind；每次假驟降前有沒有（應該沒有）
+    const pre = (events || []).filter(e => e.type === 'cue' && /^pre_?blind$/i.test(e.name)).map(e => e.at);
+    const preBefore = (s0) => pre.some(t => t <= s0 + 0.02 && t > s0 - 1.0);
+    const normal = [];
+    for (const s of timeline) if (s.blind && !s.ab && s.bf != null && !normal.includes(s.bf)) normal.push(s.bf);
+    const L = [];
+    L.push(`規則目標：附近沒有衛兵 ${R.CYCLE_FAR} 秒、靠近最短 ${R.CYCLE_NEAR} 秒、警戒 ${R.CYCLE_ALERT} 秒、追殺 ${R.CYCLE_HUNT} 秒；巡邏每往城門一區 ×${R.ZONE_MUL}。數字以時間加權（只算遊玩中）。`, '');
+    L.push('| 狀態 | 時間（秒） | 平均 T（秒） | 平均目標 T | 最短～最長 T |', '|---|---|---|---|---|');
+    for (const r of rows) L.push(`| ${r.state} | ${r.sec} | ${r.meanT} | ${r.meanTarget} | ${r.minT}～${r.maxT} |`);
+    L.push('');
+    L.push(`- 盲區長度（規則記錄的 blindTo − blindFrom）：${lens.length} 次，${allOk ? `**每次都是 ${B} 秒**` : '**有不是 ' + B + ' 秒的**：' + lens.join('、')}` +
+      `（其中警戒時的低音拍間盲區 ${timeline.filter(s => s.blind && s.ab).map(s => s.bid).filter((v, i, a) => a.indexOf(v) === i).length} 次）。`);
+    L.push(`- 一般盲區前 1 秒內有 pre_blind 預告：${normal.filter(preBefore).length}／${normal.length} 次。`);
+    const fk = IV.fake || [];
+    L.push(`- 假驟降：${fk.length} 次${fk.length ? `（${fk.map(([a]) => a.toFixed(2) + ' 秒').join('、')}；前 1 秒內有 pre_blind 的：${fk.filter(([a]) => preBefore(a)).length} 次）` : `（這次錄製${timeline.some(s => s.zone >= (R.FAKE_FROM_ZONE || 3)) ? '在第 3 區以後沒有抽到' : '沒有走到第 ' + (R.FAKE_FROM_ZONE || 3) + ' 區，不會出現'}）`}。`);
+    return { title: '循環長度隨危險變化', lines: L, data: { rows, blindLens: lens, blindAll06: allOk, preBlind: { withPre: normal.filter(preBefore).length, of: normal.length }, fake: fk } };
   }
 };

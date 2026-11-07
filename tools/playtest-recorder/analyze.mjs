@@ -33,7 +33,9 @@ const TH = Object.assign({
   onsetHitRate: 0.8,      // 顯著拍點（w ≥ 0.5）在 ±30 ms 內找到起音的比例下限
   dropRate: 0.1,          // 丟拍比例上限（±40 ms 內找不到起音）
   silenceSec: 0.75,       // 低於 −60 dBFS 連續多久算「完全無聲」
-  clipSamples: 0          // 允許的削峰樣本數
+  clipSamples: 0,         // 允許的削峰樣本數
+  // 玩家自己的動作音（走提示音匯流排，盲區不壓）：盲區內有這些 cue 時，那次盲區照列但不計入盲區檢查
+  blindConfoundCues: '^(dash|trapdoor|checkpoint|step_loud|gasp|takedown|takedown_fail|latch|latch_step|calm_ok|calm_bad|calm_done|alert|caught|hunt|escape|gate_open)$'
 }, (profile && profile.analysis && profile.analysis.thresholds) || {});
 const log = (...a) => console.log('[analyze]', ...a);
 
@@ -177,8 +179,10 @@ function boolIntervals(key, filter) {
   if (cur) out.push(cur);
   return out;
 }
+// 區段：設定檔有 intervals 就用它（應以遊戲規則時間軸記錄的實際區段為準，不要用 t0 + k × T 推算）；
+// 沒有才用每幀布林值連成區段。IV.fake（可選）＝假驟降：照常交接、不該有空檔，給報告對照。
 let IV = profile && profile.intervals ? profile.intervals(TL, meta, EV) : null;
-IV = Object.assign({ blind: boolIntervals('blind'), alert: boolIntervals('alert'), hunted: boolIntervals('hunted') }, IV || {});
+IV = Object.assign({ blind: boolIntervals('blind'), alert: boolIntervals('alert'), hunted: boolIntervals('hunted'), fake: [] }, IV || {});
 const clipIV = (arr) => arr.map(([a, b]) => [Math.max(a, T0), Math.min(b, T0 + DUR)]).filter(([a, b]) => b > a);
 for (const k of Object.keys(IV)) IV[k] = clipIV(IV[k]);
 const expected = profile && profile.expectedBeats ? profile.expectedBeats(TL, meta).filter(b => b.t > T0 + 0.05 && b.t < T0 + DUR - 0.05) : [];
@@ -192,9 +196,11 @@ const pct = (a, q) => { if (!a.length) return null; const s = [...a].sort((x, y)
 const r1 = (v) => v == null ? null : Math.round(v * 10) / 10;
 
 // 1. 盲區壓低量
-const dips = [];
 const expectedEarly = profile && profile.expectedBeats ? profile.expectedBeats(TL, meta) : [];
-for (const [a, b] of IV.blind) {
+const dips = dipsOf(IV.blind), fakeDips = dipsOf(IV.fake || []);
+function dipsOf(list) {
+const dips = [];
+for (const [a, b] of list) {
   if (a - 1.0 < T0 || b + 1.0 > T0 + DUR || gapFrac(a - 1.0, b + 1.0) > 0.2) continue;
   const inside = powerIn(a + 0.1, b - 0.03), before = powerIn(a - 1.0, a - 0.15), after = powerIn(b + 0.25, b + 1.0);
   if (inside == null || before == null || after == null) continue;
@@ -202,13 +208,19 @@ for (const [a, b] of IV.blind) {
   // 盲區內（含前 0.3 秒，殘響會拖進來）還在響的規則拍點與 cue，幫助判斷「為什麼不夠空」
   const inBeats = expectedEarly.filter(x => x.t >= a - 0.3 && x.t < b).map(x => x.kind === 'bass' ? '低音拍 ' + (x.t - a >= 0 ? '+' : '') + (x.t - a).toFixed(2) + 's' : null).filter(Boolean);
   const inCues = EV.filter(e => e.type === 'cue' && (e.at || e.t) >= a - 0.3 && (e.at || e.t) < b && !/^(pre_?blind|blind)$/i.test(e.name)).map(e => e.name + ' ' + ((e.at || e.t) - a >= 0 ? '+' : '') + ((e.at || e.t) - a).toFixed(2) + 's');
-  dips.push({ t: +a.toFixed(3), insideDb: r1(db(inside)), beforeDb: r1(db(before)), afterDb: r1(db(after)), dipDb: r1(ref - db(inside)), sounding: [...inBeats, ...inCues] });
+  const conf = EV.filter(e => e.type === 'cue' && (e.at || e.t) >= a - 0.05 && (e.at || e.t) < b && new RegExp(TH.blindConfoundCues, 'i').test(e.name)).map(e => e.name);
+  dips.push({ confound: conf, t: +a.toFixed(3), len: +(b - a).toFixed(3), insideDb: r1(db(inside)), beforeDb: r1(db(before)), afterDb: r1(db(after)), dipDb: r1(ref - db(inside)), sounding: [...inBeats, ...inCues] });
+}
+return dips;
 }
 {
-  const d = dips.map(x => x.dipDb), md = median(d), mn = d.length ? Math.min(...d) : null;
+  const clean = dips.filter(x => !x.confound.length), conf = dips.filter(x => x.confound.length);
+  const d = clean.map(x => x.dipDb), md = median(d), mn = d.length ? Math.min(...d) : null;
   add('blind', '盲區時整體音量比前後低', d.length ? md >= TH.blindDipMedianDb && mn >= TH.blindDipMinDb : null,
-    d.length ? `中位 ${md} dB、最小 ${mn} dB（${d.length} 次盲區）` : '沒有可量的盲區',
-    `門檻：中位 ≥ ${TH.blindDipMedianDb} dB 且每次 ≥ ${TH.blindDipMinDb} dB。盲區內取 [+0.10, 結束−0.03] 秒，前後取盲區前 1.0～0.15 秒與結束後 0.25～1.0 秒的平均。`);
+    (d.length ? `中位 ${md} dB、最小 ${mn} dB（${d.length} 次盲區）` : '沒有可量的盲區') +
+    (conf.length ? `；另 ${conf.length} 次盲區內有玩家自己的動作音（${conf.map(x => x.t + ' 秒：' + [...new Set(x.confound)].join('、')).join('；')}），照列不計` : ''),
+    `門檻：中位 ≥ ${TH.blindDipMedianDb} dB 且每次 ≥ ${TH.blindDipMinDb} dB。盲區內取 [+0.10, 結束−0.03] 秒，前後取盲區前 1.0～0.15 秒與結束後 0.25～1.0 秒的平均。` +
+    `區段以規則時間軸記錄的實際盲區為準。玩家自己的動作音（衝刺、暗門、檢查點、不合拍腳步、安撫哼唱等）走提示音匯流排、盲區本來就不壓，盲區內有這些 cue 的那幾次列在表裡但不計入。`);
 }
 
 // 2. 起音與規則拍點
@@ -299,7 +311,7 @@ const silences = [];
 // ---------- 圖 ----------
 const W = Math.max(1000, Math.min(4000, Math.round(DUR * 20))), H = 480;
 const xOf = (t) => (t - T0) / DUR * W;
-const COLORS = { blind: '#4aa3ff', alert: '#ff9a2e', hunted: '#ff3b30' };
+const COLORS = { blind: '#4aa3ff', alert: '#ff9a2e', hunted: '#ff3b30', fake: '#c86bff' };
 // 頻譜圖（含座標軸）
 spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', path.join(dir, 'audio.wav'), '-lavfi',
   `showspectrumpic=s=${W}x512:legend=1:fscale=log:start=20:stop=16000:color=intensity:gain=1.5`, path.join(dir, 'spectrogram.png')]);
@@ -307,7 +319,7 @@ spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', path.join(dir, 'audio.wav')
 {
   const boxes = [];
   const box = (x, y, w, h, c, t) => boxes.push(`drawbox=x=${Math.round(x)}:y=${y}:w=${Math.max(1, Math.round(w))}:h=${h}:color=${c}:t=${t}`);
-  for (const k of ['alert', 'hunted', 'blind']) for (const [a, b] of IV[k]) {
+  for (const k of ['alert', 'hunted', 'blind', 'fake']) for (const [a, b] of IV[k] || []) {
     const c = COLORS[k].replace('#', '0x');
     box(xOf(a), 0, xOf(b) - xOf(a), H, c + '@0.18', 'fill');
     box(xOf(a), k === 'blind' ? 0 : 14, xOf(b) - xOf(a), 14, c + '@0.95', 'fill');
@@ -326,7 +338,7 @@ spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', path.join(dir, 'audio.wav')
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W + 60}" height="${bottom + 70}" viewBox="0 0 ${W + 60} ${bottom + 70}" font-family="DejaVu Sans, Arial, sans-serif" font-size="11">`);
   parts.push(`<rect width="100%" height="100%" fill="#101218"/><g transform="translate(50,0)">`);
-  for (const k of ['alert', 'hunted', 'blind']) for (const [a, b] of IV[k])
+  for (const k of ['alert', 'hunted', 'blind', 'fake']) for (const [a, b] of IV[k] || [])
     parts.push(`<rect x="${xOf(a).toFixed(1)}" y="${top}" width="${Math.max(1, xOf(b) - xOf(a)).toFixed(1)}" height="${ph}" fill="${COLORS[k]}" opacity="${k === 'blind' ? 0.35 : 0.18}"/>`);
   for (let d = 0; d >= -80; d -= 20) parts.push(`<line x1="0" x2="${W}" y1="${yOf(d)}" y2="${yOf(d)}" stroke="#333"/><text x="-6" y="${yOf(d) + 4}" fill="#aaa" text-anchor="end">${d}</text>`);
   for (let s = Math.ceil(T0); s <= T0 + DUR; s += 5) parts.push(`<line x1="${xOf(s)}" x2="${xOf(s)}" y1="${bottom}" y2="${bottom + 5}" stroke="#aaa"/><text x="${xOf(s)}" y="${bottom + 17}" fill="#aaa" text-anchor="middle">${s}s</text>`);
@@ -339,7 +351,7 @@ spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', path.join(dir, 'audio.wav')
     const t = e.at || e.t;
     parts.push(`<line x1="${xOf(t).toFixed(1)}" x2="${xOf(t).toFixed(1)}" y1="${top}" y2="${top + 12}" stroke="#fff"/><text x="${xOf(t).toFixed(1)}" y="${top - 8}" fill="#fff" font-size="9" text-anchor="middle">${e.name}</text>`);
   }
-  parts.push(`<text x="0" y="16" fill="#ddd" font-size="12">RMS 50ms (dBFS)   blue=blind  orange=alert  red=hunted   ticks: cyan=Risset beats(w&gt;=0.5)  yellow=bass beats  green=detected onsets  magenta=capture gaps</text>`);
+  parts.push(`<text x="0" y="16" fill="#ddd" font-size="12">RMS 50ms (dBFS)   blue=blind  purple=fake drop  orange=alert  red=hunted   ticks: cyan=Risset beats(w&gt;=0.5)  yellow=bass beats  green=detected onsets  magenta=capture gaps</text>`);
   parts.push('</g></svg>');
   fs.writeFileSync(path.join(dir, 'envelope.svg'), parts.join('\n'));
   // SVG → PNG（有 Playwright 才做）
@@ -361,9 +373,13 @@ const cueCount = {};
 for (const e of EV) if (e.type === 'cue') cueCount[e.name] = (cueCount[e.name] || 0) + 1;
 const fails = EV.filter(e => e.type === 'state' && e.key === 'phase' && e.to === 'fail').length;
 
+// ---------- 設定檔的額外一節（例如循環長度統計） ----------
+let SUM = null;
+if (profile && profile.summary) { try { SUM = profile.summary(TL, meta, EV, IV); } catch (e) { log('summary 失敗', e.message); } }
+
 // ---------- 輸出 ----------
-const analysis = { thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
-  intervals: { blind: IV.blind.length, alert: IV.alert.map(x => x.map(v => +v.toFixed(2))), hunted: IV.hunted.map(x => x.map(v => +v.toFixed(2))) },
+const analysis = { summary: SUM ? SUM.data : null, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
+  intervals: { blind: IV.blind.length, blindList: IV.blind.map(x => x.map(v => +v.toFixed(3))), fake: (IV.fake || []).map(x => x.map(v => +v.toFixed(3))), alert: IV.alert.map(x => x.map(v => +v.toFixed(2))), hunted: IV.hunted.map(x => x.map(v => +v.toFixed(2))) },
   checks, dips, beatStats, silences, cueCount, fails, gaps: meta.audio.gapList, frames: meta.frames };
 fs.writeFileSync(path.join(dir, 'analysis.json'), JSON.stringify(analysis, null, 2));
 
@@ -389,7 +405,7 @@ const files = [['有聲影片 mp4', 'playtest.mp4'], ['遊戲實際輸出 WAV', 
 for (const [n, f] of files) if (exists(f)) L.push(`- ${n}：[\`${f}\`](${f})　\`${abs(f)}\``);
 if (meta.shots && meta.shots.length) L.push(`- 截圖：${meta.shots.map(s => `[${s.wallSec}s](${s.file})`).join('、')}`);
 L.push('');
-if (exists('spectrogram-marked.png')) L.push('![頻譜圖＋標記](spectrogram-marked.png)', '', '藍＝盲區、橘＝警戒、紅＝追殺；底部黃色刻度＝低音拍、洋紅＝音訊斷塊。', '');
+if (exists('spectrogram-marked.png')) L.push('![頻譜圖＋標記](spectrogram-marked.png)', '', '藍＝盲區、紫＝假驟降（照常交接，不該有空檔）、橘＝警戒、紅＝追殺；底部黃色刻度＝低音拍、洋紅＝音訊斷塊。', '');
 if (exists('envelope.png')) L.push('![音量包絡](envelope.png)', '');
 L.push('## 自動檢查', '', '| 檢查 | 結果 | 數字 |', '|---|---|---|');
 for (const c of checks) L.push(`| ${c.name} | ${mark(c.pass)} | ${c.value} |`);
@@ -398,12 +414,18 @@ for (const c of checks) L.push(`- **${c.name}**：${c.detail}`);
 L.push('');
 if (beatStats.scheduled) L.push(`- 通用對照：偵測到的 ${beatStats.scheduled.onsets} 個起音中，${beatStats.scheduled.within20ms} 個在某個 \`start(when)\` 排程時間 ±20 ms 內（中位 |誤差| ${beatStats.scheduled.medianAbsMs} ms，帶正負號 ${beatStats.scheduled.medianSignedMs} ms）。`, '');
 if (dips.length) {
-  L.push('### 每次盲區', '', '| 盲區開始（音訊秒） | 前 dB | 盲區內 dB | 後 dB | 壓低 dB | 盲區內（含前 0.3 秒）還在響的 |', '|---|---|---|---|---|---|');
-  for (const d of dips) L.push(`| ${d.t} | ${d.beforeDb} | ${d.insideDb} | ${d.afterDb} | ${d.dipDb} | ${d.sounding.join('、') || '—'} |`);
+  L.push('### 每次盲區', '', '| 盲區開始（音訊秒） | 長度（秒） | 前 dB | 盲區內 dB | 後 dB | 壓低 dB | 盲區內（含前 0.3 秒）還在響的 |', '|---|---|---|---|---|---|---|');
+  for (const d of dips) L.push(`| ${d.t} | ${d.len} | ${d.beforeDb} | ${d.insideDb} | ${d.afterDb} | ${d.dipDb} | ${d.sounding.join('、') || '—'} |`);
   const withBass = dips.filter(d => d.sounding.some(x => x.startsWith('低音拍'))), noBass = dips.filter(d => !d.sounding.some(x => x.startsWith('低音拍')));
   if (withBass.length && noBass.length) L.push('', `- 盲區內有低音拍的 ${withBass.length} 次：中位壓低 ${median(withBass.map(d => d.dipDb))} dB；沒有的 ${noBass.length} 次：中位壓低 ${median(noBass.map(d => d.dipDb))} dB。`);
   L.push('');
 }
+if (fakeDips.length) {
+  L.push('### 每次假驟降（對照：不該有空檔）', '', '| 交接（音訊秒） | 前 dB | 交接後 0.6 秒內 dB | 後 dB | 壓低 dB |', '|---|---|---|---|---|');
+  for (const d of fakeDips) L.push(`| ${d.t} | ${d.beforeDb} | ${d.insideDb} | ${d.afterDb} | ${d.dipDb} |`);
+  L.push('');
+}
+if (SUM) { L.push(`## ${SUM.title}`, '', ...SUM.lines, ''); }
 L.push('## 這次試玩發生了什麼', '');
 L.push(`- 聲音層收到的 cue：${Object.entries(cueCount).map(([k, v]) => `${k}×${v}`).join('、') || '無'}`);
 L.push(`- 警戒區段：${IV.alert.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} 秒`).join('、') || '無'}；追殺：${IV.hunted.map(([a, b]) => `${a.toFixed(1)}–${b.toFixed(1)} 秒`).join('、') || '無'}；失敗 ${fails} 次`);
