@@ -39,11 +39,12 @@ namespace Odyssey.Core
         public void Lose() => lostTonight++;
 
         /// <param name="eaten">被抓時巨人有沒有真的吃掉一名同伴（洞裡已經沒人時為 false）。</param>
-        public void End(int night, NightOutcome outcome, int rescued = 0, bool eaten = true)
+        /// <param name="note">接在結果後面的補充，例如岸邊報復的代價「（射箭 −1）」。</param>
+        public void End(int night, NightOutcome outcome, int rescued = 0, bool eaten = true, string note = null)
         {
             int lost = lostTonight + (outcome != NightOutcome.Escaped && eaten ? 1 : 0);
             lostTonight = 0;
-            string text = $"第 {night} 夜  {Describe(outcome, rescued)}";
+            string text = $"第 {night} 夜  {Describe(outcome, rescued)}{note}";
             if (lost > 0)
                 text += $"  −{lost} 名同伴";
             lines.Add(new NightLine(night, outcome, lost, rescued, text));

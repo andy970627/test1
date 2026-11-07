@@ -102,5 +102,13 @@ namespace Odyssey.Core.Tests
             Assert.AreEqual(NightOutcome.Crushed, NightLog.From(FailReason.Crushed));
             Assert.AreEqual(NightOutcome.Dawn, NightLog.From(FailReason.Dawn));
         }
+
+        [Test]
+        public void Escape_WithShoreNote()
+        {
+            var log = new NightLog();
+            log.End(1, NightOutcome.Escaped, 2, note: "（射箭 −1）");
+            Assert.AreEqual("第 1 夜  逃出去・帶出 2（射箭 −1）", log.Lines[0].Text);
+        }
     }
 }

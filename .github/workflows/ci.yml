@@ -1,0 +1,202 @@
+# 規格第 30 節：每次 push／PR 跑規則測試；對 main 的 PR、推到 main、手動執行時跑 Unity 測試、建 WebGL 並（設好的話）上傳 itch.io。
+# 密鑰與 itch.io 設定步驟：docs/ci-setup.md
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: 規則測試（Odyssey.Core）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet test tools/CoreTests --logger "console;verbosity=normal"
+      - name: 模擬器測試（tools/NightSim）
+        run: dotnet test tools/NightSimTests --logger "console;verbosity=normal"
+
+  # 同一批測試改在真的 Unity 裡跑：多抓 Unity 編譯器（C# 版本較舊）才會報的錯，以及整個專案（含 MonoBehaviour、Editor 腳本）的編譯錯誤。
+  unity-tests:
+    name: Unity 測試（EditMode）
+    needs: core-tests
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_UNITY: ${{ secrets.UNITY_LICENSE != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '' }}
+    steps:
+      - name: 檢查 Unity 授權
+        if: env.HAS_UNITY != 'true'
+        run: echo "::notice::還沒設定 UNITY_LICENSE／UNITY_EMAIL／UNITY_PASSWORD，略過 Unity 測試（見 docs/ci-setup.md）。"
+
+      # Unity 6 的 Docker 映像很大，GitHub 預設的執行機磁碟放不下（no space left on device）：
+      # 先刪掉這個工作用不到的預裝工具（Android SDK、.NET、Haskell、CodeQL 與舊 Docker 映像）。
+      - name: 騰出磁碟空間
+        if: env.HAS_UNITY == 'true'
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
+      - uses: actions/checkout@v4
+        if: env.HAS_UNITY == 'true'
+
+      - uses: actions/cache@v4
+        if: env.HAS_UNITY == 'true'
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      # 釘在 v4.3.2：浮動的 @v4 已移到 v4.4.0，改用新的 game-ci CLI 後 .ulf 授權啟用會失敗
+      # （Code 400 TimeStamp validation failed，game-ci/unity-test-runner#336）。
+      - uses: game-ci/unity-test-runner@v4.3.2
+        id: unity-tests
+        if: env.HAS_UNITY == 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.14f1
+          testMode: editmode
+
+      - uses: actions/upload-artifact@v4
+        if: always() && env.HAS_UNITY == 'true'
+        with:
+          name: Unity-TestResults
+          path: ${{ steps.unity-tests.outputs.artifactsPath }}
+          retention-days: 14
+
+  webgl:
+    name: 網頁版建置
+    needs: unity-tests
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      HAS_UNITY: ${{ secrets.UNITY_LICENSE != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '' }}
+      HAS_ITCH: ${{ secrets.BUTLER_API_KEY != '' && vars.ITCH_GAME != '' }}
+    steps:
+      - name: 檢查 Unity 授權
+        if: env.HAS_UNITY != 'true'
+        run: echo "::notice::還沒設定 UNITY_LICENSE／UNITY_EMAIL／UNITY_PASSWORD，略過網頁版建置（見 docs/ci-setup.md）。"
+
+      # Unity 6 的 Docker 映像很大，GitHub 預設的執行機磁碟放不下（no space left on device）：
+      # 先刪掉這個工作用不到的預裝工具（Android SDK、.NET、Haskell、CodeQL 與舊 Docker 映像）。
+      - name: 騰出磁碟空間
+        if: env.HAS_UNITY == 'true'
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
+      - uses: actions/checkout@v4
+        if: env.HAS_UNITY == 'true'
+
+      - uses: actions/cache@v4
+        if: env.HAS_UNITY == 'true'
+        with:
+          path: Library
+          key: Library-WebGL-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+
+      # 釘在確切版本，避免浮動的 @v4 像 unity-test-runner 一樣突然換成新 CLI。
+      - uses: game-ci/unity-builder@v4.8.2
+        if: env.HAS_UNITY == 'true'
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.14f1
+          targetPlatform: WebGL
+          buildMethod: OdysseyCiBuild.BuildWebGL
+
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_UNITY == 'true'
+        with:
+          name: BlindCave-WebGL
+          path: build/WebGL/WebGL
+          retention-days: 14
+
+      - name: 上傳 itch.io
+        if: env.HAS_UNITY == 'true' && env.HAS_ITCH == 'true'
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_GAME: ${{ vars.ITCH_GAME }}
+        run: |
+          curl -sSLf -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler && chmod +x butler/butler
+          ./butler/butler push build/WebGL/WebGL "$ITCH_GAME:web" --userversion "${GITHUB_SHA::7}"
+
+      - name: 沒設 itch.io
+        if: env.HAS_UNITY == 'true' && env.HAS_ITCH != 'true'
+        run: echo "::notice::還沒設定 BUTLER_API_KEY 密鑰或 ITCH_GAME 變數，只產出 GitHub 成品 BlindCave-WebGL。"
+
+  # 自動畫面測試（規格第 31 節之後的試玩代理）：用 Playwright 開剛建好的網頁版，
+  # 逐一跳到每個情況（?playtest=名稱）截圖、錄影、抓瀏覽器例外；結果在成品 Playtest-Screens。
+  playtest:
+    name: 自動畫面測試
+    needs: webgl
+    # 網頁版建好、只有 itch.io 上傳失敗時（例如帳號 email 還沒驗證），照樣測畫面。
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      HAS_UNITY: ${{ secrets.UNITY_LICENSE != '' && secrets.UNITY_EMAIL != '' && secrets.UNITY_PASSWORD != '' }}
+    steps:
+      - name: 檢查 Unity 授權
+        if: env.HAS_UNITY != 'true'
+        run: echo "::notice::沒有 Unity 授權就沒有網頁版，略過自動畫面測試（見 docs/ci-setup.md）。"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_UNITY == 'true'
+
+      - uses: actions/download-artifact@v4
+        if: env.HAS_UNITY == 'true'
+        with:
+          name: BlindCave-WebGL
+          path: build
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_UNITY == 'true'
+        with:
+          node-version: '20'
+
+      - name: 安裝 Playwright
+        if: env.HAS_UNITY == 'true'
+        working-directory: tools/playtest
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: 跑自動畫面測試
+        if: env.HAS_UNITY == 'true'
+        run: node tools/playtest/playtest.js --build build --out playtest-out
+
+      - name: 結果寫進執行摘要
+        if: always() && env.HAS_UNITY == 'true'
+        run: cat playtest-out/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always() && env.HAS_UNITY == 'true'
+        with:
+          name: Playtest-Screens
+          path: playtest-out
+          retention-days: 14

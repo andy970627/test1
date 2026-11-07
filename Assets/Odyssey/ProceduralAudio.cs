@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>程式產生的佔位音效，不需要任何音檔。</summary>
-public static class ProceduralAudio
+public static partial class ProceduralAudio
 {
     const int SampleRate = 44100;
 
@@ -328,6 +328,133 @@ public static class ProceduralAudio
         AddThump(data, 0.12f, 0.3f, 420f, 45f);
         AddGravel(data, 0.12f, 0.15f, 0.25f, 151);
         return Make("WedgePulled", data);
+    }
+
+    /// <summary>
+    /// 巨人向波塞頓禱告：8 秒迴盪、聽不清的低沉人聲（85Hz 起伏的母音，一句一句），
+    /// 加上 0.35／0.7 秒的回聲與地底低頻。
+    /// </summary>
+    public static AudioClip Prayer()
+    {
+        const float seconds = 8f;
+        int length = (int)(SampleRate * seconds);
+        var dry = new float[length];
+        float phase = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float pitch = 85f * (1f + 0.06f * Mathf.Sin(2f * Mathf.PI * 0.4f * t) + 0.02f * Mathf.Sin(2f * Mathf.PI * 5f * t));
+            phase += 2f * Mathf.PI * pitch / SampleRate;
+            // 一句一句：每 1.6 秒一句，句中 2.5Hz 的音節起伏。
+            float sentence = Mathf.Clamp01(Mathf.Sin(Mathf.PI * (t % 1.6f) / 1.4f));
+            float syllable = 0.6f + 0.4f * Mathf.Sin(2f * Mathf.PI * 2.5f * t);
+            float voice = Mathf.Sin(phase) + 0.5f * Mathf.Sin(2f * phase) + 0.3f * Mathf.Sin(3f * phase) + 0.15f * Mathf.Sin(5f * phase);
+            float fade = Mathf.Clamp01(t / 0.5f) * Mathf.Clamp01((seconds - t) / 1f);
+            dry[i] = 0.18f * voice * sentence * syllable * fade;
+        }
+        var data = new float[length];
+        int echo1 = (int)(0.35f * SampleRate), echo2 = (int)(0.7f * SampleRate);
+        for (int i = 0; i < length; i++)
+        {
+            float v = dry[i];
+            if (i >= echo1) v += 0.45f * dry[i - echo1];
+            if (i >= echo2) v += 0.25f * dry[i - echo2];
+            data[i] = v;
+        }
+        AddRumble(data, seconds, 0.02f, 0.5f, 161);
+        return Make("Prayer", data);
+    }
+
+    /// <summary>奧德修斯喊出自己的名字：1 秒的人聲吶喊，加洞口的回聲。</summary>
+    public static AudioClip Shout()
+    {
+        const float seconds = 1.6f;
+        int length = (int)(SampleRate * seconds);
+        var dry = new float[length];
+        float phase = 0f;
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            if (t > 1f)
+                break;
+            float pitch = Mathf.Lerp(230f, 190f, t);
+            phase += 2f * Mathf.PI * pitch / SampleRate;
+            float env = Mathf.Clamp01(t / 0.05f) * Mathf.Clamp01((1f - t) / 0.25f);
+            dry[i] = 0.25f * env * (Mathf.Sin(phase) + 0.6f * Mathf.Sin(2f * phase) + 0.4f * Mathf.Sin(3f * phase));
+        }
+        var data = new float[length];
+        int echo = (int)(0.3f * SampleRate);
+        for (int i = 0; i < length; i++)
+            data[i] = dry[i] + (i >= echo ? 0.4f * dry[i - echo] : 0f);
+        return Make("Shout", data);
+    }
+
+    /// <summary>弓弦：0.35 秒、140Hz 很快衰減的弦聲。</summary>
+    public static AudioClip Twang()
+    {
+        var data = new float[(int)(SampleRate * 0.35f)];
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float f = 140f * (1f + 0.15f * Mathf.Exp(-30f * t));
+            data[i] = 0.4f * (Mathf.Sin(2f * Mathf.PI * f * t) + 0.4f * Mathf.Sin(4f * Mathf.PI * f * t)) * Mathf.Exp(-9f * t) * Mathf.Clamp01(t / 0.002f);
+        }
+        return Make("Twang", data);
+    }
+
+    /// <summary>箭插進岩壁或地面：短促的木頭撞擊。</summary>
+    public static AudioClip ArrowHit()
+    {
+        var data = new float[(int)(SampleRate * 0.2f)];
+        AddThump(data, 0f, 0.35f, 320f, 35f);
+        AddGravel(data, 0f, 0.06f, 0.3f, 171);
+        return Make("ArrowHit", data);
+    }
+
+    /// <summary>死亡畫面：一聲低沉的鐘鳴（110Hz 加不和諧泛音）加地底低頻，3 秒。</summary>
+    public static AudioClip DeathBell()
+    {
+        var data = new float[SampleRate * 3];
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float bell = Mathf.Sin(2f * Mathf.PI * 110f * t) + 0.6f * Mathf.Sin(2f * Mathf.PI * 263f * t) + 0.35f * Mathf.Sin(2f * Mathf.PI * 417f * t);
+            data[i] = 0.22f * bell * Mathf.Exp(-1.2f * t) * Mathf.Clamp01(t / 0.01f);
+        }
+        AddRumble(data, 3f, 0.02f, 0.5f, 181);
+        return Make("DeathBell", data);
+    }
+
+    /// <summary>同伴被抓時的慘叫：0.9 秒、音高往上撕裂的人聲。</summary>
+    public static AudioClip Scream()
+    {
+        const float seconds = 0.9f;
+        var data = new float[(int)(SampleRate * seconds)];
+        var rng = new System.Random(191);
+        float phase = 0f;
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float pitch = Mathf.Lerp(380f, 620f, Mathf.Clamp01(t / 0.3f)) * (1f + 0.03f * Mathf.Sin(2f * Mathf.PI * 9f * t));
+            phase += 2f * Mathf.PI * pitch / SampleRate;
+            float rasp = ((float)rng.NextDouble() * 2f - 1f) * 0.25f;
+            float env = Mathf.Clamp01(t / 0.03f) * Mathf.Clamp01((seconds - t) / 0.35f);
+            data[i] = 0.3f * env * (Mathf.Sin(phase) + 0.5f * Mathf.Sin(2f * phase) + 0.3f * Mathf.Sin(3f * phase) + rasp);
+        }
+        return Make("Scream", data);
+    }
+
+    /// <summary>耳鳴：1.5 秒的 4kHz 高頻嗡聲，慢慢淡出。</summary>
+    public static AudioClip Tinnitus()
+    {
+        const float seconds = 1.5f;
+        var data = new float[(int)(SampleRate * seconds)];
+        for (int i = 0; i < data.Length; i++)
+        {
+            float t = (float)i / SampleRate;
+            data[i] = 0.12f * Mathf.Sin(2f * Mathf.PI * 4000f * t) * Mathf.Clamp01(t / 0.05f) * Mathf.Clamp01((seconds - t) / 1f);
+        }
+        return Make("Tinnitus", data);
     }
 
     static AudioClip Burst(string name, float seconds, float gain, float smoothing, int seed)

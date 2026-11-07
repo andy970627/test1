@@ -57,6 +57,9 @@ public class EchoField : MonoBehaviour
     /// <summary>巨人對這種聲音的聽覺倍率（難度 × 石子學習）；為 1 時兩圈重疊，不畫邊。</summary>
     public System.Func<SoundKind, float> HearingFor { get; set; }
 
+    /// <summary>這個聲音照亮的半徑倍率與亮度（DesignFlags.LightFor）；沒設定時只有主動的聲音照亮。</summary>
+    public System.Func<SoundKind, (float Radius, float Brightness)> LightFor { get; set; }
+
     public static Color ColorFor(SoundSource source) => source switch
     {
         SoundSource.Cyclops => new Color(0.8f, 0.12f, 0.08f),
@@ -76,6 +79,17 @@ public class EchoField : MonoBehaviour
             Instance = null;
     }
 
+    /// <summary>
+    /// 宙斯的雷光（規格第 31 節 B1）：從 center 一下子照亮整個洞（已經擴散完成），之後照一般回聲的速度淡出。
+    /// 不是聲音，巨人不會因此聽到什麼。
+    /// </summary>
+    public void FlashAll(Vector3 center, Color color, float radius = 40f)
+    {
+        if (pulses.Count >= MaxPulses)
+            pulses.RemoveAt(0);
+        pulses.Add(new Pulse(center, radius, Time.time - SpreadSeconds, color));
+    }
+
     public void Clear()
     {
         pulses.Clear();
@@ -88,7 +102,9 @@ public class EchoField : MonoBehaviour
         if (heard.Count >= MaxHeard)
             heard.RemoveAt(0);
         heard.Add(new Pulse(worldPos, radius, Time.time, ColorFor(SoundRules.Source(e.Kind))));
-        if (!SoundRules.Lights(e.Kind))
+        // 主動的聲音一律照亮；被動的聲音依主選單「實驗」頁的開關（規格第 28 節）。
+        var (lightRadius, brightness) = LightFor?.Invoke(e.Kind) ?? (SoundRules.Lights(e.Kind) ? (1f, 1f) : (0f, 0f));
+        if (lightRadius <= 0f)
             return;
         if (pulses.Count >= MaxPulses)
         {
@@ -100,8 +116,9 @@ public class EchoField : MonoBehaviour
             pulses.RemoveAt(EchoBudget.IndexToEvict(evictRadii, evictAges, SpreadSeconds + FadeSeconds));
         }
         float multiplier = HearingFor?.Invoke(e.Kind) ?? 1f;
-        float hear = Mathf.Approximately(multiplier, 1f) ? 0f : radius * multiplier;
-        pulses.Add(new Pulse(worldPos, radius, Time.time, ColorFor(SoundRules.Source(e.Kind)), hear));
+        // 聽覺邊只畫在主動的聲音上。
+        float hear = !SoundRules.Lights(e.Kind) || Mathf.Approximately(multiplier, 1f) ? 0f : radius * multiplier;
+        pulses.Add(new Pulse(worldPos, radius * lightRadius, Time.time, ColorFor(SoundRules.Source(e.Kind)) * brightness, hear));
     }
 
     void LateUpdate()

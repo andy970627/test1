@@ -11,10 +11,10 @@ namespace Odyssey.Core.Tests
         [Test]
         public void Lights_OnlyActiveSounds()
         {
-            foreach (var k in new[] { SoundKind.Clap, SoundKind.Stone, SoundKind.Boulder, SoundKind.Grind, SoundKind.Wedge, SoundKind.Clatter })
+            foreach (var k in new[] { SoundKind.Clap, SoundKind.Stone, SoundKind.Boulder, SoundKind.Grind, SoundKind.Wedge, SoundKind.Clatter, SoundKind.Arrow, SoundKind.SnapShot })
                 Assert.IsTrue(SoundRules.Lights(k), k.ToString());
             foreach (var k in new[] { SoundKind.Step, SoundKind.Run, SoundKind.Pant, SoundKind.Drag, SoundKind.Cheese, SoundKind.Wicker,
-                         SoundKind.Bleat, SoundKind.Whimper, SoundKind.Slip, SoundKind.Cyclops, SoundKind.RockImpact })
+                         SoundKind.Bleat, SoundKind.Whimper, SoundKind.Slip, SoundKind.Cyclops, SoundKind.RockImpact, SoundKind.Twang, SoundKind.Stretch })
                 Assert.IsFalse(SoundRules.Lights(k), k.ToString());
         }
 
@@ -42,6 +42,14 @@ namespace Odyssey.Core.Tests
             Assert.AreEqual(0.3f, SoundRules.Loudness(SoundKind.Grind));
             Assert.AreEqual(0.15f, SoundRules.Loudness(SoundKind.Slip));
             Assert.AreEqual(0.25f, SoundRules.Loudness(SoundKind.Wedge));
+        }
+
+        [Test]
+        public void Loudness_SlingshotKinds()
+        {
+            Assert.AreEqual(0.4f, SoundRules.Loudness(SoundKind.SnapShot));
+            Assert.AreEqual(0.1f, SoundRules.Loudness(SoundKind.Stretch));
+            Assert.AreEqual(0.5f, SoundRules.Loudness(SoundKind.Clap));
         }
 
         [Test]

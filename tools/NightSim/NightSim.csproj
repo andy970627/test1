@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 無畫面的夜晚模擬器：用 Assets/Odyssey/Core 的真實規則，讓機器人策略跑上千夜，看平衡數據。
+       用法見 tools/NightSim/Program.cs 開頭。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/Odyssey/Core/**/*.cs" />
+    <Compile Include="Sim/**/*.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

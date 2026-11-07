@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Linux 上不開 Unity 的編譯檢查（執行期程式，不含 Editor）：bash tools/unity-compile-check.sh
+       用 NuGet 的 Unity 2021.3 參考組件＋Stubs.cs（Input System、TextMeshPro 的最小替身）。
+       只能抓我們自己程式的錯字、型別、少了的成員；Unity 6 專有 API 差異由腳本先做文字替換。 -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>CS0414;CS0169;CS0649;CS0067;CS0618</NoWarn>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Stubs.cs" />
+    <Compile Include="gen/**/*.cs" />
+  </ItemGroup>
+</Project>

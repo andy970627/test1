@@ -36,6 +36,7 @@ public class OliveStake : MonoBehaviour
         body = gameObject.AddComponent<Rigidbody>();
         body.mass = 4f;
         body.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        // 落地＝玩家這邊的木樁聲。不能借乳酪（Cheese）的聲類：乳酪算誘餌，巨人會當成「不是你」、宙斯法則也不算聽見你。
         gameObject.AddComponent<ImpactEmitter>().Init(SoundKind.Drag, SoundRules.Loudness(SoundKind.Drag));
     }
 

@@ -6,6 +6,7 @@ namespace Odyssey.Core
     /// <summary>
     /// 聲音的規則：你看得多遠，他就聽得多遠。每個聲音只有一個半徑（聲量 × 20 m），
     /// 同時是回聲照亮的範圍與巨人的聽覺範圍。剛叫過的羊會蓋過附近的聲音。
+    /// Clap 現在是彈弓的空扣（玩家面向名稱「製造聲音」），聲量 0.5 並會照亮；SnapShot＝石子射出的啪（0.4，照亮）；Stretch＝拉皮筋（0.1，不照亮）。
     /// </summary>
     public static class SoundRules
     {
@@ -33,6 +34,10 @@ namespace Odyssey.Core
             SoundKind.Grind => 0.3f,
             SoundKind.Slip => 0.15f,
             SoundKind.Wedge => 0.25f,
+            SoundKind.Arrow => 0.5f,
+            SoundKind.Twang => 0.1f,
+            SoundKind.SnapShot => 0.4f,
+            SoundKind.Stretch => 0.1f,
             _ => 0f,
         };
 
@@ -52,7 +57,7 @@ namespace Odyssey.Core
         /// <summary>會照亮四周的聲音（規格第 19 節 A）：只有玩家主動弄出來的；其他聲音巨人照樣聽得到，但只有聲音。</summary>
         public static bool Lights(SoundKind kind) => kind switch
         {
-            SoundKind.Clap or SoundKind.Stone or SoundKind.Boulder or SoundKind.Grind or SoundKind.Wedge or SoundKind.Clatter => true,
+            SoundKind.Clap or SoundKind.Stone or SoundKind.Boulder or SoundKind.Grind or SoundKind.Wedge or SoundKind.Clatter or SoundKind.Arrow or SoundKind.SnapShot => true,
             _ => false,
         };
 

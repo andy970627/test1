@@ -28,11 +28,29 @@ public class WickerPen : MonoBehaviour
         Piece("FenceS", new Vector3(0f, y, -hz), new Vector3(size.x, FenceHeight, FenceThickness), Wicker);
         Piece("FenceE", new Vector3(hx, y, 0f), new Vector3(FenceThickness, FenceHeight, size.y), Wicker);
         Piece("FenceW", new Vector3(-hx, y, 0f), new Vector3(FenceThickness, FenceHeight, size.y), Wicker);
+
+        // 邁錫尼青銅時代粗柳條立樁 (Corner & intermediate posts)
+        float postRadius = 0.06f;
+        CornerPost("PostNE", new Vector3(hx, y, hz), postRadius, FenceHeight * 1.15f, Wicker);
+        CornerPost("PostNW", new Vector3(-hx, y, hz), postRadius, FenceHeight * 1.15f, Wicker);
+        CornerPost("PostSE", new Vector3(hx, y, -hz), postRadius, FenceHeight * 1.15f, Wicker);
+        CornerPost("PostSW", new Vector3(-hx, y, -hz), postRadius, FenceHeight * 1.15f, Wicker);
     }
 
     /// <summary>平面上是否在圈內（不看高度）。</summary>
     public bool Contains(Vector3 p) =>
         Mathf.Abs(p.x - center.x) <= size.x / 2f && Mathf.Abs(p.z - center.z) <= size.y / 2f;
+
+    void CornerPost(string name, Vector3 localPos, float radius, float height, Color color)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        go.name = name;
+        Destroy(go.GetComponent<Collider>());
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = localPos;
+        go.transform.localScale = new Vector3(radius * 2f, height / 2f, radius * 2f);
+        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(color);
+    }
 
     void Piece(string name, Vector3 localPos, Vector3 scale, Color color)
     {
