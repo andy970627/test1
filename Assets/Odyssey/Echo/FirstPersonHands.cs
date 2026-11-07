@@ -5,7 +5,7 @@ using UnityEngine;
 /// 第一人稱動作畫面與古希臘英雄裝備美術（規格第 26 節 D）：
 /// 奧德修斯曬黑結實的手臂、皮質護腕（含青銅釘飾）、希臘反曲複合木弓（含暗金飾邊）、
 /// 青銅倒鉤箭頭、鷹羽箭翎、後背皮質箭筒，以及推巨石與塞楔子時的手部動態。
-/// 材質帶微光自發光，在全黑洞穴中呈現輪廓與質感。
+/// 材質是回聲材質：平常全黑，聲音掃過時才看得到輪廓（不是自發光）。
 /// 規格第 31 節：空白鍵的彈弓（左手握 Y 形彈弓、右手拉皮筋，拉的時候弓收起）；
 /// 偷襲後的手抖（Tremble）與低頭時雙手垂下（Lower），由遊戲迴圈與雅典娜過場設定。
 /// </summary>
@@ -90,6 +90,8 @@ public class FirstPersonHands : MonoBehaviour
         var skinMat = EchoMaterials.Create(SkinColor);
         leftArm = CreateArm("LeftArm", skinMat);
         rightArm = CreateArm("RightArm", skinMat);
+        leftArm.SetParent(transform, false);
+        rightArm.SetParent(transform, false);
 
         // 塞楔子時右手握著的花崗岩石子
         var stone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -342,9 +344,6 @@ public class FirstPersonHands : MonoBehaviour
         bool braced = player.AtBoulder && player.PushMode == PushMode.None && slide.Opening > 0.05f;
         bool wedging = player.Wedging;
 
-        leftArm.SetParent(transform, false);
-        rightArm.SetParent(transform, false);
-
         wedgeStone.gameObject.SetActive(wedging);
 
         if (pushing || braced)
@@ -370,7 +369,7 @@ public class FirstPersonHands : MonoBehaviour
             leftArm.gameObject.SetActive(false);
             rightArm.gameObject.SetActive(true);
 
-            float reach = ViewPose.WedgeReach(1f - (player.WedgeBusy / 0.6f));
+            float reach = ViewPose.WedgeReach(1f - (player.WedgeBusy / EchoPlayer.WedgeSeconds));
             rightArm.localPosition = new Vector3(0.18f, -0.25f + reach * 0.3f, 0.35f + reach);
             rightArm.localRotation = Quaternion.Euler(85f, -15f, 0f);
         }

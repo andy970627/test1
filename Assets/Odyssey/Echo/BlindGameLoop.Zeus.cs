@@ -152,7 +152,6 @@ public partial class BlindGameLoop
         {
             CrewMember struck = Crew.Followers[Crew.Followers.Count - 1];
             feedback.CrewEaten(struck.transform.position);
-            hud.FlashCrew();
             LoseCrew(struck);
             sounds.PlayLossChord();
         }

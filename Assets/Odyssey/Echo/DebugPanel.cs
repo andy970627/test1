@@ -40,13 +40,19 @@ public class DebugPanel : MonoBehaviour
     }
     int cachedFontSize = -1;
 
+    /// <summary>面板現在開著（世界內提示要避開左上那一塊，HudZones.DebugZone）。</summary>
+    public static bool Showing { get; private set; }
+
     public void Init(BlindGameLoop loop) => this.loop = loop;
+
+    void OnDisable() => Showing = false;
 
     void Update()
     {
         var keyboard = Keyboard.current;
         if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
             showDebug = !showDebug;
+        Showing = showDebug;
     }
 
     static Color StateColor(CyclopsState s) => s switch

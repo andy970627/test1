@@ -14,8 +14,8 @@ public class Stalagmite : MonoBehaviour { }
 public class CaveAtmosphere : MonoBehaviour
 {
     const float RadiusX = 15f, RadiusZ = 10f, RadiusY = 7f;
-    // CaveBuilder 的美術打磨已經沿洞頂邊緣放了 16 根；這裡補洞頂中間一帶。
-    const int Stalactites = 14, Stalagmites = 10;
+    // 鐘乳石只在這裡放一套：貼著高低不平的洞頂（CeilingAt），不會浮在半空或穿出岩頂。
+    const int Stalactites = 30, Stalagmites = 10;
     const float DustReach = 8f;
     const int DustPool = 24;
 
@@ -132,7 +132,7 @@ public class CaveAtmosphere : MonoBehaviour
         Mesh cone = ConeMesh(7);
         for (int i = 0; i < Stalactites; i++)
         {
-            Vector3 p = RandomPoint(0.1f, 0.85f);
+            Vector3 p = RandomPoint(0.1f, 0.9f);
             float length = 0.6f + 1.2f * (float)rng.NextDouble();
             float top = CeilingAt(p) + 1f;
             // 尖端朝下，上面多埋 1 m 進岩頂，洞頂高低不平也不會浮在半空。

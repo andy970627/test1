@@ -48,6 +48,25 @@ Shader "Odyssey/Echo"
             float _EchoFade;
             float _EchoHear[16];    // 巨人聽得到的半徑；0 = 不畫邊
 
+            float Hash3(float3 p)
+            {
+                p = frac(p * 0.1031);
+                p += dot(p, p.yzx + 33.33);
+                return frac((p.x + p.y) * p.z);
+            }
+
+            float ValueNoise(float3 x)
+            {
+                float3 c = floor(x);
+                float3 f = frac(x);
+                f = f * f * (3.0 - 2.0 * f);
+                return lerp(
+                    lerp(lerp(Hash3(c), Hash3(c + float3(1, 0, 0)), f.x),
+                         lerp(Hash3(c + float3(0, 1, 0)), Hash3(c + float3(1, 1, 0)), f.x), f.y),
+                    lerp(lerp(Hash3(c + float3(0, 0, 1)), Hash3(c + float3(1, 0, 1)), f.x),
+                         lerp(Hash3(c + float3(0, 1, 1)), Hash3(c + float3(1, 1, 1)), f.x), f.y), f.z);
+            }
+
             half4 frag(Varyings i) : SV_Target
             {
                 float3 lit = 0;
@@ -75,13 +94,16 @@ Shader "Odyssey/Echo"
                     if (hear > 0 && front >= min(hear, radius))
                         ring += color * 0.5 * (1 - saturate(abs(d - hear) / 0.15)) * (1 - saturate(age / fade));
                 }
-                // 諾蘭式暗黑洞穴質樸微細節：微結構顆粒與潮濕岩壁側掠高光 (Fresnel)
+                // 潮濕岩壁的側掠高光（Fresnel）與細微顆粒。
+                // 雙面繪製（Cull Off）：背面的法線朝外，用絕對值，否則背面整片都是最大高光。
                 float3 nWS = normalize(i.normalWS);
                 float3 vWS = normalize(GetCameraPositionWS() - i.positionWS);
-                float NdotV = saturate(dot(nWS, vWS));
+                float NdotV = abs(dot(nWS, vWS));
                 float fresnel = pow(1.0 - NdotV, 3.0) * 0.4;
-                float grain = frac(sin(dot(floor(i.positionWS * 36.0), float3(12.9898, 78.233, 45.164))) * 43758.5453);
-                float microTexture = 0.85 + 0.3 * grain;
+                // 平滑的數值雜訊（約 12 cm 一格、格間內插）：原本每 3 cm 一格硬切，看起來像馬賽克方塊；
+                // 也不用 sin 大數雜湊，網頁版（WebGL）的浮點精度下才不會亂跳。
+                float grain = ValueNoise(i.positionWS * 8.0);
+                float microTexture = 0.9 + 0.2 * grain;
 
                 half3 surfaceColor = _BaseColor.rgb * microTexture;
                 return half4(surfaceColor * lit * 2.0 + ring * 0.65 + fresnel * lit * 1.2, 1);

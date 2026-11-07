@@ -162,7 +162,22 @@ public class WorldPrompts : MonoBehaviour
         float lineHeight = style.fontSize * 1.35f;
         float x = Mathf.Clamp(screen.x, 200f, Screen.width - 200f);
         float y = Mathf.Clamp(Screen.height - screen.y, lines.Count * lineHeight + 10f, Screen.height - 10f);
-        DrawLines(new Vector2(x, y));
+        DrawLines(new Vector2(x, AvoidHud(x, y, lineHeight)));
+    }
+
+    /// <summary>
+    /// 整疊提示不准蓋到介面（規格第 26 節 C）：碰到 HudZones 的保護區就上下移到最近的空位，回傳新的錨點 Y。
+    /// </summary>
+    float AvoidHud(float anchorX, float anchorY, float lineHeight)
+    {
+        float width = 0f;
+        foreach (var line in lines)
+            width = Mathf.Max(width, style.CalcSize(new GUIContent(line.Text)).x);
+        float height = lines.Count * lineHeight;
+        float sw = Screen.width, sh = Screen.height;
+        var block = new HudRect((anchorX - width / 2f) / sw, (anchorY - height) / sh, width / sw, height / sh);
+        HudRect placed = HudZones.PushOut(block, DebugPanel.Showing);
+        return placed.Bottom * sh;
     }
 
     /// <summary>從錨點往上堆：最後一行貼著錨點。</summary>

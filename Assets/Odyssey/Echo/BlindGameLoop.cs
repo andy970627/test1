@@ -684,7 +684,6 @@ public partial class BlindGameLoop : MonoBehaviour
             return;
         var eaten = Crew.Members[index];
         feedback.CrewEaten(eaten.transform.position);
-        hud.FlashCrew();
         LoseCrew(eaten);
         sounds.PlayLossChord();
         Hint(HintKind.CrewEaten);
