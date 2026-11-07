@@ -903,7 +903,7 @@
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
       enterZone(z, true);
-      if (g.time != null) { snapClock(g.time); clockT = g.time; updateClock(g.time); }
+      // 循環時鐘不重設：相位保持連續（聲音已排好的拍不會錯位），長度自己平滑逼近新目標
       emit('msg', '從「' + level.zones[z].name + '」重新開始。');
       g.alarm = 0;
       return g;
