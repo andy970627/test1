@@ -129,10 +129,24 @@ button:hover { filter: brightness(1.12); }
       <dt>空白鍵</dt><dd>按住屏息：撲上來的人會撲空（擲矛躲不掉）</dd>
       <dt>Q</dt><dd>跟著最低沉的鼓聲按：忒勒馬科斯舉盾，替你擋下一次攻擊</dd>
       <dt>W A S D／E</dt><dd>在門檻前走動／撿起地上的箭（箭只有 12 支）</dd>
+      <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
     <label><input type="checkbox" id="oPhase" checked> 顯示節奏條（視覺輔助）</label>
     <div class="row"><button class="primary" id="btnStart">關上門，開始</button></div>
     <p class="dim">建議戴耳機。所有聲音都是即時合成。</p>
+  </div>
+</div>
+
+<!-- 暫停：遊戲時間與聲音都停 -->
+<div class="screen" id="pause" hidden>
+  <div class="card">
+    <h2>暫停</h2>
+    <p class="dim">鼓聲停住了。按 Esc 或「繼續」回到大廳。</p>
+    <div class="row">
+      <button class="primary" id="btnResume">繼續</button>
+      <button type="button" class="btnIntro">回到開場</button>
+      <button type="button" class="btnHub">回總首頁</button>
+    </div>
   </div>
 </div>
 
@@ -141,7 +155,7 @@ button:hover { filter: brightness(1.12); }
   <div class="card">
     <h2>你倒在門檻上。</h2>
     <p class="dim" id="failWhy">鼓聲最急的時候最危險：看到有人舉矛就閃，跟著低音讓兒子舉盾。</p>
-    <div class="row"><button class="primary" id="btnRetry">重來（R）</button></div>
+    <div class="row"><button class="primary" id="btnRetry">重來（R）</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
   </div>
 </div>
 
@@ -151,10 +165,11 @@ button:hover { filter: brightness(1.12); }
     <h2>最強的求婚者倒下了</h2>
     <p>其餘的人丟下兵器，跪在爐火邊求饒。二十年後，奧德修斯終於回到自己的家。</p>
     <p class="dim" id="winStats"></p>
-    <div class="row"><button id="btnAgain">再玩一次（R）</button></div>
+    <div class="row"><button id="btnAgain">再玩一次（R）</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
   </div>
 </div>
 
+<script src="../nav.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
 <script src="vengeance.js"></script>
@@ -325,6 +340,7 @@ const keys = {};
 let pend = {};
 let showPhase = true;
 let lastFrame = performance.now();
+let paused = false, pausedAt = 0;   // Esc 暫停；pausedAt：解鎖觸發暫停的時刻（同一下 Esc 不立刻又繼續）
 const hintState = { tele: false, shot: false, shown: 0 };
 let ladder = null;                // 暗示階梯第 2、3 階的文字 { key, html, until }
 let hintsCarry = null;            // 重來時沿用的失敗次數（規則的 g.hints）
@@ -463,7 +479,7 @@ function loop(now) {
   const wallDt = Math.min(.1, (now - lastFrame) / 1000); lastFrame = now;
   const frozenNow = game && actx && game.phase === 'play' && game.cycle.gap;
   if (!frozenNow) { for (const fl of flames) fl.scale.y = .85 + Math.random() * .3; hearthLight.intensity = 1.5 + Math.random() * .2; }   // 空檔：火也凝住
-  if (!game || !actx) { renderer.render(scene, camera); return; }
+  if (!game || !actx || paused) { renderer.render(scene, camera); return; }   // 暫停：只畫，不推進規則
   const t = actx.currentTime;
   const lat = actx.outputLatency || actx.baseLatency || 0;
 
@@ -677,8 +693,11 @@ function lockPointer() {
 }
 function unlockPointer() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {} }
 document.addEventListener('pointerlockerror', () => { lockFailed = true; });
-document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === canvas; });
-const active = () => game && game.phase === 'play';
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (!locked && active()) pause(true);          // 按 Esc 會先解除滑鼠鎖定：解除時進暫停（勝負時自己放開滑鼠不算，那時已不在 play）
+});
+const active = () => game && game.phase === 'play' && !paused;
 function shootNow() {
   if (!active()) return;
   pend.shoot = true; pend.shootAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
@@ -706,6 +725,8 @@ window.addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   const was = keys[e.code]; keys[e.code] = true;
   if (!game) return;
+  if (e.code === 'Escape') { if (paused) { if (performance.now() - pausedAt > 300) resume(); } else if (active()) pause(false); return; }
+  if (paused) return;
   if (e.code === 'KeyR' && (game.phase === 'fail' || game.phase === 'win')) { startGame(); return; }
   if (!active() || e.repeat || was) return;
   const at = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
@@ -717,19 +738,64 @@ window.addEventListener('keydown', e => {
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
-$('btnStart').onclick = startGame;
-$('btnRetry').onclick = startGame;
-$('btnAgain').onclick = startGame;
-$('oPhase').onchange = e => { showPhase = e.target.checked; };
-
-// 開場前先擺好場景當背景
-{
+// ============================================================
+// 暫停／回到開場／回總首頁
+// ============================================================
+// 暫停：音訊環境 suspend。規則的時間就是 actx.currentTime，所以時間和聲音一起停，繼續時不會跳拍
+function pause(fromUnlock) {
+  if (paused || !active()) return;
+  paused = true; pausedAt = fromUnlock ? performance.now() : 0;
+  for (const k in keys) keys[k] = false;
+  pend = {}; drag = null;
+  unlockPointer();
+  try { if (actx && actx.state === 'running') actx.suspend(); } catch (e) {}
+  $('pause').hidden = false;
+}
+function resume() {
+  if (!paused) return;
+  paused = false;
+  $('pause').hidden = true;
+  try { if (actx && actx.state === 'suspended') actx.resume(); } catch (e) {}
+  lockPointer();
+}
+// 開場前的背景：擺好求婚者、鏡頭站在門檻上
+function showPreview() {
   const g0 = Rules.createGame({ t0: 0 });
   buildFigures(g0);
   camera.position.set(0, K.EYE_Y, -.8); camera.rotation.set(-.04, 0, 0);
 }
+// 回到開場：頁內重設。聲音整個銷毀（下次開始重建，不會兩套疊在一起）、清掉排程中的音效與飛行物、回開場字卡
+function backToIntro() {
+  paused = false;
+  unlockPointer();
+  if (audio) { try { audio.destroy(); } catch (e) {} audio = null; }
+  game = null; hintsCarry = null; ladder = null; laterCues.length = 0; floorPing = null; shieldFlash = 0;
+  for (const k in keys) keys[k] = false;
+  pend = {}; drag = null;
+  setHint(''); $('msgs').innerHTML = ''; $('warn').textContent = '';
+  $('red').style.opacity = 0;
+  $('pause').hidden = true; $('fail').hidden = true; $('win').hidden = true;
+  document.body.classList.remove('playing');
+  showPreview();
+  $('intro').hidden = false; $('intro').scrollTop = 0;
+}
 
-window.VengeanceDebug = { get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
+$('btnStart').onclick = startGame;
+$('btnRetry').onclick = startGame;
+$('btnAgain').onclick = startGame;
+$('btnResume').onclick = resume;
+$('oPhase').onchange = e => { showPhase = e.target.checked; };
+const NAV = window.OdysseyNav;
+const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
+document.querySelectorAll('.btnIntro').forEach(b => { b.onclick = backToIntro; });
+document.querySelectorAll('.btnHub').forEach(b => {
+  b.hidden = !hasHub;
+  b.onclick = () => { try { NAV.goHub(); } catch (e) { console.warn('無法前往總首頁', e); } };
+});
+
+showPreview();
+
+window.VengeanceDebug = { pause, resume, backToIntro, get paused() { return paused; }, get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
 requestAnimationFrame(loop);
 })();
 </script>

@@ -107,6 +107,16 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
   margin-top: 8px; font: 500 15px var(--body); color: var(--night); background: var(--lamp); border: 0; padding: 8px 18px; border-radius: 3px; cursor: pointer;
 }
 :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+/* 結果面板與暫停畫面的按鈕列：次要按鈕用描邊，窄螢幕自動換行 */
+.btnrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.btnrow button { margin-top: 0; }
+.result button.alt, .pausebox button.alt { background: transparent; color: var(--lamp); border: 1px solid var(--bronze); }
+/* 暫停：蓋住整個舞台（遊戲時間與聲音都停） */
+.pausebox { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8, 6, 4, .82); pointer-events: auto; z-index: 3; padding: 16px; }
+.pausebox .panel { width: min(420px, 100%); box-sizing: border-box; text-align: center; padding: 20px 18px; }
+.pausebox h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4vw, 32px); margin: 0 0 8px; color: var(--lamp); letter-spacing: .1em; }
+.pausebox p { margin: 0 0 8px; font-size: 14px; color: var(--dim); line-height: 1.6; }
+.pausebox button { font: 500 15px var(--body); color: var(--night); background: var(--lamp); border: 0; padding: 8px 18px; border-radius: 3px; cursor: pointer; }
 .below { padding: 10px var(--gutter-r) 28px var(--gutter-l); max-width: 1040px; margin: 0 auto; display: grid; gap: 10px; }
 fieldset { border: 1px solid var(--line); padding: 8px 14px 10px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
 legend { font-family: var(--display); color: var(--bronze); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
@@ -155,13 +165,28 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       <p id="resText"></p>
       <p class="count" id="resCount"></p>
       <p class="ladder" id="resHint" hidden></p>
-      <button type="button" id="retryBtn">再來一次（R）</button>
+      <div class="btnrow">
+        <button type="button" id="retryBtn">再來一次（R）</button>
+        <button type="button" class="alt btnIntro">回到開場</button>
+        <button type="button" class="alt btnHub">回總首頁</button>
+      </div>
+    </div>
+  </div>
+  <div class="pausebox" id="pause" hidden>
+    <div class="panel">
+      <h2>暫停</h2>
+      <p>心跳和大廳都停住了。</p>
+      <div class="btnrow">
+        <button type="button" id="btnResume">繼續（Esc）</button>
+        <button type="button" class="alt btnIntro">回到開場</button>
+        <button type="button" class="alt btnHub">回總首頁</button>
+      </div>
     </div>
   </div>
 </div>
 
 <div class="below">
-  <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠。<br>
+  <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠並暫停（可回開場或總首頁）。<br>
   <b>上弦</b>：按住滑鼠左右移動，讓指針待在亮區。弦越繃越緊，琴聲一路往上爬、永遠到不了頂。<br>
   <b>射箭</b>：按住拉弓（或空白鍵），放開射出。拉弓時心跳越來越快，準心跟著每一下心跳晃，越快晃得越大；
   快到極點時心跳<b>突然斷掉約半秒</b>、全場靜止——這時準心最穩，放手。錯過了就等下一次，但一輪比一輪急、手也越來越晃。<b>R</b>：再來一次。<br>
@@ -179,6 +204,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   <p class="note">改開關會從頭開始比試。和呼吸判定的原版比較：<a href="../bow-contest/index.html">伊薩卡比箭（呼吸版）</a>。</p>
 </div>
 
+<script src="../nav.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="rules.js"></script>
 <script src="audio.js"></script>
@@ -712,7 +738,12 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     if (round.phase === 'string') { if (input.down) input.stringDx += dx / MOUSE_PX_PER_UNIT; }
     else if (round.phase === 'aim') lookBy(dx, dy, SENS);
   });
-  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === cv; lockAt = performance.now(); refreshHud(); });
+  document.addEventListener('pointerlockchange', () => {
+    const was = locked;
+    locked = document.pointerLockElement === cv; lockAt = performance.now(); refreshHud();
+    // 玩家按 Esc 解除鎖定＝暫停（結果面板自己放開滑鼠時不算）
+    if (was && !locked && !paused && !round.result && !pendingEnd) pauseGame(true);
+  });
   document.addEventListener('pointerlockerror', () => { locked = false; });
   cv.addEventListener('pointermove', e => {
     if (e.pointerType === 'mouse' || e.pointerId !== touch.id) return;
@@ -742,6 +773,8 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   if (window.matchMedia && matchMedia('(pointer: coarse)').matches) touchUI = true;
 
   window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { onEscape(); return; }
+    if (paused) return;
     if (e.key === 'r' || e.key === 'R') { audio(); newRound(false); }
     else if (e.code === 'Space' && !e.repeat && (locked || document.activeElement === document.body || document.activeElement === cv)) { e.preventDefault(); press(); }
   });
@@ -949,6 +982,48 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     requestAnimationFrame(loop);
   }
 
+  // ================================================================ 暫停／回到開場／回總首頁
+  // 暫停：遊戲迴圈不更新、音訊環境 suspend（音訊時鐘停住，規則時鐘 clock 跟著停，心跳不會跳拍）
+  let pausedAt = 0;
+  function pauseGame(fromUnlock) {
+    if (paused) return;
+    paused = true; pausedAt = fromUnlock ? performance.now() : 0;
+    input.down = false; touch.pressed = false; holdT.id = null; ui.hold.classList.remove('on');
+    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (_) {} }
+    try { if (ac && ac.state === 'running') ac.suspend(); } catch (_) {}
+    $('pause').hidden = false;
+  }
+  function resumeGame() {
+    if (!paused) return;
+    $('pause').hidden = true;
+    const go = () => { paused = false; last = performance.now(); };
+    // 等音訊真的恢復再放行，規則時鐘才不會比聲音先走
+    if (ac && ac.state === 'suspended') { ac.resume().then(go, go); } else go();
+  }
+  function onEscape() {
+    if (paused) { if (performance.now() - pausedAt > 300) resumeGame(); }   // 解鎖觸發的暫停：同一下 Esc 不立刻又繼續
+    else if (ui.result.hidden && !pendingEnd) pauseGame(false);
+  }
+  // 這一版沒有獨立的開場字卡：「回到開場」＝頁內重設成剛打開頁面的狀態（第 1 箭、從上弦開始、成績歸零）
+  function backToIntro() {
+    if (snd) { snd.stopNotes(); }
+    setCreak(0); setGrind(0);
+    ladderNote = null;
+    $('pause').hidden = true;
+    newRound(true);
+    const go = () => { paused = false; last = performance.now(); };
+    if (ac && ac.state === 'suspended') { ac.resume().then(go, go); } else go();
+    try { window.scrollTo(0, 0); } catch (_) {}
+  }
+  $('btnResume').addEventListener('click', resumeGame);
+  const NAV = window.OdysseyNav;
+  const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
+  document.querySelectorAll('.btnIntro').forEach(b => b.addEventListener('click', backToIntro));
+  document.querySelectorAll('.btnHub').forEach(b => {
+    b.hidden = !hasHub;
+    b.addEventListener('click', () => { try { NAV.goHub(); } catch (err) { console.warn('無法前往總首頁', err); } });
+  });
+
   newRound(true);
   requestAnimationFrame(loop);
 
@@ -960,6 +1035,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       startAudio() { return !!audio(); },
       advance(sec) { for (let t = 0; t < sec - 1e-9; t += 1 / 60) update(1 / 60); render(); return round.phase; },
       pause(on) { paused = !!on; },
+      pauseGame() { pauseGame(false); }, resumeGame, backToIntro, get paused() { return paused; },
       // 程式玩家：opts 同 BowRissetRules.createBot，另加 alternate（一輪抓驟降、一輪抓最高速）
       autoplay(o) { botOpts = o || { release: 'drop' }; botRounds = 0; bot = R.createBot(nextBotOpts()); refreshHud(); return true; },
       stopAutoplay() { bot = null; },

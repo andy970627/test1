@@ -82,11 +82,20 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .result.win h2 { color: var(--lamp); }
 .result p { margin: 0 0 8px; line-height: 1.6; }
 .result .count { color: var(--dim); font-size: 14px; }
-.result button + button { margin-left: 8px; }
+.result .btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .result button.alt { background: transparent; color: var(--lamp); border: 1px solid var(--bronze); }
 .result button {
   margin-top: 8px; font: 500 15px var(--body); color: var(--night); background: var(--lamp); border: 0; padding: 8px 18px; border-radius: 3px; cursor: pointer;
 }
+/* 暫停：和結果面板同一套樣式，放在畫面正中 */
+.result.pausebox { top: 50%; bottom: auto; transform: translate(-50%, -50%); }
+.result.pausebox h2 { color: var(--lamp); }
+.topR { display: flex; align-items: baseline; gap: 10px; }
+.pausebtn {
+  pointer-events: auto; font: 500 13px var(--body); color: var(--ash); background: rgba(14, 10, 7, .6); border: 1px solid var(--line);
+  border-radius: 3px; padding: 2px 10px; cursor: pointer;
+}
+.pausebtn:hover { border-color: var(--bronze); color: var(--lamp); }
 :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 .below { padding: 10px var(--gutter-r) 28px var(--gutter-l); max-width: 1040px; margin: 0 auto; display: grid; gap: 10px; }
 fieldset { border: 1px solid var(--line); padding: 8px 14px 10px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
@@ -108,7 +117,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 <div class="stage" id="stage">
   <canvas id="cv" aria-label="奧德修斯的大廳：十二把斧頭排成一列"></canvas>
   <div class="hud">
-    <div class="top" id="top"><span><span class="title">伊薩卡比箭</span><span class="series-line" id="seriesLine" hidden></span></span><span class="score" id="score"></span></div>
+    <div class="top" id="top"><span><span class="title">伊薩卡比箭</span><span class="series-line" id="seriesLine" hidden></span></span><span class="topR"><span class="score" id="score"></span><button type="button" class="pausebtn" id="pauseBtn">暫停</button></span></div>
     <p class="msg" id="msg"></p>
     <div class="breath" id="breathRing" hidden></div>
     <p class="cue" id="cue" aria-live="polite"></p>
@@ -125,13 +134,24 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       <h2 id="resTitle"></h2>
       <p id="resText"></p>
       <p class="count" id="resCount"></p>
-      <button type="button" id="retryBtn">再來一次（R）</button><button type="button" id="endBtn" class="alt" hidden>走向終局</button>
+      <div class="btns">
+        <button type="button" id="retryBtn">再來一次（R）</button><button type="button" id="endBtn" class="alt" hidden>走向終局</button>
+        <button type="button" class="alt" id="resOpeningBtn">回到開場</button><button type="button" class="alt hubBtn" id="resHubBtn">回總首頁</button>
+      </div>
+    </div>
+    <div class="result panel pausebox" id="pauseUI" hidden>
+      <h2>暫停</h2>
+      <p class="count">回到開場：這場比試從頭開始，求婚者會再試一次弓。</p>
+      <div class="btns">
+        <button type="button" id="resumeBtn">繼續（Esc）</button>
+        <button type="button" class="alt" id="openingBtn">回到開場</button><button type="button" class="alt hubBtn" id="hubBtn">回總首頁</button>
+      </div>
     </div>
   </div>
 </div>
 
 <div class="below">
-  <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠。<br>
+  <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠並暫停，暫停時可以回到開場或回總首頁（右上角的「暫停」也行）。<br>
   <b>上弦</b>：按住滑鼠左右移動，讓指針待在亮區，直到弓彎滿。<b>射箭</b>：按住拉弓（或空白鍵），放開射出。拉滿後有一小段最穩，撐太久手會抖。<b>R</b>：再來一次。<br>
   手機上：上弦時手指按住畫面任何地方左右拖；瞄準時手指拖曳畫面，按住右下的圓鈕拉弓。<br>
   <b>呼吸</b>：拉弓時吸氣，拉滿後呼氣；畫面中間的圈縮到最小、變亮時（呼到底）放箭最穩。
@@ -153,6 +173,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="rules.js"></script>
+<script src="../nav.js"></script>
 <script>
 (() => {
   const R = window.BowRules, T = R.TUNING, H = T.shootHeight;
@@ -269,7 +290,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     if (!breathSnd) {
       const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
       s.buffer = noiseBuf; s.loop = true; f.type = 'bandpass'; f.Q.value = 1.2; f.frequency.value = 700; g.gain.value = 0;
-      s.connect(f).connect(g).connect(master); s.start(); breathSnd = { g, f };
+      s.connect(f).connect(g).connect(master); s.start(); breathSnd = { g, f, s };
     }
     breathSnd.g.gain.setTargetAtTime(level * .09, ac.currentTime, .08);
     breathSnd.f.frequency.setTargetAtTime(inhale ? 1100 : 520, ac.currentTime, .15);
@@ -279,10 +300,20 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     if (!creak) {
       const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
       s.buffer = noiseBuf; s.loop = true; f.type = 'bandpass'; f.frequency.value = 240; f.Q.value = 6; g.gain.value = 0;
-      s.connect(f).connect(g).connect(master); s.start(); creak = { g, f };
+      s.connect(f).connect(g).connect(master); s.start(); creak = { g, f, s };
     }
     creak.g.gain.setTargetAtTime(level * .12, ac.currentTime, .05);
     creak.f.frequency.setTargetAtTime(200 + level * 220, ac.currentTime, .1);
+  }
+
+  // 回到開場時用：換一個新的總音量節點，舊的（連同已排好的聲音）整個斷開；循環的呼吸聲、弓聲也停掉
+  function hushAll() {
+    if (!ac) return;
+    const old = master;
+    master = ac.createGain(); master.gain.value = .8; master.connect(ac.destination);
+    try { old.disconnect(); } catch (e) {}
+    for (const n of [breathSnd, creak]) if (n) { try { n.s.stop(); } catch (e) {} }
+    breathSnd = null; creak = null;
   }
 
   // ================================================================ three.js 場景
@@ -623,6 +654,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   // 送進 stepRound 的輸入：stringDx 以指針單位累計，look 以弧度累計
   const input = { down: false, stringDx: 0, look: { yaw: 0, pitch: 0 }, skip: false };
   let locked = false, touchUI = false;
+  let paused = false, pausedAt = 0;   // 暫停：Esc、指標鎖定被解除、或右上角的按鈕
 
   function diff() { return opt.hole.value; }
   function roundOptions() {
@@ -635,7 +667,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     round = R.createRound(roundOptions(), Math.random, prev);
     if (full) { attempts = 0; best = 0; buildAxes(diff(), round.axeOffset); clearStuck(); }
     // 同一場比試重來：求婚者的箭還釘在斧頭上
-    resultAt = 0; flightDoneAt = 0; pendingEnd = null; resultShowAt = 0;
+    resultAt = 0; flightDoneAt = 0; pendingEnd = null; resultShowAt = 0; clearTimeout(laughTimer);
     input.down = false; input.stringDx = 0; input.look.yaw = input.look.pitch = 0; input.skip = false;
     for (const id in shooters) shooters[id].g.visible = false;
     suitorArrow.visible = false; bone.visible = false; boneFly.on = false; cueTimer = 0; ui.cue.classList.remove('on');
@@ -650,7 +682,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     setCreak(0); setBreath(0);
     refreshHud();
   }
-  let cueTimer = 0, seriesIntro = '';
+  let cueTimer = 0, seriesIntro = '', laughTimer = 0;
   function cue(text, sec) { ui.cue.textContent = text; ui.cue.classList.add('on'); cueTimer = sec; }
   let msgTimer = 0;
   function say(text, hold) { ui.msg.textContent = text; ui.msg.style.opacity = 1; msgTimer = hold || 5; }
@@ -675,6 +707,8 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       else if (ph === 'aim') hint = touchUI ? '拖曳瞄準，按住圓鈕拉弓，放開射出' : '按住拉弓，放開射出';
     }
     ui.hint.textContent = hint; ui.hint.hidden = !hint;
+    pauseBtn.hidden = !paused && !canPause();
+    pauseBtn.textContent = paused ? '繼續' : '暫停';
   }
 
   // 規則已判定結果；這裡只負責演出
@@ -700,7 +734,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
         const b = e.beat;
         for (const id in shooters) shooters[id].g.visible = id === b.id;
         say(b.text, 9);
-        if (b.id === 'leodes') { sfx.slip(); setTimeout(() => sfx.laugh(), 1400); }
+        if (b.id === 'leodes') { sfx.slip(); clearTimeout(laughTimer); laughTimer = setTimeout(() => sfx.laugh(), 1400); }
       }
       else if (e.type === 'suitorFire') { sfx.twang(); suitorArrow.visible = true; }
       else if (e.type === 'suitorStop') {
@@ -736,6 +770,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   }
 
   function press() {
+    if (paused) return;
     audio();
     if (round.phase === 'watch') { input.skip = true; return; }
     if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); return; }
@@ -757,6 +792,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   const holdT = { id: null, x: 0, y: 0 };
 
   cv.addEventListener('pointerdown', e => {
+    if (paused) return;                 // 暫停時只認面板上的按鈕
     if (e.pointerType !== 'mouse') {
       touchUI = true; touch.id = e.pointerId; touch.x = e.clientX; touch.y = e.clientY;
       try { cv.setPointerCapture(e.pointerId); } catch (_) {}
@@ -781,7 +817,13 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     if (round.phase === 'string') { if (input.down) input.stringDx += dx / MOUSE_PX_PER_UNIT; }
     else if (round.phase === 'aim') lookBy(dx, dy, SENS);
   });
-  document.addEventListener('pointerlockchange', () => { locked = document.pointerLockElement === cv; lockAt = performance.now(); refreshHud(); });
+  document.addEventListener('pointerlockchange', () => {
+    const was = locked;
+    locked = document.pointerLockElement === cv; lockAt = performance.now();
+    // 按 Esc 時瀏覽器先解除鎖定：解除時就進暫停（結果出來時是程式自己解除的，不算）
+    if (was && !locked && canPause()) setPaused(true);
+    refreshHud();
+  });
   document.addEventListener('pointerlockerror', () => { locked = false; });
 
   cv.addEventListener('pointermove', e => {
@@ -813,12 +855,61 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
   if (window.matchMedia && matchMedia('(pointer: coarse)').matches) touchUI = true;
 
   window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      // 解除鎖定和這個按鍵可能前後腳到：剛因解除鎖定進暫停的，不要立刻又被同一下 Esc 關掉
+      if (paused) { if (performance.now() - pausedAt > 300) setPaused(false); }
+      else if (canPause()) setPaused(true);
+      return;
+    }
+    if (paused) return;
     if (e.key === 'r' || e.key === 'R') { audio(); newRound(false); }
     else if (e.code === 'Space' && !e.repeat && (locked || document.activeElement === document.body || document.activeElement === cv)) { e.preventDefault(); press(); }
   });
   window.addEventListener('keyup', e => { if (e.code === 'Space') release(); });
   ui.retry.addEventListener('click', () => { audio(); newRound(false); });
-  ui.end.addEventListener('click', () => { location.href = '../ending/index.html'; });   // 打包後 bow/ 和 ending/ 是同層資料夾
+
+  // ---------------------------------------------------------------- 暫停、回到開場、回總首頁
+  const pauseUI = $('pauseUI'), pauseBtn = $('pauseBtn');
+  function canPause() { return !!round && !round.result && !pendingEnd; }
+  function setPaused(on) {
+    if (on === paused) return;
+    paused = on; pausedAt = performance.now();
+    pauseUI.hidden = !on;
+    if (on) {
+      // 放開所有按住的東西，聲音整個停住
+      input.down = false; touch.pressed = false; holdT.id = null; ui.hold.classList.remove('on');
+      setCreak(0); setBreath(0);
+      if (ac && ac.state === 'running') ac.suspend();
+      if (document.pointerLockElement) document.exitPointerLock();
+      $('resumeBtn').focus();
+    } else {
+      last = performance.now();
+      if (ac && ac.state === 'suspended') ac.resume();
+    }
+    refreshHud();
+  }
+  function relock() {
+    if (touchUI || NOLOCK || locked || !cv.requestPointerLock) return;
+    if (round.phase !== 'string' && round.phase !== 'aim') return;
+    try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {}
+  }
+  // 回到開場：這場比試整個重設（斧頭、求婚者先試弓、計數），聲音和計時器都清掉
+  function goOpening() {
+    hushAll();
+    setPaused(false);
+    newRound(true);
+  }
+  pauseBtn.addEventListener('click', () => { if (paused) setPaused(false); else if (canPause()) setPaused(true); });
+  $('resumeBtn').addEventListener('click', () => { setPaused(false); relock(); });
+  $('openingBtn').addEventListener('click', goOpening);
+  $('resOpeningBtn').addEventListener('click', goOpening);
+  // 回總首頁：nav.js 沒載到，或沒有總首頁可去，就把按鈕藏起來
+  const NAV = window.OdysseyNav, hasHub = !!(NAV && NAV.hasHub());
+  document.querySelectorAll('.hubBtn').forEach(b => {
+    b.hidden = !hasHub;
+    b.addEventListener('click', () => { if (NAV) NAV.goHub(); });
+  });
+  ui.end.addEventListener('click', () => { location.href = '../odyssey-series/ending/index.html'; });   // 打包結構和 prototypes/ 一樣
   for (const k in opt) opt[k].addEventListener('change', () => { if (k === 'guide') return; newRound(true); });
 
   function resize() {
@@ -998,7 +1089,7 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
     }
   }
 
-  let last = performance.now(), hudTick = 0, paused = false;
+  let last = performance.now(), hudTick = 0;
   function loop(now) {
     const dt = Math.min(.05, (now - last) / 1000); last = now;
     if (!paused) { update(dt); render(dt); }

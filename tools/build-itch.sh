@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 打包 itch.io HTML5 版：bash tools/build-itch.sh
-# 輸出 dist/odyssey-series/（站台）與 dist/odyssey-series.zip（index.html 在 zip 根目錄）
+# 輸出 dist/odyssey-series/（站台，結構同 prototypes/）與 dist/odyssey-series.zip（總首頁 index.html 在 zip 根目錄）
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,7 +15,9 @@ THREE_CACHED="$CACHE/three-$THREE_VER.min.js"
 rm -rf "$OUT" "$ZIP"
 mkdir -p "$OUT/lib" "$CACHE"
 
-# 1. 系列外殼 → 站台根目錄（不含測試檔）
+# 1. 站台結構和 repo 的 prototypes/ 一模一樣（不含測試檔），相對連結在本機和打包版都通
+#    根目錄：總首頁 index.html、nav.js（以及其他直接放在 prototypes/ 的頁面或腳本）
+#    子資料夾：各原型同名資料夾（odyssey-series/cave/ 若存在也照抄，Unity WebGL 原樣保留）
 copy_tree() {  # copy_tree <來源資料夾> <目的資料夾>
   local from="$1" to="$2"
   mkdir -p "$to"
@@ -25,14 +27,24 @@ copy_tree() {  # copy_tree <來源資料夾> <目的資料夾>
       cp "$from/$f" "$to/$f"
     done
 }
-copy_tree "$SRC/odyssey-series" "$OUT"   # 含 shore/ ogygia/ ending/ 與 cave/（若存在）等所有子資料夾
+PROTOS=(troy-prologue bow-risset vengeance bow-contest beggar-hall odyssey-series)
+for f in index.html nav.js; do
+  [ -f "$SRC/$f" ] || { echo "錯誤：缺少 prototypes/$f" >&2; exit 1; }
+done
+( cd "$SRC" && find . -maxdepth 1 -type f ! -name '*.test.js' ! -name '*.test.mjs' ! -name '.DS_Store' -exec cp {} "$OUT/" \; )
+for p in "${PROTOS[@]}"; do
+  [ -d "$SRC/$p" ] || { echo "錯誤：缺少 prototypes/$p/" >&2; exit 1; }
+  copy_tree "$SRC/$p" "$OUT/$p"
+done
+# 清單外的新資料夾也一起帶，免得漏掉；只提醒，記得加進總首頁
+for d in "$SRC"/*/; do
+  p="$(basename "$d")"
+  [ -d "$OUT/$p" ] && continue
+  echo "提醒：prototypes/$p/ 不在原型清單裡，照樣打包；記得加進總首頁"
+  copy_tree "$SRC/$p" "$OUT/$p"
+done
 
-# 2. 乞丐與比箭
-mkdir -p "$OUT/beggar" "$OUT/bow"
-cp "$SRC/beggar-hall/index.html" "$SRC/beggar-hall/sim.js" "$OUT/beggar/"
-cp "$SRC/bow-contest/index.html" "$SRC/bow-contest/rules.js" "$OUT/bow/"
-
-# 3. three.js r128 本地一份（快取後可離線重跑）
+# 2. three.js r128 本地一份（快取後可離線重跑）
 if [ ! -s "$THREE_CACHED" ]; then
   echo "下載 three@$THREE_VER …"
   TMP="$(mktemp -d)"
@@ -42,10 +54,10 @@ if [ ! -s "$THREE_CACHED" ]; then
 fi
 cp "$THREE_CACHED" "$OUT/lib/three.min.js"
 
-# 4. 片段包成完整 HTML、換成本地 three.js
+# 3. 片段包成完整 HTML、換成本地 three.js
 node "$REPO/tools/build-itch.mjs" "$OUT"
 
-# 5. 壓縮（index.html 在 zip 根目錄）
+# 4. 壓縮（index.html 在 zip 根目錄）
 if command -v zip >/dev/null 2>&1; then
   ( cd "$OUT" && zip -qr -X "$ZIP" . )
 else
@@ -60,9 +72,9 @@ with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) as z:
 PY
 fi
 
-# 6. 摘要
+# 5. 摘要
 echo "—— 打包完成 ——"
-( cd "$OUT" && find . -type f | sed 's|^\./||' | sort | while read -r f; do printf '  %-28s %8s bytes\n' "$f" "$(wc -c < "$f")"; done )
+( cd "$OUT" && find . -type f | sed 's|^\./||' | sort | while read -r f; do printf '  %-40s %8s bytes\n' "$f" "$(wc -c < "$f")"; done )
 echo "檔案數：$(find "$OUT" -type f | wc -l)"
 echo "zip：${ZIP#$REPO/}（$(du -h "$ZIP" | cut -f1)）"
-[ -d "$OUT/cave" ] || echo "提醒：沒有 cave/（Unity WebGL 建置放進 prototypes/odyssey-series/cave/ 後重跑即可）"
+[ -d "$OUT/odyssey-series/cave" ] || echo "提醒：沒有 odyssey-series/cave/（Unity WebGL 建置放進 prototypes/odyssey-series/cave/ 後重跑即可）"

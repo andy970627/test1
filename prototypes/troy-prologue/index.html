@@ -176,7 +176,7 @@ button:hover { filter: brightness(1.12); }
       <dt>Shift</dt><dd>衝刺，只在節奏重來的瞬間有用</dd>
       <dt>E</dt><dd>點一下＝從背後暗殺；在城門按住＝推開門閂</dd>
       <dt>Q</dt><dd>衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
-      <dt>Esc</dt><dd>暫停</dd>
+      <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
     <div id="optSlotIntro"></div>
    </div>
@@ -194,6 +194,8 @@ button:hover { filter: brightness(1.12); }
       <button class="primary" id="btnResume">繼續</button>
       <button id="btnRetryP">從這一區重來</button>
       <button id="btnFromTop">從頭開始</button>
+      <button type="button" class="btnIntro">回到開場</button>
+      <button type="button" class="btnHub">回總首頁</button>
     </div>
   </div>
 </div>
@@ -230,7 +232,7 @@ button:hover { filter: brightness(1.12); }
     <h2 id="failWhy">你被發現了。</h2>
     <p id="failHint" hidden></p>
     <p class="dim">按 R 從這一區重來</p>
-    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button></div>
+    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
   </div>
 </div>
 
@@ -240,10 +242,11 @@ button:hover { filter: brightness(1.12); }
     <h2>城門開了</h2>
     <p>希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
     <p class="later">十年後……</p>
-    <div class="row" style="margin-top:18px"><button id="btnAgain">再玩一次</button></div>
+    <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
   </div>
 </div>
 
+<script src="../nav.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
 <script src="risset.js"></script>
@@ -1524,6 +1527,31 @@ $('btnFromTop2').onclick = startFromTop;
 $('btnRetry').onclick = retryZone;
 $('btnAgain').onclick = startFromTop;
 
+// 回到開場：頁內重設（停掉聲音、清提示、收起所有畫面、回開場字卡）。
+// 實驗開關（相位條、視覺輔助、難度、音樂層與已載入的音檔）都留在頁面上，所以自然保留；
+// 音訊環境 actx 沿用，下次「開始」由 makeAudio 重建聲音，不會兩套疊在一起。
+function backToIntro() {
+  paused = true; startedOnce = false; overShown = false;
+  unlockPointer();
+  if (audio && typeof audio.stop === 'function') { try { audio.stop(); } catch (e) {} }
+  audio = null; game = null;
+  for (const k in keys) keys[k] = false;
+  pend = {}; drag = null;
+  clearHints(); $('msgs').innerHTML = '';
+  $('pause').hidden = true; $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
+  document.body.classList.remove('playing');
+  $('optSlotIntro').appendChild($('opts'));
+  $('intro').hidden = false; $('intro').scrollTop = 0;
+}
+// 回總首頁：共用的 ../nav.js；沒載到或沒有總首頁可去（claude.ai 試玩頁未設定網址）就隱藏按鈕
+const NAV = window.OdysseyNav;
+const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
+document.querySelectorAll('.btnIntro').forEach(b => { b.onclick = backToIntro; });
+document.querySelectorAll('.btnHub').forEach(b => {
+  b.hidden = !hasHub;
+  b.onclick = () => { try { NAV.goHub(); } catch (e) { console.warn('無法前往總首頁', e); } };
+});
+
 // 開場前先建好場景當背景（看得到木馬腹中）
 try {
   t0 = 0; curT = +$('oT').value || 10;
@@ -1533,7 +1561,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW };
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW };
 requestAnimationFrame(loop);
 })();
 </script>

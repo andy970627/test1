@@ -85,10 +85,38 @@
   - 另有 6 個試玩時會卡住的地方，交給三個修正代理處理。
 - **提交**：`2393b01` `951a916` `5c42223` `6eb0e36`
 
+### 11. 以音樂切入：木馬之夜（11/06～11/07）
+- **方向**：使用者決定「以音樂切入遊戲玩法最有看頭」，內容規則改成經典段落為主、電影輔助。開工特洛伊序章《木馬之夜》，以 Risset 節奏（聽起來無限加速的錯覺）驅動潛行。
+- **分工**：規則、聲音、畫面各一個代理，另有檢查代理實測；主對話整合。
+- **主要進展**：原創音樂層（`9ce13a6`）→ 越危險越快的動態節奏、盲區固定 0.6 秒（`e7e36ef`）→ 聲音跟著規則排程、腳步合拍、安撫哼唱、3D 衛兵（`882b058`）→ 假驟降（`31bb681`）。
+- **工具**：聽得到聲音的自動試玩錄製與分析 `tools/playtest-recorder/`（`e984b7a`），5 項檢查：盲區安靜、拍點對齊、警戒低音、爆音、掉拍。它抓到低音落在盲區的錯，也在改成動態節奏後抓到自己假設固定循環的錯；最後 5 項全過。
+- **規則測試**：74 項。
+
+### 12. 比箭 Risset 版、大廳復仇、暗示設計（11/07）
+- 兩個新原型當比較對照：比箭 Risset 版（`d3a6570`，23 項測試）、大廳復仇節奏動作戰鬥（`b6c4821`，28 項）。
+- 暗示與引導設計（`d3a0cb8`）：每個機制、每條路線都有世界內的聲音與視覺暗示；暗示階梯＝失敗兩次出文字、三次加按鍵、成功一次歸零。三個原型分別實作（`8b1cc0e`、`eb6e3f9`）。
+- 回覆變英文的問題：排查後裝 Stop 檢查與三條輔助規則（`419f6c6`），設計文件翻成中文（`63a7a68`）。
+- 整理：根目錄 README、概念總覽重寫（`b09a4d5`）；開草稿合併請求 #5；合併 `main` 同步雲端建置與技能（`3bd4de5`、`dd0b27c`），CI 四項全過。
+
+### 13. 返回主畫面與總首頁（11/07）
+- **需求**：「加返回主畫面功能」。選擇題確認：兩層都做（回該遊戲開場＋回總首頁），而且所有原型都加。
+- **做法**：共用導覽檔 `prototypes/nav.js`（主對話寫），三個代理同時做：總首頁與打包工具、三個音樂原型、三個舊原型。
+  - 新增總首頁 `prototypes/index.html`，列出六個原型。
+  - 每個遊戲的暫停與結果畫面加「回到開場」「回總首頁」；原本沒有暫停的（兩版比箭、大廳復仇）補上 Esc 暫停，與指標鎖定配合。回到開場一律頁內重設（停聲音、清計時器、重建），只有乞丐連作模式用重新載入。
+  - 打包結構改成和 `prototypes/` 一致，總首頁在 itch.io 版根目錄；打包時加相對連結檢查，連作的串接路徑一併修正。
+- **驗證**：規則測試 212 項全過；打包連結警告 0；Playwright 走過每個原型的「開始 → 暫停 → 回開場 → 再開始」與結果畫面按鈕，無錯誤。
+- **已知**：比箭 Risset 版本來沒有開場字卡，「回到開場」等於整局重設；手機上沒有 Esc，只能從結果畫面離開。
+
 ## 目前的成品
 
 | 成品 | 位置 |
 |---|---|
-| 伊薩卡比箭（第一人稱） | `prototypes/bow-contest/`（`rules.js` 規則、`index.html` 畫面）；私人網頁 https://claude.ai/artifact/XhXdsJ8H5GSxw1517Fhjbn |
-| 門檻上的乞丐（宮門＋大廳） | `prototypes/beggar-hall/`（`sim.js` 規則、`index.html` 畫面）；私人網頁 https://claude.ai/artifact/Kif6J9gWDBcHh5QjvW4xsM |
-| 設計文件 | `docs/design/`（總覽、網頁候選、乞丐設計） |
+| 總首頁（原型集） | `prototypes/index.html`、共用導覽 `prototypes/nav.js` |
+| 木馬之夜（特洛伊序章） | `prototypes/troy-prologue/`；私人網頁 https://claude.ai/artifact/DcxVU1LPbmcdPAfpvzEchb |
+| 比箭・Risset 版 | `prototypes/bow-risset/`；私人網頁 https://claude.ai/artifact/9x7ZByRC7HyC1vFfvEyoxb |
+| 大廳復仇 | `prototypes/vengeance/`；私人網頁 https://claude.ai/artifact/EjRjJij1T1HJxKgcFBaWxr |
+| 伊薩卡比箭（呼吸判定版，對照組） | `prototypes/bow-contest/`；私人網頁 https://claude.ai/artifact/XhXdsJ8H5GSxw1517Fhjbn |
+| 門檻上的乞丐（報告後重做） | `prototypes/beggar-hall/`；私人網頁 https://claude.ai/artifact/Kif6J9gWDBcHh5QjvW4xsM |
+| 網頁連作《回家的路》（報告後重做） | `prototypes/odyssey-series/` |
+| 錄音分析工具 | `tools/playtest-recorder/` |
+| 設計文件 | `docs/design/`（總覽、木馬之夜、比箭與復仇、暗示引導等） |
