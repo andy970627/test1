@@ -14,7 +14,7 @@ const buildDir = path.resolve(args.build || 'build');
 const outDir = path.resolve(args.out || 'playtest-out');
 
 // 每個情況：跳過去之後在哪些秒數截圖、要按哪些鍵。
-// marks：遊戲寫出 [PLAYTEST] mark 名稱 時截圖（過場會在那一瞬間停住 6 秒）。
+// marks：遊戲寫出 [PLAYTEST] mark 名稱 時截圖（過場會在那一瞬間停住 20 秒）。
 // 測試機用軟體繪圖，一秒只有一兩格，真實秒數對不上遊戲裡的時間；過場要照 mark 拍。
 const SCENES = [
   { name: 'night', shots: [1, 4], actions: async (page) => {
@@ -28,7 +28,7 @@ const SCENES = [
     } },
   { name: 'boulder', shots: [1, 3] },
   { name: 'verse', shots: [0.5, 1.5, 3] },
-  { name: 'ambush', shots: [3.5], marks: ['athena', 'turn', 'horse'] },
+  { name: 'ambush', shots: [], marks: ['athena', 'turn', 'horse'] },
   { name: 'fairhit', shots: [0.5, 2, 4] },
   { name: 'prayer', shots: [1, 4] },
   { name: 'dawnsoon', shots: [1, 5] },
@@ -102,7 +102,7 @@ async function runScene(browser, base, scene) {
     }
     if (scene.actions) await scene.actions(page);
     // 等所有 mark 出現（過場在軟體繪圖下可能要十幾秒）。
-    const markDeadline = Date.now() + 60000;
+    const markDeadline = Date.now() + 180000;
     while (markShots.length < (scene.marks || []).length && Date.now() < markDeadline) await page.waitForTimeout(500);
     result.shots.push(...await Promise.all(markShots));
     const missing = (scene.marks || []).filter((m) => !result.shots.some((f) => f.endsWith(`mark-${m}.png`)));
