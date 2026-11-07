@@ -30,6 +30,18 @@ public class CrewLine : MonoBehaviour
     /// <summary>玩家是否在跑（由 EchoPlayer 每幀設定），跟隨者照跑步步頻出聲。</summary>
     public bool Running { get; set; }
 
+    // 一起推巨石（規格第 32 節 B）：玩家在推時，3 m 內的跟隨者在他左右每 1.2 m 排開。
+    const float HelpReach = 3f, HelpSpacing = 1.2f, HelpArrive = 0.3f, HelpPantSeconds = 2f;
+    static readonly float[] HelpSlots = { 1f, -1f, 2f, -2f };
+    bool pushHelp;
+    readonly Dictionary<CrewMember, float> pantTimers = new();
+
+    /// <summary>站定在石面前、正在一起推的同伴人數（最多 4）。</summary>
+    public int Helpers { get; private set; }
+
+    /// <summary>玩家這一幀有沒有在推巨石（由遊戲迴圈設定）。</summary>
+    public void SetPushHelp(bool pushing) => pushHelp = pushing;
+
     public void Init(Transform player, Func<Vector3, float> stepScale)
     {
         this.player = player;
@@ -110,6 +122,7 @@ public class CrewLine : MonoBehaviour
         followers.Remove(m);
         stepTimers.Remove(m);
         lastPositions.Remove(m);
+        pantTimers.Remove(m);
         m.Kill();
     }
 
@@ -127,18 +140,40 @@ public class CrewLine : MonoBehaviour
         if (player == null)
             return;
         trail.Record(Flat(player.position));
+        Helpers = 0;
         if (crouching)
             return;
 
+        int slot = 0;
         for (int i = 0; i < followers.Count; i++)
         {
             var m = followers[i];
             // 用走路（或跑步）的速度走到隊伍裡的位置：從蹲下起身、或剛加入時不會瞬間移過去。
             NVector2 p = trail.PositionAt(i);
             Vector3 goal = new(p.X, 0f, p.Y);
+            bool helping = false;
+            if (pushHelp && slot < HelpSlots.Length && FlatV(m.transform.position - player.position).magnitude <= HelpReach)
+            {
+                goal = FlatV(player.position) + Vector3.right * (HelpSlots[slot] * HelpSpacing);
+                slot++;
+                helping = true;
+            }
             float maxStep = (Running ? EchoPlayer.RunSpeed : EchoPlayer.CrouchSpeed) * CatchUpFactor * Time.deltaTime;
             Vector3 here = FlatV(m.transform.position);
             m.MoveTo(Vector3.MoveTowards(here, goal, maxStep));
+            if (helping && FlatV(m.transform.position - goal).magnitude <= HelpArrive)
+            {
+                Helpers++;
+                // 用力推會喘：巨人聽得到，不照亮。
+                pantTimers.TryGetValue(m, out float pant);
+                pant += Time.deltaTime;
+                if (pant >= HelpPantSeconds)
+                {
+                    pant = 0f;
+                    SoundBus.Emit(SoundKind.Pant, m.transform.position);
+                }
+                pantTimers[m] = pant;
+            }
             Vector3 delta = FlatV(m.transform.position - lastPositions[m]);
             lastPositions[m] = m.transform.position;
             if (delta.sqrMagnitude < 1e-6f)

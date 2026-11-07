@@ -13,46 +13,65 @@ public class DebugPanel : MonoBehaviour
 
     const float MapMinX = -16f, MapMaxX = 16f, MapMinZ = -12f, MapMaxZ = 14f;
 
-    static readonly Color Track = new(1f, 1f, 1f, 0.15f);
-    static readonly Color TickGap = new(0f, 0f, 0f, 0.65f);
-    static readonly Color Wall = new(0.6f, 0.55f, 0.5f, 0.8f);
+    static readonly Color Track = OdysseyPalette.Track;
+    static readonly Color TickGap = OdysseyPalette.DebugMap.TickGap;
+    static readonly Color Wall = OdysseyPalette.DebugMap.Wall;
     static readonly Color PlayerColor = Color.white;
-    static readonly Color SheepColor = new(1f, 0.9f, 0.55f);
-    static readonly Color BoulderColor = new(0.55f, 0.4f, 0.25f);
-    static readonly Color CrewColor = new(0.55f, 0.9f, 0.6f);
-    static readonly Color StakeColor = new(0.55f, 0.38f, 0.2f);
-    static readonly Color WedgeColor = new(0.7f, 0.7f, 0.68f);
-    static readonly Color StoneColor = new(0.75f, 0.75f, 0.72f);
-    static readonly Color PailColor = new(0.7f, 0.55f, 0.35f);
-    static readonly Color PenColor = new(0.6f, 0.5f, 0.3f, 0.8f);
-    static readonly Color RockColor = new(0.95f, 0.15f, 0.1f);
+    static readonly Color SheepColor = OdysseyPalette.EchoSheep;
+    static readonly Color BoulderColor = OdysseyPalette.DebugMap.Boulder;
+    static readonly Color CrewColor = OdysseyPalette.EchoCrew;
+    static readonly Color StakeColor = OdysseyPalette.DebugMap.Stake;
+    static readonly Color WedgeColor = OdysseyPalette.DebugMap.Wedge;
+    static readonly Color StoneColor = OdysseyPalette.DebugMap.Stone;
+    static readonly Color PailColor = OdysseyPalette.DebugMap.Pail;
+    static readonly Color PenColor = OdysseyPalette.DebugMap.Pen;
+    static readonly Color RockColor = OdysseyPalette.DebugMap.Rock;
 
     BlindGameLoop loop;
+    GUIStyle cachedStyle, cachedLegend;
+    string shortcutText;
+
+    static string BuildShortcutText()
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        foreach (var sc in PlaytestDriver.Shortcuts)
+            parts.Add($"{sc.Key} {sc.Label}");
+        return "實測捷徑：" + string.Join("・", parts);
+    }
+    int cachedFontSize = -1;
+
+    /// <summary>面板現在開著（世界內提示要避開左上那一塊，HudZones.DebugZone）。</summary>
+    public static bool Showing { get; private set; }
 
     public void Init(BlindGameLoop loop) => this.loop = loop;
+
+    void OnDisable() => Showing = false;
 
     void Update()
     {
         var keyboard = Keyboard.current;
         if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
             showDebug = !showDebug;
+        Showing = showDebug;
     }
 
     static Color StateColor(CyclopsState s) => s switch
     {
-        CyclopsState.Investigate => new Color(0.95f, 0.8f, 0.2f),
-        CyclopsState.Search => new Color(0.9f, 0.25f, 0.2f),
-        CyclopsState.Guard => new Color(0.65f, 0.35f, 0.9f),
-        CyclopsState.Throw => new Color(1f, 0.45f, 0.1f),
-        CyclopsState.Eat => new Color(0.6f, 0.05f, 0.05f),
-        _ => new Color(0.6f, 0.6f, 0.6f),
+        CyclopsState.Investigate => OdysseyPalette.DebugMap.Investigate,
+        CyclopsState.Search => OdysseyPalette.DebugMap.Search,
+        CyclopsState.Guard => OdysseyPalette.DebugMap.Guard,
+        CyclopsState.Throw => OdysseyPalette.DebugMap.Throw,
+        CyclopsState.Eat => OdysseyPalette.DebugMap.Eat,
+        CyclopsState.Pray => OdysseyPalette.DebugMap.Pray,
+        CyclopsState.Stagger => OdysseyPalette.DebugMap.Stagger,
+        _ => OdysseyPalette.DebugMap.Idle,
     };
 
     static Color OutcomeColor(NightOutcome outcome) => outcome switch
     {
-        NightOutcome.Dawn => new Color(0.55f, 0.65f, 0.95f),
-        NightOutcome.Escaped => new Color(0.55f, 0.9f, 0.6f),
-        _ => new Color(0.9f, 0.25f, 0.2f),
+        NightOutcome.Dawn => OdysseyPalette.DebugMap.Dawn,
+        NightOutcome.Escaped => OdysseyPalette.Done,
+        _ => OdysseyPalette.DebugMap.Search,
     };
 
     string BoulderMode()
@@ -74,27 +93,47 @@ public class DebugPanel : MonoBehaviour
         CyclopsState.Guard => "守石",
         CyclopsState.Throw => "丟岩石",
         CyclopsState.Eat => "吃同伴",
+        CyclopsState.Pray => "禱告",
+        CyclopsState.Stagger => "踉蹌",
         _ => "聆聽",
     };
 
     void OnGUI()
     {
+        OdysseyFonts.UseForGui();
         if (!showDebug || loop == null || loop.Cyclops == null)
             return;
 
-        int fontSize = Mathf.Max(22, Screen.height / 28);
-        var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = false };
-        style.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
-        float line = fontSize * 1.4f;
+        int fontSize = Mathf.Max(14, Screen.height / 45);
+        if (cachedStyle == null || cachedFontSize != fontSize)
+        {
+            cachedFontSize = fontSize;
+            cachedStyle = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = false };
+            cachedStyle.normal.textColor = OdysseyPalette.DebugText;
+            cachedLegend = new GUIStyle(cachedStyle) { fontSize = Mathf.Max(12, fontSize * 3 / 4) };
+        }
+        var style = cachedStyle;
+        float line = fontSize * 1.35f;
 
-        float mapH = Screen.height * 0.3f;
+        // 縮小版俯視小地圖（寬度不超過螢幕 28%、整體高度不超過 55%）
+        float mapH = Screen.height * 0.18f;
         float mapW = mapH * (MapMaxX - MapMinX) / (MapMaxZ - MapMinZ);
-        float panelW = Mathf.Max(mapW, fontSize * 14f) + 20f;
+        float panelW = Mathf.Min(Screen.width * 0.28f, Mathf.Max(mapW, fontSize * 14f) + 20f);
 
         var map = new Rect(20, 20, mapW, mapH);
         DrawMap(map);
 
-        float y = map.yMax + 10f;
+        // 小地圖圖例：只放最重要的四種。
+        float y = map.yMax + 4f;
+        var legend = cachedLegend;
+        float lx = 20f, lh = legend.fontSize * 1.4f;
+        foreach (var (name, color) in new[] { ("你", PlayerColor), ("巨人", StateColor(CyclopsState.Listen)), ("同伴", CrewColor), ("木樁", StakeColor) })
+        {
+            Fill(new Rect(lx, y + lh * 0.3f, lh * 0.4f, lh * 0.4f), color);
+            GUI.Label(new Rect(lx + lh * 0.55f, y, legend.fontSize * 3f, lh), name, legend);
+            lx += lh * 0.55f + legend.fontSize * (name.Length + 1.2f);
+        }
+        y += lh + 4f;
         CyclopsState state = loop.Cyclops.Brain.State;
         Fill(new Rect(20, y + line * 0.2f, line * 0.6f, line * 0.6f), StateColor(state));
         string hold = loop.Cyclops.Brain.HoldingBoulder ? "・守著巨石" : "";
@@ -103,15 +142,17 @@ public class DebugPanel : MonoBehaviour
 
         float barW = panelW - fontSize * 6f - 20f;
         float boulderRow = y;
-        Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, new Color(0.75f, 0.6f, 0.4f), ref y, line, barW, style);
+        Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, OdysseyPalette.BoulderBar, ref y, line, barW, style);
         DrawBoulderMarks(boulderRow, line, barW, style);
-        Bar("天亮", loop.Dawn.Fraction, 0, new Color(0.7f, 0.75f, 0.95f), ref y, line, barW, style);
-        Bar("岩石", 1f - loop.Cyclops.Brain.ThrowCooldownLeft / CyclopsBrain.ThrowCooldown, 0, new Color(1f, 0.45f, 0.1f), ref y, line, barW, style);
-        Bar("石子", loop.Decoys.StoneRadiusMultiplier, 0, new Color(0.85f, 0.85f, 0.8f), ref y, line, barW, style);
-        for (int i = 0; i < DecoyMemory.FooledLimit; i++)
-            Fill(new Rect(20 + fontSize * 4f + i * line * 0.7f, y + line * 0.25f, line * 0.5f, line * 0.5f),
-                i < loop.Decoys.Fooled ? new Color(0.9f, 0.25f, 0.2f) : Track);
-        y += line;
+        Bar("天亮", loop.Dawn.Fraction, 0, OdysseyPalette.DebugMap.DawnBar, ref y, line, barW, style);
+        // 實測捷徑（編輯器與開發版）：F2～F10 直接跳到要測的情況。
+        if (PlaytestDriver.ManualEnabled)
+        {
+            shortcutText ??= BuildShortcutText();
+            GUI.Label(new Rect(20, y, panelW, legend.fontSize * 2.8f), shortcutText, legend);
+            y += legend.fontSize * 2.8f;
+        }
+        // 「丟岩石冷卻」「箭的引誘力」暫放在洞中紀事的巨人頁（使用者指定，規格第 25 節 F）。
 
         int following = loop.Crew.Followers.Count;
         GUI.Label(new Rect(20, y, panelW, line), $"同伴：跟隨 {following}／躲著 {loop.Crew.Members.Count - following}", style);

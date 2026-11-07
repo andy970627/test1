@@ -24,6 +24,7 @@ public class WanderingSheep : MonoBehaviour
         IsRam = isRam;
         rng = new System.Random(seed);
         BuildBody();
+        Arrow.AddHitBox(gameObject, Vector3.up * 0.6f, 1.1f, 0.45f);
 
         voice = gameObject.AddComponent<AudioSource>();
         voice.clip = ProceduralAudio.Bleat();
@@ -106,21 +107,38 @@ public class WanderingSheep : MonoBehaviour
 
     void BuildBody()
     {
-        float s = IsRam ? 1.3f : 1f;
-        var wool = new Color(0.75f, 0.72f, 0.65f);
-        var dark = new Color(0.25f, 0.22f, 0.2f);
-        Part(PrimitiveType.Sphere, "Body", new Vector3(0f, 0.6f, 0f) * s, new Vector3(0.9f, 0.6f, 1.3f) * s, wool);
-        Part(PrimitiveType.Sphere, "Head", new Vector3(0f, 0.8f, 0.75f) * s, new Vector3(0.35f, 0.35f, 0.45f) * s, dark);
+        float s = IsRam ? 1.35f : 1f;
+        var wool = OdysseyPalette.Wool;
+        var woolShade = OdysseyPalette.WoolShade;
+        var dark = OdysseyPalette.SheepDark;
+        var horn = OdysseyPalette.Horn;
+
+        // 羊身（厚重羊毛球體複合）
+        Part(PrimitiveType.Sphere, "BodyMain", new Vector3(0f, 0.6f, 0f) * s, new Vector3(0.95f, 0.65f, 1.35f) * s, wool);
+        Part(PrimitiveType.Sphere, "BodyRump", new Vector3(0f, 0.65f, -0.3f) * s, new Vector3(0.85f, 0.6f, 0.75f) * s, woolShade);
+
+        // 羊頭與口鼻
+        Part(PrimitiveType.Sphere, "Head", new Vector3(0f, 0.8f, 0.75f) * s, new Vector3(0.32f, 0.32f, 0.42f) * s, dark);
+        Part(PrimitiveType.Sphere, "Muzzle", new Vector3(0f, 0.72f, 0.95f) * s, new Vector3(0.20f, 0.18f, 0.22f) * s, dark);
+
+        // 短尾巴
+        Part(PrimitiveType.Sphere, "Tail", new Vector3(0f, 0.65f, -0.7f) * s, new Vector3(0.12f, 0.12f, 0.12f) * s, wool);
+
+        // 四足蹄腿
         for (int i = 0; i < 4; i++)
         {
             float x = (i % 2 == 0 ? -0.25f : 0.25f) * s;
             float z = (i < 2 ? -0.4f : 0.4f) * s;
             Part(PrimitiveType.Cylinder, "Leg", new Vector3(x, 0.2f * s, z), new Vector3(0.12f, 0.2f, 0.12f) * s, dark);
         }
+
+        // 大公羊的大捲角（雄渾的西西里島大公羊特徵）
         if (IsRam)
         {
-            Part(PrimitiveType.Sphere, "HornL", new Vector3(-0.22f, 1.15f, 0.95f), new Vector3(0.22f, 0.22f, 0.3f), dark);
-            Part(PrimitiveType.Sphere, "HornR", new Vector3(0.22f, 1.15f, 0.95f), new Vector3(0.22f, 0.22f, 0.3f), dark);
+            Part(PrimitiveType.Sphere, "HornL1", new Vector3(-0.22f, 0.95f, 0.85f) * s, new Vector3(0.18f, 0.18f, 0.28f) * s, horn);
+            Part(PrimitiveType.Sphere, "HornL2", new Vector3(-0.30f, 0.85f, 0.68f) * s, new Vector3(0.16f, 0.16f, 0.24f) * s, horn);
+            Part(PrimitiveType.Sphere, "HornR1", new Vector3(0.22f, 0.95f, 0.85f) * s, new Vector3(0.18f, 0.18f, 0.28f) * s, horn);
+            Part(PrimitiveType.Sphere, "HornR2", new Vector3(0.30f, 0.85f, 0.68f) * s, new Vector3(0.16f, 0.16f, 0.24f) * s, horn);
         }
     }
 

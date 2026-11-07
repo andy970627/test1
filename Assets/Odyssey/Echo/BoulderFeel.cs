@@ -18,8 +18,8 @@ public class BoulderFeel : MonoBehaviour
     const float LightGritSeconds = 0.4f, HeavyGritSeconds = 0.15f;
     const int MaxGrit = 20;
     const float GritLifetime = 6f;
-    static readonly Color MarkColor = new(0.5f, 0.42f, 0.3f);
-    static readonly Color GritColor = new(0.55f, 0.45f, 0.32f);
+    static readonly Color MarkColor = OdysseyPalette.BoulderMark;
+    static readonly Color GritColor = OdysseyPalette.Grit;
 
     readonly List<GameObject> grit = new();
     Boulder boulder;
@@ -47,6 +47,30 @@ public class BoulderFeel : MonoBehaviour
         ResetForNight();
     }
 
+    /// <summary>整個洞的震動幅度（公尺，例如巨人禱告時 0.02）；疊加在鏡頭上。</summary>
+    public float Tremor { get; set; }
+
+    float kickAmp, kickLeftShake, kickDuration;
+
+    // 被撞（羊、禱告震動、巨人拔楔子）時晃一下：衰減的左右搖擺（規格第 32 節 C、D）。
+    const float BumpSeconds = 0.9f, BumpHz = 2.2f;
+    float bumpDegrees, bumpLeft;
+
+    /// <summary>巨石被撞了一下：晃 degrees 度，0.9 秒內停下。</summary>
+    public void Bump(float degrees)
+    {
+        bumpDegrees = Mathf.Max(bumpDegrees * (bumpLeft / BumpSeconds), degrees);
+        bumpLeft = BumpSeconds;
+    }
+
+    /// <summary>一次性的鏡頭震動（撞到東西、岩石落在附近）：幅度 amplitude 公尺，seconds 秒內衰減。</summary>
+    public void Kick(float amplitude, float seconds)
+    {
+        kickAmp = amplitude;
+        kickDuration = seconds;
+        kickLeftShake = seconds;
+    }
+
     /// <summary>每幀在 Boulder.SetOpening 之後呼叫。</summary>
     public void Tick(PushMode mode, bool catching, bool sliding, float maxOpening)
     {
@@ -66,13 +90,21 @@ public class BoulderFeel : MonoBehaviour
         float wave = Mathf.Sin(time * SwayHz * 2f * Mathf.PI);
         float bob = mode == PushMode.Heavy ? HeavyBob : mode == PushMode.Light ? LightBob : 0f;
         Transform body = boulder.Body;
-        body.localRotation = Quaternion.Euler(wave * sway, 0f, 0f);
+        bumpLeft = Mathf.Max(0f, bumpLeft - dt);
+        float bump = bumpLeft > 0f ? bumpDegrees * (bumpLeft / BumpSeconds) * Mathf.Sin((BumpSeconds - bumpLeft) * BumpHz * 2f * Mathf.PI) : 0f;
+        body.localRotation = boulder.Roll * Quaternion.Euler(wave * sway, 0f, bump);
         body.localPosition += new Vector3(0f, Mathf.Abs(wave) * bob, -CatchJolt * (joltLeft / CatchJoltSeconds));
 
         // 鏡頭：推的時候前傾，猛推時抖，卡住時往後震。
         bool pushing = mode != PushMode.None;
         player.FeelPitch = Mathf.MoveTowards(player.FeelPitch, pushing ? LeanDegrees : 0f, LeanDegrees / LeanSeconds * dt);
         Vector3 shake = mode == PushMode.Heavy ? Random.insideUnitSphere * HeavyShake : Vector3.zero;
+        shake += Random.insideUnitSphere * Tremor;
+        if (kickLeftShake > 0f)
+        {
+            kickLeftShake = Mathf.Max(0f, kickLeftShake - dt);
+            shake += Random.insideUnitSphere * kickAmp * (kickLeftShake / kickDuration);
+        }
         player.FeelOffset = shake + Vector3.back * (CameraKick * (kickLeft / CameraKickSeconds));
 
         UpdateMark(maxOpening);
@@ -86,6 +118,9 @@ public class BoulderFeel : MonoBehaviour
         joltLeft = 0f;
         kickLeft = 0f;
         gritTimer = 0f;
+        Tremor = 0f;
+        kickLeftShake = 0f;
+        bumpLeft = 0f;
         if (boulder != null)
             boulder.Body.localRotation = Quaternion.identity;
         if (player != null)

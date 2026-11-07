@@ -8,7 +8,7 @@ using UnityEngine;
 public class OliveStake : MonoBehaviour
 {
     const float Length = 2f;
-    static readonly Color Wood = new(0.35f, 0.26f, 0.15f);
+    static readonly Color Wood = OdysseyPalette.OliveWood;
 
     Rigidbody body;
     Collider col;
@@ -31,11 +31,12 @@ public class OliveStake : MonoBehaviour
         tip.transform.SetParent(shape.transform, false);
         tip.transform.localPosition = new Vector3(0f, 0.9f, 0f);
         tip.transform.localScale = new Vector3(0.7f, 0.15f, 0.7f);
-        tip.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.04f, 0.03f, 0.02f));
+        tip.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.StakeTip);
 
         body = gameObject.AddComponent<Rigidbody>();
         body.mass = 4f;
         body.collisionDetectionMode = CollisionDetectionMode.Continuous;
+        // 落地＝玩家這邊的木樁聲。不能借乳酪（Cheese）的聲類：乳酪算誘餌，巨人會當成「不是你」、宙斯法則也不算聽見你。
         gameObject.AddComponent<ImpactEmitter>().Init(SoundKind.Drag, SoundRules.Loudness(SoundKind.Drag));
     }
 

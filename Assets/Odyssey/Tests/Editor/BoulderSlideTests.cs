@@ -110,30 +110,86 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void Release_SlipsAfterOneSecond()
+        public void Release_SlipsAfterThreeSeconds()
         {
             var s = new BoulderSlide();
             PushTo(s, 0.5f);
             float pushed = s.Opening;
-            var n1 = s.Tick(0.9f, PushMode.None, false);
+            var n1 = s.Tick(2.9f, PushMode.None, false);
             Assert.AreEqual(pushed, s.Opening, 1e-6f);
             Assert.IsFalse(n1.Slip);
             var n2 = s.Tick(1.1f, PushMode.None, false);
-            Assert.AreEqual(pushed - 0.03f, s.Opening, Eps);
+            Assert.AreEqual(pushed * Math.Exp(-BoulderSlide.SlipRate * 1.0), s.Opening, Eps);
             Assert.IsTrue(n2.Slip);
         }
 
         [Test]
-        public void Slip_StopsAtWedge()
+        public void Slip_SlowerWhenLessOpen()
+        {
+            // 斜坡：滑回速度 = 0.02 × 開口 ÷ 全開。
+            Assert.AreEqual(0.02f, BoulderSlide.SlipSpeedAt(BoulderSlide.FullOpen), 1e-6f);
+            Assert.AreEqual(0.01f, BoulderSlide.SlipSpeedAt(BoulderSlide.FullOpen / 2f), 1e-6f);
+            Assert.AreEqual(0f, BoulderSlide.SlipSpeedAt(0f), 1e-6f);
+        }
+
+        [Test]
+        public void Slip_SameForOneOrManyTicks()
+        {
+            var a = new BoulderSlide();
+            var b = new BoulderSlide();
+            PushTo(a, 0.7f);
+            PushTo(b, 0.7f);
+            b.Tick(0f, PushMode.None, false);
+            a.Tick(13f, PushMode.None, false);
+            for (int i = 0; i < 130; i++)
+                b.Tick(0.1f, PushMode.None, false);
+            Assert.AreEqual(a.Opening, b.Opening, 1e-4f);
+        }
+
+        [Test]
+        public void Slip_StopsAtNotchBelow()
+        {
+            var s = new BoulderSlide();
+            PushTo(s, 0.8f);
+            s.Tick(600f, PushMode.None, false);
+            Assert.AreEqual(BoulderSlide.NotchMeters * 2f, s.Opening, 1e-5f);
+        }
+
+        [Test]
+        public void Slip_AtNotch_DoesNotSlip_FullOpenStays()
+        {
+            var s = new BoulderSlide();
+            s.Tick(20f, PushMode.Heavy, false);
+            s.Tick(600f, PushMode.None, false);
+            Assert.IsTrue(s.IsOpen);
+        }
+
+        [Test]
+        public void Slip_StopsAtWedgeAboveNotch()
         {
             var s = new BoulderSlide();
             PushTo(s, 0.5f);
             s.AddStoneWedge();
             float wedge = s.StoneWedges[0];
-            PushTo(s, 0.8f);
-            s.Tick(30f, PushMode.None, false);
+            PushTo(s, 0.6f);
+            s.Tick(600f, PushMode.None, false);
             Assert.AreEqual(wedge, s.Opening, 1e-6f);
             Assert.AreEqual(wedge, s.Floor, 1e-6f);
+        }
+
+        [Test]
+        public void Braced_DoesNotSlip_AndRestartsDelay()
+        {
+            var s = new BoulderSlide();
+            PushTo(s, 0.5f);
+            float pushed = s.Opening;
+            s.Tick(10f, PushMode.None, false, braced: true);
+            Assert.AreEqual(pushed, s.Opening, 1e-6f);
+            // 離開後還要再等 3 秒才開始滑。
+            s.Tick(2.9f, PushMode.None, false);
+            Assert.AreEqual(pushed, s.Opening, 1e-6f);
+            s.Tick(0.2f, PushMode.None, false);
+            Assert.Less(s.Opening, pushed);
         }
 
         [Test]

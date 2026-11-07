@@ -100,20 +100,20 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void StoneSearchMiss_RecordsFooled_ThirdTimeHalvesRange()
+        public void ArrowSearchMiss_RecordsFooled_ThirdTimeHalvesRange()
         {
             for (int i = 0; i < 3; i++)
             {
-                brain.Hear(Snd(SoundKind.Stone, brain.Position + new Vector2(2f, 0f)));
+                brain.Hear(Snd(SoundKind.Arrow, brain.Position + new Vector2(2f, 0f)));
                 T(1f, Far);
                 T(2.1f, Far);
                 Assert.AreEqual(CyclopsState.Listen, brain.State);
             }
             Assert.AreEqual(3, memory.Fooled);
 
-            brain.Hear(Snd(SoundKind.Stone, brain.Position + new Vector2(7f, 0f)));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position + new Vector2(7f, 0f)));
             Assert.AreEqual(CyclopsState.Listen, brain.State);
-            brain.Hear(Snd(SoundKind.Stone, brain.Position + new Vector2(5f, 0f)));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position + new Vector2(4.5f, 0f)));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
         }
 
@@ -205,7 +205,7 @@ namespace Odyssey.Core.Tests
         public void Holding_StoneLuresHimAway()
         {
             GuardUntilHolding();
-            brain.Hear(Snd(SoundKind.Stone, 0f, 1f));
+            brain.Hear(Snd(SoundKind.Arrow, 0f, 1f));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
             Assert.IsFalse(brain.HoldingBoulder);
         }
@@ -317,11 +317,11 @@ namespace Odyssey.Core.Tests
         }
 
         [Test]
-        public void GuardRun_Stone_Lures()
+        public void GuardRun_Arrow_Lures()
         {
             brain.Hear(Snd(SoundKind.Boulder, Gate));
             T(0.5f, Far);
-            brain.Hear(Snd(SoundKind.Stone, 0f, 8f));
+            brain.Hear(Snd(SoundKind.Arrow, 0f, 8f));
             Assert.AreEqual(CyclopsState.Investigate, brain.State);
             Assert.AreEqual(new Vector2(0f, 8f), brain.Target);
             Assert.AreEqual(0, RunFor(8f, Far));
@@ -498,6 +498,202 @@ namespace Odyssey.Core.Tests
             Assert.AreEqual(CyclopsState.Eat, brain.State);
             brain.Hear(Snd(SoundKind.Grind, 4f, 0f));
             Assert.AreEqual(CyclopsState.Guard, brain.State);
+        }
+
+        // ---------- 宙斯法則：僵直、衝鋒、聽見玩家計時 ----------
+
+        [Test]
+        public void Stagger_IgnoresSoundsAndDoesNotMove()
+        {
+            brain.Stagger(new Vector2(5f, 0f));
+            Assert.AreEqual(CyclopsState.Stagger, brain.State);
+            brain.Hear(Snd(SoundKind.Clap, 3f, 0f));
+            brain.Hear(Snd(SoundKind.Grind, 4f, 0f));
+            T(1f, Far);
+            Assert.AreEqual(CyclopsState.Stagger, brain.State);
+            Assert.AreEqual(Vector2.Zero, brain.Position);
+            Assert.IsFalse(brain.IsMoving);
+        }
+
+        [Test]
+        public void Stagger_AfterSeconds_WalksToHitFrom()
+        {
+            brain.Stagger(new Vector2(5f, 0f));
+            T(CyclopsBrain.StaggerSeconds + 0.01f, Far);
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            Assert.AreEqual(new Vector2(5f, 0f), brain.Target);
+            Assert.IsTrue(brain.TargetIsPlayerSound);
+            T(1f, Far);
+            Assert.AreEqual(CyclopsBrain.WalkSpeed, brain.Position.X, 0.05f);
+            T(2f, Far);
+            Assert.AreEqual(CyclopsState.Search, brain.State);
+        }
+
+        [Test]
+        public void Stagger_BumpStillKills()
+        {
+            brain.Stagger(new Vector2(5f, 0f));
+            Assert.AreEqual(FailReason.Bumped, T(0.1f, new Vector2(0.5f, 0f)));
+        }
+
+        [Test]
+        public void Stagger_DoesNotEatCrew()
+        {
+            brain.Stagger(new Vector2(5f, 0f));
+            var tick = brain.Tick(0.1f, Far, new List<Vector2> { new(0.5f, 0f) });
+            Assert.AreEqual(-1, tick.EatenCrew);
+            Assert.AreEqual(CyclopsState.Stagger, brain.State);
+        }
+
+        [Test]
+        public void Stagger_CancelsPrayAndTryPrayRefused()
+        {
+            Assert.IsTrue(brain.TryPray());
+            brain.Stagger(new Vector2(5f, 0f));
+            Assert.AreEqual(CyclopsState.Stagger, brain.State);
+            Assert.IsFalse(brain.TryPray());
+        }
+
+        [Test]
+        public void Stagger_EndsGuard()
+        {
+            brain.Hear(Snd(SoundKind.Grind, 4f, 0f));
+            brain.Stagger(new Vector2(2f, 0f));
+            Assert.IsFalse(brain.HoldingBoulder);
+            T(CyclopsBrain.StaggerSeconds + 0.01f, Far);
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+        }
+
+        [Test]
+        public void SecondsSinceHeardPlayer_StartsLargeAndGrows()
+        {
+            Assert.Greater(brain.SecondsSinceHeardPlayer, 100f);
+            brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
+            Assert.AreEqual(0f, brain.SecondsSinceHeardPlayer);
+            T(1.5f, Far);
+            Assert.AreEqual(1.5f, brain.SecondsSinceHeardPlayer, 1e-4f);
+        }
+
+        [Test]
+        public void SecondsSinceHeardPlayer_NotResetByBleatWhimperOrOutOfRange()
+        {
+            brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
+            T(2f, Far);
+            brain.Hear(Snd(SoundKind.Bleat, 3f, 0f));
+            brain.Hear(Snd(SoundKind.Whimper, 1f, 0f));
+            brain.Hear(Snd(SoundKind.Clap, 30f, 0f));
+            Assert.AreEqual(2f, brain.SecondsSinceHeardPlayer, 1e-4f);
+        }
+
+        [Test]
+        public void SecondsSinceHeardPlayer_NotResetBySlip()
+        {
+            // 巨石自己往回滑不是玩家弄出來的聲音：不能讓之後的偷襲被算成「先出聲」。
+            brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
+            T(2f, Far);
+            brain.Hear(Snd(SoundKind.Slip, brain.Position));
+            Assert.AreEqual(2f, brain.SecondsSinceHeardPlayer, 1e-4f);
+        }
+
+        [Test]
+        public void Charge_NotCancelledByArrowAtHisFeet()
+        {
+            // 審查發現：偷襲打中後落點聲就在他腳邊，不能把雷鳴後的衝刺取消掉。
+            brain.Charge(new Vector2(10f, 0f));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position));
+            Assert.IsTrue(brain.Charging);
+            Assert.AreEqual(new Vector2(10f, 0f), brain.Target);
+        }
+
+        [Test]
+        public void SecondsSinceHeardPlayer_NotResetBySnapShotOrLures()
+        {
+            // 彈弓出手的「啪」與誘餌的落點不算「聽見你」（規格第 31 節 C1：先彈一下，再出手）。
+            brain.Hear(Snd(SoundKind.Clap, 2f, 0f));
+            T(2f, Far);
+            brain.Hear(Snd(SoundKind.SnapShot, brain.Position));
+            brain.Hear(Snd(SoundKind.Stone, brain.Position));
+            brain.Hear(Snd(SoundKind.Arrow, brain.Position));
+            brain.Hear(Snd(SoundKind.Clatter, brain.Position));
+            Assert.AreEqual(2f, brain.SecondsSinceHeardPlayer, 1e-4f);
+        }
+
+        [Test]
+        public void TargetIsPlayerSound_FalseForLures()
+        {
+            brain.Hear(Snd(SoundKind.Stone, 3f, 0f));
+            Assert.IsFalse(brain.TargetIsPlayerSound);
+            brain.Hear(Snd(SoundKind.Boulder, 3f, 0f));
+            Assert.IsTrue(brain.TargetIsPlayerSound);
+        }
+
+        [Test]
+        public void StaggerEnd_CountsAsHearingYou()
+        {
+            brain.Stagger(new Vector2(3f, 0f));
+            T(CyclopsBrain.StaggerSeconds + 0.01f, Far);
+            Assert.Less(brain.SecondsSinceHeardPlayer, 0.1f);
+        }
+
+        [Test]
+        public void SecondsSinceHeardPlayer_ResetsEvenWhenIgnored()
+        {
+            brain.Hear(Snd(SoundKind.Clap, 8f, 0f));
+            T(2f, Far);
+            brain.Hear(Snd(SoundKind.Step, 6.5f, 0f)); // 較小聲，被忽略，但仍算聽見
+            Assert.AreEqual(0f, brain.SecondsSinceHeardPlayer);
+        }
+
+        [Test]
+        public void TargetIsPlayerSound_TrueForStep_FalseForWander()
+        {
+            brain.Hear(Snd(SoundKind.Step, 1f, 0f));
+            Assert.IsTrue(brain.TargetIsPlayerSound);
+
+            var b2 = new CyclopsBrain(Vector2.Zero, new DecoyMemory(), () => 0.5);
+            b2.Tick(5.1f, Far, NoCrew);
+            Assert.AreEqual(CyclopsState.Investigate, b2.State);
+            Assert.IsFalse(b2.TargetIsPlayerSound);
+        }
+
+        [Test]
+        public void TargetIsPlayerSound_FalseForBleat()
+        {
+            brain.Hear(Snd(SoundKind.Bleat, 3f, 0f));
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            Assert.IsFalse(brain.TargetIsPlayerSound);
+        }
+
+        [Test]
+        public void Charge_MovesFasterAndClearsAfterSearch()
+        {
+            brain.Charge(new Vector2(9f, 0f));
+            Assert.IsTrue(brain.Charging);
+            Assert.IsTrue(brain.TargetIsPlayerSound);
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            T(1f, Far);
+            Assert.AreEqual(CyclopsBrain.WalkSpeed * CyclopsBrain.ChargeMultiplier, brain.Position.X, 0.01f);
+            T(2f, Far);
+            Assert.AreEqual(CyclopsState.Search, brain.State);
+            Assert.IsTrue(brain.Charging);
+            T(CyclopsBrain.SearchSeconds + 0.1f, Far);
+            Assert.AreEqual(CyclopsState.Listen, brain.State);
+            Assert.IsFalse(brain.Charging);
+        }
+
+        [Test]
+        public void Charge_EndsGuard_AndNewTargetClearsCharging()
+        {
+            brain.Hear(Snd(SoundKind.Grind, 4f, 0f));
+            brain.Charge(new Vector2(0f, 9f));
+            Assert.IsFalse(brain.HoldingBoulder);
+            Assert.AreEqual(CyclopsState.Investigate, brain.State);
+            brain.Hear(Snd(SoundKind.Clap, 0f, 2f)); // 衝刺中，比巨石小聲的聲音換不掉目標
+            Assert.AreEqual(new Vector2(0f, 9f), brain.Target);
+            Assert.IsTrue(brain.Charging);
+            brain.Hear(Snd(SoundKind.Boulder, 0f, 3f)); // 巨石的聲音讓他跑回去守
+            Assert.AreEqual(CyclopsState.Guard, brain.State);
+            Assert.IsFalse(brain.Charging);
         }
     }
 }
