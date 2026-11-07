@@ -26,7 +26,7 @@ public class ThrownRock : MonoBehaviour
         Destroy(ball.GetComponent<Collider>());
         ball.transform.SetParent(transform, false);
         ball.transform.localScale = new Vector3(0.7f, 0.55f, 0.6f);
-        ball.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.35f, 0.32f, 0.3f));
+        ball.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.ThrownRock);
         transform.position = from;
     }
 

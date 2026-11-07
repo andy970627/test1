@@ -16,11 +16,11 @@ public class GameMenus : MonoBehaviour
         Chronicle = "紀事", Lab = "實驗", ToMenu = "回主選單", Quit = "離開", Back = "返回",
         Yes = "確定", No = "取消", PassiveItem = "被動聲音照亮", GuideItem = "必要引導";
 
-    static readonly Color Text = new(0.97f, 0.95f, 0.88f);
-    static readonly Color Dim = new(0.97f, 0.95f, 0.88f, 0.45f);
-    static readonly Color Gold = new(0.85f, 0.72f, 0.42f);
-    static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
-    static readonly Color Veil = new(0f, 0f, 0f, 0.88f);
+    static readonly Color Text = OdysseyPalette.Parchment;
+    static readonly Color Dim = OdysseyPalette.ParchmentDim;
+    static readonly Color Gold = OdysseyPalette.Gold;
+    static readonly Color Shadow = OdysseyPalette.TextShadow;
+    static readonly Color Veil = OdysseyPalette.Veil;
 
     static readonly string[] MainItems = { Start, DifficultyItem, Chronicle, Lab, Quit };
     static readonly string[] PauseItems = { Continue, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
@@ -463,7 +463,7 @@ public class GameMenus : MonoBehaviour
         int small = Mathf.Max(18, Screen.height / 38);
         if (titleStyle != null && titleStyle.fontSize == title)
             return;
-        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
+        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter, font = OdysseyFonts.Inscription };
         itemStyle = new GUIStyle(GUI.skin.label) { fontSize = item, alignment = TextAnchor.MiddleCenter };
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleCenter, wordWrap = true };
         smallStyle = new GUIStyle(GUI.skin.label) { fontSize = small, alignment = TextAnchor.UpperLeft, wordWrap = true };

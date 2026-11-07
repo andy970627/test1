@@ -13,14 +13,14 @@ public class Boulder : MonoBehaviour
     readonly List<Transform> wedgeMarks = new();
 
     // 赭黃巨石配三道亮色刻痕，和灰褐岩壁 (0.28, 0.25, 0.22) 一眼分得出來。
-    static readonly Color StoneColor = new(0.62f, 0.48f, 0.3f);
-    static readonly Color GrooveColor = new(0.85f, 0.75f, 0.55f);
+    static readonly Color StoneColor = OdysseyPalette.BoulderStone;
+    static readonly Color GrooveColor = OdysseyPalette.BoulderGroove;
     const float GrooveHeight = 0.08f;
     const float GrooveDepth = 0.05f;
 
-    static readonly Color NightGlow = new(0.05f, 0.08f, 0.25f);
-    static readonly Color DawnGlow = new(0.7f, 0.7f, 0.65f);
-    static readonly Color MoonGlow = new(0.10f, 0.12f, 0.18f);
+    static readonly Color NightGlow = OdysseyPalette.NightBar;
+    static readonly Color DawnGlow = OdysseyPalette.DawnBar;
+    static readonly Color MoonGlow = OdysseyPalette.MoonGlow;
     const float RimWidth = 0.06f;
 
     Transform body;
@@ -103,7 +103,7 @@ public class Boulder : MonoBehaviour
     /// <summary>巨石兩側的粗糙風化切角（古希臘獨眼巨石建築風格 Cyclopean Masonry）。</summary>
     static void AddMegalithFacets(Transform body)
     {
-        var stoneShade = EchoMaterials.Create(new Color(0.24f, 0.20f, 0.16f));
+        var stoneShade = EchoMaterials.Create(OdysseyPalette.BoulderShade);
         for (int x = -1; x <= 1; x += 2)
         {
             var pillar = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -166,7 +166,7 @@ public class Boulder : MonoBehaviour
             Destroy(go.GetComponent<Collider>());
             go.transform.SetParent(transform, false);
             go.transform.localScale = new Vector3(0.14f, 0.12f, 0.2f);
-            go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.6f, 0.6f, 0.58f));
+            go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.Pebble);
             wedgeMarks.Add(go.transform);
         }
         for (int i = 0; i < wedgeMarks.Count; i++)

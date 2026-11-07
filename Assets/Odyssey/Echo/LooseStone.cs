@@ -56,7 +56,7 @@ public class LooseStone : MonoBehaviour
         Destroy(ball.GetComponent<Collider>());
         ball.transform.SetParent(transform, false);
         ball.transform.localScale = Vector3.one * Radius * 2f;
-        ball.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.6f, 0.6f, 0.58f));
+        ball.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.Pebble);
 
         var col = gameObject.AddComponent<SphereCollider>();
         col.radius = Radius;

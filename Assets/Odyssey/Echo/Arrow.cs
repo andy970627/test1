@@ -87,7 +87,7 @@ public class Arrow : MonoBehaviour
         shaft.transform.SetParent(transform, false);
         shaft.transform.localScale = new Vector3(0.015f, 0.015f, Length);
         shaft.transform.localPosition = new Vector3(0f, 0f, -Length / 2f);
-        shaft.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.55f, 0.42f, 0.28f));
+        shaft.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.ArrowShaft);
 
         var sphere = gameObject.AddComponent<SphereCollider>();
         sphere.radius = 0.03f;

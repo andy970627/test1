@@ -9,15 +9,15 @@ using UnityEngine;
 /// </summary>
 public class FirstPersonHands : MonoBehaviour
 {
-    static readonly Color SkinColor = new(0.38f, 0.30f, 0.24f);
-    static readonly Color BracerLeather = new(0.20f, 0.14f, 0.09f);
-    static readonly Color BronzeMetal = new(0.58f, 0.44f, 0.22f);
-    static readonly Color GoldAccent = new(0.70f, 0.58f, 0.28f);
-    static readonly Color BowWood = new(0.28f, 0.18f, 0.10f);
-    static readonly Color StringColor = new(0.48f, 0.45f, 0.40f);
-    static readonly Color ArrowWood = new(0.35f, 0.30f, 0.22f);
-    static readonly Color FeatherWhite = new(0.65f, 0.63f, 0.58f);
-    static readonly Color StoneColor = new(0.32f, 0.32f, 0.35f);
+    static readonly Color SkinColor = OdysseyPalette.HeroSkin;
+    static readonly Color BracerLeather = OdysseyPalette.BracerLeather;
+    static readonly Color BronzeMetal = OdysseyPalette.Bronze;
+    static readonly Color GoldAccent = OdysseyPalette.IthacaGold;
+    static readonly Color BowWood = OdysseyPalette.BowWood;
+    static readonly Color StringColor = OdysseyPalette.BowString;
+    static readonly Color ArrowWood = OdysseyPalette.ArrowWood;
+    static readonly Color FeatherWhite = OdysseyPalette.Feather;
+    static readonly Color StoneColor = OdysseyPalette.HandStone;
 
     EchoPlayer player;
     BoulderSlide slide;

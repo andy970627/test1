@@ -10,10 +10,10 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class DeathScreen : MonoBehaviour
 {
-    static readonly Color BloodRed = new(0.6f, 0.08f, 0.06f);
-    static readonly Color DawnGrey = new(0.85f, 0.85f, 0.8f);
-    static readonly Color MeanderGold = new(0.55f, 0.45f, 0.25f);
-    static readonly Color CauseColor = new(0.85f, 0.82f, 0.75f);
+    static readonly Color BloodRed = OdysseyPalette.BloodRed;
+    static readonly Color DawnGrey = OdysseyPalette.DawnGrey;
+    static readonly Color MeanderGold = OdysseyPalette.MeanderGold;
+    static readonly Color CauseColor = OdysseyPalette.CauseText;
     const float BandHeight = 0.22f;
     const string Title = "葬 身 洞 中";
 
@@ -94,7 +94,9 @@ public class DeathScreen : MonoBehaviour
         int size = Mathf.Max(40, Screen.height / 9);
         if (titleStyle == null || titleStyle.fontSize != size)
         {
-            titleStyle = new GUIStyle(GUI.skin.label) { fontSize = size, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            // 源流明體 Heavy 本身就是最粗的字重，不再加 Bold（避免假粗體把楔形襯線糊掉）；找不到字型時才退回 Bold。
+            var heavy = OdysseyFonts.InscriptionHeavy;
+            titleStyle = new GUIStyle(GUI.skin.label) { fontSize = size, alignment = TextAnchor.MiddleCenter, font = heavy, fontStyle = heavy != null ? FontStyle.Normal : FontStyle.Bold };
             causeStyle = new GUIStyle(GUI.skin.label) { fontSize = Mathf.Max(18, Screen.height / 34), alignment = TextAnchor.MiddleCenter };
         }
 
@@ -139,7 +141,7 @@ public class DeathScreen : MonoBehaviour
     /// <summary>沒有黑底時字要讀得到：四周各畫一層黑色描邊。</summary>
     static void Outline(Rect r, string text, GUIStyle style, float alpha, float width)
     {
-        style.normal.textColor = new Color(0f, 0f, 0f, 0.9f * alpha);
+        style.normal.textColor = OdysseyPalette.Fade(OdysseyPalette.TextOutline, alpha);
         foreach (var o in new[] { new Vector2(-width, 0f), new Vector2(width, 0f), new Vector2(0f, -width), new Vector2(0f, width), new Vector2(width, width) })
         {
             var shifted = r;

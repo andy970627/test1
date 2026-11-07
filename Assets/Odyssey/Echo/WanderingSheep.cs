@@ -108,10 +108,10 @@ public class WanderingSheep : MonoBehaviour
     void BuildBody()
     {
         float s = IsRam ? 1.35f : 1f;
-        var wool = new Color(0.78f, 0.75f, 0.68f);
-        var woolShade = new Color(0.68f, 0.64f, 0.58f);
-        var dark = new Color(0.24f, 0.20f, 0.18f);
-        var horn = new Color(0.35f, 0.28f, 0.20f);
+        var wool = OdysseyPalette.Wool;
+        var woolShade = OdysseyPalette.WoolShade;
+        var dark = OdysseyPalette.SheepDark;
+        var horn = OdysseyPalette.Horn;
 
         // 羊身（厚重羊毛球體複合）
         Part(PrimitiveType.Sphere, "BodyMain", new Vector3(0f, 0.6f, 0f) * s, new Vector3(0.95f, 0.65f, 1.35f) * s, wool);

@@ -879,7 +879,7 @@ public class BlindGameLoop : MonoBehaviour
         // 字級跟著螢幕高度放大，Game 視窗縮小時也讀得到。
         int fontSize = Mathf.Max(22, Screen.height / 28);
         var style = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = true };
-        style.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
+        style.normal.textColor = OdysseyPalette.DebugText;
         float line = fontSize * 1.4f;
 
         if (State.Phase == LoopPhase.Night)
@@ -902,7 +902,7 @@ public class BlindGameLoop : MonoBehaviour
         string[] options = { "左鍵 拉弓射他", "空白鍵 喊出自己的名字", "不動 默默離開" };
         {
             var note = new GUIStyle(center) { fontSize = Mathf.Max(16, fontSize * 2 / 3) };
-            note.normal.textColor = new Color(0.97f, 0.95f, 0.88f, 0.6f);
+            note.normal.textColor = OdysseyPalette.ParchmentNote;
             GUI.Label(new Rect(0, y - lineH, Screen.width, lineH), "洞裡的巨人睡著了", note);
         }
         for (int i = 0; i < options.Length; i++)
@@ -910,16 +910,16 @@ public class BlindGameLoop : MonoBehaviour
             var r = new Rect(0, y + i * lineH, Screen.width, lineH);
             var shadow = r;
             shadow.position += new Vector2(2f, 2f);
-            center.normal.textColor = new Color(0f, 0f, 0f, 0.85f);
+            center.normal.textColor = OdysseyPalette.TextShadow;
             GUI.Label(shadow, options[i], center);
-            center.normal.textColor = new Color(0.97f, 0.95f, 0.88f);
+            center.normal.textColor = OdysseyPalette.Parchment;
             GUI.Label(r, options[i], center);
         }
         float w = Screen.width * 0.25f, h = fontSize * 0.25f;
         float left = 1f - shoreTimer / ShoreChoice.TimeLimit;
         var bar = new Rect((Screen.width - w) / 2f, y + options.Length * lineH + h, w, h);
-        Fill(bar, new Color(1f, 1f, 1f, 0.15f));
-        Fill(new Rect(bar.x, bar.y, w * Mathf.Clamp01(left), h), new Color(0.85f, 0.92f, 1f, 0.9f));
+        Fill(bar, OdysseyPalette.Track);
+        Fill(new Rect(bar.x, bar.y, w * Mathf.Clamp01(left), h), OdysseyPalette.MeterFill);
     }
 
     /// <summary>右下角三顆石子：有的亮、沒有的暗（箭改由第一人稱視角箭筒呈現，規格第 26 節 C、D）。</summary>
@@ -931,7 +931,7 @@ public class BlindGameLoop : MonoBehaviour
         for (int i = 0; i < EchoPlayer.MaxStones; i++)
         {
             var r = new Rect(Screen.width - (EchoPlayer.MaxStones - i) * (size + gap) - 15, Screen.height - bottomPad - size, size, size);
-            Fill(r, i < player.Stones ? new Color(0.85f, 0.85f, 0.8f, 0.9f) : new Color(1f, 1f, 1f, 0.12f));
+            Fill(r, i < player.Stones ? OdysseyPalette.StoneFull : OdysseyPalette.StoneEmpty);
         }
     }
 
@@ -943,8 +943,8 @@ public class BlindGameLoop : MonoBehaviour
             return;
         float w = Screen.width * 0.12f, h = fontSize * 0.28f;
         var r = new Rect(15, Screen.height - fontSize * 2.5f - h, w, h);
-        Fill(r, new Color(1f, 1f, 1f, 0.15f));
-        Color fill = stamina.CanRun ? new Color(0.85f, 0.92f, 1f, 0.9f) : new Color(0.85f, 0.2f, 0.15f, 0.9f);
+        Fill(r, OdysseyPalette.Track);
+        Color fill = stamina.CanRun ? OdysseyPalette.MeterFill : OdysseyPalette.StaminaOut;
         Fill(new Rect(r.x, r.y, w * stamina.Value, h), fill);
     }
 
@@ -953,12 +953,12 @@ public class BlindGameLoop : MonoBehaviour
     {
         float w = Screen.width * 0.2f, h = fontSize * 0.4f;
         var r = new Rect((Screen.width - w) / 2f, Screen.height * 0.6f, w, h);
-        Fill(r, new Color(1f, 1f, 1f, 0.15f));
-        Color fill = settleFlash > 0f ? Color.white : new Color(0.85f, 0.92f, 1f, 0.9f);
+        Fill(r, OdysseyPalette.Track);
+        Color fill = settleFlash > 0f ? Color.white : OdysseyPalette.MeterFill;
         Fill(new Rect(r.x, r.y, w * Slide.Opening / BoulderSlide.FullOpen, h), fill);
         // 地上的凹槽：每 25% 一道刻度，巨石放手最多滑回到下面那一道。
         for (int i = 1; i < 4; i++)
-            Fill(new Rect(r.x + w * i / 4f - 1f, r.y - h * 0.5f, 2f, h * 2f), new Color(1f, 1f, 1f, 0.5f));
+            Fill(new Rect(r.x + w * i / 4f - 1f, r.y - h * 0.5f, 2f, h * 2f), OdysseyPalette.Tick);
     }
 
     static void Fill(Rect r, Color c)

@@ -46,7 +46,7 @@ public class CheeseRack : MonoBehaviour
         var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         go.name = "CheeseWheel";
         go.transform.localScale = new Vector3(0.35f, 0.06f, 0.35f);
-        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.85f, 0.78f, 0.55f));
+        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.Cheese);
         // 圓柱預設是膠囊碰撞，扁平的乳酪輪要用凸面網格才滾得像輪子。
         DestroyImmediate(go.GetComponent<Collider>());
         go.AddComponent<MeshCollider>().convex = true;

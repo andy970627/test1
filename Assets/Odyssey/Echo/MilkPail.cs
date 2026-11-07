@@ -26,7 +26,7 @@ public class MilkPail : MonoBehaviour
         shape.name = "Pail";
         shape.transform.SetParent(transform, false);
         shape.transform.localScale = new Vector3(0.5f, Height / 2f, 0.5f);
-        shape.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.4f, 0.3f, 0.2f));
+        shape.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.MilkPail);
         DestroyImmediate(shape.GetComponent<Collider>());
         shape.AddComponent<MeshCollider>().convex = true;
 
@@ -36,7 +36,7 @@ public class MilkPail : MonoBehaviour
         hoop.transform.SetParent(shape.transform, false);
         hoop.transform.localPosition = new Vector3(0f, 0.35f, 0f);
         hoop.transform.localScale = new Vector3(1.02f, 0.12f, 1.02f);
-        hoop.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.55f, 0.42f, 0.22f));
+        hoop.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.PailHoop);
         DestroyImmediate(hoop.GetComponent<Collider>());
 
         body = gameObject.AddComponent<Rigidbody>();

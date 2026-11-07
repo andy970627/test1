@@ -12,25 +12,25 @@ public class MissionHud : MonoBehaviour
     const float BriefingLockSeconds = 2f;
     const float FadeSeconds = 0.6f;
 
-    static readonly Color Text = new(0.97f, 0.95f, 0.88f);
-    static readonly Color Dim = new(0.97f, 0.95f, 0.88f, 0.55f);
-    static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
-    static readonly Color Track = new(1f, 1f, 1f, 0.15f);
-    static readonly Color BoulderBar = new(0.75f, 0.6f, 0.4f);
-    static readonly Color DoneColor = new(0.55f, 0.9f, 0.6f);
-    static readonly Color NightBar = new(0.05f, 0.08f, 0.25f);
-    static readonly Color DawnBar = new(0.7f, 0.7f, 0.65f);
+    static readonly Color Text = OdysseyPalette.Parchment;
+    static readonly Color Dim = OdysseyPalette.ParchmentMuted;
+    static readonly Color Shadow = OdysseyPalette.TextShadow;
+    static readonly Color Track = OdysseyPalette.Track;
+    static readonly Color BoulderBar = OdysseyPalette.BoulderBar;
+    static readonly Color DoneColor = OdysseyPalette.Done;
+    static readonly Color NightBar = OdysseyPalette.NightBar;
+    static readonly Color DawnBar = OdysseyPalette.DawnBar;
 
     BlindGameLoop loop;
     Action onStart;
     float briefingSince;
     float fadingSince = -1f;
-    GUIStyle titleStyle, bodyStyle, listStyle, choiceStyle;
+    GUIStyle titleStyle, startStyle, bodyStyle, listStyle, choiceStyle;
 
     public bool BriefingOpen { get; private set; }
 
     float crewFlashUntil = -1f;
-    static readonly Color FlashRed = new(0.9f, 0.2f, 0.15f);
+    static readonly Color FlashRed = OdysseyPalette.FlashRed;
 
     /// <summary>同伴被吃：「帶同伴」那行閃紅 1 秒。</summary>
     public void FlashCrew() => crewFlashUntil = Time.time + 1f;
@@ -82,7 +82,9 @@ public class MissionHud : MonoBehaviour
         int list = Mathf.Max(18, Screen.height / 40);
         if (titleStyle != null && titleStyle.fontSize == title && bodyStyle.fontSize == body && listStyle.fontSize == list)
             return;
-        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
+        // 「第 N 夜」用銘文字；「空白鍵 開始」是操作提示，留在一般字型。
+        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter, font = OdysseyFonts.Inscription };
+        startStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
         choiceStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleCenter, wordWrap = true };
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleLeft, wordWrap = true };
         listStyle = new GUIStyle(GUI.skin.label) { fontSize = list, alignment = TextAnchor.MiddleLeft, wordWrap = false };
@@ -90,7 +92,7 @@ public class MissionHud : MonoBehaviour
 
     void DrawBriefing(float alpha)
     {
-        Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.85f * alpha));
+        Fill(new Rect(0, 0, Screen.width, Screen.height), OdysseyPalette.Fade(OdysseyPalette.BriefingVeil, alpha));
         float width = Mathf.Min(Screen.width * 0.75f, bodyStyle.fontSize * 32f);
         float x = (Screen.width - width) / 2f;
         float y = Screen.height * 0.16f;
@@ -116,7 +118,7 @@ public class MissionHud : MonoBehaviour
             $"難度：{Difficulty.Name(loop.Difficulty)}・剩下 {loop.Roster.Remaining} 名同伴", choiceStyle, Fade(Dim, alpha));
 
         if (BriefingOpen && CanStart)
-            Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "空白鍵 開始", titleStyle, Dim);
+            Label(new Rect(0, Screen.height * 0.8f, Screen.width, startStyle.fontSize), "空白鍵 開始", startStyle, Dim);
     }
 
     static Color Fade(Color c, float alpha) => new(c.r, c.g, c.b, c.a * alpha);
