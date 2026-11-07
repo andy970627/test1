@@ -30,3 +30,4 @@ H1 title and one paragraph, then exactly `Sub-features`, `How to get to it (user
 - [Make sound](./make-sound.md): `make-sound`, Space emits the lighting sound and unlocks the law entry.
 - [Pause menu](./pause.md): `pause`, Tab pauses and stops time, Esc resumes.
 - [Push the boulder](./push-boulder.md): `push-boulder`, walk to the boulder, hold E, the opening grows.
+- [Death card](./death-card.md): `death-card`, make noise and walk into the giant, the death card shows 葬 身 洞 中 in the inscription font.

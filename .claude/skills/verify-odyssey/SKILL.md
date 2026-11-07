@@ -31,7 +31,7 @@ If the project is open in the user's Unity, stop and ask them to close it. Never
 powershell -ExecutionPolicy Bypass -File .claude/skills/verify-odyssey/scripts/run.ps1 -Journeys all
 ```
 
-- `-Journeys` is `all` or a comma list: `menu-start`, `make-sound`, `pause`, `push-boulder`. Journeys run in order in one Play session, and each one starts from wherever the last one left off. Every journey except `menu-start` first gets into the night if needed.
+- `-Journeys` is `all` or a comma list: `menu-start`, `make-sound`, `pause`, `push-boulder`, `death-card` (run it last: it ends the night). Journeys run in order in one Play session, and each one starts from wherever the last one left off. Every journey except `menu-start` first gets into the night if needed.
 - Runs doctor first. `-SkipDoctor` skips that. `-TimeoutSec` defaults to 600.
 - Run it in the background. A cold start plus all journeys takes a few minutes.
 - A Unity window appears on the user's screen and closes by itself. Tell the user before you launch.

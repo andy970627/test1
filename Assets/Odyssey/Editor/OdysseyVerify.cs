@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Odyssey.Core;
 using UnityEditor;
@@ -23,7 +24,7 @@ public static class OdysseyVerify
     const string KeyJourneys = "OdysseyVerify.Journeys";
     const float TimeoutSeconds = 300f;
 
-    public static readonly string[] AllJourneys = { "menu-start", "make-sound", "pause", "push-boulder" };
+    public static readonly string[] AllJourneys = { "menu-start", "make-sound", "pause", "push-boulder", "death-card" };
 
     static IEnumerator runner;
     static float waitUntil;
@@ -150,6 +151,7 @@ public static class OdysseyVerify
                 "make-sound" => MakeSound(loop),
                 "pause" => PauseMenu(loop),
                 "push-boulder" => PushBoulder(loop),
+                "death-card" => DeathCardJourney(loop),
                 _ => Unknown(current.name),
             };
             while (steps.MoveNext())
@@ -295,6 +297,62 @@ public static class OdysseyVerify
         float after = loop.Slide.Opening;
         Check("按住 E 巨石開口變大", after > before, $"開口 {before:0.000} → {after:0.000} m");
         Check("輕推發出磨擦聲（Grind）", heard.Contains(nameof(SoundKind.Grind)), "聽到：" + string.Join(",", heard));
+    }
+
+    /// <summary>
+    /// 故意被抓：一邊製造聲音，一邊朝巨人走過去（真實輸入），直到死亡卡出現，
+    /// 等標題淡入完成（開始後約 1.5 秒）再截圖。
+    /// </summary>
+    static IEnumerator DeathCardJourney(BlindGameLoop loop)
+    {
+        var night = EnsureNight(loop);
+        while (night.MoveNext())
+            yield return night.Current;
+        var death = UnityEngine.Object.FindFirstObjectByType<DeathScreen>();
+        var giant = UnityEngine.Object.FindFirstObjectByType<BlindCyclops>();
+        Check("場景裡有死亡卡與巨人", death != null && giant != null);
+        if (death == null || giant == null)
+            yield break;
+
+        float giveUp = (float)EditorApplication.timeSinceStartup + 90f;
+        double nextClap = 0;
+        Hold(Key.W);
+        while (!death.Showing && EditorApplication.timeSinceStartup < giveUp)
+        {
+            if (EditorApplication.timeSinceStartup >= nextClap)
+            {
+                Tap(Key.Space);
+                nextClap = EditorApplication.timeSinceStartup + 2.0;
+            }
+            Steer(loop, giant.transform.position);
+            yield return 0.05f;
+        }
+        Release(Key.W);
+        float waited = 90f - (giveUp - (float)EditorApplication.timeSinceStartup);
+        Check("出聲又靠近巨人後出現死亡卡", death.Showing, $"等了 {waited:0.0} 秒，夜晚中={loop.InNight}");
+        if (!death.Showing)
+            yield break;
+
+        // 死亡卡用自己的時鐘（unscaledTime − startedAt），3 秒後就淡出。編輯器畫面時快時慢，
+        // 固定等秒數會錯過，所以照卡片時鐘在標題淡入後連拍三張，並記下每張的卡片時間。
+        var startedAt = typeof(DeathScreen).GetField("startedAt", BindingFlags.NonPublic | BindingFlags.Instance);
+        float CardT() => startedAt != null ? Time.unscaledTime - (float)startedAt.GetValue(death) : -1f;
+        var times = new StringBuilder();
+        foreach (float target in new[] { 1.3f, 1.9f, 2.5f })
+        {
+            float stop = (float)EditorApplication.timeSinceStartup + 5f;
+            while (death.Showing && CardT() < target && EditorApplication.timeSinceStartup < stop)
+                yield return 0.02f;
+            if (!death.Showing)
+                break;
+            times.Append($"要求 {CardT():0.00}s；");
+            yield return Shot("death-card");
+            times.Append($"寫出時 {CardT():0.00}s / ");
+        }
+        result.notes.Add("死亡卡截圖的卡片時間（標題在 0.5–3.0 s 可見）：" + times);
+        yield return 0.3f;
+        Check("死亡卡標題字型（源流明體 Heavy）載入成功", OdysseyFonts.InscriptionHeavy != null,
+            OdysseyFonts.InscriptionHeavy != null ? OdysseyFonts.InscriptionHeavy.name : "null");
     }
 
     // ---------- 輸入 ----------
