@@ -230,3 +230,12 @@ test('沒拉弓是平靜心跳；放得太早算取消、心跳回平靜', () =>
   assert.ok(ev.some(e => e.type === 'cancel'));
   assert.equal(round.heart.mode, 'rest');
 });
+
+test('慢機器（每幀 0.2 秒）：拉弓跟得上心跳時鐘，程式玩家照樣能贏', () => {
+  let w = 0;
+  for (let i = 0; i < 20; i++) {
+    const r = R.playRound({ difficulty: 'normal' }, 300 + i, { release: 'drop' }, 0.2);
+    if (r.result.win && r.result.inDrop) w++;
+  }
+  assert.ok(w >= 18, `贏 ${w} / 20`);
+});

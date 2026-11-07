@@ -657,12 +657,12 @@
       dt = Math.max(0, input.now - round.clock);
       round.clock = input.now;
     } else round.clock += dt;
-    var pdt = Math.min(dt, 0.1), now = round.clock;
+    var pdt = Math.min(dt, 0.25), now = round.clock;   // 只擋分頁休眠；慢機器每幀 0.2 秒時拉弓速度仍跟得上心跳時鐘
     var ev = [], down = !!input.down;
     var prevHb = round.hb;
 
     if (round.phase === 'string') {
-      stepString(round.str, pdt, { down: down, dx: input.stringDx || 0 });
+      stepString(round.str, Math.min(pdt, 0.05), { down: down, dx: input.stringDx || 0 });   // 上弦同原版：每步最多 0.05 秒（指針模擬步長太大會不穩）
       if (round.str.failed) {
         ev.push({ type: 'slip' });
         ev.push({ type: 'result', result: finish(round, false, TEXT.slipTitle, TEXT.slipText, 'slip') });

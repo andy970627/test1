@@ -29,8 +29,8 @@ body { color: var(--ash); font-family: var(--body); }
 canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .hud { position: absolute; inset: 0; pointer-events: none; }
 /* 驟降：全場靜止——四周暗下來、顏色退掉一點（只在那 0.5 秒） */
-.still { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(4,3,2,.78) 100%); opacity: 0; transition: opacity .07s linear; }
-.still.on { opacity: 1; }
+.still { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 18%, rgba(4,3,2,.55) 55%, rgba(4,3,2,.92) 100%); opacity: 0; transition: opacity .25s ease-out; }
+.still.on { opacity: 1; transition: none; }
 /* 最高速：畫面邊緣跟著心跳泛紅 */
 .pulse { position: absolute; inset: 0; box-shadow: inset 0 0 90px 30px rgba(150, 30, 20, 1); opacity: 0; }
 .top {
@@ -54,7 +54,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .bar .needle.out { background: var(--blood); }
 .tension { margin-top: 10px; height: 6px; background: var(--line); }
 .tension i, .power i, .tempo i { display: block; height: 100%; width: 0; background: var(--bronze); }
-.drawui { position: absolute; left: var(--gutter-l); bottom: 18px; width: 210px; }
+.drawui { position: absolute; left: var(--gutter-l); bottom: 18px; width: 210px; background: rgba(14, 10, 7, .62); padding: 8px 10px; border-radius: 4px; }
 .drawui span { display: block; font-size: 13px; color: var(--dim); margin-bottom: 6px; text-shadow: 0 1px 4px #000; }
 .drawui span.drop { color: var(--lamp); font-weight: 500; }
 .drawui span.fast { color: var(--blood); }
@@ -78,7 +78,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .cue.on { opacity: 1; }
 .cue.gold { color: var(--lamp); }
 /* 箭飛行：主題動機 12 個音，穿過一孔亮一個 */
-.theme { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); margin: 0; display: flex; gap: 10px; font-family: var(--display); font-size: 17px; color: rgba(154, 139, 117, .5); text-shadow: 0 1px 4px #000; }
+.theme { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); margin: 0; display: flex; gap: 10px; background: rgba(14, 10, 7, .62); padding: 6px 14px; border-radius: 4px; font-family: var(--display); font-size: 17px; color: rgba(154, 139, 117, .5); text-shadow: 0 1px 4px #000; }
 .theme b { font-weight: 600; transition: color .2s, transform .2s; }
 .theme b.on { color: var(--lamp); transform: translateY(-3px); }
 .theme b.miss { color: var(--blood); }
@@ -815,13 +815,12 @@ select { background: var(--wood); color: var(--ash); border: 1px solid var(--lin
       camera.fov = 26; camera.updateProjectionMatrix();
       const ap = R.positionAt(f.shot, f.t); worldArrow.position.set(ap.x, ap.y, ap.z);
     } else if (f) {
-      // 慢動作跟拍：相機在箭的斜後方，看得到前面的孔
-      const lag = .55 / R.speed(f.shot.power), tc = Math.max(0, f.t - lag);
-      const p = R.positionAt(f.shot, tc), v = R.velocityAt(f.shot, Math.max(tc, 0));
-      camera.position.set(p.x + .06, p.y + .07, p.z);
-      tmpV.set(p.x + v.x, p.y + .05 + v.y, p.z + v.z);
-      camera.lookAt(tmpV);
+      // 慢動作跟拍：相機在箭的右上後方（避開斧刃與斧柄），看箭一個孔一個孔穿過去
       const ap = R.positionAt(f.shot, f.t), av = R.velocityAt(f.shot, f.t);
+      const fz = f.done ? Math.max(ap.z, T.doorZ + 2) : ap.z;
+      camera.position.set(ap.x + .46, H + .24, fz + 1.15);
+      tmpV.set(ap.x + .05, H, fz - 1.6);
+      camera.lookAt(tmpV);
       worldArrow.position.set(ap.x, ap.y, ap.z);
       tmpV.set(ap.x - av.x, ap.y - av.y, ap.z - av.z);
       worldArrow.lookAt(tmpV);
