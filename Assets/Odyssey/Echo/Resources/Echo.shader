@@ -94,6 +94,11 @@ Shader "Odyssey/Echo"
                     if (hear > 0 && front >= min(hear, radius))
                         ring += color * 0.5 * (1 - saturate(abs(d - hear) / 0.15)) * (1 - saturate(age / fade));
                 }
+                // 效能：沒被聲波照到的像素（大部分時間是整個畫面）只剩亮邊，
+                // 跳過下面的雜訊與高光（八次雜湊），網頁版才不會每個像素都白算。
+                if (lit.r + lit.g + lit.b <= 0)
+                    return half4(ring * 0.65, 1);
+
                 // 潮濕岩壁的側掠高光（Fresnel）與細微顆粒。
                 // 雙面繪製（Cull Off）：背面的法線朝外，用絕對值，否則背面整片都是最大高光。
                 float3 nWS = normalize(i.normalWS);
