@@ -11,16 +11,25 @@
  *     讓慢低音最清楚；追殺時略提高。所有音量變化都用 ctx.currentTime 排程的 ramp。
  *
  * Risset 節奏【改編】：
- *   - 4 層打擊（k = 0..3），每層在一個循環 T 內速度從 v·2^k 指數加速到 v·2^(k+1)。
- *   - 相位 p = ((t − t0) ÷ T) mod 1，和規則（risset.js）同一條公式。
+ *   - 4 層打擊（k = 0..3），每層在一個循環內速度從 v·2^k 指數加速到 v·2^(k+1)。
+ *   - 節拍唯一來源是規則（設計文件 8.1、8.4）：循環長度 T 跟著危險程度變，聲音層不自己算相位，
+ *     每次 update(state) 讀 state.cycle.anchor {t, p, T}，用 p(t) = anchor.p + (t − anchor.t) ÷ anchor.T 外推排程
+ *     （另外由相鄰兩次 anchor 估 T 的變化率，外推更準；新 anchor 一到，已預排還沒響的拍偏差超過 1 ms 就取消重排）。
+ *     沒有 anchor 的舊規則：退回固定 T 與 t0（anchor = {t: t0, p: 0, T}）。
+ *   - 拍點公式以規則為準：有 RissetRules.beatPhases／beatsBetween 就用它算每層拍點的相位表，沒有才用下面的公式。
  *   - 第 k 層第 n 拍落在 p = log2(1 + n ÷ (M·2^k))，n = 0 .. M·2^k − 1。
  *     （速度 f(p) = f0·2^(k+p)，積分後拍數 = M·2^k·(2^p − 1)，M = f0·T ÷ ln2 取整數）
  *     所以每層每個循環剛好整數拍，p = 1 時第 k 層的速度、拍點和下一循環第 k+1 層 p = 0 完全接上。
  *   - 增益是「速度位置」x = (k + p) ÷ 4 的鐘形曲線：最慢的從無聲淡入、最快的淡出到無聲。
  *   - 音色跟著 x 走（低鼓 → 框鼓 → 手拍 → 金屬敲擊），交接時音色也連續，聽起來一直加速卻不會變快。
- *   - 例外（遊戲要的）：p 從接近 1 跳回 0 的盲區（長度跟規則 BLIND_LEN 同值，目前 0.6 秒）：不排拍、節奏匯流排（含殘響）壓到幾乎無聲，
- *     音樂層（夜風、低吟或自備音檔）也一起壓到約 −40 dB，聽得出「斷掉、空掉 → 現在可以動」。
+ *   - 例外（遊戲要的）：p 從接近 1 跳回 0 的盲區（長度跟規則 BLIND_LEN 同值，目前 0.6 秒，以秒計、不隨 T 變）：
+ *     不排拍、節奏匯流排（含殘響）壓到幾乎無聲，音樂層（夜風、低吟或自備音檔）也一起壓到約 −40 dB，聽得出「斷掉、空掉 → 現在可以動」。
+ *     警戒時（規則的 panic）快速循環的盲區暫停，改在兩個低音拍正中央（規則決定；有 RissetRules.blindWindows 就用它）。
+ *     預測的盲區用來精準排 gate；規則每幀給的 state.cycle.blind 是最後裁決，連續兩幀不一致就以規則為準強制靜音／打開。
  *   - p 越大，節奏匯流排越響（0.7 → 1.0），讓「越來越危險」聽得出來。
+ *
+ * 聲音互動（設計文件 8.3）：腳步 step_masked／step_loud、安撫哼唱 calm_ok／calm_bad（低吟唱主題第 index 個音）、
+ *   門閂 latch_step（里拉琴奏主題第 index 個音，8 音）、衛兵 3D 聽聲辨位（setListener＋每名衛兵一個 HRTF PannerNode，最多 6 名）。
  *
  * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；計時器只負責「補排程」（預排 0.5 秒），不負責計時。
  *       不使用畫面幀時間。計時器優先用 Worker 裡的 setInterval（25 ms）送 tick 給主執行緒（背景分頁不被降到 1 秒），
@@ -80,7 +89,22 @@
     LYRE_LEN: 1.8,             // 里拉琴撥弦長度（秒）
     LYRE_DECAY: 0.996,         // Karplus-Strong 每週期衰減
     LYRE_VEL: 0.09,            // 里拉琴音量
-    THEME_N0: 4                // 主題第一個音落在第 3 層第幾拍（4 → p≈0.0995，盲區 0.6 秒＋回升 0.15 秒之後）
+    THEME_N0: 4,               // 主題第一個音最早落在第 3 層第幾拍；循環短時往後找，直到盲區＋回升之後
+    // 跟隨規則節拍
+    RESCHED_TOL: 0.001,        // 已預排的拍和新預測差超過這麼多秒就取消重排
+    RESCHED_MARGIN: 0.01,      // 這麼多秒內就要響的拍不動
+    JUMP: 0.08,                // 新 anchor 和預測相差超過這麼多個循環：視為重來（重開局、檢查點），清掉預排
+    SHEP_STEP: 0.05,           // 謝帕德音階控制點間隔（秒）
+    // 聲音互動（8.3）
+    HUM_GAIN: 0.16,            // 安撫哼唱
+    LATCH_VEL: 0.17,           // 門閂的里拉琴音量
+    STEP_MASKED_GAIN: 0.05,    // 被鼓聲蓋過的腳步
+    STEP_LOUD_GAIN: 0.55,      // 清楚的腳步
+    // 衛兵 3D
+    MAX_GUARD_VOICES: 6,       // 同時有聲音的衛兵上限（HRTF 很吃 CPU）
+    GUARD_FAR: 30,             // 超過這個距離（公尺）不出聲；最後 8 公尺淡出
+    GUARD_BLIND_FLOOR: 0.35,   // 盲區時衛兵聲音壓到多少（不全靜音：聽聲辨位仍有用）
+    EAR_Y: 1.6                 // 聽者耳朵高度（公尺）
   };
 
   // ---------- 主題動機（原創，D 多利安）----------
@@ -113,6 +137,7 @@
     caught: 'caught', fail: 'caught',
     takedownfail: 'takedownFail',
     calmok: 'calmOk', calmbad: 'calmBad', calmdone: 'calmDone',
+    stepmasked: 'stepMasked', steploud: 'stepLoud', latchstep: 'latchStep',
     checkpoint: 'checkpoint', dash: 'dash', escape: 'escape', trapdoor: 'trapdoor',
     blind: 'blind', gap: 'blind',
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
@@ -178,7 +203,9 @@
     master.connect(comp);
 
     // 節奏：rhythmBus → 高通（警戒時讓出低頻給低音）→ 乾 / 殘響 / 失真 → gate → master
-    var gate = ctx.createGain(); gate.gain.value = 0; gate.connect(master);
+    // gate 只管盲區（精準排程）；tension 管「越接近循環尾越響」（每個 tick 平滑跟著相位）
+    var tension = ctx.createGain(); tension.gain.value = C.TENSION_LO; tension.connect(master);
+    var gate = ctx.createGain(); gate.gain.value = 1; gate.connect(tension);
     var rhythmBus = ctx.createGain(); rhythmBus.gain.value = mute.rhythm ? 0 : 1;
     var rhythmHP = ctx.createBiquadFilter(); rhythmHP.type = 'highpass'; rhythmHP.frequency.value = 30; rhythmHP.Q.value = 0.5;
     rhythmBus.connect(rhythmHP);
@@ -209,6 +236,7 @@
     var cueVerbOut = ctx.createGain(); cueVerbOut.gain.value = 0.5; cueVerb.connect(cueVerbOut); cueVerbOut.connect(master);
 
     // ---------- 合成小工具 ----------
+    var collect = null;                  // 不是 null 時，tone／noise 建出的音源都記進來（一拍可以整個取消）
     function env(param, t, peak, att, dec) {
       param.setValueAtTime(0.0001, t);
       param.exponentialRampToValueAtTime(Math.max(peak, 0.0002), t + att);
@@ -220,6 +248,7 @@
       if (f2 && f2 !== f1) o.frequency.exponentialRampToValueAtTime(f2, t + glide);
       env(g.gain, t, peak, att, dec);
       o.connect(g); g.connect(dest); o.start(t); o.stop(t + att + dec + 0.05);
+      if (collect) collect.push(o);
       return o;
     }
     function noise(dest, t, ftype, freq, q, peak, att, dec, rate) {
@@ -230,6 +259,7 @@
       s.connect(f); f.connect(g); g.connect(dest);
       var off = Math.random() * 1.5;
       s.start(t, off); s.stop(t + att + dec + 0.05);
+      if (collect) collect.push(s);
       return f;
     }
 
@@ -448,39 +478,282 @@
       return t + at * unit;
     }
 
-    // 謝帕德音階：SHEP_VOICES 個八度的柔和音色（正弦＋少量 2、3、4 次泛音），每個聲部兩條振盪器略走音（合唱感）。
-    // 第 i 聲部頻率 = SHEP_BASE · 2^(i + p)，音量 = 鐘形(x)，x = (i + p) ÷ SHEP_VOICES 是「八度位置」。
-    // p 從 0 到 1 每個聲部剛好升一個八度，p = 1 時第 i 聲部接上下一循環第 i+1 聲部 → 無限上升。
-    // 每個循環在盲區結束時重建（從底部重來），循環末收掉；p 越大越響（緊繃）、低通越開越亮。
+    // ---------- 節拍來源：規則的 cycle.anchor（設計文件 8.1、8.4）----------
+    // 內部一律用「累計相位」P：整數部分＝第幾個循環，小數部分＝p。外推模型 seg = {t, P, T, a, Tt}：
+    //   從音訊時間 t 起循環長度 T(s) = T + a·(s − t)，到達目標 Tt（規則的 targetT）後停住；P(s) = P + ∫ ds ÷ T(s)。
+    //   a = 0 就是設計文件的 p(t) = anchor.p + (t − anchor.t) ÷ anchor.T。a 由相鄰兩次 anchor 的 T 估出
+    //   （規則每秒最多變 20%），讓 0.5 秒預排的誤差從最多約 25 ms 降到 1 ms 左右；剩下的誤差靠「取消重排」補。
+    var seg = { t: t0, P: 0, T: T, a: 0, Tt: null };
+    var segLast = null;                       // 上一次收到的 anchor（估斜率、判斷重複）
+    function segTs(sg) {                      // T 到達目標的時間（不會到達 → Infinity）
+      if (!sg.a || sg.Tt == null) return Infinity;
+      var d = (sg.Tt - sg.T) / sg.a;
+      return d > 0 ? sg.t + d : Infinity;
+    }
+    function Pof(s, sg) {
+      sg = sg || seg;
+      var ts = segTs(sg), u = Math.min(s, ts) - sg.t, P;
+      if (Math.abs(sg.a) < 1e-7) P = sg.P + u / sg.T;
+      else P = sg.P + Math.log(Math.max(1e-6, (sg.T + sg.a * u) / sg.T)) / sg.a;
+      if (s > ts) P += (s - ts) / sg.Tt;
+      return P;
+    }
+    function tAt(P, sg) {
+      sg = sg || seg;
+      var dP = P - sg.P, ts = segTs(sg), Pts = ts === Infinity ? Infinity : Pof(ts, sg) - sg.P;
+      if (dP > Pts) return ts + (dP - Pts) * sg.Tt;
+      if (Math.abs(sg.a) < 1e-7) return sg.t + dP * sg.T;
+      return sg.t + sg.T * (Math.exp(sg.a * dP) - 1) / sg.a;
+    }
+    function Tof(s) { var ts = segTs(seg); return s >= ts ? seg.Tt : Math.max(0.5, seg.T + seg.a * (s - seg.t)); }
+
+    // ---------- 拍點相位表：以規則為準 ----------
+    // tables[k] = 第 k 層一個循環內所有拍點的相位（0..1，遞增）。規則有 beatPhases(k)（回傳陣列）或 beatPhases(k, n)（第 n 拍）
+    // 就用它；只有 beatsBetween(a, b, game) 時，拿一個 T = 1 的假循環問一次；都沒有或格式不對，用自己的公式。
+    var R = opts.rules || null;
+    function getRules() { if (!R && typeof self !== 'undefined' && self.RissetRules) R = self.RissetRules; return R; }
+    var tables = [], tabFromRules = false;
+    function ownTable(k, M) { var Mk = (M || C.M) * Math.pow(2, k), a = []; for (var n = 0; n < Mk; n++) a.push(log2(1 + n / Mk)); return a; }
+    function validTab(a) {
+      if (!a || a.length < 2) return false;
+      for (var i = 0; i < a.length; i++) if (!(isFinite(a[i]) && a[i] >= 0 && a[i] < 1) || (i && a[i] <= a[i - 1])) return false;
+      return true;
+    }
+    function rulesTables(nk) {
+      var Rr = getRules(), out = [], i, k;
+      if (!Rr) return null;
+      try {
+        if (typeof Rr.beatPhases === 'function') {
+          for (k = 0; k < nk; k++) {
+            var r = Rr.beatPhases(k), tab;
+            if (r && typeof r === 'object' && typeof r.length === 'number') tab = Array.prototype.slice.call(r);
+            else { tab = []; for (i = 0; i < 8192; i++) { var v = Rr.beatPhases(k, i); if (typeof v !== 'number' || !isFinite(v) || v >= 1 - 1e-12) break; tab.push(v); } }
+            out.push(validTab(tab) ? tab : null);
+          }
+          if (out[0]) return out;
+        }
+        if (typeof Rr.beatsBetween === 'function') {
+          var fake = { time: 0, phase: 'play', alarm: 0, hunted: false, T: Rr.T || {},
+                       cycle: { T: 1, targetT: 1, t0: 0, p: 0, index: 0, blind: false, anchor: { t: 0, p: 0, T: 1 } } };
+          var list = Rr.beatsBetween(0, 1 - 1e-9, fake) || [];
+          out = []; for (k = 0; k < nk; k++) out.push([]);
+          for (i = 0; i < list.length; i++) {
+            var b = list[i]; if (!b) continue;
+            var kk = b.k != null ? b.k : b.layer, ph = isFinite(b.p) ? b.p : (isFinite(b.phase) ? b.phase : b.t);
+            if (kk >= 0 && kk < nk && isFinite(ph)) out[kk].push(frac(ph));
+          }
+          for (k = 0; k < nk; k++) { out[k].sort(function (x, y) { return x - y; }); if (!validTab(out[k])) out[k] = null; }
+          if (out[0]) return out;
+        }
+      } catch (e) {}
+      return null;
+    }
+    function refreshTables() {
+      var nk = C.LAYERS + 1, rt = rulesTables(C.LAYERS) || [];
+      tabFromRules = !!rt[0];
+      var M0 = rt[0] ? rt[0].length : C.M;              // 追殺額外層（規則沒有）照規則的最慢層拍數擴展
+      tables = [];
+      for (var k = 0; k < nk; k++) tables.push(rt[k] || ownTable(k, M0));
+    }
+    refreshTables();
+    function lowerBound(a, v) { var lo = 0, hi = a.length; while (lo < hi) { var m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; }
+
+    // ---------- 盲區預測 ----------
+    // 巡邏／追殺：每個循環開頭（相位跳回 0）起 BL 秒。警戒（bassMode）：兩個低音拍正中央 BLB 秒。
+    // 規則若匯出 blindWindows(a, b, game) 就以它為準。suppress：規則說「不是盲區」而預測說是的時段（以規則為準，排除）。
+    var BLB = BL, bassMode = false, lastState = null, suppress = [], mismN = 0;
+    function windowsBetween(a, b) {
+      var out = [], i, Rr = getRules();
+      if (Rr && typeof Rr.blindWindows === 'function' && lastState) {
+        try {
+          var r = Rr.blindWindows(a, b, lastState);
+          if (r && r.length != null) {
+            for (i = 0; i < r.length; i++) {
+              var w = r[i]; if (!w) continue;
+              var s0 = w.s != null ? w.s : (w.start != null ? w.start : w[0]), e0 = w.e != null ? w.e : (w.end != null ? w.end : w[1]);
+              if (isFinite(s0) && isFinite(e0) && e0 > s0) out.push({ s: +s0, e: +e0 });
+            }
+            return filterSup(out);
+          }
+        } catch (e) {}
+      }
+      if (bassMode) {
+        var per = st.bassPeriod, an = st.gridAnchor, half = BLB / 2;
+        for (var m = Math.max(0, Math.floor((a - an) / per - 0.5) - 1); out.length < 64; m++) {
+          var mid = an + (m + 0.5) * per;
+          if (mid - half >= b) break;
+          if (mid + half > a) out.push({ s: mid - half, e: mid + half });
+        }
+      } else {
+        for (var c = Math.floor(Pof(a - BL)); out.length < 64; c++) {
+          var s1 = tAt(c);
+          if (s1 >= b) break;
+          if (s1 + BL > a) out.push({ s: s1, e: s1 + BL });
+        }
+      }
+      // 規則給的目前／下一段盲區（cycle.blindFrom／blindTo）最準：和它重疊的預測時段換成規則的值
+      var cy = lastState && lastState.cycle;
+      if (cy && isFinite(cy.blindFrom) && isFinite(cy.blindTo) && cy.blindTo > cy.blindFrom) {
+        for (i = 0; i < out.length; i++) if (Math.abs(out[i].s - cy.blindFrom) < 0.3) { out[i] = { s: +cy.blindFrom, e: +cy.blindTo }; break; }
+      }
+      return filterSup(out);
+    }
+    function filterSup(ws) {
+      if (!suppress.length) return ws;
+      return ws.filter(function (w) { for (var i = 0; i < suppress.length; i++) if (w.s < suppress[i].e && w.e > suppress[i].s) return false; return true; });
+    }
+    function inWins(t, ws, pad) {
+      pad = pad || 0;
+      for (var i = 0; i < ws.length; i++) if (t >= ws[i].s - pad && t < ws[i].e + pad) return ws[i];
+      return null;
+    }
+
+    // ---------- 盲區 gate：照預測的時段精準排程，時段變了就從安全點起重排 ----------
+    function Gate(param, floor, fall, rise) { this.p = param; this.floor = floor; this.fall = fall; this.rise = rise; this.done = []; this.forced = false; }
+    Gate.prototype.plan = function (ws, now) {
+      if (this.forced) return;
+      var g = this, cut = now + 0.02, i;
+      for (i = 0; i < g.done.length; i++) {        // 進行中的時段不動，從它結束（含回升）之後才重排
+        var d = g.done[i];
+        if (d.s - g.fall <= cut && cut < d.e + g.rise) cut = d.e + g.rise + 0.001;
+      }
+      var A = g.done.filter(function (w) { return w.s - g.fall >= cut; });
+      var B = ws.filter(function (w) { return w.s - g.fall >= cut; });
+      var same = A.length === B.length;
+      for (i = 0; same && i < A.length; i++) same = Math.abs(A[i].s - B[i].s) < C.RESCHED_TOL && Math.abs(A[i].e - B[i].e) < C.RESCHED_TOL;
+      if (same) return;
+      var p = g.p;
+      p.cancelScheduledValues(cut); p.setValueAtTime(1, cut);
+      for (i = 0; i < B.length; i++) {
+        p.setValueAtTime(1, B[i].s - g.fall); p.linearRampToValueAtTime(g.floor, B[i].s);
+        p.setValueAtTime(g.floor, B[i].e); p.linearRampToValueAtTime(1, B[i].e + g.rise);
+      }
+      g.done = g.done.filter(function (w) { return w.s - g.fall < cut && w.e + g.rise > now - 2; }).concat(B);
+    };
+    Gate.prototype.force = function (blind, now) {   // 以規則的 cycle.blind 為準：立刻靜音／打開
+      var p = this.p;
+      if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(now); else p.cancelScheduledValues(now);
+      p.setTargetAtTime(blind ? this.floor : 1, now, blind ? 0.015 : this.rise / 3);
+      this.forced = blind;
+      this.done = blind ? [] : [{ s: now - 1, e: now + this.rise }];
+    };
+    var gateR = new Gate(gate.gain, C.GATE_FLOOR, C.GATE_FALL, C.GATE_RISE);
+
+    // ---------- 預排事件：以累計相位定位，可取消重排 ----------
+    // 每一拍（以及跟著拍點的主題音）是一筆 rec = {key, P, t, dest, play, gated}；play(t, out) 把聲音接到 out。
+    var evs = {}, pending = [];
+    function fire(rec) {
+      var out = ctx.createGain(); out.connect(rec.dest);
+      collect = [];
+      try { rec.play(rec.t, out); } finally { rec.nodes = collect; collect = null; }
+      rec.out = out;
+      if (rec.logRef) rec.logRef.t = rec.t;
+    }
+    function kill(rec, now) {
+      for (var i = 0; i < rec.nodes.length; i++) { try { rec.nodes[i].stop(now); } catch (e) {} }   // 還沒開始的音源：停止時間早於開始＝不發聲
+      try { rec.out.gain.setValueAtTime(0, now); rec.out.disconnect(); } catch (e) {}
+      rec.nodes = [];
+    }
+    function addEvent(key, P, dest, play, gated, logRef) {
+      var rec = { key: key, P: P, t: tAt(P), dest: dest, play: play, gated: !!gated, logRef: logRef || null, nodes: [] };
+      evs[key] = rec; fire(rec); pending.push(rec);
+      return rec;
+    }
+    // 新的外推（或盲區改變）之後：還沒響的拍若時間差超過 RESCHED_TOL 就取消重排；落進盲區的取消
+    var stats = { resched: 0, dropped: 0, jumps: 0 };
+    function replan(now) {
+      var ws = windowsBetween(now - 1, now + C.LOOKAHEAD + 1.5), keep = [];
+      for (var i = 0; i < pending.length; i++) {
+        var r = pending[i];
+        if (r.t < now - 0.05) continue;                       // 已響過：不再追蹤（evs 留著做去重）
+        if (r.t < now + C.RESCHED_MARGIN) { keep.push(r); continue; }
+        var t2 = tAt(r.P), blocked = r.gated && (inWins(t2, ws) || gateR.forced);
+        if (Math.abs(t2 - r.t) <= C.RESCHED_TOL && !blocked) { keep.push(r); continue; }
+        kill(r, now);
+        if (!blocked && t2 > now + 0.004) { r.t = t2; fire(r); keep.push(r); stats.resched++; }
+        else { delete evs[r.key]; stats.dropped++; }
+      }
+      pending = keep;
+    }
+
+    // ---------- 收到規則的 anchor ----------
+    function takeAnchor(cy, now) {
+      var an = cy.anchor, t, p, TT;
+      if (an && isFinite(an.t) && isFinite(an.p) && isFinite(an.T) && an.T > 0) { t = +an.t; p = +an.p; TT = +an.T; }
+      else if (isFinite(cy.T) && cy.T > 0 && isFinite(cy.t0)) { t = +cy.t0; p = 0; TT = +cy.T; }   // 舊規則：固定 T 與 t0
+      else return false;
+      if (segLast && Math.abs(t - segLast.t) < 1e-9 && Math.abs(p - segLast.p) < 1e-9 && Math.abs(TT - segLast.T) < 1e-9) return false;
+      var Tt = isFinite(cy.targetT) && cy.targetT > 0 ? +cy.targetT : null, a = 0;
+      if (segLast && t - segLast.t > 0.004 && t - segLast.t < 0.6) {
+        var raw = (TT - segLast.T) / (t - segLast.t);
+        a = 0.6 * raw + 0.4 * (segLast.a || 0);
+      }
+      if (Tt != null && (Math.abs(Tt - TT) < 1e-4 || a * (Tt - TT) <= 0)) a = 0;   // 已到目標、或不往目標走：不外推變化
+      a = clamp(a, -0.35 * TT, 0.35 * TT);
+      // 和目前外推接上：取和預測最接近的循環編號（不依賴規則的 p 是 0..1 還是累計）
+      var Pp = Pof(t), f = frac(p), Pn = Math.round(Pp - f) + f;
+      var jump = Math.abs(Pn - Pp) > C.JUMP;
+      seg = { t: t, P: Pn, T: TT, a: a, Tt: Tt };
+      segLast = { t: t, p: p, T: TT, a: a };
+      if (jump) {                                  // 重開局、檢查點：清掉預排，從新的節拍重來
+        stats.jumps++;
+        for (var i = 0; i < pending.length; i++) if (pending[i].t > now + C.RESCHED_MARGIN) kill(pending[i], now);
+        pending = pending.filter(function (r) { return r.t <= now + C.RESCHED_MARGIN; });
+        evs = {}; themePlan = {}; chorusDone = {};
+        if (log) log.push({ type: 'jump', t: now, from: Pp, to: Pn });
+      }
+      return true;
+    }
+
+    // ---------- 謝帕德音階（跟著外推相位連續控制）----------
+    // SHEP_VOICES 個八度的柔和音色（正弦＋少量 2、3、4 次泛音），每聲部兩條振盪器略走音（合唱感）。
+    // 第 i 聲部頻率 = SHEP_BASE · 2^(i + p)，音量 = 鐘形(x)，x = (i + p) ÷ SHEP_VOICES。p 從 0 到 1 每聲部剛好升一個八度，
+    // p = 1 時第 i 聲部接上第 i+1 聲部 → 無限上升。振盪器常駐，每 SHEP_STEP 秒排一個控制點：
+    // 共用 detune = 1200·p（ConstantSource 一條推全部振盪器），所以循環長度變了，上滑速度跟著變。
+    // 循環開頭到盲區結束（＋0.2 秒淡入）、循環尾前 0.06 秒都靜音：音高在靜音時跳回底部，從底部重來。
     var shepWave = ctx.createPeriodicWave(new Float32Array([0, 0, 0, 0, 0]), new Float32Array([0, 1, 0.18, 0.07, 0.03]));
     var shepLP = ctx.createBiquadFilter(); shepLP.type = 'lowpass'; shepLP.frequency.value = 1400; shepLP.Q.value = 0.5;
     shepLP.connect(shepBus);
     function shepBell(x) { var d = (x - 0.5) / C.SHEP_SIGMA; return Math.exp(-d * d); }
-    function scheduleShepard(c, from) {
-      var cs = t0 + c * T, a = Math.max(cs + BL, from), e = cs + T - 0.06;
-      if (e - a < 0.5) return;
-      var pa = (a - cs) / T, pe = (e - cs) / T, K = 48;
-      shepLP.frequency.setValueAtTime(C.SHEP_LP_LO * Math.pow(C.SHEP_LP_HI / C.SHEP_LP_LO, pa), a);
-      shepLP.frequency.exponentialRampToValueAtTime(C.SHEP_LP_HI * Math.pow(C.SHEP_LP_HI / C.SHEP_LP_LO, pe - 1), e);
+    var shep = null;
+    function ensureShep() {
+      if (shep) return shep;
+      shep = { gains: [], det: [], planned: -1 };
+      var cs = ctx.createConstantSource ? ctx.createConstantSource() : null;
+      if (cs) { cs.offset.value = 0; cs.start(); persist.push(cs); shep.det.push(cs.offset); }
       for (var i = 0; i < C.SHEP_VOICES; i++) {
-        var curve = new Float32Array(K), gmax = 0;
-        for (var j = 0; j < K; j++) {
-          var p = pa + (pe - pa) * j / (K - 1);
-          var edge = Math.min(1, j / 3, (K - 1 - j) / 2);          // 頭尾幾點淡入淡出，不爆音
-          curve[j] = C.SHEP_GAIN * shepBell((i + p) / C.SHEP_VOICES) * (0.5 + 0.5 * p) * edge;
-          if (curve[j] > gmax) gmax = curve[j];
-        }
-        if (gmax < C.SHEP_GAIN * 0.02) continue;                    // 太小聲的聲部（最低、最高）不建
-        var g = ctx.createGain(); g.gain.value = 0; g.gain.setValueCurveAtTime(curve, a, e - a); g.connect(shepLP);
-        var f0 = C.SHEP_BASE * Math.pow(2, i);
+        var g = ctx.createGain(); g.gain.value = 0; g.connect(shepLP); shep.gains.push(g.gain);
         [-C.SHEP_DETUNE, C.SHEP_DETUNE].forEach(function (cents) {
-          var o = ctx.createOscillator(); o.setPeriodicWave(shepWave); o.detune.value = cents;
-          o.frequency.setValueAtTime(f0 * Math.pow(2, pa), a);
-          o.frequency.exponentialRampToValueAtTime(f0 * Math.pow(2, pe), e);
-          o.connect(g); o.start(a); o.stop(e + 0.02);
+          var o = ctx.createOscillator(); o.setPeriodicWave(shepWave); o.frequency.value = C.SHEP_BASE * Math.pow(2, i);
+          o.detune.value = cents;
+          if (cs) cs.connect(o.detune); else shep.det.push({ param: o.detune, off: cents });
+          o.connect(g); o.start(); persist.push(o);
         });
       }
-      if (log) log.push({ type: 'shepard', c: c, t: a, until: e });
+      return shep;
+    }
+    function shepValues(t) {
+      var P = Pof(t), c = Math.floor(P), f = P - c;
+      var since = t - tAt(c), to = tAt(c + 1) - t;
+      var edge = clamp((since - BL) / 0.2, 0, 1) * clamp((to - 0.06) / 0.1, 0, 1);
+      var g = [];
+      for (var i = 0; i < C.SHEP_VOICES; i++) g.push(C.SHEP_GAIN * shepBell((i + f) / C.SHEP_VOICES) * (0.5 + 0.5 * f) * edge);
+      return { det: 1200 * f, g: g, lp: C.SHEP_LP_LO * Math.pow(C.SHEP_LP_HI / C.SHEP_LP_LO, f) };
+    }
+    function shepSet(t, v, ramp) {
+      for (var i = 0; i < shep.det.length; i++) {
+        var d = shep.det[i], prm = d.param || d, val = v.det + (d.off || 0);
+        if (ramp) prm.linearRampToValueAtTime(val, t); else prm.setValueAtTime(val, t);
+      }
+      for (i = 0; i < shep.gains.length; i++) { if (ramp) shep.gains[i].linearRampToValueAtTime(v.g[i], t); else shep.gains[i].setValueAtTime(v.g[i], t); }
+      if (ramp) shepLP.frequency.linearRampToValueAtTime(v.lp, t); else shepLP.frequency.setValueAtTime(v.lp, t);
+    }
+    function planShep(end, now) {
+      if (!layerOn.shepard || mute.music) return;
+      if (!(mz.mix.shep > 0 || shepBus.gain.value > 0.005)) { if (shep) shep.planned = -1; return; }
+      ensureShep();
+      if (shep.planned < now) { shep.planned = now + 0.01; shepSet(shep.planned, shepValues(shep.planned), false); }
+      while (shep.planned < end) { shep.planned += C.SHEP_STEP; shepSet(shep.planned, shepValues(shep.planned), true); }
     }
 
     // 合唱和弦：三個鋸齒聲部（多利安的 i 級 Dm 與 IV 級 G，輪流），經「ㄛ」共振峰，在循環中段（p 0.25～0.75）浮起又退去，
@@ -500,31 +773,45 @@
       });
     }
 
-    // 每個循環的音樂排程（在 scheduleRange 裡，循環開始前約 0.8 秒排好）
-    var musicNext = null;
-    function scheduleMusicCycle(c) {
-      var cs = t0 + c * T, from = ctx.currentTime + 0.03, m = mz.mix;
+    // ---------- 音樂層排程（主題、合唱）----------
+    // 主題動機：盲區剛結束、低頻時段。音符落在第 3 層（k=3）Risset 拍點上（從 THEME_N0 起，找第一個在盲區＋回升之後的拍，
+    // 再依時值往後數拍），和鼓同時起音；每個音是一筆可重排的事件，循環長度變了也跟著拍點走。
+    var themePlan = {}, chorusDone = {};
+    function planTheme(c) {
+      var m = mz.mix, tab = tables[3];
+      if (mute.music || !layerOn.theme || !(m.theme > 0) || mz.won || st.alarm > 0.3 || st.hunted || !tab) return null;
+      var cs = tAt(c), n = C.THEME_N0;
+      while (n < tab.length && tAt(c + tab[n]) - cs < BL + C.MUSIC_RISE) n++;
+      var ns = [];
+      for (var i = 0; i < m.theme && n < tab.length; i++) { ns.push(n); n += THEME.notes[i].units; }
+      return ns.length ? ns : null;
+    }
+    function scheduleMusic(from, end) {
       if (mute.music) return;
-      // 謝帕德：這區有、或還在淡出中才建
-      if (layerOn.shepard && (m.shep > 0 || shepBus.gain.value > 0.01)) scheduleShepard(c, from);
-      // 主題動機：盲區剛結束、低頻時段。音符落在第 3 層（k=3）Risset 拍點上（n = THEME_N0 + 累計時值），
-      // 和鼓同時起音，所以不會在拍點附近多出別的起音；那段時間第 3 層剛好由慢變快，旋律跟著微微推前。
-      if (layerOn.theme && m.theme > 0 && !mz.won) {
-        var Mk = C.M * 8, n = C.THEME_N0, times = [];
-        for (var i = 0; i < m.theme; i++) { times.push(cs + log2(1 + n / Mk) * T); n += THEME.notes[i].units; }
-        if (times[0] >= from && times[0] - cs >= BL + C.MUSIC_RISE) {
-          for (i = 0; i < times.length; i++) lyre(themeBus, times[i], THEME.notes[i].midi, C.LYRE_VEL * (i === 0 ? 1.1 : 1));
-          if (log) log.push({ type: 'theme', c: c, t: times[0], notes: times.length, times: times });
+      var Pa = Pof(from), Pb = Pof(end), m = mz.mix;
+      for (var c = Math.floor(Pa); c <= Math.floor(Pb); c++) {
+        if (!(c in themePlan)) {
+          themePlan[c] = planTheme(c);
+          if (themePlan[c] && log) log.push({ type: 'theme', c: c, t: tAt(c + tables[3][themePlan[c][0]]), notes: themePlan[c].length,
+                                              times: themePlan[c].map(function (n) { return tAt(c + tables[3][n]); }) });
+        }
+        var tp = themePlan[c];
+        if (tp) for (var i = 0; i < tp.length; i++) {
+          var P = c + tables[3][tp[i]], key = 'th' + c + ':' + i;
+          if (P < Pa || P >= Pb || evs[key]) continue;
+          (function (midi, vel) { addEvent(key, P, themeBus, function (t, out) { lyre(out, t, midi, vel); }, false); })(THEME.notes[i].midi, C.LYRE_VEL * (i === 0 ? 1.1 : 1));
+        }
+        // 合唱和弦：偶爾（每 chorusEvery 個循環），循環 1/4 處浮起、3/4 處退去
+        if (layerOn.chorus && m.chorusEvery > 0 && ((c % m.chorusEvery) + m.chorusEvery) % m.chorusEvery === 0 && !chorusDone[c]) {
+          var ta = tAt(c + 0.25);
+          if (ta >= from && ta < end) {
+            chorusDone[c] = true;
+            chorusChord(ta, tAt(c + 0.75) - ta, CHORDS[mz.chorusN++ % CHORDS.length], chorusBus);
+            if (log) log.push({ type: 'chorus', c: c, t: ta });
+          }
         }
       }
-      // 合唱和弦：偶爾（每 chorusEvery 個循環）
-      if (layerOn.chorus && m.chorusEvery > 0 && c % m.chorusEvery === 0) {
-        var ta = cs + T * 0.25, tb = cs + T * 0.75;
-        if (ta >= from) {
-          chorusChord(ta, tb - ta, CHORDS[mz.chorusN++ % CHORDS.length], chorusBus);
-          if (log) log.push({ type: 'chorus', c: c, t: ta });
-        }
-      }
+      for (var k in themePlan) if (+k < Math.floor(Pa) - 3) { delete themePlan[k]; delete chorusDone[k]; }
     }
     // 勝利：號角完整奏一次主題，底下一個長長的 Dm 合唱。走 cueBus（不經 musicGate），盲區不會把號角切斷
     function winTheme(t) {
@@ -532,112 +819,51 @@
       chorusChord(t - 0.6, end - t + 2.6, CHORDS[0], cueBus);
       if (log) log.push({ type: 'winTheme', t: t, until: end });
     }
-    function scheduleMusicUntil(b) {
-      if (musicNext == null) musicNext = cycleIndex(ctx.currentTime);
-      while (t0 + musicNext * T < b + 0.8) { scheduleMusicCycle(musicNext); musicNext++; }
-    }
 
     // ---------- 狀態 ----------
-    var st = { alarm: 0, hunted: false, bassPeriod: C.BASS_PERIOD, bassAnchor: t0,
+    var st = { alarm: 0, hunted: false, bassPeriod: C.BASS_PERIOD, bassAnchor: t0, gridAnchor: t0,
                alarmStart: null, alarmNext: 0, lastBass: -1e9, panic: 0, lastCreak: -1e9 };
-    var schedEnd = ctx.currentTime;          // 已排程到哪個時間（不含）
-    var gateCycle = null;                    // 已排好 gate 自動化的最後一個循環
-    var musicCycle = null;                   // 已排好音樂層盲區自動化的最後一個循環
+    var linEnd = ctx.currentTime;            // 失控層、低音已排到哪個時間（不含）
     var timer = null, dead = false;
+    var gateM = new Gate(musicGate.gain, C.MUSIC_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
+    var guardOut = ctx.createGain(); guardOut.gain.value = 1; guardOut.connect(master);   // 衛兵 3D 聲音（盲區壓低、不全靜音）
+    var gateG = new Gate(guardOut.gain, C.GUARD_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
 
-    function cycleIndex(t) { return Math.floor((t - t0) / T); }
-    function gateValue(t) {                  // 只用於中途起始時算目前值
-      var local = (t - t0) - cycleIndex(t) * T;
-      if (local < BL) return C.GATE_FLOOR;
-      if (local < BL + C.GATE_RISE) return C.GATE_FLOOR + (C.TENSION_LO - C.GATE_FLOOR) * (local - BL) / C.GATE_RISE;
-      if (local < T - C.GATE_FALL) return C.TENSION_LO + (C.TENSION_HI - C.TENSION_LO) * (local - BL - C.GATE_RISE) / (T - C.GATE_FALL - BL - C.GATE_RISE);
-      return C.TENSION_HI + (C.GATE_FLOOR - C.TENSION_HI) * (local - (T - C.GATE_FALL)) / C.GATE_FALL;
-    }
-    function scheduleGate(c, from) {
-      var cs = t0 + c * T, ev = [
-        ['set', cs, C.GATE_FLOOR], ['set', cs + BL, C.GATE_FLOOR],
-        ['lin', cs + BL + C.GATE_RISE, C.TENSION_LO],
-        ['lin', cs + T - C.GATE_FALL, C.TENSION_HI],
-        ['lin', cs + T, C.GATE_FLOOR]
-      ];
-      var p = gate.gain;
-      if (from != null) { p.cancelScheduledValues(from); p.setValueAtTime(gateValue(from), from); }
-      for (var i = 0; i < ev.length; i++) {
-        if (from != null && ev[i][1] <= from) continue;
-        if (ev[i][0] === 'set') p.setValueAtTime(ev[i][2], ev[i][1]);
-        else p.linearRampToValueAtTime(ev[i][2], ev[i][1]);
-      }
-      gateCycle = c;
-    }
-
-    // 音樂層盲區：循環開始前 MUSIC_FALL 秒滑到 −40 dB，盲區結束後 MUSIC_RISE 秒拉回
-    function musicGateValue(t) {
-      var local = (t - t0) - cycleIndex(t) * T, F = C.MUSIC_BLIND_FLOOR;
-      if (local < BL) return F;
-      if (local < BL + C.MUSIC_RISE) return F + (1 - F) * (local - BL) / C.MUSIC_RISE;
-      if (local > T - C.MUSIC_FALL) return 1 + (F - 1) * (local - (T - C.MUSIC_FALL)) / C.MUSIC_FALL;
-      return 1;
-    }
-    function scheduleMusicGate(c, from) {
-      var cs = t0 + c * T, F = C.MUSIC_BLIND_FLOOR, ev = [
-        ['set', cs, F], ['set', cs + BL, F],
-        ['lin', cs + BL + C.MUSIC_RISE, 1],
-        ['set', cs + T - C.MUSIC_FALL, 1],
-        ['lin', cs + T, F]
-      ];
-      var p = musicGate.gain;
-      if (from != null) { p.cancelScheduledValues(from); p.setValueAtTime(musicGateValue(from), from); }
-      for (var i = 0; i < ev.length; i++) {
-        if (from != null && ev[i][1] <= from) continue;
-        if (ev[i][0] === 'set') p.setValueAtTime(ev[i][2], ev[i][1]);
-        else p.linearRampToValueAtTime(ev[i][2], ev[i][1]);
-      }
-      musicCycle = c;
-    }
-
-    function scheduleRange(a, b) {
-      var nowT = ctx.currentTime - 0.002;
-      // gate：目前循環起（中途接上）再到 b 之後的下一個循環
-      if (gateCycle == null) scheduleGate(cycleIndex(a), a);
-      while (t0 + (gateCycle + 1) * T < b + 0.3) scheduleGate(gateCycle + 1, null);
-      if (musicCycle == null) scheduleMusicGate(cycleIndex(a), a);
-      while (t0 + (musicCycle + 1) * T < b + 0.3) scheduleMusicGate(musicCycle + 1, null);
-      scheduleMusicUntil(b);               // 原創音樂層（謝帕德、主題、合唱）每循環排一次
-
-      var c0 = cycleIndex(a), c1 = cycleIndex(b);
-      var nLayers = C.LAYERS + (st.hunted ? 1 : 0);
-      for (var k = 0; k < nLayers; k++) {
+    // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排
+    function scheduleBeats(from, end, ws) {
+      var Pa = Pof(from), Pb = Pof(end), nL = C.LAYERS + (st.hunted ? 1 : 0);
+      for (var k = 0; k < nL; k++) {
         if (solo != null && k !== solo) continue;
-        var Mk = C.M * Math.pow(2, k);
-        for (var c = c0; c <= c1; c++) {
-          var cs = t0 + c * T;
-          var pa = clamp((a - cs) / T, 0, 1), pb = clamp((b - cs) / T, 0, 1);
-          if (pb <= pa) continue;
-          var nA = Math.max(0, Math.floor(Mk * (Math.pow(2, pa) - 1)) - 1);
-          var nB = Math.min(Mk - 1, Math.ceil(Mk * (Math.pow(2, pb) - 1)) + 1);
-          for (var n = nA; n <= nB; n++) {
-            var p = log2(1 + n / Mk), t = cs + p * T;
-            if (t < a || t >= b || t < nowT) continue;
-            if (p * T < BL) continue;                    // 盲區不排拍
+        var tab = tables[k];
+        for (var c = Math.floor(Pa); c <= Math.floor(Pb); c++) {
+          for (var n = lowerBound(tab, Pa - c); n < tab.length && c + tab[n] < Pb; n++) {
+            var key = 'b' + c + ':' + k + ':' + n;
+            if (evs[key]) continue;
+            var p = tab[n], P = c + p, t = tAt(P);
+            if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;   // 盲區不排拍
             var x = (k + p) / C.LAYERS, g;
             if (k >= C.LAYERS) g = 0.4;                        // 追殺額外層
             else { g = bell(x); if (st.hunted) g = Math.max(g, C.HUNT_FLOOR); }
             if (g < C.MIN_GAIN) continue;
             g *= 0.95 + Math.random() * 0.1;                  // 只抖音量，不抖時間
-            playHit(rhythmBus, x, t, g);
-            if (log) log.push({ type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g });
+            var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
+            if (le) log.push(le);
+            (function (x, g) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(x, g);
           }
         }
       }
+    }
 
+    // 失控層與低音：照時間往前推（不跟循環相位）
+    function scheduleLinear(a, b, ws) {
+      var nowT = ctx.currentTime - 0.002;
       // 失控層：不規則、越來越快（警戒或追殺時）
       var eff = Math.max(st.alarm, st.panic * 0.8, st.hunted ? 0.6 : 0);
       if (eff > 0.02) {
         if (st.alarmStart == null) { st.alarmStart = a; st.alarmNext = Math.max(a, ctx.currentTime); }
         while (st.alarmNext < b) {
           var ta = st.alarmNext, el = ta - st.alarmStart;
-          var local = (ta - t0) - cycleIndex(ta) * T;
-          if (local >= BL && ta >= nowT) {
+          if (!inWins(ta, ws) && ta >= nowT) {
             var xa = 0.45 + Math.random() * 0.5, ga = 0.5 + Math.random() * 0.5;
             playHit(alarmBus, xa, ta, ga);
             if (Math.random() < 0.25) playHit(alarmBus, xa, ta + 0.018 + Math.random() * 0.02, ga * 0.6);  // 亂拍、雙擊
@@ -648,7 +874,7 @@
         }
       } else st.alarmStart = null;
 
-      // 低音：拍點 = anchor + n·period
+      // 低音：拍點 = anchor + n·period（規則給的 nextBeat）
       var per = st.bassPeriod, an = st.bassAnchor;
       for (var m = Math.ceil((a - an) / per - 1e-9); ; m++) {
         var tb = an + m * per;
@@ -657,20 +883,38 @@
         // 巡邏時（沒有警戒、沒有追殺）：會落進盲區、或餘音拖進盲區的低音拍不排，讓盲區真的空掉。
         // 警戒時保留：那時低音是安撫要跟的拍子。
         if (st.alarm <= 0.01 && !st.hunted) {
-          var pt = phaseAt(tb, T, t0) * T;
-          if (pt < BL || T - pt < C.BASS_TAIL) continue;
+          var skip = false;
+          for (var i = 0; i < ws.length; i++) if (tb > ws[i].s - C.BASS_TAIL && tb < ws[i].e) { skip = true; break; }
+          if (skip) continue;
         }
         bassHit(tb); st.lastBass = tb;
         if (log) log.push({ type: 'bass', t: tb });
       }
     }
 
+    function scheduleTo(end, now) {
+      if (dead) return;
+      var ws = windowsBetween(now - 1, end + C.BASS_TAIL + 0.2);
+      gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now);
+      // 越接近循環尾越響（0.7 → 1.0），平滑跟著相位
+      tension.gain.setTargetAtTime(C.TENSION_LO + (C.TENSION_HI - C.TENSION_LO) * frac(Pof(now + 0.05)), now, 0.06);
+      var from = now + 0.004;
+      scheduleBeats(from, end, ws);
+      scheduleMusic(from, end);
+      planShep(end, now);
+      // 落後太久（分頁休眠）就不回頭補，直接從現在接上；已經過的拍各自跳過，不累積誤差
+      if (linEnd < now - C.CATCHUP_MAX) linEnd = now - C.CATCHUP_MAX;
+      if (end > linEnd) { scheduleLinear(linEnd, end, ws); linEnd = end; }
+      // 去重表清理
+      if (pending.length > 400 || Math.random() < 0.05) {
+        for (var key in evs) if (evs[key].t < now - 2) delete evs[key];
+        pending = pending.filter(function (r) { return r.t >= now - 0.05; });
+      }
+    }
     function tick() {
       if (dead) return;
-      var end = ctx.currentTime + C.LOOKAHEAD;
-      // 落後時從上次排到的地方接著排（scheduleRange 會跳過已經過去的拍）；休眠太久才直接從現在接上
-      if (schedEnd < ctx.currentTime - C.CATCHUP_MAX) schedEnd = ctx.currentTime - C.CATCHUP_MAX;
-      if (end > schedEnd) { scheduleRange(schedEnd, end); schedEnd = end; }
+      var now = ctx.currentTime;
+      scheduleTo(now + C.LOOKAHEAD, now);
     }
     // 計時器：Worker 送 tick（不受主執行緒 rAF 與背景分頁降速影響），失敗就用主執行緒 setInterval
     var worker = null, workerURL = null;
@@ -691,7 +935,190 @@
       if (worker) { try { worker.terminate(); } catch (e) {} worker = null; }
       if (workerURL) { try { URL.revokeObjectURL(workerURL); } catch (e) {} workerURL = null; }
     }
-    if (opts.autoStart !== false) { tick(); startTimer(); }
+
+    // ---------- 3D 聽聲辨位（設計文件 8.3）----------
+    // 聽者：setListener({x, z, yaw})，yaw = 0 面向 −z（和規則的 forward 一樣：前方 = (−sin yaw, −cos yaw)）。
+    // 每名衛兵一個 HRTF PannerNode（反比距離衰減），同時最多 MAX_GUARD_VOICES 名（最近的優先），其餘不出聲；
+    // 超出 GUARD_FAR 的不出聲、最後 8 公尺淡出；倒下或非作用中的 0.15 秒內淡掉。
+    // 衛兵移動時依速度踩出腳步，停著時有低沉的呼吸（起疑、追殺時呼吸較急）。
+    var lis = { x: 0, z: 0, yaw: 0 };
+    function makePanner() {
+      var p = ctx.createPanner();
+      p.panningModel = 'HRTF'; p.distanceModel = 'inverse';
+      p.refDistance = 1.5; p.rolloffFactor = 1.3; p.maxDistance = 60;
+      return p;
+    }
+    function setPos(p, x, y, z, now, snap) {
+      if (p.positionX) {
+        if (snap) { p.positionX.setValueAtTime(x, now); p.positionY.setValueAtTime(y, now); p.positionZ.setValueAtTime(z, now); }
+        else { p.positionX.setTargetAtTime(x, now, 0.03); p.positionY.setTargetAtTime(y, now, 0.03); p.positionZ.setTargetAtTime(z, now, 0.03); }
+      } else p.setPosition(x, y, z);
+    }
+    function setListener(o) {
+      if (!o || dead) return;
+      var x = +o.x, z = +o.z, yaw = +o.yaw;
+      if (!isFinite(x) || !isFinite(z)) return;
+      if (!isFinite(yaw)) yaw = lis.yaw;
+      var first = !lis.set, now = ctx.currentTime, L = ctx.listener, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+      lis.x = x; lis.z = z; lis.yaw = yaw; lis.set = true;
+      if (L.positionX) {
+        if (first) { L.positionX.setValueAtTime(x, now); L.positionZ.setValueAtTime(z, now); }
+        else { L.positionX.setTargetAtTime(x, now, 0.03); L.positionZ.setTargetAtTime(z, now, 0.03); }
+        L.positionY.setValueAtTime(C.EAR_Y, now);
+        // 方向不用平滑：分量各自內插會在大轉身時經過零向量
+        L.forwardX.setValueAtTime(fx, now); L.forwardY.setValueAtTime(0, now); L.forwardZ.setValueAtTime(fz, now);
+        L.upX.setValueAtTime(0, now); L.upY.setValueAtTime(1, now); L.upZ.setValueAtTime(0, now);
+      } else {
+        L.setPosition(x, C.EAR_Y, z); L.setOrientation(fx, 0, fz, 0, 1, 0);
+      }
+    }
+    var voices = [];
+    function newVoice() {
+      var g = ctx.createGain(); g.gain.value = 0;
+      var p = makePanner(); g.connect(p); p.connect(guardOut);
+      var v = { id: null, input: g, p: p, freeAt: 0, lx: 0, lz: 0, lt: 0, speed: 0, nextStep: 0, nextBreath: 0 };
+      voices.push(v);
+      return v;
+    }
+    function guardStep(v, t, heavy) {       // 衛兵的皮靴踩石板＋青銅脛甲輕碰
+      var k = heavy ? 1.4 : 1;
+      noise(v.input, t, 'lowpass', 320 + Math.random() * 120, 1, 0.5 * k, 0.003, 0.09);
+      noise(v.input, t + 0.006, 'bandpass', 1800, 1.5, 0.08 * k, 0.002, 0.04);
+      if (Math.random() < 0.6) tone(v.input, t + 0.01, 'sine', 2350 + Math.random() * 300, 0, 0, 0.018 * k, 0.001, 0.12);
+    }
+    function guardBreath(v, t, fast) {      // 低沉的呼吸：吸（帶通上滑）→ 吐（低通下滑）＋一絲喉音
+      var inh = fast ? 0.45 : 0.8, k = fast ? 1.3 : 1;
+      var f = noise(v.input, t, 'bandpass', 380, 1.3, 0.07 * k, inh * 0.6, inh * 0.5); f.frequency.exponentialRampToValueAtTime(700, t + inh);
+      var f2 = noise(v.input, t + inh + 0.1, 'lowpass', 650, 0.8, 0.09 * k, 0.08, fast ? 0.6 : 1.1);
+      f2.frequency.exponentialRampToValueAtTime(260, t + inh + 1.1);
+      tone(v.input, t + inh + 0.1, 'sawtooth', 96, 82, 0.8, 0.008 * k, 0.1, fast ? 0.5 : 0.9);
+    }
+    function updateGuards(list, now) {
+      var cand = [], i;
+      for (i = 0; i < list.length; i++) {
+        var q = list[i];
+        if (!q || !isFinite(q.x) || !isFinite(q.z) || q.active === false || q.state === 'down') continue;
+        var d = Math.sqrt((q.x - lis.x) * (q.x - lis.x) + (q.z - lis.z) * (q.z - lis.z));
+        if (d > C.GUARD_FAR) continue;
+        cand.push({ q: q, d: d, id: q.id != null ? String(q.id) : 'i' + i });
+      }
+      cand.sort(function (a, b) { return a.d - b.d; });
+      cand = cand.slice(0, C.MAX_GUARD_VOICES);
+      var want = {};
+      cand.forEach(function (c) { want[c.id] = c; });
+      voices.forEach(function (v) {
+        if (v.id != null && !want[v.id]) { v.input.gain.setTargetAtTime(0, now, 0.15); v.id = null; v.freeAt = now + 0.8; }
+      });
+      cand.forEach(function (c) {
+        var v = null, j;
+        for (j = 0; j < voices.length; j++) if (voices[j].id === c.id) { v = voices[j]; break; }
+        if (!v) {
+          for (j = 0; j < voices.length; j++) if (voices[j].id == null && now >= voices[j].freeAt) { v = voices[j]; break; }
+          if (!v && voices.length < C.MAX_GUARD_VOICES) v = newVoice();
+          if (!v) return;
+          v.id = c.id; v.lx = c.q.x; v.lz = c.q.z; v.lt = now; v.speed = 0;
+          v.nextStep = now + Math.random() * 0.3; v.nextBreath = now + 0.4 + Math.random() * 2;
+          setPos(v.p, c.q.x, 1, c.q.z, now, true);
+        } else setPos(v.p, c.q.x, 1, c.q.z, now, false);
+        var dt = now - v.lt;
+        if (dt > 0.03) {
+          var sp = Math.sqrt((c.q.x - v.lx) * (c.q.x - v.lx) + (c.q.z - v.lz) * (c.q.z - v.lz)) / dt;
+          if (sp > 15) sp = 0;                                  // 瞬移（重來、換區）不算走路
+          v.speed = v.speed * 0.5 + sp * 0.5; v.lx = c.q.x; v.lz = c.q.z; v.lt = now;
+        }
+        v.input.gain.setTargetAtTime(clamp((C.GUARD_FAR - c.d) / 8, 0, 1), now, 0.2);
+        var alert = c.q.state === 'hunted' || c.q.state === 'suspicious';
+        if (v.speed > 0.25) {
+          if (now >= v.nextStep - 0.05) {
+            var ts = Math.max(now + 0.01, v.nextStep);
+            guardStep(v, ts, c.q.state === 'hunted');
+            v.nextStep = ts + clamp(0.7 / v.speed, 0.26, 0.8) * (0.95 + Math.random() * 0.1);
+          }
+          v.nextBreath = Math.max(v.nextBreath, now + 0.8);
+        } else {
+          v.nextStep = Math.max(v.nextStep, now + 0.15);
+          if (now >= v.nextBreath) { guardBreath(v, now + 0.02, alert); v.nextBreath = now + (alert ? 2.2 : 3.6) + Math.random() * 0.9; }
+        }
+      });
+    }
+    // 玩家自己的清楚腳步：一個常駐的 panner，放在腳步的位置（不經盲區 gate：盲區裡移動也要聽得到自己）
+    var selfPan = null;
+    function selfPanner() { if (!selfPan) { selfPan = makePanner(); selfPan.refDistance = 1; selfPan.connect(master); } return selfPan; }
+
+    // ---------- 安撫哼唱（8.3）：男聲低吟唱主題的一個音 ----------
+    // 低八度（D3～B3，在低音拍頻段之上）。鋸齒＋三角經「ㄇ／ㄨ」鼻音共振峰（300、900、2300 Hz），0.15 秒後加微顫音。
+    // opt.cents：走音（calm_bad 用 ±30～60 音分）；opt.crack：破音（中途往上翻五度一下、帶氣聲、略失真）。
+    var humCurve = shaperCurve(3);
+    function hum(t, midi, opt) {
+      opt = opt || {};
+      var f = midiHz(midi - 12) * Math.pow(2, (opt.cents || 0) / 1200), dur = 0.85;
+      var out = ctx.createGain(); out.gain.value = 0; out.connect(cueBus);
+      var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1900; lp.connect(out);
+      var src = ctx.createGain(); src.gain.value = 1;
+      [[300, 4, 1], [900, 6, 0.35], [2300, 8, 0.08]].forEach(function (fm) {
+        var bp = ctx.createBiquadFilter(), g = ctx.createGain();
+        bp.type = 'bandpass'; bp.frequency.value = fm[0]; bp.Q.value = fm[1]; g.gain.value = fm[2] * 3;
+        src.connect(bp); bp.connect(g); g.connect(lp);
+      });
+      var dry = ctx.createGain(); dry.gain.value = 0.25; src.connect(dry); dry.connect(lp);   // 一點原聲，讓音高清楚
+      var vib = ctx.createOscillator(), vg = ctx.createGain(); vib.frequency.value = 5.2;
+      vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * 0.004, t + 0.35); vib.connect(vg);
+      var sh = null;
+      if (opt.crack) {                      // 破音帶一點失真（每次自己一個 shaper，不共用）
+        sh = ctx.createWaveShaper(); sh.curve = humCurve;
+        var hs = ctx.createGain(); hs.gain.value = 0.6; sh.connect(hs); hs.connect(src);
+      }
+      var oscs = [['sawtooth', 1, 0], ['triangle', 0.7, 4]].map(function (w) {
+        var o = ctx.createOscillator(), g = ctx.createGain(); o.type = w[0]; o.detune.value = w[2]; g.gain.value = w[1];
+        o.frequency.setValueAtTime(f * (opt.crack ? 0.985 : 1), t);
+        if (opt.crack) {                    // 起音偏低滑上來，0.2 秒處破音往上翻、再掉回走音的音
+          o.frequency.linearRampToValueAtTime(f, t + 0.12);
+          o.frequency.setValueAtTime(f * 1.5, t + 0.2); o.frequency.setValueAtTime(f * 0.97, t + 0.27);
+          o.frequency.linearRampToValueAtTime(f * 0.94, t + dur);
+        }
+        vg.connect(o.frequency); o.connect(g);
+        g.connect(opt.crack ? sh : src);
+        o.start(t); o.stop(t + dur + 0.05);
+        return o;
+      });
+      if (opt.crack) {
+        noise(out, t + 0.2, 'bandpass', 1500, 1.5, 0.35, 0.005, 0.07);   // 破音時的氣聲
+      }
+      vib.start(t); vib.stop(t + dur + 0.05);
+      var pk = C.HUM_GAIN * (opt.crack ? 0.9 : 1);
+      out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(pk, t + 0.07);
+      out.gain.setValueAtTime(pk, t + dur - 0.3); out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      return oscs;
+    }
+    // 安撫是第幾個音：規則給 index 就用它（calm_ok 0～3＝第幾個對拍；calm_bad＝當下已對拍次數，也就是「本來要唱的那個音」），
+    // 沒給就自己數（間隔超過 3 秒從頭）
+    var calmSeq = { n: 0, lastT: -1e9 };
+    function calmNoteIndex(d, ok, now) {
+      var idx = d && isFinite(d.index) ? +d.index : null, i;
+      if (idx != null) i = Math.round(idx);
+      else { if (now - calmSeq.lastT > 3) calmSeq.n = 0; i = calmSeq.n; }
+      if (ok) { calmSeq.n = i + 1; calmSeq.lastT = now; }
+      var L = THEME.notes.length;
+      return ((i % L) + L) % L;
+    }
+    // 門閂：推進每 1/8 奏主題的一個音。主題 7 音，第 8 步擴展成收尾的和弦（D4＋A4＋D5 撥奏）；超過 8 就循環
+    var latchSeq = { n: 0, lastT: -1e9 };
+    function latchNote(t, d) {
+      var now = ctx.currentTime, idx;
+      if (d && isFinite(d.index)) idx = +d.index;
+      else { if (now - latchSeq.lastT > 12) latchSeq.n = 0; idx = latchSeq.n; }
+      latchSeq.n = idx + 1; latchSeq.lastT = now;
+      idx = ((Math.round(idx) % 8) + 8) % 8;
+      if (idx < THEME.notes.length) lyre(cueBus, t, THEME.notes[idx].midi, C.LATCH_VEL * (idx === 0 ? 1.1 : 1));
+      else [62, 69, 74].forEach(function (m, i) { lyre(cueBus, t + i * 0.035, m, C.LATCH_VEL * 0.9); });
+      tone(cueBus, t, 'sine', 170, 120, 0.06, 0.12, 0.002, 0.1);          // 門閂木頭輕輕一頓
+      noise(cueBus, t, 'bandpass', 900, 1.5, 0.06, 0.002, 0.04);
+      return idx;
+    }
+    function stepSound(dest, t, k) {        // 赤腳／皮鞋踩石板（k＝音量倍數）
+      noise(dest, t, 'lowpass', 380 + Math.random() * 120, 1, 0.45 * k, 0.002, 0.07);
+      noise(dest, t + 0.004, 'bandpass', 2500, 2, 0.06 * k, 0.001, 0.02);
+    }
 
     // ---------- 音效 ----------
     var CUES = {
@@ -710,10 +1137,19 @@
           tone(cueBus, t + i * 0.38, 'sawtooth', 140, 110, 0.2, 0.05, 0.03, 0.2);   // 喉音
         }
       },
-      step: function (t) {                // 腳步：赤腳／皮鞋踩石板
-        noise(cueBus, t, 'lowpass', 380 + Math.random() * 120, 1, 0.45, 0.002, 0.07);
-        noise(cueBus, t + 0.004, 'bandpass', 2500, 2, 0.06, 0.001, 0.02);
+      step: function (t) { stepSound(cueBus, t, 1); },   // 腳步：赤腳／皮鞋踩石板
+      stepMasked: function (t) {          // 合拍的腳步：被鼓聲蓋過，極小聲、更悶
+        noise(cueBus, t, 'lowpass', 260 + Math.random() * 60, 0.8, C.STEP_MASKED_GAIN, 0.003, 0.06);
       },
+      stepLoud: function (t, d) {         // 不合拍的腳步：清楚，有 {x, z} 就放在那個位置（3D）
+        if (d && isFinite(d.x) && isFinite(d.z)) {
+          var p = selfPanner(); setPos(p, +d.x, 0.05, +d.z, ctx.currentTime, true);
+          var g = ctx.createGain(); g.gain.value = 1; g.connect(p);
+          stepSound(g, t, C.STEP_LOUD_GAIN / 0.45);
+        } else stepSound(cueBus, t, C.STEP_LOUD_GAIN / 0.45);
+        noise(cueBus, t + 0.01, 'bandpass', 3200, 2.5, 0.04, 0.001, 0.03);   // 砂礫輕響，讓它比鼓聲突出
+      },
+      latchStep: function (t, d) { latchNote(t, d); },
       latch: function (t) {               // 門閂：木頭摩擦 + 撞擊
         var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
         o.type = 'sawtooth'; o.frequency.value = 85; lfo.frequency.value = 23; lg.gain.value = 25;
@@ -773,13 +1209,17 @@
         tone(cueBus, t + 0.12, 'sine', 1137, 0, 0, 0.06, 0.001, 0.3);
         CUES.step(t + 0.25); CUES.step(t + 0.4);
       },
-      calmOk: function (t) {              // 安撫成功一次：輕而穩的低鼓（和低音同色）
-        tone(cueBus, t, 'sine', 110, 82, 0.15, 0.22, 0.003, 0.35);
+      calmOk: function (t, d) {           // 安撫成功一次：低吟唱主題動機的下一個音（4 次＝唱完前 4 音的短句）
+        var i = calmNoteIndex(d, true, ctx.currentTime);
+        hum(t, THEME.notes[i].midi);
+        if (log) log.push({ type: 'hum', t: t, i: i, ok: true });
       },
-      calmBad: function (t) {             // 安撫失敗：悶、不協和
-        tone(cueBus, t, 'sawtooth', 98, 92, 0.3, 0.08, 0.005, 0.4);
-        tone(cueBus, t, 'sawtooth', 104, 97, 0.3, 0.08, 0.005, 0.4);
-        noise(cueBus, t, 'lowpass', 300, 0.7, 0.3, 0.003, 0.15);
+      calmBad: function (t, d) {          // 安撫失敗：唱歪了——偏 30～60 音分、破音
+        var i = calmNoteIndex(d, false, ctx.currentTime);
+        var cents = (30 + Math.random() * 30) * (Math.random() < 0.5 ? -1 : 1);
+        hum(t, THEME.notes[i].midi, { cents: cents, crack: true });
+        noise(cueBus, t, 'lowpass', 300, 0.7, 0.12, 0.003, 0.15);
+        if (log) log.push({ type: 'hum', t: t, i: i, ok: false, cents: cents });
       },
       calmDone: function (t) {            // 衛兵回到巡邏：長長吐一口氣＋低吟和聲
         CUES.breathOut(t);
@@ -816,33 +1256,37 @@
       _drum: function (t, g) { INST[0](cueBus, t, 0.8 * g); }
     };
 
+    if (opts.autoStart !== false) { tick(); startTimer(); }
+
     // ---------- 對外 ----------
     var api = {
       CONST: C,
       INSTRUMENTS: INST_NAME,
-      get T() { return T; }, get t0() { return t0; }, get blindLen() { return BL; },
+      get T() { return Tof(ctx.currentTime); }, get t0() { return tAt(Math.floor(Pof(ctx.currentTime))); }, get blindLen() { return BL; },
+      get beatSource() { return tabFromRules ? 'rules' : 'audio'; },   // 拍點公式來自規則還是本檔
       now: function () { return ctx.currentTime; },
-      phase: function (t) { return phaseAt(t == null ? ctx.currentTime : t, T, t0); },
-      isBlind: function (t) { t = (t == null ? ctx.currentTime : t); return phaseAt(t, T, t0) * T < BL; },
-      // 讀規則狀態：cycle、alarm、hunted、bass（可以直接傳整個 game）
+      phase: function (t) { return frac(Pof(t == null ? ctx.currentTime : t)); },
+      cyclePhase: function (t) { return Pof(t == null ? ctx.currentTime : t); },   // 累計相位（測試用）
+      timeAtPhase: function (P) { return tAt(P); },
+      isBlind: function (t) { t = (t == null ? ctx.currentTime : t); return !!inWins(t, windowsBetween(t - 1, t + 1)) || gateR.forced; },
+      // 讀規則狀態：cycle（anchor、blind）、alarm、hunted、bass、panic、zone、guards（可以直接傳整個 game）
       update: function (s) {
         if (!s || dead) return;
         var now = ctx.currentTime, k = 0.08;
-        if (s.cycle && isFinite(s.cycle.T) && isFinite(s.cycle.t0) &&
-            (Math.abs(s.cycle.T - T) > 1e-6 || Math.abs(s.cycle.t0 - t0) > 1e-6)) {
-          T = s.cycle.T; t0 = s.cycle.t0; scheduleGate(cycleIndex(schedEnd), schedEnd);
-          scheduleMusicGate(cycleIndex(schedEnd), schedEnd);
-          musicNext = cycleIndex(schedEnd) + 1;      // 音樂層從下一個循環起照新網格排
-        }
-        // 盲區長度：規則常數 BLIND_LEN（舊名 BLIND），改了就從已排到的地方重排 gate
-        var bl = s.T && typeof s.T === 'object' ? (s.T.BLIND_LEN != null ? +s.T.BLIND_LEN : +s.T.BLIND) : (isFinite(s.blindLen) ? +s.blindLen : NaN);
-        if (isFinite(bl) && bl >= 0 && Math.abs(bl - BL) > 1e-6) {
-          BL = bl; scheduleGate(cycleIndex(schedEnd), schedEnd); scheduleMusicGate(cycleIndex(schedEnd), schedEnd);
-        }
+        lastState = s;
+        if (!tabFromRules && getRules()) refreshTables();
+        // 規則常數：盲區長度 BLIND_LEN（舊名 BLIND）；警戒時的盲區長度（有專用常數就用，沒有同 BLIND_LEN）
+        var K = s.T && typeof s.T === 'object' ? s.T : null;
+        var bl = K ? (K.BLIND_LEN != null ? +K.BLIND_LEN : +K.BLIND) : (isFinite(s.blindLen) ? +s.blindLen : NaN);
+        if (isFinite(bl) && bl >= 0) BL = bl;
+        var blb = K ? [K.ALERT_BLIND_LEN, K.BASS_BLIND_LEN, K.PANIC_BLIND_LEN].filter(function (v) { return isFinite(v) && v > 0; })[0] : null;
+        BLB = blb != null ? +blb : BL;
         if (s.bass) {
           if (isFinite(s.bass.period) && s.bass.period > 0) st.bassPeriod = s.bass.period;
-          // 只看規則給的 nextBeat（起疑時規則會重新對齊：0.5 秒後第一拍），不自己算固定網格
+          if (isFinite(s.bass.anchor)) st.gridAnchor = +s.bass.anchor;
+          // 只看規則給的 nextBeat（起疑時規則會重新對齊），不自己算固定網格
           var nb = isFinite(s.bass.nextBeat) ? s.bass.nextBeat : (isFinite(s.bass.anchor) ? s.bass.anchor : null);
+          if (!isFinite(s.bass.anchor) && nb != null) st.gridAnchor = nb;
           if (nb != null && Math.abs(nb - st.bassAnchor) > 1e-4) {
             var per = st.bassPeriod, off = (nb - st.bassAnchor) / per;
             var moved = Math.abs(off - Math.round(off)) * per > 0.01;   // 換了網格（不是單純往下一拍走）
@@ -860,7 +1304,32 @@
           }
           bassPending = bassPending.filter(function (b) { return b.t > now - 2; });
         }
-        st.panic = clamp(+s.panic || 0, 0, 1);
+        // 警戒時盲區改在低音拍之間（規則決定；規則有 cycle.blindMode 就照它，沒有就看 panic.active）
+        var cy = s.cycle || {};
+        var bm = cy.alertBlind != null ? !!cy.alertBlind : !!(s.panic && typeof s.panic === 'object' && s.panic.active && !s.hunted);
+        var changed = bm !== bassMode; bassMode = bm;
+        // 節拍：讀 anchor 外推；有新 anchor 或盲區規則改了，就把已預排的拍對到新預測
+        if (takeAnchor(cy, now) || changed) replan(now);
+        // 規則的 cycle.blind 是最後裁決：在規則自己的時間點比對預測，連續兩幀不一致就以規則為準
+        if (cy.blind != null) {
+          var ts = cy.anchor && isFinite(cy.anchor.t) ? +cy.anchor.t : (isFinite(s.time) ? +s.time : now);
+          var sb = !!cy.blind, ws = windowsBetween(ts - 2, ts + 2);
+          var w = inWins(ts, ws, -0.03), mis = sb ? !inWins(ts, ws, 0.03) : !!w;
+          if (gateR.forced && !sb) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); mismN = 0; }
+          else if (mis && !gateR.forced) {
+            if (++mismN >= 2) {
+              mismN = 0;
+              if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); replan(now); }
+              else if (w) {
+                suppress.push({ s: w.s, e: w.e });
+                gateR.force(false, now); gateM.force(false, now); gateG.force(false, now);
+              }
+              if (log) log.push({ type: 'blindFix', t: now, blind: sb });
+            }
+          } else mismN = 0;
+          suppress = suppress.filter(function (x) { return x.e > now - 3; });
+        }
+        st.panic = clamp(+(typeof s.panic === 'object' ? 0 : s.panic) || 0, 0, 1);
         // 分區編曲：state.zone 0～4；勝利時城門大開，號角完整奏一次主題
         if (s.phase === 'win') {
           if (!mz.won) { mz.won = true; applyZone(5); winTheme(now + 1.4); }
@@ -883,22 +1352,42 @@
           rampTo(musicDuck.gain, hu ? C.MUSIC_HUNT_GAIN : Math.pow(10, C.MUSIC_ALARM_DB * al / 20), C.MUSIC_RAMP);
           rampTo(musicHP.frequency, hu ? C.MUSIC_HP_BASE : C.MUSIC_HP_BASE * Math.pow(C.MUSIC_HP_ALARM / C.MUSIC_HP_BASE, al), C.MUSIC_RAMP, true);
         }
+        // 衛兵 3D：倒下、非作用中的靜音；沒有衛兵清單就全部淡掉
+        if (s.guards && s.guards.length != null) updateGuards(s.guards, now);
+        // 立刻補排一次（新外推、新盲區），不等下一個 tick
+        scheduleTo(now + C.LOOKAHEAD, now);
       },
-      cue: function (name, when) {
+      setListener: setListener,
+      // cue(name[, when])、cue(name, data)、cue(event)：data／event 可帶 index（calm_ok、calm_bad、latch_step）與 x、z（step_loud）。
+      // event 可以是 game.out 的一筆 {type:'sfx', a:'calm_ok', index}（資料也可放在 a 物件或 data 裡）
+      cue: function (name, arg) {
         if (dead || !name) return false;
-        var key = CUE_ALIAS[String(name).toLowerCase().replace(/[\s_-]/g, '')] || name;
+        var data = {}, when = null;
+        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
+        if (typeof name === 'object') {
+          var ev = name; take(ev); take(ev.data);
+          name = ev.a != null ? ev.a : (ev.name || ev.sfx || ev.cue);
+          if (name && typeof name === 'object') { take(name); take(name.data); name = name.name || name.sfx || name.type || name.cue; }
+        }
+        if (typeof arg === 'number') when = arg;
+        else if (arg && typeof arg === 'object') { take(arg); take(arg.data); if (arg.a && typeof arg.a === 'object') take(arg.a); if (isFinite(arg.when)) when = +arg.when; }
+        if (typeof name !== 'string' || !name) return false;
+        var key = CUE_ALIAS[name.toLowerCase().replace(/[\s_-]/g, '')] || name;
         var fn = CUES[key];
         if (!fn || key.charAt(0) === '_') return false;
-        fn(when != null ? when : ctx.currentTime + 0.005);
+        fn(when != null ? when : ctx.currentTime + 0.005, data);
         return true;
       },
-      cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'latch', 'down', 'bell', 'preBlind', 'blind', 'win',
+      cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
                  'alert', 'caught', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
       resume: function () { return (ctx.resume ? ctx.resume() : Promise.resolve()).then(function () { tick(); }); },
       // 離線渲染／測試用：一次排到 tEnd
-      scheduleUntil: function (tEnd) { if (tEnd > schedEnd) { scheduleRange(schedEnd, tEnd); schedEnd = tEnd; } },
+      scheduleUntil: function (tEnd) { scheduleTo(tEnd, ctx.currentTime); },
+      // 測試／除錯：重排統計、衛兵聲部
+      _stats: stats,
+      _voices: function () { return voices.map(function (v) { return { id: v.id, speed: +v.speed.toFixed(2) }; }); },
       // ---------- 音樂層：自備配樂（測試模式，設計文件 7.1）與模式切換 ----------
       // loadTrack 接受 ArrayBuffer（會被解碼、脫離）或已解碼的 AudioBuffer；回傳 Promise<AudioBuffer>。
       // 只換音檔，不改模式；模式由 setMusicMode 決定。

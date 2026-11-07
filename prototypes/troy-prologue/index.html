@@ -297,8 +297,8 @@ function flame(parent, x, y, z, s = 1) {
 // 月亮相位鐘（設計文件 8.2）：一個循環轉一圈的「缺口」＋外圈進度弧，
 // p 越接近 1 越紅，盲區時回到銀白。跟著鏡頭走（像天穹），永遠在同一個方位。
 // ============================================================
-const MOON_DIR = new THREE.Vector3(.78, .5, -.38).normalize();   // 東北方、仰角約 30°（往城門走時抬頭就看得到）
-const MOON_DIST = 150, MOON_SIZE = 34;
+const MOON_DIR = new THREE.Vector3(.9, .8, -.25).normalize();    // 偏東（城門方向）、仰角約 40°：往城門走時抬頭就看得到，窄巷的牆也擋不住
+const MOON_DIST = 150, MOON_SIZE = 50;
 const moonMat = new THREE.ShaderMaterial({
   uniforms: { uP: { value: 0 }, uAid: { value: 1 }, uRed: { value: 0 }, uBlind: { value: 0 } },
   transparent: true, depthWrite: false, fog: false,
@@ -306,7 +306,8 @@ const moonMat = new THREE.ShaderMaterial({
   fragmentShader: `
     varying vec2 vUv; uniform float uP, uAid, uRed, uBlind;
     const float TAU = 6.2831853, R = .5;
-    float crater(vec2 q, vec2 c, float r) { return smoothstep(r, r * .6, length(q - c)); }
+    // smoothstep 的兩端不能反過來寫（GLSL 未定義），一律用 1 − smoothstep(小, 大, x)
+    float crater(vec2 q, vec2 c, float r) { return 1. - smoothstep(r * .6, r, length(q - c)); }
     void main() {
       vec2 q = vUv * 2. - 1.; float r = length(q);
       // 月色：銀白 → 接近盲區轉紅；盲區時更亮、更白
@@ -316,11 +317,11 @@ const moonMat = new THREE.ShaderMaterial({
       // 月面：幾個固定的暗斑
       float mar = crater(q, vec2(-.16, .12), .16) * .5 + crater(q, vec2(.14, -.1), .12) * .45 + crater(q, vec2(.05, .26), .07) * .4 + crater(q, vec2(-.1, -.24), .09) * .35;
       vec3 surf = tint * (1. - mar * .28) * (1.0 - .18 * smoothstep(0., R, r));
-      float disk = smoothstep(R, R - .012, r);
+      float disk = 1. - smoothstep(R - .012, R, r);
       // 繞一圈的缺口（像被咬掉一塊的陰影）：角度 = 2πp，從正上方順時針
       float th = uP * TAU;
       vec2 bc = vec2(sin(th), cos(th)) * R * 1.12;
-      float bite = smoothstep(R * .42, R * .36, length(q - bc)) * uAid * (1. - uBlind);
+      float bite = (1. - smoothstep(R * .36, R * .42, length(q - bc))) * uAid * (1. - uBlind);
       surf *= 1. - bite * .82;
       // 外圈：12 個刻度＋已走過的進度弧
       float a = mod(atan(q.x, q.y), TAU);
@@ -336,7 +337,8 @@ const moonMat = new THREE.ShaderMaterial({
     }`,
 });
 const moon = new THREE.Mesh(new THREE.PlaneGeometry(MOON_SIZE, MOON_SIZE), moonMat);
-moon.renderOrder = 2;   // 畫在星星之後（蓋住月面後方的星），牆仍會用深度擋住月亮 scene.add(moon);
+moon.renderOrder = 2;   // 畫在星星之後（蓋住月面後方的星），牆仍會用深度擋住月亮
+scene.add(moon);
 moon.position.copy(MOON_DIR).multiplyScalar(MOON_DIST);
 
 let S = null;          // 目前場景的物件
@@ -538,12 +540,15 @@ function buildHorse(H, L) {
   S.moonSlits = [];
   const gaps = []; for (let x = bx0; x < bx1 - .05; x += .34) gaps.push(x + .31);
   gaps.forEach((gx, i) => {
-    if (i % 2) return;
+    if (i % 3) return;
     const line = box(.05, .02, bd - .1, 0, gx, top - .03, bzc, pl, new THREE.MeshBasicMaterial({ color: 0xc8d4ee, transparent: true, opacity: .5, fog: false }));
     const beamMat = new THREE.MeshBasicMaterial({ color: 0xc8d4ee, transparent: true, opacity: .05, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
     const beam = new THREE.Mesh(new THREE.PlaneGeometry(bd - .3, top - fy - .1), beamMat);
     beam.rotation.y = Math.PI / 2; beam.rotation.x = .18; beam.position.set(gx - .12, (fy + top) / 2, bzc); pl.add(beam);
-    S.moonSlits.push({ line, beam, u: (gx - bx0) / bw });
+    // 地板上的一道月光（沿著縫的方向）：比光束好讀，順著木馬看過去也不會疊成一片
+    const spot = new THREE.Mesh(new THREE.PlaneGeometry(.07, bd - .3), new THREE.MeshBasicMaterial({ color: 0xc8d4ee, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    spot.rotation.x = -Math.PI / 2; spot.position.set(gx - .45, fy + .05, bzc); pl.add(spot);
+    S.moonSlits.push({ line, beam, spot, u: (gx - bx0) / bw });
   });
   // 從地板縫往上透的火光
   const shaftMat = new THREE.MeshBasicMaterial({ color: 0xff9a50, transparent: true, opacity: .07, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -737,7 +742,7 @@ function newGame() {
   const aidMode = $('oAid').value;
   const qz = +new URLSearchParams(location.search).get('startZone');     // 實驗：?startZone=1..4 直接從某一區開始
   const opts = { t0, startZone: qz >= 1 && qz <= 4 ? qz | 0 : 0, T: { CYCLE: curT } };
-  if (aidMode !== 'auto') opts.visualAid = aidMode === 'on' ? 1 : 0;   // 自動＝交給規則依區域決定
+  opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
@@ -973,6 +978,8 @@ const VIS = {
   prevT: null, prevP: null, prevI: null, beats: [],
   force: { p: null, blind: null },        // 測試用：強制相位／盲區（只影響畫面）
 };
+// 選單改變時立即生效：同步給規則的 visualAidMode（執行中可以改）
+$('oAid').addEventListener('change', () => { if (game && 'visualAidMode' in game) game.visualAidMode = $('oAid').value; });
 const bellG = x => { const d = (x - .5) / .22; return Math.exp(-d * d); };   // 和聲音層同一條鐘形增益
 const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 function aidTarget() {
@@ -1034,12 +1041,17 @@ for (let i = 0; i < AIR_N; i++) {
   airVel[i * 3] = rand(-.06, .06); airVel[i * 3 + 1] = rand(-.03, .03); airVel[i * 3 + 2] = rand(-.06, .06);
 }
 const airGeo = new THREE.BufferGeometry(); airGeo.setAttribute('position', new THREE.BufferAttribute(airPos, 3));
-const airMat = new THREE.PointsMaterial({ color: 0xe8c89a, size: .035, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending });
+const dotTex = (() => {                       // 圓形柔邊的點（預設的方點靠近鏡頭時會變成方塊）
+  const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.4, 'rgba(255,255,255,.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c);
+})();
+const airMat = new THREE.PointsMaterial({ map: dotTex, color: 0xe8c89a, size: .05, transparent: true, opacity: .55, depthWrite: false, blending: THREE.AdditiveBlending });
 const airPts = new THREE.Points(airGeo, airMat); airPts.frustumCulled = false; scene.add(airPts);
 const gndPos = new Float32Array(GND_N * 3), gndH = new Float32Array(GND_N), gndV = new Float32Array(GND_N);
 for (let i = 0; i < GND_N; i++) { gndPos[i * 3] = rand(-GND_HALF, GND_HALF); gndPos[i * 3 + 2] = rand(-GND_HALF, GND_HALF); }
 const gndGeo = new THREE.BufferGeometry(); gndGeo.setAttribute('position', new THREE.BufferAttribute(gndPos, 3));
-const gndMat = new THREE.PointsMaterial({ color: 0xc0a47a, size: .04, transparent: true, opacity: .6, depthWrite: false, blending: THREE.AdditiveBlending });
+const gndMat = new THREE.PointsMaterial({ map: dotTex, color: 0xc0a47a, size: .06, transparent: true, opacity: .6, depthWrite: false, blending: THREE.AdditiveBlending });
 const gndPts = new THREE.Points(gndGeo, gndMat); gndPts.frustumCulled = false; scene.add(gndPts);
 const AIR_WARM = new THREE.Color(0xe8c89a), AIR_COLD = new THREE.Color(0xa8b8d8);
 function kickDust(amp) {                     // 一個拍點：一部分地上塵土跳起來
@@ -1110,8 +1122,10 @@ function visFrame(dt, floorY, playing) {
       let d = Math.abs(M.u - pv); d = Math.min(d, 1 - d);
       const band = Math.exp(-d * d / .006) * aid;
       M.line.material.color.copy(tmpC); M.beam.material.color.copy(tmpC);
+      M.spot.material.color.copy(tmpC);
       M.line.material.opacity = .3 + .6 * band + .2 * fz;
-      M.beam.material.opacity = .025 + .09 * band + .04 * fz;
+      M.beam.material.opacity = .006 + .028 * band + .012 * fz;   // 光束很淡：順著木馬看會一層層疊加
+      M.spot.material.opacity = .12 + .5 * band + .15 * fz;
     }
   }
   // 木板輕震
