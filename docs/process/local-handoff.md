@@ -25,3 +25,11 @@
 | 比箭 Risset 版 | `prototypes/bow-risset/` | 抓驟降放箭，和原本呼吸判定版（`prototypes/bow-contest/`）比較 |
 | 大廳復仇 | `prototypes/vengeance/` | 最高速躲攻擊、驟降空檔射箭、照低音讓忒勒馬科斯舉盾 |
 | 網頁連作《回家的路》 | `prototypes/odyssey-series/` 等 | 已決定報告後重做，只當參考 |
+
+## 試玩網址（claude.ai 私人頁面）
+
+- 木馬之夜：https://claude.ai/artifact/DcxVU1LPbmcdPAfpvzEchb
+- 比箭・Risset 版：https://claude.ai/artifact/9x7ZByRC7HyC1vFfvEyoxb
+- 大廳復仇：https://claude.ai/artifact/EjRjJij1T1HJxKgcFBaWxr
+- 原本的比箭（呼吸判定版）：https://claude.ai/artifact/XhXdsJ8H5GSxw1517Fhjbn
+
