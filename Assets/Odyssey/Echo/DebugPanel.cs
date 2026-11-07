@@ -13,19 +13,19 @@ public class DebugPanel : MonoBehaviour
 
     const float MapMinX = -16f, MapMaxX = 16f, MapMinZ = -12f, MapMaxZ = 14f;
 
-    static readonly Color Track = new(1f, 1f, 1f, 0.15f);
-    static readonly Color TickGap = new(0f, 0f, 0f, 0.65f);
-    static readonly Color Wall = new(0.6f, 0.55f, 0.5f, 0.8f);
+    static readonly Color Track = OdysseyPalette.Track;
+    static readonly Color TickGap = OdysseyPalette.DebugMap.TickGap;
+    static readonly Color Wall = OdysseyPalette.DebugMap.Wall;
     static readonly Color PlayerColor = Color.white;
-    static readonly Color SheepColor = new(1f, 0.9f, 0.55f);
-    static readonly Color BoulderColor = new(0.55f, 0.4f, 0.25f);
-    static readonly Color CrewColor = new(0.55f, 0.9f, 0.6f);
-    static readonly Color StakeColor = new(0.55f, 0.38f, 0.2f);
-    static readonly Color WedgeColor = new(0.7f, 0.7f, 0.68f);
-    static readonly Color StoneColor = new(0.75f, 0.75f, 0.72f);
-    static readonly Color PailColor = new(0.7f, 0.55f, 0.35f);
-    static readonly Color PenColor = new(0.6f, 0.5f, 0.3f, 0.8f);
-    static readonly Color RockColor = new(0.95f, 0.15f, 0.1f);
+    static readonly Color SheepColor = OdysseyPalette.EchoSheep;
+    static readonly Color BoulderColor = OdysseyPalette.DebugMap.Boulder;
+    static readonly Color CrewColor = OdysseyPalette.EchoCrew;
+    static readonly Color StakeColor = OdysseyPalette.DebugMap.Stake;
+    static readonly Color WedgeColor = OdysseyPalette.DebugMap.Wedge;
+    static readonly Color StoneColor = OdysseyPalette.DebugMap.Stone;
+    static readonly Color PailColor = OdysseyPalette.DebugMap.Pail;
+    static readonly Color PenColor = OdysseyPalette.DebugMap.Pen;
+    static readonly Color RockColor = OdysseyPalette.DebugMap.Rock;
 
     BlindGameLoop loop;
     GUIStyle cachedStyle, cachedLegend;
@@ -57,21 +57,21 @@ public class DebugPanel : MonoBehaviour
 
     static Color StateColor(CyclopsState s) => s switch
     {
-        CyclopsState.Investigate => new Color(0.95f, 0.8f, 0.2f),
-        CyclopsState.Search => new Color(0.9f, 0.25f, 0.2f),
-        CyclopsState.Guard => new Color(0.65f, 0.35f, 0.9f),
-        CyclopsState.Throw => new Color(1f, 0.45f, 0.1f),
-        CyclopsState.Eat => new Color(0.6f, 0.05f, 0.05f),
-        CyclopsState.Pray => new Color(0.3f, 0.45f, 0.9f),
-        CyclopsState.Stagger => new Color(0.4f, 0.9f, 0.9f),
-        _ => new Color(0.6f, 0.6f, 0.6f),
+        CyclopsState.Investigate => OdysseyPalette.DebugMap.Investigate,
+        CyclopsState.Search => OdysseyPalette.DebugMap.Search,
+        CyclopsState.Guard => OdysseyPalette.DebugMap.Guard,
+        CyclopsState.Throw => OdysseyPalette.DebugMap.Throw,
+        CyclopsState.Eat => OdysseyPalette.DebugMap.Eat,
+        CyclopsState.Pray => OdysseyPalette.DebugMap.Pray,
+        CyclopsState.Stagger => OdysseyPalette.DebugMap.Stagger,
+        _ => OdysseyPalette.DebugMap.Idle,
     };
 
     static Color OutcomeColor(NightOutcome outcome) => outcome switch
     {
-        NightOutcome.Dawn => new Color(0.55f, 0.65f, 0.95f),
-        NightOutcome.Escaped => new Color(0.55f, 0.9f, 0.6f),
-        _ => new Color(0.9f, 0.25f, 0.2f),
+        NightOutcome.Dawn => OdysseyPalette.DebugMap.Dawn,
+        NightOutcome.Escaped => OdysseyPalette.Done,
+        _ => OdysseyPalette.DebugMap.Search,
     };
 
     string BoulderMode()
@@ -109,7 +109,7 @@ public class DebugPanel : MonoBehaviour
         {
             cachedFontSize = fontSize;
             cachedStyle = new GUIStyle(GUI.skin.label) { fontSize = fontSize, wordWrap = false };
-            cachedStyle.normal.textColor = new Color(0.95f, 0.93f, 0.87f);
+            cachedStyle.normal.textColor = OdysseyPalette.DebugText;
             cachedLegend = new GUIStyle(cachedStyle) { fontSize = Mathf.Max(12, fontSize * 3 / 4) };
         }
         var style = cachedStyle;
@@ -142,9 +142,9 @@ public class DebugPanel : MonoBehaviour
 
         float barW = panelW - fontSize * 6f - 20f;
         float boulderRow = y;
-        Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, new Color(0.75f, 0.6f, 0.4f), ref y, line, barW, style);
+        Bar("巨石", loop.Slide.Opening / BoulderSlide.FullOpen, 0, OdysseyPalette.BoulderBar, ref y, line, barW, style);
         DrawBoulderMarks(boulderRow, line, barW, style);
-        Bar("天亮", loop.Dawn.Fraction, 0, new Color(0.7f, 0.75f, 0.95f), ref y, line, barW, style);
+        Bar("天亮", loop.Dawn.Fraction, 0, OdysseyPalette.DebugMap.DawnBar, ref y, line, barW, style);
         // 實測捷徑（編輯器與開發版）：F2～F10 直接跳到要測的情況。
         if (PlaytestDriver.ManualEnabled)
         {

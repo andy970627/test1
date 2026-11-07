@@ -12,7 +12,7 @@ public class StonePickup : MonoBehaviour
         Destroy(go.GetComponent<Collider>());
         go.transform.SetParent(transform, false);
         go.transform.localScale = Vector3.one * 0.3f;
-        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(new Color(0.6f, 0.6f, 0.58f));
+        go.GetComponent<Renderer>().sharedMaterial = EchoMaterials.Create(OdysseyPalette.Pebble);
         transform.position = groundPos + new Vector3(0f, 0.15f, 0f);
     }
 

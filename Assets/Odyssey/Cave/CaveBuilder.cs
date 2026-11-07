@@ -20,7 +20,7 @@ public static class CaveBuilder
 
         RenderSettings.skybox = null;
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-        RenderSettings.ambientLight = new Color(0.03f, 0.03f, 0.04f);
+        RenderSettings.ambientLight = OdysseyPalette.CaveBlack;
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Exponential;
         RenderSettings.fogDensity = 0.04f;
@@ -84,7 +84,7 @@ public static class CaveBuilder
                 int a = iz * w + ix, b = a + 1, c = a + w, e = c + 1;
                 triangles.AddRange(new[] { a, c, b, b, c, e });
             }
-        var go = MeshObject("Floor", root, vertices, triangles, new Color(0.32f, 0.28f, 0.24f));
+        var go = MeshObject("Floor", root, vertices, triangles, OdysseyPalette.CaveFloor);
         return go.GetComponent<MeshCollider>();
     }
 
@@ -117,12 +117,12 @@ public static class CaveBuilder
                 // 繞序讓法線朝內（從洞裡看得到洞壁）。
                 triangles.AddRange(new[] { a, c, b, b, c, e });
             }
-        MeshObject("CaveWall", root, vertices, triangles, new Color(0.28f, 0.25f, 0.22f));
+        MeshObject("CaveWall", root, vertices, triangles, OdysseyPalette.CaveWall);
     }
 
     static void BuildTunnel(Transform root, System.Random rng)
     {
-        var rock = new Color(0.26f, 0.23f, 0.2f);
+        var rock = OdysseyPalette.Rock;
         for (int i = 0; i < 12; i++)
         {
             float z = 9.5f + (i / 2) * 1.3f;
@@ -147,17 +147,17 @@ public static class CaveBuilder
         for (int i = 0; i < 7; i++)
         {
             float a = i * Mathf.PI * 2f / 7f;
-            var stone = Primitive(PrimitiveType.Sphere, "FireStone", fire, center + new Vector3(Mathf.Cos(a) * 0.6f, 0.1f, Mathf.Sin(a) * 0.6f), new Vector3(0.3f, 0.2f, 0.3f), new Color(0.2f, 0.18f, 0.16f));
+            var stone = Primitive(PrimitiveType.Sphere, "FireStone", fire, center + new Vector3(Mathf.Cos(a) * 0.6f, 0.1f, Mathf.Sin(a) * 0.6f), new Vector3(0.3f, 0.2f, 0.3f), OdysseyPalette.FireStone);
             Object.Destroy(stone.GetComponent<Collider>());
         }
-        var embers = Primitive(PrimitiveType.Cube, "Coals", fire, center + new Vector3(0f, 0.08f, 0f), new Vector3(0.7f, 0.12f, 0.7f), new Color(0.3f, 0.08f, 0.02f), new Color(3f, 1f, 0.25f));
+        var embers = Primitive(PrimitiveType.Cube, "Coals", fire, center + new Vector3(0f, 0.08f, 0f), new Vector3(0.7f, 0.12f, 0.7f), OdysseyPalette.Coals, OdysseyPalette.CoalsGlow);
         Object.Destroy(embers.GetComponent<Collider>());
 
         var light = new GameObject("FireLight").AddComponent<Light>();
         light.transform.SetParent(fire, false);
         light.transform.position = center + new Vector3(0f, 0.6f, 0f);
         light.type = LightType.Point;
-        light.color = new Color(1f, 0.45f, 0.2f);
+        light.color = OdysseyPalette.FireLight;
         light.range = 14f;
         light.intensity = 3f;
         light.shadows = LightShadows.Soft;
@@ -168,23 +168,23 @@ public static class CaveBuilder
     {
         // 刺瞎巨人的橄欖木樁：斜靠在火邊，尖端燒焦。
         var stakePos = OnGround(new Vector3(0.6f, 0f, -0.4f)) + new Vector3(0f, 0.9f, 0f);
-        var stake = Primitive(PrimitiveType.Cylinder, "OliveStake", root, stakePos, new Vector3(0.14f, 1.1f, 0.14f), new Color(0.35f, 0.26f, 0.15f));
+        var stake = Primitive(PrimitiveType.Cylinder, "OliveStake", root, stakePos, new Vector3(0.14f, 1.1f, 0.14f), OdysseyPalette.OliveWood);
         stake.transform.rotation = Quaternion.Euler(0f, 30f, 65f);
-        var tip = Primitive(PrimitiveType.Cylinder, "StakeTip", stake.transform, Vector3.zero, Vector3.one, new Color(0.04f, 0.03f, 0.02f));
+        var tip = Primitive(PrimitiveType.Cylinder, "StakeTip", stake.transform, Vector3.zero, Vector3.one, OdysseyPalette.StakeTip);
         tip.transform.localPosition = new Vector3(0f, 0.9f, 0f);
         tip.transform.localScale = new Vector3(0.7f, 0.15f, 0.7f);
         Object.Destroy(tip.GetComponent<Collider>());
 
         // 乳酪架（三層木板）
-        var wood = new Color(0.33f, 0.24f, 0.15f);
+        var wood = OdysseyPalette.RackWood;
         var rackBase = OnGround(new Vector3(10f, 0f, -3.5f));
         for (int i = 0; i < 3; i++)
             Primitive(PrimitiveType.Cube, "CheeseShelf", root, rackBase + new Vector3(0f, 0.4f + i * 0.5f, 0f), new Vector3(0.5f, 0.05f, 2f), wood);
         for (int i = 0; i < 4; i++)
-            Primitive(PrimitiveType.Cylinder, "Cheese", root, rackBase + new Vector3(0f, 0.5f + (i % 3) * 0.5f, -0.6f + i * 0.4f), new Vector3(0.35f, 0.06f, 0.35f), new Color(0.85f, 0.78f, 0.55f));
+            Primitive(PrimitiveType.Cylinder, "Cheese", root, rackBase + new Vector3(0f, 0.5f + (i % 3) * 0.5f, -0.6f + i * 0.4f), new Vector3(0.35f, 0.06f, 0.35f), OdysseyPalette.Cheese);
 
         // 奶桶
-        Primitive(PrimitiveType.Cylinder, "MilkPail", root, layout.BucketPosition + new Vector3(0f, 0.3f, 0f), new Vector3(0.5f, 0.3f, 0.5f), new Color(0.4f, 0.3f, 0.2f));
+        Primitive(PrimitiveType.Cylinder, "MilkPail", root, layout.BucketPosition + new Vector3(0f, 0.3f, 0f), new Vector3(0.5f, 0.3f, 0.5f), OdysseyPalette.MilkPail);
     }
 
     static Light BuildMoonlight(Transform root)
@@ -194,7 +194,7 @@ public static class CaveBuilder
         moon.transform.position = new Vector3(0f, 3f, 20f);
         moon.transform.rotation = Quaternion.LookRotation(new Vector3(0f, -0.15f, -1f));
         moon.type = LightType.Spot;
-        moon.color = new Color(0.55f, 0.65f, 1f);
+        moon.color = OdysseyPalette.MoonLight;
         moon.intensity = 4f;
         moon.range = 30f;
         moon.spotAngle = 50f;

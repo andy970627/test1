@@ -17,8 +17,8 @@ public class SituationHints : MonoBehaviour
     const float FindExitSeconds = 15f;
     const float FindExitDistance = 6f;
 
-    static readonly Color Text = new(0.97f, 0.95f, 0.88f);
-    static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
+    static readonly Color Text = OdysseyPalette.Parchment;
+    static readonly Color Shadow = OdysseyPalette.TextShadow;
 
     BlindGameLoop loop;
     HintQueue hints;

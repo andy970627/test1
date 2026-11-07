@@ -11,7 +11,7 @@ public class CrewMember : MonoBehaviour
     public enum Mode { Hiding, Following, Crouching }
 
     const float MinWhimper = 15f, MaxWhimper = 30f;
-    static readonly Color Skin = new(0.5f, 0.45f, 0.4f);
+    static readonly Color Skin = OdysseyPalette.CrewSkin;
 
     System.Random rng;
     AudioSource voice;
@@ -92,9 +92,9 @@ public class CrewMember : MonoBehaviour
     void BuildBody()
     {
         var skin = Skin;
-        var tunic = new Color(0.68f, 0.65f, 0.58f);
-        var hair = new Color(0.12f, 0.10f, 0.08f);
-        var leather = new Color(0.24f, 0.16f, 0.10f);
+        var tunic = OdysseyPalette.Linen;
+        var hair = OdysseyPalette.CrewHair;
+        var leather = OdysseyPalette.CrewLeather;
 
         // 希臘水手亞麻短袍軀幹（Linen Tunic Chiton）
         Part(PrimitiveType.Capsule, "TunicBody", new Vector3(0f, 0.45f, 0f), new Vector3(0.46f, 0.42f, 0.42f), tunic);

@@ -7,8 +7,8 @@ public class WickerPen : MonoBehaviour
 {
     const float FenceHeight = 0.5f;
     const float FenceThickness = 0.08f;
-    static readonly Color Wicker = new(0.5f, 0.4f, 0.25f);
-    static readonly Color Hay = new(0.62f, 0.55f, 0.32f);
+    static readonly Color Wicker = OdysseyPalette.Wicker;
+    static readonly Color Hay = OdysseyPalette.Hay;
 
     Vector3 center;
     Vector2 size;

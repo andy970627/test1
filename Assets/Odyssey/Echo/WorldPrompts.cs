@@ -17,8 +17,8 @@ public class WorldPrompts : MonoBehaviour
     const float StuckNoticeReach = 3f;
     const float EssentialHeight = 0.7f;
 
-    static readonly Color Text = new(0.97f, 0.95f, 0.88f);
-    static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
+    static readonly Color Text = OdysseyPalette.Parchment;
+    static readonly Color Shadow = OdysseyPalette.TextShadow;
 
     // 每行文字與它的提示種類（固定顯示的行沒有種類）；畫出來的種類記為「出現過」。
     readonly List<(string Text, PromptKind? Kind)> lines = new();

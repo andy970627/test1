@@ -18,8 +18,8 @@ public class BoulderFeel : MonoBehaviour
     const float LightGritSeconds = 0.4f, HeavyGritSeconds = 0.15f;
     const int MaxGrit = 20;
     const float GritLifetime = 6f;
-    static readonly Color MarkColor = new(0.5f, 0.42f, 0.3f);
-    static readonly Color GritColor = new(0.55f, 0.45f, 0.32f);
+    static readonly Color MarkColor = OdysseyPalette.BoulderMark;
+    static readonly Color GritColor = OdysseyPalette.Grit;
 
     readonly List<GameObject> grit = new();
     Boulder boulder;

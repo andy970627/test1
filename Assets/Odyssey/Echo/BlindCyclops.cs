@@ -96,7 +96,7 @@ public class BlindCyclops : MonoBehaviour
 
     public void Roar() => roar.Play();
 
-    static readonly Color MoonSilhouette = new(0.10f, 0.11f, 0.15f);
+    static readonly Color MoonSilhouette = OdysseyPalette.MoonSilhouette;
     Material moonMaterial;
     readonly System.Collections.Generic.Dictionary<Renderer, Material> darkMaterials = new();
 
@@ -268,9 +268,9 @@ public class BlindCyclops : MonoBehaviour
 
     void BuildBody()
     {
-        var skin = new Color(0.42f, 0.35f, 0.28f);
-        var charred = new Color(0.06f, 0.03f, 0.02f);
-        var ember = new Color(0.55f, 0.12f, 0.05f);
+        var skin = OdysseyPalette.GiantSkin;
+        var charred = OdysseyPalette.Charred;
+        var ember = OdysseyPalette.Ember;
 
         // 雙腿（厚重粗糙巨腿）
         Part(PrimitiveType.Capsule, "LegL", transform, new Vector3(-0.45f, 0.9f, 0f), new Vector3(0.6f, 0.9f, 0.6f), skin);

@@ -62,10 +62,10 @@ public class EchoField : MonoBehaviour
 
     public static Color ColorFor(SoundSource source) => source switch
     {
-        SoundSource.Cyclops => new Color(0.8f, 0.12f, 0.08f),
-        SoundSource.Sheep => new Color(1f, 0.9f, 0.55f),
-        SoundSource.Crew => new Color(0.55f, 0.9f, 0.6f),
-        _ => new Color(0.85f, 0.92f, 1f),
+        SoundSource.Cyclops => OdysseyPalette.EchoCyclops,
+        SoundSource.Sheep => OdysseyPalette.EchoSheep,
+        SoundSource.Crew => OdysseyPalette.EchoCrew,
+        _ => OdysseyPalette.EchoPlayer,
     };
 
     void Awake() => Instance = this;

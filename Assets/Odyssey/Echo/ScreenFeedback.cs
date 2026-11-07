@@ -17,8 +17,8 @@ public class ScreenFeedback : MonoBehaviour
     const float BumpCooldown = 0.5f;
     const float LawShowSeconds = 2f;
 
-    static readonly Color Blood = new(0.55f, 0.03f, 0.02f);
-    static readonly Color LawColor = new(0.97f, 0.95f, 0.88f);
+    static readonly Color Blood = OdysseyPalette.Blood;
+    static readonly Color LawColor = OdysseyPalette.Parchment;
 
     BlindGameLoop loop;
     FirstPersonPlayer body;
@@ -197,7 +197,7 @@ public class ScreenFeedback : MonoBehaviour
         var r = new Rect(s.x - 300f, Screen.height - s.y - size, 600f, size * 1.6f);
         var shadow = r;
         shadow.position += new Vector2(2f, 2f);
-        lawStyle.normal.textColor = new Color(0f, 0f, 0f, 0.85f * a);
+        lawStyle.normal.textColor = OdysseyPalette.Fade(OdysseyPalette.TextShadow, a);
         GUI.Label(shadow, "他聽得到這麼遠", lawStyle);
         lawStyle.normal.textColor = new Color(LawColor.r, LawColor.g, LawColor.b, a);
         GUI.Label(r, "他聽得到這麼遠", lawStyle);

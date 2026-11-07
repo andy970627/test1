@@ -12,15 +12,15 @@ public class MissionHud : MonoBehaviour
     const float BriefingLockSeconds = 2f;
     const float FadeSeconds = 0.6f;
 
-    static readonly Color Text = new(0.97f, 0.95f, 0.88f);
-    static readonly Color Dim = new(0.97f, 0.95f, 0.88f, 0.55f);
-    static readonly Color Shadow = new(0f, 0f, 0f, 0.85f);
+    static readonly Color Text = OdysseyPalette.Parchment;
+    static readonly Color Dim = OdysseyPalette.ParchmentMuted;
+    static readonly Color Shadow = OdysseyPalette.TextShadow;
 
     BlindGameLoop loop;
     Action onStart;
     float briefingSince;
     float fadingSince = -1f;
-    GUIStyle titleStyle, bodyStyle, listStyle, choiceStyle;
+    GUIStyle titleStyle, startStyle, bodyStyle, listStyle, choiceStyle;
 
     public bool BriefingOpen { get; private set; }
 
@@ -84,7 +84,9 @@ public class MissionHud : MonoBehaviour
         int list = Mathf.Max(18, Screen.height / 40);
         if (titleStyle != null && titleStyle.fontSize == title && bodyStyle.fontSize == body && listStyle.fontSize == list)
             return;
-        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
+        // 「第 N 夜」用銘文字；「空白鍵 開始」是操作提示，留在一般字型。
+        titleStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter, font = OdysseyFonts.Inscription };
+        startStyle = new GUIStyle(GUI.skin.label) { fontSize = title, alignment = TextAnchor.MiddleCenter };
         choiceStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleCenter, wordWrap = true };
         bodyStyle = new GUIStyle(GUI.skin.label) { fontSize = body, alignment = TextAnchor.MiddleLeft, wordWrap = true };
         listStyle = new GUIStyle(GUI.skin.label) { fontSize = list, alignment = TextAnchor.MiddleLeft, wordWrap = false };
@@ -92,7 +94,7 @@ public class MissionHud : MonoBehaviour
 
     void DrawBriefing(float alpha)
     {
-        Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.85f * alpha));
+        Fill(new Rect(0, 0, Screen.width, Screen.height), OdysseyPalette.Fade(OdysseyPalette.BriefingVeil, alpha));
         float width = Mathf.Min(Screen.width * 0.75f, bodyStyle.fontSize * 32f);
         float x = (Screen.width - width) / 2f;
         float y = Screen.height * 0.16f;
@@ -118,7 +120,7 @@ public class MissionHud : MonoBehaviour
             $"難度：{Difficulty.Name(loop.Difficulty)}・剩下 {loop.Roster.Remaining} 名同伴", choiceStyle, Fade(Dim, alpha));
 
         if (BriefingOpen && CanStart)
-            Label(new Rect(0, Screen.height * 0.8f, Screen.width, titleStyle.fontSize), "空白鍵 開始", titleStyle, Dim);
+            Label(new Rect(0, Screen.height * 0.8f, Screen.width, startStyle.fontSize), "空白鍵 開始", startStyle, Dim);
     }
 
     static Color Fade(Color c, float alpha) => new(c.r, c.g, c.b, c.a * alpha);
