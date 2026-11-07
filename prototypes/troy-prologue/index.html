@@ -582,7 +582,11 @@ function makeAudio(T) {
   t0 = actx.currentTime + .1;
   // 盲區長度跟規則同一個常數（BLIND_LEN），開局後 audio.update(game) 也會再讀 game.T 對齊
   const blind = typeof Rules.blindLen === 'function' ? Rules.blindLen() : undefined;
-  const a = AudioMod.createAudio(actx, { T, t0, blind });
+  // 實驗開關（網址參數）：?musicZone=0..4 強制音樂層分區編曲；?musicOff=chant,chorus,shepard,theme 關掉音樂層元素
+  const q = new URLSearchParams(location.search), off = (q.get('musicOff') || '').split(',');
+  const musicLayers = {}; ['chant', 'chorus', 'shepard', 'theme'].forEach(k => { if (off.includes(k)) musicLayers[k] = false; });
+  const musicZone = q.has('musicZone') ? +q.get('musicZone') : null;
+  const a = AudioMod.createAudio(actx, { T, t0, blind, musicLayers, musicZone });
   // 介面允許模組自己持有狀態：回傳物件缺的方法改用模組上的
   audio = {
     now: () => (a && a.now ? a.now() : AudioMod.now ? AudioMod.now() : actx.currentTime),

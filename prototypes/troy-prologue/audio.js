@@ -4,7 +4,9 @@
  *
  * 兩層分工（設計文件第 7 節）：
  *   - 功能層：Risset 打擊、失控層、警戒低音。時間與音量和音樂層完全無關。
- *   - 音樂層：合成（夜風＋低吟）與自備音檔兩條，setMusicMode('synth'|'track'|'mix') 切換，各自有音量。
+ *   - 音樂層：合成與自備音檔兩條，setMusicMode('synth'|'track'|'mix') 切換，各自有音量。
+ *     合成＝夜風＋原創四元素（第 7 節）：低吟（類母音合成）、合唱和弦、謝帕德音階、主題動機（里拉琴／號角），
+ *     依 state.zone 分區編曲、2～4 秒過渡；勝利時號角奏一次主題。主題資料匯出為 THEME（給其他章當閃回）。
  *     兩條都經過同一組音樂匯流排：盲區時短漸變壓到約 −40 dB；警戒時壓低約 −12 dB 並低切約 200 Hz，
  *     讓慢低音最清楚；追殺時略提高。所有音量變化都用 ctx.currentTime 排程的 ramp。
  *
@@ -60,8 +62,43 @@
     MUSIC_HUNT_GAIN: 1.15,     // 追殺時音樂層略提高
     MUSIC_RAMP: 0.25,          // 模式、音量、警戒變化的 ramp 長度（秒）
     TRACK_VOL: 0.35,           // 自備音檔預設音量（市售音檔通常很滿，先放低）
-    SYNTH_VOL: 1               // 合成音樂層預設音量
+    SYNTH_VOL: 1,              // 合成音樂層預設音量
+    // 原創音樂層（第 7 節）：頻段、分區、各元素參數
+    MUSIC_EQ_HP: 130,          // 音樂層高通（Hz）：讓出低音拍（43–128 Hz）與低鼓
+    MUSIC_EQ_NOTCH: 1200,      // 挖掉手拍、金屬敲擊的主頻（Hz）
+    MUSIC_EQ_NOTCH_DB: -8,
+    ECHO_TIME: 0.27, ECHO_FB: 0.32, ECHO_WET: 0.35,   // 音樂層回聲
+    ZONE_XFADE: 3,             // 分區過渡（秒）
+    CHANT_GAIN: 0.05,          // 低吟
+    CHORUS_GAIN: 0.035,        // 合唱和弦（每聲部總和前）
+    SHEP_VOICES: 6,            // 謝帕德聲部數（6 個八度）
+    SHEP_BASE: 73.42,          // 最低聲部 p=0 時的頻率（D2）；鐘形中心在 D5 附近（587 Hz）
+    SHEP_SIGMA: 0.18,          // 謝帕德鐘形寬度（八度位置 x 為 0..1）
+    SHEP_GAIN: 0.011,          // 每條振盪器峰值增益
+    SHEP_DETUNE: 7,            // 合唱感：每聲部兩條 ±7 cents
+    SHEP_LP_LO: 1400, SHEP_LP_HI: 4200,   // 低通隨 p 打開（Hz）
+    LYRE_LEN: 1.8,             // 里拉琴撥弦長度（秒）
+    LYRE_DECAY: 0.996,         // Karplus-Strong 每週期衰減
+    LYRE_VEL: 0.09,            // 里拉琴音量
+    THEME_N0: 4                // 主題第一個音落在第 3 層第幾拍（4 → p≈0.0995，盲區 0.6 秒＋回升 0.15 秒之後）
   };
+
+  // ---------- 主題動機（原創，D 多利安）----------
+  // 其他章當作創傷閃回時直接讀這份資料：midi 音高、units 時值（1 unit ≈ 0.22 秒，里拉琴；號角 0.32 秒）。
+  // 輪廓：D 往上跳五度到 A，碰一下多利安特有的 B（大六度），再沿 F、E 走回 D。前 4 音（D A B A）是「可以走了」的短句。
+  var THEME = {
+    name: '回家的動機', mode: 'D 多利安', tonic: 62,
+    notes: [
+      { midi: 62, name: 'D4', units: 2 },
+      { midi: 69, name: 'A4', units: 1 },
+      { midi: 71, name: 'B4', units: 1 },
+      { midi: 69, name: 'A4', units: 2 },
+      { midi: 65, name: 'F4', units: 1 },
+      { midi: 64, name: 'E4', units: 1 },
+      { midi: 62, name: 'D4', units: 4 }
+    ]
+  };
+  function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
   // 各 cue 名稱與別名（規則層的 sfx 名稱不確定時都接得住）
   var CUE_ALIAS = {
@@ -264,7 +301,8 @@
       if (music.src) { try { music.src.stop(); } catch (e) {} try { music.src.disconnect(); } catch (e) {} music.src = null; }
     }
 
-    // ---------- 環境：夜風 + 低吟（合成音樂層） ----------
+    // ---------- 環境：夜風（合成音樂層的底） ----------
+    var persist = [];                       // 常駐的振盪器／音源，dispose 時一起停（不然斷開後仍佔 CPU）
     var ambient = ctx.createGain(); ambient.gain.value = 0; ambient.connect(synthLevel);
     if (!mute.ambient) {
       var w = ctx.createBufferSource(); w.buffer = noiseBuf; w.loop = true;
@@ -273,15 +311,230 @@
       wl.connect(wlg); wlg.connect(wf.frequency);
       var wg = ctx.createGain(); wg.gain.value = 0.022;
       w.connect(wf); wf.connect(wg); wg.connect(ambient); w.start(); wl.start();
-      // 低吟：D2、A2 兩條鋸齒，經低通共鳴成「嗯—」的人聲感，緩慢起伏像呼吸
-      var chant = ctx.createGain(); chant.gain.value = 0.009;
-      var cf = ctx.createBiquadFilter(); cf.type = 'lowpass'; cf.frequency.value = 420; cf.Q.value = 5;
-      [73.42, 73.9, 110.0].forEach(function (fq) { var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fq; o.connect(cf); o.start(); });
-      var cl = ctx.createOscillator(); cl.frequency.value = 0.11; var clg = ctx.createGain(); clg.gain.value = 0.006;
-      cl.connect(clg); clg.connect(chant.gain); cl.start();
-      cf.connect(chant); chant.connect(ambient);
+      persist.push(w, wl);
       ambient.gain.setValueAtTime(0, ctx.currentTime);
       ambient.gain.linearRampToValueAtTime(1, ctx.currentTime + 2);
+    }
+
+    // ---------- 原創音樂層（設計文件第 7 節）【改編】 ----------
+    // 四個元素：低吟（常駐）、合唱和弦（偶爾）、謝帕德音階（每循環）、主題動機（盲區剛結束）。
+    // 全部接在 musicEQ → synthLevel 之前，所以都經過 musicHP（警戒低切）→ musicDuck（警戒退後）→ musicGate（盲區靜音）。
+    // 頻段：musicEQ 先高通 130 Hz（讓出低音拍 43–128 Hz 與低鼓），再在 1.2 kHz 挖 −8 dB（手拍、金屬敲擊的主頻）。
+    var ML = opts.musicLayers || {};
+    var layerOn = { chant: ML.chant !== false, chorus: ML.chorus !== false, shepard: ML.shepard !== false, theme: ML.theme !== false };
+    if (mute.music) layerOn = { chant: false, chorus: false, shepard: false, theme: false };
+    var forcedZone = (opts.musicZone != null && isFinite(opts.musicZone)) ? clamp(Math.round(+opts.musicZone), 0, 4) : null;
+
+    var mEQhp = ctx.createBiquadFilter(); mEQhp.type = 'highpass'; mEQhp.frequency.value = C.MUSIC_EQ_HP; mEQhp.Q.value = 0.7;
+    var mEQnotch = ctx.createBiquadFilter(); mEQnotch.type = 'peaking'; mEQnotch.frequency.value = C.MUSIC_EQ_NOTCH;
+    mEQnotch.Q.value = 1.4; mEQnotch.gain.value = C.MUSIC_EQ_NOTCH_DB;
+    mEQhp.connect(mEQnotch); mEQnotch.connect(synthLevel);
+    // 便宜的回聲（延遲＋回授＋低通），代替第二個捲積殘響：主題、合唱用。也在 musicGate 之前，盲區一樣被壓掉
+    var echoIn = ctx.createGain(); echoIn.gain.value = 1;
+    var echoD = ctx.createDelay(1); echoD.delayTime.value = C.ECHO_TIME;
+    var echoFb = ctx.createGain(); echoFb.gain.value = C.ECHO_FB;
+    var echoLP = ctx.createBiquadFilter(); echoLP.type = 'lowpass'; echoLP.frequency.value = 1800;
+    echoIn.connect(echoD); echoD.connect(echoLP); echoLP.connect(echoFb); echoFb.connect(echoD);
+    var echoOut = ctx.createGain(); echoOut.gain.value = C.ECHO_WET; echoLP.connect(echoOut); echoOut.connect(mEQhp);
+
+    function bus(send) {                     // 每個元素一條匯流排：分區音量在這裡 ramp
+      var g = ctx.createGain(); g.gain.value = 0; g.connect(mEQhp);
+      if (send) { var s = ctx.createGain(); s.gain.value = send; g.connect(s); s.connect(echoIn); }
+      return g;
+    }
+    var chantBus = bus(0), chorusBus = bus(0.5), shepBus = bus(0.15), themeBus = bus(0.8);
+
+    // 低吟：男聲「ㄚ—ㄛ—」。D3＋略走音的 D3＋A3 三條鋸齒（基音 147／220 Hz，在低音拍之上），
+    // 經三個帶通共振峰（F1、F2、F3）；共振峰被一個很慢的 LFO 在「ㄚ」(730/1090) 和「ㄛ」(570/840) 之間推移，像換氣換字。
+    var chantLP = ctx.createBiquadFilter(); chantLP.type = 'lowpass'; chantLP.frequency.value = 2400; chantLP.connect(chantBus);
+    if (!mute.music) {
+      var chantSrc = ctx.createGain(); chantSrc.gain.value = 1;
+      [[146.83, 1], [147.6, 0.8], [220.0, 0.55]].forEach(function (v) {
+        var o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.value = v[0]; g.gain.value = v[1];
+        o.connect(g); g.connect(chantSrc); o.start(); persist.push(o);
+      });
+      var chantAmp = ctx.createGain(); chantAmp.gain.value = C.CHANT_GAIN; chantAmp.connect(chantLP);
+      var vowelLFO = ctx.createOscillator(); vowelLFO.frequency.value = 0.045; vowelLFO.start(); persist.push(vowelLFO);
+      [[650, 80, 6, 1], [965, 125, 8, 0.55], [2450, 0, 10, 0.12]].forEach(function (fm) {   // [中心, LFO 深度, Q, 音量]
+        var f = ctx.createBiquadFilter(), g = ctx.createGain();
+        f.type = 'bandpass'; f.frequency.value = fm[0]; f.Q.value = fm[2]; g.gain.value = fm[3];
+        if (fm[1]) { var d = ctx.createGain(); d.gain.value = fm[1]; vowelLFO.connect(d); d.connect(f.frequency); }
+        chantSrc.connect(f); f.connect(g); g.connect(chantAmp);
+      });
+      var breathLFO = ctx.createOscillator(); breathLFO.frequency.value = 0.11;     // 呼吸般的起伏（±35%）
+      var breathD = ctx.createGain(); breathD.gain.value = C.CHANT_GAIN * 0.35;
+      breathLFO.connect(breathD); breathD.connect(chantAmp.gain); breathLFO.start(); persist.push(breathLFO);
+    }
+
+    // 分區編曲：每區各元素的目標音量（ramp 長度 ZONE_XFADE 秒）
+    //   chant 低吟、chorus 合唱、shep 謝帕德、theme 主題動機奏幾個音（0＝不奏）、far＝低吟像從遠處（低通 450 Hz）、
+    //   chorusEvery 每幾個循環一次合唱和弦（0＝不唱）
+    var ZONE_MIX = [
+      { chant: 0.4, chorus: 0, shep: 0, theme: 0, far: true, chorusEvery: 0 },   // 0 開場字卡
+      { chant: 0.4, chorus: 0, shep: 0, theme: 0, far: true, chorusEvery: 0 },   // 1 木馬腹中：心跳＋鼓，只剩很遠的低吟
+      { chant: 1, chorus: 1, shep: 0, theme: 4, far: false, chorusEvery: 3 },    // 2 神殿廣場：加低吟（主題只露前 4 音）
+      { chant: 1, chorus: 1, shep: 1, theme: 4, far: false, chorusEvery: 3 },    // 3 窄巷：加謝帕德音階
+      { chant: 1.1, chorus: 1, shep: 1, theme: 7, far: false, chorusEvery: 2 },  // 4 城門：全部疊上，主題完整
+      { chant: 1.3, chorus: 1, shep: 0, theme: 0, far: false, chorusEvery: 0 }   // 5 勝利：謝帕德收掉，低吟撐起，號角奏主題
+    ];
+    var mz = { zone: -1, mix: ZONE_MIX[1], won: false, chorusN: 0 };
+    function applyZone(z, dur) {
+      if (z === mz.zone) return;
+      var m = ZONE_MIX[z] || ZONE_MIX[1], d = dur == null ? C.ZONE_XFADE : dur;
+      mz.zone = z; mz.mix = m;
+      rampTo(chantBus.gain, layerOn.chant ? m.chant : 0, d);
+      rampTo(chorusBus.gain, layerOn.chorus ? m.chorus : 0, d);
+      rampTo(shepBus.gain, layerOn.shepard ? m.shep : 0, d);
+      rampTo(themeBus.gain, layerOn.theme ? 1 : 0, Math.min(d, 0.5));
+      rampTo(chantLP.frequency, m.far ? 450 : 2400, d, true);
+    }
+    applyZone(forcedZone != null ? forcedZone : (opts.zone != null ? clamp(opts.zone | 0, 0, 4) : 0), 0.01);
+
+    // 里拉琴（Karplus-Strong 撥弦）：每個音高預先算一段緩衝（只算一次），播放時一個 BufferSource。
+    // 音高 = sr ÷ (N + 0.5)（平均濾波多半格延遲），用 playbackRate 補到準確頻率。
+    var ksCache = {};
+    function ksBuffer(midi) {
+      if (ksCache[midi]) return ksCache[midi];
+      var f = midiHz(midi), N = Math.max(2, Math.round(sr / f - 0.5)), len = Math.floor(sr * C.LYRE_LEN);
+      var b = ctx.createBuffer(1, len, sr), d = b.getChannelData(0), ring = new Float32Array(N), lp = 0, i, peak = 0, dc = 0;
+      for (i = 0; i < N; i++) { lp = lp * 0.45 + (Math.random() * 2 - 1) * 0.55; ring[i] = lp; }   // 指腹撥：帶一點低通的噪音
+      for (i = 0; i < N; i++) dc += ring[i] / N;
+      for (i = 0; i < N; i++) ring[i] -= dc;
+      var idx = 0;
+      for (i = 0; i < len; i++) {
+        var cur = ring[idx], nx = ring[(idx + 1) % N];
+        d[i] = cur; ring[idx] = C.LYRE_DECAY * 0.5 * (cur + nx); idx = (idx + 1) % N;
+        if (Math.abs(cur) > peak) peak = Math.abs(cur);
+      }
+      var fade = Math.floor(sr * 0.12);
+      for (i = 0; i < len; i++) { d[i] /= (peak || 1); if (i > len - fade) d[i] *= (len - i) / fade; }
+      ksCache[midi] = { buf: b, rate: f * (N + 0.5) / sr };
+      return ksCache[midi];
+    }
+    function lyre(dest, t, midi, vel) {
+      var k = ksBuffer(midi), s = ctx.createBufferSource(), g = ctx.createGain();
+      s.buffer = k.buf; s.playbackRate.value = k.rate; g.gain.value = vel;
+      s.connect(g); g.connect(dest); s.start(t); s.stop(t + C.LYRE_LEN);
+    }
+    // 號角：兩條略走音的鋸齒＋低通開合＋微顫音（勝利時奏主題）
+    function horn(dest, tt, f, dur, pk) {
+      var o = ctx.createOscillator(), o2 = ctx.createOscillator(), lf = ctx.createOscillator(), lg = ctx.createGain();
+      var fl = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = o2.type = 'sawtooth'; o.frequency.value = f; o2.frequency.value = f * 1.004;
+      lf.frequency.value = 5; lg.gain.value = f * 0.006; lf.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency);
+      fl.type = 'lowpass'; fl.Q.value = 1.5;
+      fl.frequency.setValueAtTime(f * 1.5, tt); fl.frequency.linearRampToValueAtTime(f * 5, tt + Math.min(0.25, dur * 0.4));
+      fl.frequency.linearRampToValueAtTime(f * 2, tt + dur);
+      g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(pk, tt + Math.min(0.15, dur * 0.3));
+      g.gain.setValueAtTime(pk, tt + Math.max(dur - 0.3, dur * 0.6)); g.gain.exponentialRampToValueAtTime(0.0001, tt + dur);
+      o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(dest);
+      [o, o2, lf].forEach(function (n) { n.start(tt); n.stop(tt + dur + 0.05); });
+    }
+    // 主題動機奏一次。voice：'lyre'（里拉琴，主題動機原調）｜'horn'（號角，低八度、有八度疊奏）
+    // unit：一個時值單位的秒數；回傳結束時間
+    function playTheme(voice, t, opt) {
+      opt = opt || {};
+      var dest = opt.dest || (voice === 'horn' ? cueBus : themeBus), unit = opt.unit || (voice === 'horn' ? 0.32 : 0.22);
+      var n = Math.min(opt.notes || THEME.notes.length, THEME.notes.length), at = 0;
+      for (var i = 0; i < n; i++) {
+        var nt = THEME.notes[i], last = i === n - 1;
+        if (voice === 'horn') {
+          var dur = nt.units * unit * (last ? 1.6 : 0.95) + 0.12;
+          horn(dest, t + at * unit, midiHz(nt.midi - 12), dur, 0.15);
+          if (last || i === 0) horn(dest, t + at * unit, midiHz(nt.midi - 24), dur, 0.1);
+        } else lyre(dest, t + at * unit, nt.midi, C.LYRE_VEL * (i === 0 ? 1.1 : 1));
+        at += nt.units;
+      }
+      return t + at * unit;
+    }
+
+    // 謝帕德音階：SHEP_VOICES 個八度的柔和音色（正弦＋少量 2、3、4 次泛音），每個聲部兩條振盪器略走音（合唱感）。
+    // 第 i 聲部頻率 = SHEP_BASE · 2^(i + p)，音量 = 鐘形(x)，x = (i + p) ÷ SHEP_VOICES 是「八度位置」。
+    // p 從 0 到 1 每個聲部剛好升一個八度，p = 1 時第 i 聲部接上下一循環第 i+1 聲部 → 無限上升。
+    // 每個循環在盲區結束時重建（從底部重來），循環末收掉；p 越大越響（緊繃）、低通越開越亮。
+    var shepWave = ctx.createPeriodicWave(new Float32Array([0, 0, 0, 0, 0]), new Float32Array([0, 1, 0.18, 0.07, 0.03]));
+    var shepLP = ctx.createBiquadFilter(); shepLP.type = 'lowpass'; shepLP.frequency.value = 1400; shepLP.Q.value = 0.5;
+    shepLP.connect(shepBus);
+    function shepBell(x) { var d = (x - 0.5) / C.SHEP_SIGMA; return Math.exp(-d * d); }
+    function scheduleShepard(c, from) {
+      var cs = t0 + c * T, a = Math.max(cs + BL, from), e = cs + T - 0.06;
+      if (e - a < 0.5) return;
+      var pa = (a - cs) / T, pe = (e - cs) / T, K = 48;
+      shepLP.frequency.setValueAtTime(C.SHEP_LP_LO * Math.pow(C.SHEP_LP_HI / C.SHEP_LP_LO, pa), a);
+      shepLP.frequency.exponentialRampToValueAtTime(C.SHEP_LP_HI * Math.pow(C.SHEP_LP_HI / C.SHEP_LP_LO, pe - 1), e);
+      for (var i = 0; i < C.SHEP_VOICES; i++) {
+        var curve = new Float32Array(K), gmax = 0;
+        for (var j = 0; j < K; j++) {
+          var p = pa + (pe - pa) * j / (K - 1);
+          var edge = Math.min(1, j / 3, (K - 1 - j) / 2);          // 頭尾幾點淡入淡出，不爆音
+          curve[j] = C.SHEP_GAIN * shepBell((i + p) / C.SHEP_VOICES) * (0.5 + 0.5 * p) * edge;
+          if (curve[j] > gmax) gmax = curve[j];
+        }
+        if (gmax < C.SHEP_GAIN * 0.02) continue;                    // 太小聲的聲部（最低、最高）不建
+        var g = ctx.createGain(); g.gain.value = 0; g.gain.setValueCurveAtTime(curve, a, e - a); g.connect(shepLP);
+        var f0 = C.SHEP_BASE * Math.pow(2, i);
+        [-C.SHEP_DETUNE, C.SHEP_DETUNE].forEach(function (cents) {
+          var o = ctx.createOscillator(); o.setPeriodicWave(shepWave); o.detune.value = cents;
+          o.frequency.setValueAtTime(f0 * Math.pow(2, pa), a);
+          o.frequency.exponentialRampToValueAtTime(f0 * Math.pow(2, pe), e);
+          o.connect(g); o.start(a); o.stop(e + 0.02);
+        });
+      }
+      if (log) log.push({ type: 'shepard', c: c, t: a, until: e });
+    }
+
+    // 合唱和弦：三個鋸齒聲部（多利安的 i 級 Dm 與 IV 級 G，輪流），經「ㄛ」共振峰，在循環中段（p 0.25～0.75）浮起又退去，
+    // 避開盲區與 p 最高的緊繃段。
+    var CHORDS = [[50, 57, 65], [55, 59, 62]];       // D3 A3 F4 ／ G3 B3 D4
+    function chorusChord(t, dur, notes, dest) {
+      var env = ctx.createGain(); env.gain.value = 0; env.connect(dest);
+      var f1 = ctx.createBiquadFilter(), f2 = ctx.createBiquadFilter(), g2 = ctx.createGain();
+      f1.type = f2.type = 'bandpass'; f1.frequency.value = 570; f1.Q.value = 5; f2.frequency.value = 840; f2.Q.value = 7; g2.gain.value = 0.6;
+      f1.connect(env); f2.connect(g2); g2.connect(env);
+      var att = Math.min(1.8, dur * 0.4);
+      env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(C.CHORUS_GAIN, t + att);
+      env.gain.setValueAtTime(C.CHORUS_GAIN, t + dur - att); env.gain.linearRampToValueAtTime(0, t + dur);
+      notes.forEach(function (m) {
+        var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = midiHz(m); o.detune.value = (Math.random() - 0.5) * 10;
+        o.connect(f1); o.connect(f2); o.start(t); o.stop(t + dur + 0.05);
+      });
+    }
+
+    // 每個循環的音樂排程（在 scheduleRange 裡，循環開始前約 0.8 秒排好）
+    var musicNext = null;
+    function scheduleMusicCycle(c) {
+      var cs = t0 + c * T, from = ctx.currentTime + 0.03, m = mz.mix;
+      if (mute.music) return;
+      // 謝帕德：這區有、或還在淡出中才建
+      if (layerOn.shepard && (m.shep > 0 || shepBus.gain.value > 0.01)) scheduleShepard(c, from);
+      // 主題動機：盲區剛結束、低頻時段。音符落在第 3 層（k=3）Risset 拍點上（n = THEME_N0 + 累計時值），
+      // 和鼓同時起音，所以不會在拍點附近多出別的起音；那段時間第 3 層剛好由慢變快，旋律跟著微微推前。
+      if (layerOn.theme && m.theme > 0 && !mz.won) {
+        var Mk = C.M * 8, n = C.THEME_N0, times = [];
+        for (var i = 0; i < m.theme; i++) { times.push(cs + log2(1 + n / Mk) * T); n += THEME.notes[i].units; }
+        if (times[0] >= from && times[0] - cs >= BL + C.MUSIC_RISE) {
+          for (i = 0; i < times.length; i++) lyre(themeBus, times[i], THEME.notes[i].midi, C.LYRE_VEL * (i === 0 ? 1.1 : 1));
+          if (log) log.push({ type: 'theme', c: c, t: times[0], notes: times.length, times: times });
+        }
+      }
+      // 合唱和弦：偶爾（每 chorusEvery 個循環）
+      if (layerOn.chorus && m.chorusEvery > 0 && c % m.chorusEvery === 0) {
+        var ta = cs + T * 0.25, tb = cs + T * 0.75;
+        if (ta >= from) {
+          chorusChord(ta, tb - ta, CHORDS[mz.chorusN++ % CHORDS.length], chorusBus);
+          if (log) log.push({ type: 'chorus', c: c, t: ta });
+        }
+      }
+    }
+    // 勝利：號角完整奏一次主題，底下一個長長的 Dm 合唱。走 cueBus（不經 musicGate），盲區不會把號角切斷
+    function winTheme(t) {
+      var end = playTheme('horn', t, { dest: cueBus });
+      chorusChord(t - 0.6, end - t + 2.6, CHORDS[0], cueBus);
+      if (log) log.push({ type: 'winTheme', t: t, until: end });
+    }
+    function scheduleMusicUntil(b) {
+      if (musicNext == null) musicNext = cycleIndex(ctx.currentTime);
+      while (t0 + musicNext * T < b + 0.8) { scheduleMusicCycle(musicNext); musicNext++; }
     }
 
     // ---------- 狀態 ----------
@@ -349,6 +602,7 @@
       while (t0 + (gateCycle + 1) * T < b + 0.3) scheduleGate(gateCycle + 1, null);
       if (musicCycle == null) scheduleMusicGate(cycleIndex(a), a);
       while (t0 + (musicCycle + 1) * T < b + 0.3) scheduleMusicGate(musicCycle + 1, null);
+      scheduleMusicUntil(b);               // 原創音樂層（謝帕德、主題、合唱）每循環排一次
 
       var c0 = cycleIndex(a), c1 = cycleIndex(b);
       var nLayers = C.LAYERS + (st.hunted ? 1 : 0);
@@ -498,21 +752,7 @@
         noise(cueBus, t, 'lowpass', 120, 0.7, 0.8, 0.6, 2.6);
         tone(cueBus, t, 'sine', 45, 38, 2.5, 0.6, 0.5, 2.8);
         CUES.latch(t + 0.1); CUES.latch(t + 0.7);
-        function horn(tt, f, dur, pk) {    // 號角：鋸齒＋低通開合＋微顫音
-          var o = ctx.createOscillator(), o2 = ctx.createOscillator(), lf = ctx.createOscillator(), lg = ctx.createGain();
-          var fl = ctx.createBiquadFilter(), g = ctx.createGain();
-          o.type = o2.type = 'sawtooth'; o.frequency.value = f; o2.frequency.value = f * 1.004;
-          lf.frequency.value = 5; lg.gain.value = f * 0.006; lf.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency);
-          fl.type = 'lowpass'; fl.Q.value = 1.5;
-          fl.frequency.setValueAtTime(f * 1.5, tt); fl.frequency.linearRampToValueAtTime(f * 5, tt + 0.25);
-          fl.frequency.linearRampToValueAtTime(f * 2, tt + dur);
-          g.gain.setValueAtTime(0.0001, tt); g.gain.exponentialRampToValueAtTime(pk, tt + 0.15);
-          g.gain.setValueAtTime(pk, tt + dur - 0.3); g.gain.exponentialRampToValueAtTime(0.0001, tt + dur);
-          o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(cueBus);
-          [o, o2, lf].forEach(function (n) { n.start(tt); n.stop(tt + dur + 0.05); });
-        }
-        horn(t + 1.4, 146.8, 1.4, 0.16); horn(t + 2.9, 220, 1.0, 0.16); horn(t + 3.9, 293.7, 2.6, 0.18);
-        horn(t + 3.9, 146.8, 2.6, 0.12);
+        // 號角奏主題：在 update 看到 phase === 'win' 時排（音樂層，見 winTheme），這裡只留城門與鼓
         for (var i = 0; i < 8; i++) CUES._drum(t + 3.9 + i * 0.32, i % 4 === 0 ? 1 : 0.6);
       },
       alert: function (t) {               // 起疑：衛兵猛然轉身，短促的青銅刮擦＋低鼓一擊
@@ -592,6 +832,7 @@
             (Math.abs(s.cycle.T - T) > 1e-6 || Math.abs(s.cycle.t0 - t0) > 1e-6)) {
           T = s.cycle.T; t0 = s.cycle.t0; scheduleGate(cycleIndex(schedEnd), schedEnd);
           scheduleMusicGate(cycleIndex(schedEnd), schedEnd);
+          musicNext = cycleIndex(schedEnd) + 1;      // 音樂層從下一個循環起照新網格排
         }
         // 盲區長度：規則常數 BLIND_LEN（舊名 BLIND），改了就從已排到的地方重排 gate
         var bl = s.T && typeof s.T === 'object' ? (s.T.BLIND_LEN != null ? +s.T.BLIND_LEN : +s.T.BLIND) : (isFinite(s.blindLen) ? +s.blindLen : NaN);
@@ -620,6 +861,10 @@
           bassPending = bassPending.filter(function (b) { return b.t > now - 2; });
         }
         st.panic = clamp(+s.panic || 0, 0, 1);
+        // 分區編曲：state.zone 0～4；勝利時城門大開，號角完整奏一次主題
+        if (s.phase === 'win') {
+          if (!mz.won) { mz.won = true; applyZone(5); winTheme(now + 1.4); }
+        } else applyZone(forcedZone != null ? forcedZone : clamp((+s.zone || 0) | 0, 0, 4));
         // 推門閂：推的時候每 0.45 秒一聲木頭摩擦（越接近完成越響），高頻時鬆手就不會有聲音
         if (s.gate && s.gate.pushing && !s.gate.open && now - st.lastCreak > 0.45) {
           st.lastCreak = now;
@@ -688,10 +933,27 @@
       },
       getMusic: function () { return { mode: music.mode, synthVol: music.synthVol, trackVol: music.trackVol, hasTrack: !!music.buf,
                                        duration: music.buf ? music.buf.duration : 0 }; },
+      // ---------- 原創音樂層：各元素開關、強制分區、主題 ----------
+      THEME: THEME,
+      // name: 'chant'|'chorus'|'shepard'|'theme'；實驗用，關掉的元素 ZONE_XFADE 秒內淡出
+      setMusicLayer: function (name, on) {
+        if (!(name in layerOn) || mute.music) return false;
+        layerOn[name] = !!on; var z = mz.zone; mz.zone = -1; applyZone(z, 0.5); return true;
+      },
+      getMusicLayers: function () { return { chant: layerOn.chant, chorus: layerOn.chorus, shepard: layerOn.shepard, theme: layerOn.theme,
+                                              zone: mz.zone, forcedZone: forcedZone }; },
+      setMusicZone: function (z) { forcedZone = (z == null || !isFinite(z)) ? null : clamp(Math.round(+z), 0, 4); if (forcedZone != null) applyZone(forcedZone); },
+      // 主題動機奏一次（其他章的閃回也可用）：voice 'lyre'｜'horn'，opt {notes, unit}；回傳結束時間
+      playTheme: function (voice, when, opt) { return dead ? 0 : playTheme(voice || 'lyre', when != null ? when : ctx.currentTime + 0.02, opt); },
       // 測試用：音樂層節點（讀 gain.value 驗證壓低）
-      _music: { gate: musicGate, duck: musicDuck, hp: musicHP, synth: synthLevel, track: trackLevel },
+      _music: { gate: musicGate, duck: musicDuck, hp: musicHP, synth: synthLevel, track: trackLevel,
+                chant: chantBus, chorus: chorusBus, shepard: shepBus, theme: themeBus },
       log: log,
-      dispose: function () { dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack(); try { master.disconnect(); } catch (e) {} }
+      dispose: function () {
+        dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack();
+        persist.forEach(function (n) { try { n.stop(); } catch (e) {} });
+        try { master.disconnect(); } catch (e) {}
+      }
     };
     return api;
   }
@@ -705,5 +967,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C };
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz };
 });
