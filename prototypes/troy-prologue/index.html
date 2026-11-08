@@ -131,6 +131,21 @@ button:hover { filter: brightness(1.12); }
   #hint { font-size: 15px; bottom: calc(60px + var(--sb)); }
 }
 @media (prefers-reduced-motion: reduce) { #msgs div { animation: none; } }
+/* 試玩數據（遙測，docs/design/2026-11-08-telemetry.md）：裝置選擇、告知、快問、匯出、即時摘要 */
+#telBox { border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; font-size: 14px; }
+#telBox .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+#telBox .mlabel { color: var(--fire); }
+#telBox .note, .telNote { font-size: 12px; color: var(--dim); margin: 0; line-height: 1.6; }
+.btnExport { font-size: 14px; padding: 5px 12px; }
+#survey { border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; text-align: left; font-size: 14px; max-width: 560px; width: 100%; }
+#survey legend { color: var(--fire); padding: 0 4px; }
+#survey .q { display: grid; gap: 4px; }
+#survey .scale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+#survey .scale small { color: var(--dim); font-size: 12px; }
+#survey textarea { font: inherit; font-size: 14px; background: rgba(0,0,0,.35); color: var(--ash); border: 1px solid var(--line); padding: 6px; min-height: 48px; resize: vertical; }
+#survey .row button { font-size: 14px; padding: 5px 12px; }
+#survey .thanks { color: var(--moon); }
+#telHud { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 230px; font: 11px/1.5 ui-monospace, monospace; color: var(--dim); background: var(--panel); padding: 6px 8px; white-space: pre; }
 </style>
 
 <div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
@@ -150,6 +165,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="zone"><span id="zoneNo"></span><b id="zoneName"></b></div>
 <div class="hud" id="msgs" aria-live="polite"></div>
 <div class="hud" id="hint" aria-live="polite"></div>
+<div class="hud" id="telHud" hidden></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
 <div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
 <div class="hud" id="phase" hidden>
@@ -178,8 +194,19 @@ button:hover { filter: brightness(1.12); }
       <dt>Q</dt><dd>衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
       <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
+    <div id="telBox" role="group" aria-label="試玩數據">
+      <div class="mrow">
+        <span class="mlabel">播放裝置</span>
+        <label><input type="radio" name="oDevice" value="speaker"> 喇叭</label>
+        <label><input type="radio" name="oDevice" value="wired"> 耳機（有線）</label>
+        <label><input type="radio" name="oDevice" value="bt"> 耳機（藍牙）</label>
+      </div>
+      <p class="note">本頁會在你的瀏覽器裡記錄試玩數據，只存在本機，按「匯出」才會產生檔案。不記姓名、帳號或任何個人資料。</p>
+      <div class="mrow"><button type="button" class="btnExport">匯出數據</button><span class="telNote telCount"></span></div>
+    </div>
     <div id="optSlotIntro"></div>
    </div>
+    <div class="surveySlot" id="surveySlotIntro" style="grid-column:1 / -1"></div>
     <div class="row start"><button class="primary" id="btnStart">點一下開始</button></div>
   </div>
 </div>
@@ -196,6 +223,7 @@ button:hover { filter: brightness(1.12); }
       <button id="btnFromTop">從頭開始</button>
       <button type="button" class="btnIntro">回到開場</button>
       <button type="button" class="btnHub">回總首頁</button>
+      <button type="button" class="btnExport">匯出數據</button>
     </div>
   </div>
 </div>
@@ -204,6 +232,7 @@ button:hover { filter: brightness(1.12); }
 <fieldset id="opts">
   <legend>實驗開關</legend>
   <label><input type="checkbox" id="oPhase"> 顯示相位條（除錯用）</label>
+  <label><input type="checkbox" id="oTel"> 顯示試玩數據摘要（試驗場、錄影用）</label>
   <label>視覺輔助 <select id="oAid"><option value="auto">自動（第 2 區減半、之後關閉）</option><option value="on">全開</option><option value="off">全關</option></select></label>
   <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
   <div id="music" role="group" aria-label="音樂層">
@@ -226,6 +255,20 @@ button:hover { filter: brightness(1.12); }
   </div>
 </fieldset>
 
+<!-- 一局結束的三題快問（可略過；在開場、失敗、勝利畫面之間移動） -->
+<fieldset id="survey" hidden>
+  <legend>快問三題（可略過）</legend>
+  <div class="q"><span>這一局，你聽得出節奏「驟降、從頭再來」的那一下嗎？</span>
+    <div class="scale" data-q="drop"><small>完全聽不出</small><label><input type="radio" name="sqDrop" value="1">1</label><label><input type="radio" name="sqDrop" value="2">2</label><label><input type="radio" name="sqDrop" value="3">3</label><label><input type="radio" name="sqDrop" value="4">4</label><label><input type="radio" name="sqDrop" value="5">5</label><small>每次都聽得很清楚</small></div></div>
+  <div class="q"><span>難度如何？</span>
+    <div class="scale" data-q="difficulty"><small>太簡單</small><label><input type="radio" name="sqDiff" value="1">1</label><label><input type="radio" name="sqDiff" value="2">2</label><label><input type="radio" name="sqDiff" value="3">3</label><label><input type="radio" name="sqDiff" value="4">4</label><label><input type="radio" name="sqDiff" value="5">5</label><small>太難</small></div></div>
+  <div class="q"><span>好玩嗎？</span>
+    <div class="scale" data-q="fun"><small>不好玩</small><label><input type="radio" name="sqFun" value="1">1</label><label><input type="radio" name="sqFun" value="2">2</label><label><input type="radio" name="sqFun" value="3">3</label><label><input type="radio" name="sqFun" value="4">4</label><label><input type="radio" name="sqFun" value="5">5</label><small>很好玩</small></div></div>
+  <label class="q"><span>還有什麼想說的？（可不填）</span><textarea id="sqNote" maxlength="2000"></textarea></label>
+  <div class="row"><button type="button" class="primary" id="btnSurveySend">送出</button><button type="button" id="btnSurveySkip">略過</button></div>
+</fieldset>
+<p class="thanks" id="surveyThanks" hidden>謝謝！已記下（只存在這台電腦）。</p>
+
 <!-- 失敗 -->
 <div class="screen" id="fail" hidden>
   <div class="card">
@@ -233,6 +276,8 @@ button:hover { filter: brightness(1.12); }
     <p id="failHint" hidden></p>
     <p class="dim">按 R 從這一區重來</p>
     <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="surveySlot"></div>
+    <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
 </div>
 
@@ -243,10 +288,16 @@ button:hover { filter: brightness(1.12); }
     <p>希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
     <p class="later">十年後……</p>
     <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="surveySlot"></div>
+    <div class="row" style="justify-content:center"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
 </div>
 
 <script src="../nav.js"></script>
+<script>
+// 試玩數據模組：一般從上一層載入；在 claude.ai 試玩頁（沙盒裡沒有上一層）改載同目錄的 telemetry.js
+document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(location.hostname) ? '' : '../') + 'telemetry.js"><\/script>');
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
 <script src="risset.js"></script>
@@ -798,6 +849,174 @@ function makeAudio(T) {
 // 音檔只在本機解碼播放，不上傳；換局重建聲音時沿用已解碼的 AudioBuffer。
 // ============================================================
 const music = { mode: 'synth', synthVol: 1, trackVol: .35, name: '', buf: null };
+
+// ============================================================
+// 試玩數據（遙測）：共用的 ../telemetry.js；沒載到就全部略過，照常能玩
+// 設計：docs/design/2026-11-08-telemetry.md（收什麼、不收什麼、N1 主動時間的判法）
+// 版本：頁面 <meta name="odyssey-build"> 或 window.ODYSSEY_BUILD（打包工具帶入 git 提交編號），沒有就是 dev
+// ============================================================
+const TEL = window.Telemetry || null;
+const BUILD = (document.querySelector('meta[name="odyssey-build"]') || {}).content || window.ODYSSEY_BUILD || 'dev';
+const telQ = new URLSearchParams(location.search);
+const tel = { zone: null, phase: null, hudAt: 0, surveyWhen: null, lastT: null, lastMs: 0 };
+// 記哪些鍵（打字、其他鍵不記）：走、屏息、衝刺、暗殺／門閂、安撫、重來；滑鼠右鍵屏息記成 Mouse2
+const TEL_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyQ', 'KeyR', 'Mouse2']);
+function telDevice() { const el = document.querySelector('input[name="oDevice"]:checked'); return el ? el.value : 'unknown'; }
+function telNow() { return actx ? actx.currentTime - (actx.outputLatency || actx.baseLatency || 0) : null; }   // 和 pend.actAt 同一個算法
+/** 每筆紀錄的時間與位置：規則的音訊時間、循環編號、相位、區域。 */
+function telClock() {
+  const g = game;
+  const t = g && g.time != null ? g.time : (actx ? actx.currentTime : null);
+  if (!g) return { t };
+  return { t, ci: g.cycle ? g.cycle.index : null, p: g.cycle ? g.cycle.p : null, z: g.zone };
+}
+/** 按鍵當下是哪種狀態：blind 盲區｜gap 警戒時低音拍之間的空檔｜fake 假驟降那一下｜alert 警戒｜hunt 追殺｜patrol 平常。 */
+function telState() {
+  const g = game; if (!g || !g.cycle) return 'menu';
+  if (g.phase !== 'play') return g.phase;
+  if (g.hunted) return 'hunt';
+  const c = g.cycle, alert = !!(g.panic && g.panic.active);
+  if (c.blind) return alert ? 'gap' : 'blind';
+  if (c.fake && g.time != null && g.time - c.start < num(K().BLIND_LEN, .6)) return 'fake';
+  return alert ? 'alert' : 'patrol';
+}
+/**
+ * 按鍵時間 at 相對拍點的時間差（秒，正 = 晚按），只填「這一下是在對那個拍」的欄位：
+ *   bass：Q 且衛兵起疑中（平常按 Q 規則不理）→ 最近的低音拍
+ *   blind：Shift／E → 最近的盲區開頭（警戒中是低音拍之間的空檔開頭）
+ *   beat：Q／Shift／E → 最近的可聽鼓點（音量 ≥ MASK_GAIN）
+ */
+function telOffs(at, code) {
+  const g = game; if (!g || !g.cycle || !Number.isFinite(at)) return null;
+  const isQ = code === 'KeyQ', isAct = code === 'KeyE' || code === 'ShiftLeft' || code === 'ShiftRight';
+  if (!isQ && !isAct) return null;
+  const k = K(), c = g.cycle, o = {};
+  if (isQ && g.panic && g.panic.active) { try { o.bass = Rules.bassBeatNear(at, g.bass.anchor, g.bass.period || k.BASS_PERIOD, k.BASS_WIN).off; } catch (e) {} }
+  const cands = c.alertBlind ? [c.blindFrom, c.blindFrom - num(k.BASS_PERIOD, 2.4)] : [c.start, c.blindFrom, c.start + c.T, c.start - c.T];
+  let best = null;
+  for (const b of cands) if (Number.isFinite(b) && (best == null || Math.abs(at - b) < Math.abs(at - best))) best = b;
+  if (best != null && isAct) o.blind = at - best;
+  try {
+    let bb = null;
+    for (const b of Rules.beatsBetween(at - .5, at + .5, g, { minGain: num(k.MASK_GAIN, .3) })) if (bb == null || Math.abs(b.t - at) < Math.abs(bb - at)) bb = b.t;
+    if (bb != null) o.beat = at - bb;
+  } catch (e) {}
+  return o;
+}
+/** N1 主動時間（音樂核心總綱第 7 節）：盲區或空檔、p ≤ HIGH_P 且不在任何衛兵的 r(p) 內、在門閂旁且 p ≤ GATE_LOW_P → 主動；其餘只能屏息或等 → 被動。 */
+function telActive() {
+  const g = game; if (!g || g.phase !== 'play' || !g.cycle || !g.player) return false;
+  const k = K(), c = g.cycle, p = c.p || 0, pl = g.player;
+  if (c.blind) return true;
+  const L = g.level && g.level.gate && g.level.gate.latch;
+  if (g.zone === 4 && L && Math.hypot(pl.x - L.x, pl.z - L.z) <= k.LATCH_R && p <= k.GATE_LOW_P) return true;
+  if (p > k.HIGH_P) return false;
+  for (const q of g.guards || []) {
+    if (!q.active || q.state === 'down') continue;
+    if (Math.hypot(q.x - pl.x, q.z - pl.z, pl.y || 0) <= Rules.radiusAt(p, q.state !== 'patrol', k)) return false;
+  }
+  return true;
+}
+function telEnv() {
+  const opt = v => (v == null ? null : v);
+  return TEL.collectEnv({
+    outputLatency: actx ? opt(actx.outputLatency) : null, baseLatency: actx ? opt(actx.baseLatency) : null, sampleRate: actx ? actx.sampleRate : null,
+    toggles: { phaseBar: $('oPhase').checked, visualAid: $('oAid').value, cycle: curT, music: music.mode, synthVol: music.synthVol, trackVol: music.trackVol },
+    query: location.search || ''
+  });
+}
+function telStart() {
+  if (!TEL || !game) return;
+  try {
+    TEL.start({ proto: 'troy-prologue', version: BUILD, device: telDevice(), clock: telClock, env: telEnv() });
+    tel.zone = game.zone; tel.phase = game.phase; tel.lastT = null; tel.lastMs = 0;
+    TEL.event('zone', { from: null, to: game.zone });
+    // 有些瀏覽器開局時 outputLatency 還是 0，兩秒後再讀一次
+    setTimeout(() => { try { if (TEL.active() && actx) TEL.env({ outputLatency: actx.outputLatency, baseLatency: actx.baseLatency }); } catch (e) {} }, 2000);
+    telCount();
+  } catch (e) { console.warn('試玩數據：開局失敗', e); }
+}
+/** 規則事件：game.out 每一筆原樣記。 */
+function telOut(evs) { if (!TEL || !TEL.active()) return; try { for (const e of evs) if (e) TEL.event('out', e); } catch (e) {} }
+/** 每幀（遊玩中、事件取走之後）：區域切換、失敗、過關；累計主動時間與幀率。 */
+function telFrame(dt) {
+  if (!TEL || !TEL.active() || !game) return;
+  try {
+    if (game.zone !== tel.zone) { TEL.event('zone', { from: tel.zone, to: game.zone }); tel.zone = game.zone; }
+    if (game.phase !== tel.phase) {
+      if (game.phase === 'fail') TEL.event('fail', { code: game.failCode || null, reason: game.failReason || null, zone: game.zone });
+      tel.phase = game.phase;
+      if (game.phase === 'win') { TEL.event('win', { retries: game.retries }); TEL.endRun({ outcome: 'win' }); telCount(); return; }
+    }
+    // 時間用規則的音訊時間差（幀率低時 loop 的 dt 被壓在 0.1 秒，會少算）；幀率另外用真實的幀間隔
+    const nowMs = performance.now(), gt = game.time;
+    if (game.phase === 'play' && tel.lastT != null && gt != null) TEL.tick(gt - tel.lastT, { active: telActive(), state: telState(), frameDt: tel.lastMs ? (nowMs - tel.lastMs) / 1000 : null });
+    tel.lastT = gt; tel.lastMs = nowMs;
+  } catch (e) {}
+}
+function telInput(code, down) {
+  if (!TEL || !TEL.active() || !game || paused || game.phase !== 'play' || !TEL_KEYS.has(code)) return;
+  try { const at = telNow(); TEL.input(code, at, { down, state: telState(), off: down ? telOffs(at, code) : null }); } catch (e) {}
+}
+function telCount() {
+  if (!TEL) return;
+  let n = 0; try { n = TEL.runs().length; } catch (e) {}
+  document.querySelectorAll('.telCount').forEach(el => { el.textContent = n ? `這台電腦已存 ${n} 局（最多 ${TEL.MAX_RUNS} 局）` : '還沒有紀錄'; });
+}
+function telExport() {
+  if (!TEL) return;
+  try { TEL.save(); TEL.exportJSON(); setTimeout(() => { try { TEL.exportCSV(); } catch (e) {} }, 400); } catch (e) { console.warn('試玩數據：匯出失敗', e); }
+}
+/** 一局結束的三題快問：when = 'fail'｜'win'｜'intro'。一局只問一次（答了或略過都算）。 */
+function telSurveyShow(when) {
+  const box = $('survey');
+  if (!TEL || TEL.surveyed() || (!TEL.active() && !TEL.last())) { box.hidden = true; return; }
+  const slot = document.querySelector('#' + when + ' .surveySlot'); if (!slot) return;
+  box.querySelectorAll('input').forEach(i => { i.checked = false; }); $('sqNote').value = '';
+  slot.appendChild(box); slot.appendChild($('surveyThanks'));
+  box.hidden = false; $('surveyThanks').hidden = true; tel.surveyWhen = when;
+}
+function telSurveyDone(skipped) {
+  if (TEL) {
+    const v = n => { const el = document.querySelector('input[name="' + n + '"]:checked'); return el ? +el.value : null; };
+    try { TEL.survey(skipped ? { skipped: true, when: tel.surveyWhen } : { drop: v('sqDrop'), difficulty: v('sqDiff'), fun: v('sqFun'), note: $('sqNote').value.trim(), when: tel.surveyWhen }); } catch (e) {}
+  }
+  $('survey').hidden = true; $('surveyThanks').hidden = !!skipped;
+}
+/** 試驗場、錄影用：畫面右下角即時顯示本局重點數字（實驗開關或網址 ?telemetry=1）。 */
+function telHud(nowMs) {
+  const el = $('telHud');
+  const on = !!(TEL && TEL.active() && ($('oTel').checked || telQ.has('telemetry')));
+  el.hidden = !on; if (!on || nowMs - tel.hudAt < 500) return;
+  tel.hudAt = nowMs;
+  const s = TEL.summary(); if (!s) return;
+  const pct = v => (v == null ? '—' : Math.round(v * 100) + '%');
+  const ms = v => (v == null ? '—' : Math.round(v * 1000));
+  const sec = v => (v == null ? '—' : v.toFixed(1) + 's');
+  el.textContent = [
+    `試玩數據  局號 ${s.runId}`,
+    `裝置 ${(TEL.DEVICES[s.device] || s.device)}  經過 ${sec(s.elapsed)}  ${s.fpsMedian || '—'} fps`,
+    `主動時間 ${pct(s.activeRatio)}（N1）`,
+    `盲區行動 ${s.blind.ok}/${s.blind.attempts}  首次 ${sec(s.blind.firstOk)}`,
+    `安撫對拍 ${s.calm.ok}/${s.calm.ok + s.calm.bad}  首次完成 ${sec(s.calm.firstDone)}`,
+    `Q 對低音 平均 ${ms(s.off.bass.mean)} σ ${ms(s.off.bass.sd)} ms（${s.off.bass.n}）`,
+    `Shift/E 對盲區 平均 ${ms(s.off.blind.mean)} σ ${ms(s.off.blind.sd)} ms（${s.off.blind.n}）`,
+    `腳步合拍 ${s.steps.masked}/${s.steps.masked + s.steps.loud}  失敗 ${s.fails}  提示 ${s.hints.total}`
+  ].join('\n');
+}
+if (TEL) {
+  const last = TEL.lastDevice();
+  const r = last && document.querySelector('input[name="oDevice"][value="' + last + '"]'); if (r) r.checked = true;
+  document.querySelectorAll('input[name="oDevice"]').forEach(i => i.addEventListener('change', () => { TEL.rememberDevice(i.value); TEL.setDevice(i.value); }));
+  document.querySelectorAll('.btnExport').forEach(b => { b.onclick = telExport; });
+  $('btnSurveySend').onclick = () => telSurveyDone(false);
+  $('btnSurveySkip').onclick = () => telSurveyDone(true);
+  window.addEventListener('pagehide', () => { try { TEL.save(); } catch (e) {} });
+  telCount();
+} else {
+  $('telBox').hidden = true;
+  document.querySelectorAll('.btnExport').forEach(b => { b.hidden = true; });
+}
 const rawAudio = () => (audio && audio.raw && typeof audio.raw.setMusicMode === 'function' ? audio.raw : null);
 function applyMusic(reload) {
   const a = rawAudio(); if (!a) return;
@@ -883,6 +1102,7 @@ function startFromTop() {
   curT = +$('oT').value || 10;
   makeAudio(curT);
   newGame();
+  telStart();                                    // 試玩數據：一局從這裡開始（上一局沒結束就記成 restart）
   startedOnce = true;
   resume();
 }
@@ -890,6 +1110,7 @@ function retryZone() {
   if (!game) return startFromTop();
   if (!actx) makeAudio(curT);
   game.retry();                                  // 規則：從這一區開頭重來（前區已放倒的衛兵維持）
+  if (TEL && TEL.active()) { try { TEL.event('retry', { zone: game.zone }); } catch (e) {} tel.phase = game.phase; }
   const L = HW.lastLadder;
   if (L && performance.now() - L.at < 15000) { clearHints(); queueHint(L.a); }
   overShown = false; winT = 0; $('fail').hidden = true;
@@ -955,6 +1176,7 @@ function showMsg(text, color) {
 function drain() {
   const out = game.out; if (!out || !out.length) return;
   const evs = out.splice(0, out.length);
+  telOut(evs);                                   // 試玩數據：規則事件原樣記
   for (const e of evs) {
     if (!e) continue;
     if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) { VIS.stepFlash = 1; tiltGuards(e.x, e.z); }   // 這一步被聽到了
@@ -1006,6 +1228,7 @@ function loop() {
     if (blindNow && !loop.wasBlind && game.phase === 'play') { try { audio.cue('blind'); } catch (e) {} }
     loop.wasBlind = blindNow;
     drain();
+    telFrame(dt);                                  // 試玩數據：區域切換、失敗、過關、主動時間
     worldHints(t);
   } else VIS.prevT = null;
   if (game && !paused && (game.phase === 'fail' || game.phase === 'win')) {
@@ -1014,6 +1237,7 @@ function loop() {
     if (!overShown) showOver();
   }
   if (game && S) { sync(dt, nowMs / 1000); renderer.render(scene, camera); if (playing) hud(dt); }
+  telHud(nowMs);
   requestAnimationFrame(loop);
 }
 
@@ -1462,9 +1686,11 @@ function showOver() {
     const L = HW.lastLadder, fh = $('failHint');
     fh.innerHTML = ''; fh.hidden = !(L && performance.now() - L.at < 8000);
     if (!fh.hidden) keyText(fh, L.a);
+    telSurveyShow('fail');
     setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
   } else {
     $('win').hidden = false;
+    telSurveyShow('win');
     // 先看城門打開、火把湧入，再轉黑畫面
     setTimeout(() => { if (game && game.phase === 'win') $('win').classList.add('dark'); }, 5500);
   }
@@ -1493,12 +1719,12 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 let mouseBreath = false;   // 按住滑鼠右鍵＝屏息
 canvas.addEventListener('mousedown', e => {
   if (!active()) return;
-  if (e.button === 2) { mouseBreath = true; return; }
+  if (e.button === 2) { mouseBreath = true; telInput('Mouse2', true); return; }
   if (locked) return;
   drag = { x: e.clientX, y: e.clientY };
   lockPointer();
 });
-window.addEventListener('mouseup', e => { if (e.button === 2) mouseBreath = false; drag = null; });
+window.addEventListener('mouseup', e => { if (e.button === 2) { if (mouseBreath) telInput('Mouse2', false); mouseBreath = false; } drag = null; });
 window.addEventListener('blur', () => { mouseBreath = false; });
 window.addEventListener('mousemove', e => {
   if (!active()) return;
@@ -1510,6 +1736,7 @@ window.addEventListener('mousemove', e => {
 });
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', e => {
+  if (e.target && e.target.closest && e.target.closest('#survey')) return;   // 在快問裡打字，不當遊戲按鍵
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   const was = keys[e.code]; keys[e.code] = true;
   if (!e.repeat && !was && !MOVE_KEYS.has(e.code)) skipHint();   // 走路鍵一直在按，不拿來換提示
@@ -1517,6 +1744,7 @@ window.addEventListener('keydown', e => {
   if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
   if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
   if (paused || e.repeat || was) return;
+  telInput(e.code, true);                         // 試玩數據：按下（時間、相對拍點的差、當下狀態）
   // 按鍵當下的音訊時間（扣掉輸出延遲＝玩家聽到的時間）：衝刺、暗殺、門閂、安撫的時間判定都用它，不用幀時間
   const isAct = e.code === 'KeyE' || e.code === 'KeyQ' || e.code === 'ShiftLeft' || e.code === 'ShiftRight';
   if (isAct && actx) pend.actAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
@@ -1524,17 +1752,19 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyQ') { pend.calm = true; pend.calmAt = pend.actAt; }
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') pend.dash = true;
 });
-window.addEventListener('keyup', e => { keys[e.code] = false; });
+window.addEventListener('keyup', e => { if (keys[e.code]) telInput(e.code, false); keys[e.code] = false; });
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 function pause() {
   if (!game || paused) return;
   paused = true; unlockPointer();
+  if (TEL && TEL.active()) { try { TEL.event('pause', {}); } catch (e) {} }
   $('optSlotPause').appendChild($('opts'));
   $('pause').hidden = false;
   try { if (actx && actx.state === 'running') actx.suspend(); } catch (e) {}   // 暫停＝音訊時鐘也停，規則的時間不會跳
 }
 function resume() {
+  if (TEL && TEL.active() && paused && startedOnce && game && game.time != null) { try { TEL.event('resume', {}); } catch (e) {} tel.lastMs = 0; }
   paused = false;
   $('intro').hidden = true; $('pause').hidden = true;
   try { if (actx && actx.state === 'suspended') actx.resume(); } catch (e) {}
@@ -1553,6 +1783,7 @@ $('btnAgain').onclick = startFromTop;
 // 實驗開關（相位條、視覺輔助、難度、音樂層與已載入的音檔）都留在頁面上，所以自然保留；
 // 音訊環境 actx 沿用，下次「開始」由 makeAudio 重建聲音，不會兩套疊在一起。
 function backToIntro() {
+  if (TEL && TEL.active()) { try { TEL.endRun({ outcome: 'quit', zone: game ? game.zone : null }); } catch (e) {} }
   paused = true; startedOnce = false; overShown = false;
   unlockPointer();
   if (audio && typeof audio.stop === 'function') { try { audio.stop(); } catch (e) {} }
@@ -1564,6 +1795,7 @@ function backToIntro() {
   document.body.classList.remove('playing');
   $('optSlotIntro').appendChild($('opts'));
   $('intro').hidden = false; $('intro').scrollTop = 0;
+  telSurveyShow('intro'); telCount();               // 回開場＝一局結束：還沒問過就在開場畫面問
 }
 // 回總首頁：共用的 ../nav.js；沒載到或沒有總首頁可去（claude.ai 試玩頁未設定網址）就隱藏按鈕
 const NAV = window.OdysseyNav;
@@ -1583,7 +1815,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats };   // collectBeats 給自動驗證用
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL };   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>

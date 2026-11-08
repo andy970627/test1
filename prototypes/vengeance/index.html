@@ -109,6 +109,18 @@ button.primary { background: var(--fire); color: #1a1008; font-weight: 500; }
 button:hover { filter: brightness(1.12); }
 :focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
 @media (max-width: 640px) { #phase { width: 150px; } #warn { font-size: 16px; white-space: normal; width: calc(100vw - 32px); } }
+/* 試玩數據（遙測，docs/design/2026-11-08-telemetry.md）：裝置選擇、告知、快問、匯出 */
+#telBox { border: 1px solid var(--line, #3a3024); padding: 8px 12px; display: grid; gap: 6px; font-size: 14px; }
+#telBox .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+#telBox .note, .telNote { font-size: 12px; opacity: .75; margin: 0; line-height: 1.6; }
+.btnExport { font-size: 14px; padding: 5px 12px; }
+#survey { border: 1px solid var(--line, #3a3024); padding: 10px 12px; display: grid; gap: 8px; text-align: left; font-size: 14px; max-width: 560px; }
+#survey legend { color: var(--fire); padding: 0 4px; }
+#survey .q { display: grid; gap: 4px; }
+#survey .scale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+#survey .scale small { opacity: .7; font-size: 12px; }
+#survey textarea { font: inherit; font-size: 14px; background: rgba(0,0,0,.35); color: inherit; border: 1px solid var(--line, #3a3024); padding: 6px; min-height: 48px; resize: vertical; }
+#survey .row button { font-size: 14px; padding: 5px 12px; }
 </style>
 
 <canvas id="cv"></canvas>
@@ -158,6 +170,17 @@ button:hover { filter: brightness(1.12); }
       <label><input type="checkbox" id="oDynamic"> 越危險越快：每倒一名頭目，一輪就少一個低音拍（最短 2 拍）<span class="dim" id="dynNote"></span></label>
       <label><input type="checkbox" id="oPhase" checked> 顯示節奏條（視覺輔助）</label>
     </div>
+    <div id="telBox" role="group" aria-label="試玩數據">
+      <div class="mrow">
+        <span>播放裝置</span>
+        <label><input type="radio" name="oDevice" value="speaker"> 喇叭</label>
+        <label><input type="radio" name="oDevice" value="wired"> 耳機（有線）</label>
+        <label><input type="radio" name="oDevice" value="bt"> 耳機（藍牙）</label>
+      </div>
+      <p class="note">本頁會在你的瀏覽器裡記錄試玩數據，只存在本機，按「匯出」才會產生檔案。不記姓名、帳號或任何個人資料。</p>
+      <div class="mrow"><button type="button" class="btnExport">匯出數據</button><span class="telNote telCount"></span></div>
+    </div>
+    <div class="surveySlot"></div>
     <div class="row"><button class="primary" id="btnStart">關上門，開始</button></div>
     <p class="dim">建議戴耳機。所有聲音都是即時合成。</p>
   </div>
@@ -182,6 +205,8 @@ button:hover { filter: brightness(1.12); }
     <h2>你倒在門檻上。</h2>
     <p class="dim" id="failWhy">鼓聲最急的時候最危險：看到有人舉矛就閃，跟著低音讓兒子舉盾。</p>
     <div class="row"><button class="primary" id="btnRetry">重來（R）</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="surveySlot"></div>
+    <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
 </div>
 
@@ -192,10 +217,30 @@ button:hover { filter: brightness(1.12); }
     <p>其餘的人丟下兵器，跪在爐火邊求饒。二十年後，奧德修斯終於回到自己的家。</p>
     <p class="dim" id="winStats"></p>
     <div class="row"><button id="btnAgain">再玩一次（R）</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="surveySlot"></div>
+    <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
 </div>
 
+<!-- 一局結束的三題快問（可略過；在開場、失敗、勝利畫面之間移動） -->
+<fieldset id="survey" hidden>
+  <legend>快問三題（可略過）</legend>
+  <div class="q"><span>這一局，你聽得出鼓聲「突然斷掉」的那一下嗎？</span>
+    <div class="scale"><small>完全聽不出</small><label><input type="radio" name="sqDrop" value="1">1</label><label><input type="radio" name="sqDrop" value="2">2</label><label><input type="radio" name="sqDrop" value="3">3</label><label><input type="radio" name="sqDrop" value="4">4</label><label><input type="radio" name="sqDrop" value="5">5</label><small>每次都聽得很清楚</small></div></div>
+  <div class="q"><span>難度如何？</span>
+    <div class="scale"><small>太簡單</small><label><input type="radio" name="sqDiff" value="1">1</label><label><input type="radio" name="sqDiff" value="2">2</label><label><input type="radio" name="sqDiff" value="3">3</label><label><input type="radio" name="sqDiff" value="4">4</label><label><input type="radio" name="sqDiff" value="5">5</label><small>太難</small></div></div>
+  <div class="q"><span>好玩嗎？</span>
+    <div class="scale"><small>不好玩</small><label><input type="radio" name="sqFun" value="1">1</label><label><input type="radio" name="sqFun" value="2">2</label><label><input type="radio" name="sqFun" value="3">3</label><label><input type="radio" name="sqFun" value="4">4</label><label><input type="radio" name="sqFun" value="5">5</label><small>很好玩</small></div></div>
+  <label class="q"><span>還有什麼想說的？（可不填）</span><textarea id="sqNote" maxlength="2000"></textarea></label>
+  <div class="row"><button type="button" class="primary" id="btnSurveySend">送出</button><button type="button" id="btnSurveySkip">略過</button></div>
+</fieldset>
+<p class="dim" id="surveyThanks" hidden>謝謝！已記下（只存在這台電腦）。</p>
+
 <script src="../nav.js"></script>
+<script>
+// 試玩數據模組：一般從上一層載入；在 claude.ai 試玩頁（沙盒裡沒有上一層）改載同目錄的 telemetry.js
+document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(location.hostname) ? '' : '../') + 'telemetry.js"><\/script>');
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
 <script src="vengeance.js"></script>
@@ -372,6 +417,92 @@ const hintState = { tele: false, shot: false, shown: 0 };
 let ladder = null;                // 暗示階梯第 2、3 階的文字 { key, html, until }
 let hintsCarry = null;            // 重來時沿用的失敗次數（規則的 g.hints）
 
+// ============================================================
+// 試玩數據（遙測）：共用的 ../telemetry.js；沒載到就全部略過，照常能玩
+// 設計：docs/design/2026-11-08-telemetry.md。大廳復仇一局＝開始到倒下或勝利（重來就是新的一局）。
+// 狀態名稱和木馬之夜對齊，摘要工具才能共用：空檔（全場凍結）記成 'blind'，其他記成 'drum'。
+// ============================================================
+const TEL = window.Telemetry || null;
+const BUILD = (document.querySelector('meta[name="odyssey-build"]') || {}).content || window.ODYSSEY_BUILD || 'dev';
+const tel = { lastT: null, lastMs: 0, surveyWhen: null };
+const TEL_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyQ', 'KeyF', 'KeyR', 'Mouse0', 'Mouse2']);
+function telDevice() { const el = document.querySelector('input[name="oDevice"]:checked'); return el ? el.value : 'unknown'; }
+function telClock() { const g = game; if (!g) return { t: actx ? actx.currentTime : null }; return { t: g.time, ci: g.cycle ? g.cycle.index : null, p: g.cycle ? g.cycle.p : null, z: null }; }
+function telState() { const g = game; if (!g || !g.cycle) return 'menu'; if (g.phase !== 'play') return g.phase; return g.cycle.gap ? 'blind' : 'drum'; }
+/** 時間差（秒，正 = 晚按）：舉盾（Q／右鍵）對最近的低音拍；放箭（左鍵／F）對最近的空檔開頭。 */
+function telOffs(at, code) {
+  const g = game; if (!g || !g.cycle || !Number.isFinite(at)) return null;
+  const o = {};
+  if (code === 'KeyQ' || code === 'Mouse2') { try { o.bass = Rules.bassBeatNear(at, g.bass.anchor, g.bass.period).off; } catch (e) {} }
+  else if (code === 'Mouse0' || code === 'KeyF') {
+    try { const c = Rules.cycleOf(g, at); const cands = [c.start, c.start + c.len]; let b = cands[0]; for (const x of cands) if (Math.abs(at - x) < Math.abs(at - b)) b = x; o.blind = at - b; } catch (e) {}
+  } else return null;
+  return o;
+}
+function telInput(code, down) {
+  if (!TEL || !TEL.active() || !game || paused || game.phase !== 'play' || !TEL_KEYS.has(code)) return;
+  try { const at = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0); TEL.input(code, at, { down, state: telState(), off: down ? telOffs(at, code) : null }); } catch (e) {}
+}
+function telStart() {
+  if (!TEL || !game) return;
+  try {
+    TEL.start({ proto: 'vengeance', version: BUILD, device: telDevice(), clock: telClock, env: TEL.collectEnv({
+      outputLatency: actx ? actx.outputLatency : null, baseLatency: actx ? actx.baseLatency : null, sampleRate: actx ? actx.sampleRate : null,
+      toggles: { difficulty, dynamic, phaseBar: showPhase }, query: location.search || '' }) });
+    tel.lastT = null; tel.lastMs = 0;
+    setTimeout(() => { try { if (TEL.active() && actx) TEL.env({ outputLatency: actx.outputLatency, baseLatency: actx.baseLatency }); } catch (e) {} }, 2000);
+  } catch (e) { console.warn('試玩數據：開局失敗', e); }
+}
+/** 每幀（規則推進、事件處理之後）：累計主動時間（N1：空檔、或腳邊有箭可撿）與幀率。 */
+function telFrame() {
+  if (!TEL || !TEL.active() || !game || game.phase !== 'play') return;
+  try {
+    const nowMs = performance.now(), t = game.time, P = game.player;
+    const pick = (game.floorArrows || []).some(a => Math.hypot(a.x - P.x, a.z - P.z) <= game.T.PICK_R);
+    if (tel.lastT != null && t != null) TEL.tick(t - tel.lastT, { active: !!game.cycle.gap || pick, state: telState(), frameDt: tel.lastMs ? (nowMs - tel.lastMs) / 1000 : null });
+    tel.lastT = t; tel.lastMs = nowMs;
+  } catch (e) {}
+}
+function telEnd(outcome) {
+  if (!TEL || !TEL.active()) return;
+  try { TEL.endRun({ outcome, stats: game && game.stats ? game.stats : null }); } catch (e) {}
+  telCount();
+}
+function telCount() {
+  if (!TEL) return;
+  let n = 0; try { n = TEL.runs().length; } catch (e) {}
+  document.querySelectorAll('.telCount').forEach(el => { el.textContent = n ? `這台電腦已存 ${n} 局（最多 ${TEL.MAX_RUNS} 局）` : '還沒有紀錄'; });
+}
+function telExport() { if (!TEL) return; try { TEL.save(); TEL.exportJSON(); setTimeout(() => { try { TEL.exportCSV(); } catch (e) {} }, 400); } catch (e) {} }
+function telSurveyShow(when) {
+  const box = $('survey');
+  if (!TEL || TEL.surveyed() || !TEL.last()) { box.hidden = true; return; }
+  const slot = document.querySelector('#' + when + ' .surveySlot'); if (!slot) return;
+  box.querySelectorAll('input').forEach(i => { i.checked = false; }); $('sqNote').value = '';
+  slot.appendChild(box); slot.appendChild($('surveyThanks'));
+  box.hidden = false; $('surveyThanks').hidden = true; tel.surveyWhen = when;
+}
+function telSurveyDone(skipped) {
+  if (TEL) {
+    const v = n => { const el = document.querySelector('input[name="' + n + '"]:checked'); return el ? +el.value : null; };
+    try { TEL.survey(skipped ? { skipped: true, when: tel.surveyWhen } : { drop: v('sqDrop'), difficulty: v('sqDiff'), fun: v('sqFun'), note: $('sqNote').value.trim(), when: tel.surveyWhen }); } catch (e) {}
+  }
+  $('survey').hidden = true; $('surveyThanks').hidden = !!skipped;
+}
+if (TEL) {
+  const last = TEL.lastDevice();
+  const r = last && document.querySelector('input[name="oDevice"][value="' + last + '"]'); if (r) r.checked = true;
+  document.querySelectorAll('input[name="oDevice"]').forEach(i => i.addEventListener('change', () => { TEL.rememberDevice(i.value); TEL.setDevice(i.value); }));
+  document.querySelectorAll('.btnExport').forEach(b => { b.onclick = telExport; });
+  $('btnSurveySend').onclick = () => telSurveyDone(false);
+  $('btnSurveySkip').onclick = () => telSurveyDone(true);
+  window.addEventListener('pagehide', () => { try { TEL.save(); } catch (e) {} });
+  telCount();
+} else {
+  $('telBox').hidden = true;
+  document.querySelectorAll('.btnExport').forEach(b => { b.hidden = true; });
+}
+
 function msg(text, color) {
   const d = document.createElement('div'); d.textContent = text; if (color) d.style.color = color;
   $('msgs').appendChild(d); setTimeout(() => d.remove(), 4100);
@@ -417,6 +548,7 @@ function startGame() {
   const t0 = actx.currentTime + 0.4;
   game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0, hints: hintsCarry, difficulty, dynamic });
   hintsCarry = game.hints; ladder = null; laterCues.length = 0;
+  if (TEL && TEL.active()) telEnd('restart');
   const KT = game.T;
   // 聲音層的循環由規則給（cycleAt）：動態模式下每個循環長度不同，聲音照規則的循環表排
   const cycleAt = t => (game ? Rules.cycleOf(game, t) : null);
@@ -431,6 +563,8 @@ function startGame() {
   $('win').querySelector('h2').textContent = '最強的求婚者倒下了';
   document.body.classList.add('playing');
   setHint('先聽：最低沉的那一聲鼓，每隔一陣子響一次。跟著它按 <span class="k">Q</span>，忒勒馬科斯會舉盾。');
+  telStart();                                    // 試玩數據：一局從這裡開始
+  $('survey').hidden = true; $('surveyThanks').hidden = true;
   lockPointer();
 }
 function setHint(h) { $('hint').innerHTML = h || ''; }
@@ -440,6 +574,7 @@ function setHint(h) { $('hint').innerHTML = h || ''; }
 // ============================================================
 const nameOf = id => { const s = game.suitors.find(x => x.id === id); return s ? (s.leader ? s.title + s.name : '一名求婚者') : ''; };
 function onEvent(e) {
+  if (TEL && TEL.active()) { try { TEL.event('out', e); } catch (err) {} }   // 試玩數據：規則事件原樣記
   if (e.type === 'attack_warn') e.pan = panOf(e.x, e.z);
   if (audio && e.type !== 'hint' && e.type !== 'cycle') audio.cue(e.type, null, e);
   const f = e.by ? figs.get(e.by) : e.id ? figs.get(e.id) : null;
@@ -490,11 +625,13 @@ function onWin() {
   audio && audio.stopRhythm(1.2);
   document.body.classList.remove('playing'); unlockPointer();
   const s = game.stats;
+  telEnd('win'); telSurveyShow('win');
   $('winStats').textContent = `用時 ${s.winAt.toFixed(0)} 秒・放箭 ${s.shots}（空檔 ${s.gapShots}）・閃過 ${s.dodges + s.breaths}・兒子擋下 ${s.blocks}・受傷 ${s.hurts}`;
   setTimeout(() => { if (game && game.phase === 'win') $('win').hidden = false; }, 3500);
 }
 function onFail() {
   audio && audio.stopRhythm(0.8);
+  telEnd('fail'); telSurveyShow('fail');
   document.body.classList.remove('playing'); unlockPointer();
   setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 1200);
 }
@@ -557,6 +694,7 @@ function loop(now) {
   const wasPlay = game.phase === 'play';
   Rules.step(game, t, input);
   for (const e of game.events) onEvent(e);
+  telFrame();
   for (const e of game.events) if (e.type === 'attack_warn') { const A = game.attacks.find(a => a.id === e.attack); if (A) A._fx = false; }
   // 擲矛：命中前 0.36 秒出手
   for (const A of game.attacks) if (A.type === 'spear' && !A._thrown && !A.cancelled && t >= A.impact - .36 && t < A.impact + .2) { A._thrown = true; flySpear(A); }
@@ -758,6 +896,7 @@ const active = () => game && game.phase === 'play' && !paused;
 function shootNow() {
   if (!active()) return;
   pend.shoot = true; pend.shootAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+  telInput('Mouse0', true);
 }
 function teleNow() {   // 舉盾：Q 或滑鼠右鍵，記按鍵當下的音訊時間
   if (!active()) return;
@@ -766,7 +905,7 @@ function teleNow() {   // 舉盾：Q 或滑鼠右鍵，記按鍵當下的音訊�
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousedown', e => {
   if (!active()) return;
-  if (e.button === 2) { teleNow(); return; }   // 右鍵＝舉盾（右手按節奏、左手走位）
+  if (e.button === 2) { teleNow(); telInput('Mouse2', true); return; }   // 右鍵＝舉盾（右手按節奏、左手走位）
   if (locked) { if (e.button === 0) shootNow(); return; }
   drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
   if (!lockFailed) lockPointer();
@@ -784,6 +923,7 @@ window.addEventListener('mousemove', e => {
   V.pitch = clamp(V.pitch - dy * .0022, -1.2, .9);
 });
 window.addEventListener('keydown', e => {
+  if (e.target && e.target.closest && e.target.closest('#survey')) return;   // 在快問裡打字，不當遊戲按鍵
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   const was = keys[e.code]; keys[e.code] = true;
   if (!game) return;
@@ -792,12 +932,13 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyR' && (game.phase === 'fail' || game.phase === 'win')) { startGame(); return; }
   if (!active() || e.repeat || was) return;
   const at = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+  if (e.code !== 'KeyF') telInput(e.code, true);   // F 走 shootNow，記成 Mouse0（放箭）
   if (e.code === 'KeyQ') teleNow();
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { pend.dodge = true; pend.dodgeAt = at; }
   if (e.code === 'KeyE') pend.pick = true;
   if (e.code === 'KeyF') shootNow();          // 備用放箭鍵（觸控板）
 });
-window.addEventListener('keyup', e => { keys[e.code] = false; });
+window.addEventListener('keyup', e => { if (keys[e.code]) telInput(e.code, false); keys[e.code] = false; });
 window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 // ============================================================
@@ -828,6 +969,7 @@ function showPreview() {
 }
 // 回到開場：頁內重設。聲音整個銷毀（下次開始重建，不會兩套疊在一起）、清掉排程中的音效與飛行物、回開場字卡
 function backToIntro() {
+  if (game && game.phase === 'play') telEnd('quit');
   paused = false;
   unlockPointer();
   if (audio) { try { audio.destroy(); } catch (e) {} audio = null; }
@@ -840,6 +982,7 @@ function backToIntro() {
   document.body.classList.remove('playing');
   showPreview();
   $('intro').hidden = false; $('intro').scrollTop = 0;
+  telSurveyShow('intro'); telCount();
 }
 
 $('btnStart').onclick = startGame;
@@ -860,7 +1003,7 @@ document.querySelectorAll('.btnHub').forEach(b => {
 
 showPreview();
 
-window.VengeanceDebug = { pause, resume, backToIntro, setDifficulty, get difficulty() { return difficulty; }, get dynamic() { return dynamic; }, set dynamic(v) { dynamic = !!v; $('oDynamic').checked = dynamic; setDifficulty(difficulty); },
+window.VengeanceDebug = { telemetry: TEL, pause, resume, backToIntro, setDifficulty, get difficulty() { return difficulty; }, get dynamic() { return dynamic; }, set dynamic(v) { dynamic = !!v; $('oDynamic').checked = dynamic; setDifficulty(difficulty); },
   get paused() { return paused; }, get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
 requestAnimationFrame(loop);
 })();
