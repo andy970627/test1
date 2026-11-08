@@ -14,7 +14,7 @@
 2. 讀 `CLAUDE.md`、`docs/design/concepts-overview.md`、本文件、要測的原型的設計文件。
 3. 用本地瀏覽器開原型。原型是 HTML 片段，用打包工具產出完整頁面：`bash tools/build-itch.sh`（連作），或用錄音工具的伺服器（`node tools/playtest-recorder/record.mjs` 會自動包外殼）。也可以直接開 claude.ai 的私人試玩網址。
 4. **本地錄音（比雲端清楚）**：先安裝 Playwright 的瀏覽器（`npx playwright install chromium`），在 `tools/playtest-recorder/record.mjs` 加上有頭模式或真實顯示卡的選項後錄製；本地有顯示卡，幀率與畫質會接近真實遊玩。
-5. **試玩數據**：開場選裝置（喇叭／有線耳機／藍牙），玩完在結果畫面按「匯出數據」下載 JSON 與 CSV，放進 `docs/process/playtest-data/`（新建）一起提交；雲端用 `node tools/telemetry/summarize.mjs docs/process/playtest-data/` 算 σ、成功率、主動時間比例。
+5. **試玩數據**：開場選裝置（喇叭／有線耳機／藍牙）。用 claude.ai 試玩網址玩，一局結束會**自動**寫進頁面資料庫，雲端直接讀，不用匯出；用本機伺服器玩才需要在結果畫面按「匯出數據」，把 JSON 放進 `docs/process/playtest-data/`（新建）一起提交；雲端用 `node tools/telemetry/summarize.mjs docs/process/playtest-data/` 算 σ、成功率、主動時間比例。
 6. 試玩回饋記在 `docs/process/playtest-notes.md`（新建）：日期、原型、裝置（耳機或喇叭）、卡在哪、太難或太簡單、聲音聽不聽得出盲區、好不好玩。
 7. 修改後照 `CLAUDE.md`：用中文提交、更新 `docs/process/production-log.md`、推到同一分支，雲端對話會接著做。
 

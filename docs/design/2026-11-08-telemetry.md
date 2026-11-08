@@ -135,3 +135,11 @@ Telemetry.summarizeRun(run) / toCSV(runs) / stats(arr) / histogram(arr, lo, hi, 
 - 盲區行動成敗用「1.5 秒內沒被追殺」近似，不是規則層的判定；暗殺失手、門閂太吵這類不算進盲區行動。
 - 版本號目前都是 `dev`，要打包工具（`tools/build-itch.mjs`）寫入 `<meta name="odyssey-build">` 才會有提交編號。
 - 匯出一次下載兩個檔，有些瀏覽器第一次會問「允許下載多個檔案」。
+
+## 自動抓取（11/08 補）
+
+- claude.ai 的兩個試玩頁（木馬之夜、大廳復仇）開了頁面資料庫能力（`db`，一個共用的小資料庫，只有這個試玩頁的頁面程式和雲端對話能讀寫）。頁面載入後 `claude.use('db')` 有拿到就 `Telemetry.setSink(...)`：一局結束、填完快問，自動把精簡版（事件與輸入各最多 3000 筆）寫到 `runs/<局號>`。
+- 權限：登入且能使用這個頁面的人（`interact`）可讀可寫；用公開連結只能看的人寫不進去，仍可手動匯出。
+- 雲端對話用 `ArtifactData` 工具 `list runs` 直接讀，或存成 JSON 餵 `tools/telemetry/summarize.mjs`。
+- 本機伺服器、itch.io 打包版沒有 `window.claude`，照舊只存瀏覽器、按「匯出數據」。
+- 不收個人資料的原則不變；資料庫裡只有局號、裝置、數據。
