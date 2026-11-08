@@ -856,6 +856,14 @@ const music = { mode: 'synth', synthVol: 1, trackVol: .35, name: '', buf: null }
 // 版本：頁面 <meta name="odyssey-build"> 或 window.ODYSSEY_BUILD（打包工具帶入 git 提交編號），沒有就是 dev
 // ============================================================
 const TEL = window.Telemetry || null;
+// 自動上傳試玩數據：只有 claude.ai 試玩頁有 window.claude（資料庫能力）；本機與 itch.io 版沒有，照舊只存本機、手動匯出
+if (TEL && window.claude && typeof window.claude.use === 'function') {
+  window.claude.use('db').then((db) => {
+    if (!db) return;
+    TEL.setSink((r) => db.doc('runs/' + r.runId).set(r));
+  }).catch(() => {});
+}
+
 const BUILD = (document.querySelector('meta[name="odyssey-build"]') || {}).content || window.ODYSSEY_BUILD || 'dev';
 const telQ = new URLSearchParams(location.search);
 const tel = { zone: null, phase: null, hudAt: 0, surveyWhen: null, lastT: null, lastMs: 0 };

@@ -423,6 +423,14 @@ let hintsCarry = null;            // 重來時沿用的失敗次數（規則的 
 // 狀態名稱和木馬之夜對齊，摘要工具才能共用：空檔（全場凍結）記成 'blind'，其他記成 'drum'。
 // ============================================================
 const TEL = window.Telemetry || null;
+// 自動上傳試玩數據：只有 claude.ai 試玩頁有 window.claude（資料庫能力）；本機與 itch.io 版沒有，照舊只存本機、手動匯出
+if (TEL && window.claude && typeof window.claude.use === 'function') {
+  window.claude.use('db').then((db) => {
+    if (!db) return;
+    TEL.setSink((r) => db.doc('runs/' + r.runId).set(r));
+  }).catch(() => {});
+}
+
 const BUILD = (document.querySelector('meta[name="odyssey-build"]') || {}).content || window.ODYSSEY_BUILD || 'dev';
 const tel = { lastT: null, lastMs: 0, surveyWhen: null };
 const TEL_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyQ', 'KeyF', 'KeyR', 'Mouse0', 'Mouse2']);

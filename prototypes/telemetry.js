@@ -10,6 +10,7 @@
  *   Telemetry.endRun(result)           一局結束：{outcome: 'win'|'fail'|'quit'|'restart'|'unload'}
  *   Telemetry.survey(answers)          三題快問：{drop, difficulty, fun（1～5 或 null）, note, skipped}
  *   Telemetry.exportJSON() / exportCSV()  下載本機存的最近幾局（瀏覽器裡）；回傳 {filename, text}
+ *   Telemetry.setSink(fn)              自動上傳：一局結束、填完快問時呼叫 fn(精簡後的局)；頁面接 claude.ai 試玩頁的資料庫用（本機、itch.io 沒有就不設）
  *   Telemetry.summary()                本局重點數字（給試驗場、錄影時顯示）
  *
  * 純邏輯：不碰 DOM，只有匯出時建立一個下載連結。localStorage 讀寫全部包 try/catch，沒有也能玩（只是不會留到下次）。
@@ -234,6 +235,7 @@
     const storage = cfg.storage !== undefined ? cfg.storage : defaultStorage();
     const wall = cfg.wall || (() => Date.now());
     let run = null, lastRun = null, clock = null, t0 = null, lastSave = 0;
+    let sink = null;   // 自動上傳的接收函式（setSink）
 
     function ctxNow() {
       let c = {};
@@ -333,6 +335,13 @@
         const ms = Math.round(fd * 1000);
         if (ms > 0 && ms < 1000) run.stats.dtHist[ms] = (run.stats.dtHist[ms] || 0) + 1;
       },
+      /** 自動上傳用的精簡版：事件與輸入各最多留 3000 筆，其餘欄位照舊（資料庫單筆上限 256 KiB） */
+      compact(r) {
+        if (!r) return null;
+        const cap = (arr) => (Array.isArray(arr) && arr.length > 3000 ? arr.slice(0, 3000) : arr);
+        return Object.assign({}, r, { events: cap(r.events), inputs: cap(r.inputs), truncated: !!((r.events && r.events.length > 3000) || (r.inputs && r.inputs.length > 3000)), summary: r.summary || summarizeRun(r) });
+      },
+      setSink(fn) { sink = typeof fn === 'function' ? fn : null; },
       endRun(result) {
         if (!run) return null;
         result = result || {};
@@ -344,6 +353,7 @@
         run.summary = summarizeRun(run);
         persist(run);
         lastRun = run; run = null;
+        if (sink) { try { const out = sink(api.compact(lastRun)); if (out && typeof out.catch === 'function') out.catch(() => {}); } catch (e) { /* 上傳失敗不影響遊戲 */ } }
         return lastRun;
       },
       /** 三題快問：記在進行中的局；局已結束就記在剛結束的那一局。 */
@@ -355,6 +365,7 @@
           skipped: !!a.skipped, at: run ? ctxNow().gt : (r.result && r.result.gt), when: a.when || null };
         if (r.summary) r.summary.survey = r.survey;
         persist(r);
+        if (sink && !run) { try { const out = sink(api.compact(r)); if (out && typeof out.catch === 'function') out.catch(() => {}); } catch (e) { /* 略過 */ } }
         return r.survey;
       },
       /** 目前這局（或剛結束那局）有沒有回答／略過快問。 */
