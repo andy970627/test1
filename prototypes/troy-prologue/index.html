@@ -151,7 +151,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="msgs" aria-live="polite"></div>
 <div class="hud" id="hint" aria-live="polite"></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
-<div class="hud" id="breath"><span id="breathText">屏息（空白鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
+<div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
 <div class="hud" id="phase" hidden>
   <span>相位 p（除錯）<span id="phaseNum"></span></span>
   <div class="track"><div class="fill" id="phaseFill"></div><div class="blind" id="phaseBlind"></div><div class="mark"></div></div>
@@ -172,7 +172,7 @@ button:hover { filter: brightness(1.12); }
    <div class="col">
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
-      <dt>按住 空白鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
+      <dt>按住 空白鍵 或 滑鼠右鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
       <dt>Shift</dt><dd>衝刺，只在節奏重來的瞬間有用</dd>
       <dt>E</dt><dd>點一下＝從背後暗殺；在城門按住＝推開門閂</dd>
       <dt>Q</dt><dd>衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
@@ -971,7 +971,7 @@ function readInput() {
   const I = {
     yaw: V.yaw,
     mx: 0, mz: 0,
-    breath: k('Space'),
+    breath: k('Space') || mouseBreath,   // 空白鍵或按住滑鼠右鍵（右手屏息、左手走位，不和 WASD、Shift 打架）
     dash: !!pend.dash, takedown: !!pend.takedown, calm: !!pend.calm,
     // 按鍵的那一刻（音訊時鐘，扣掉輸出延遲＝玩家聽到的時間）；規則用 actAt ?? game.time 判定衝刺、暗殺、門閂、安撫
     // calmAt 是舊欄位名，和 actAt 同值，規則還在讀的話照用
@@ -1416,7 +1416,7 @@ function hud(dt) {
   $('breathFill').style.width = ((1 - used) * 100).toFixed(1) + '%';
   $('breath').classList.toggle('on', !!P.breathing);
   $('breath').classList.toggle('low', used > .7);
-  $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵）';
+  $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵／右鍵）';
   $('shade').hidden = !P.hidden;
   // 城門進度（只在城門那一區、開始推之後出現）
   const prog = gateProg(g);
@@ -1490,13 +1490,16 @@ document.addEventListener('pointerlockchange', () => {
 });
 const active = () => game && !paused && (game.phase === 'play' || game.phase === 'intro');
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+let mouseBreath = false;   // 按住滑鼠右鍵＝屏息
 canvas.addEventListener('mousedown', e => {
   if (!active()) return;
+  if (e.button === 2) { mouseBreath = true; return; }
   if (locked) return;
   drag = { x: e.clientX, y: e.clientY };
   lockPointer();
 });
-window.addEventListener('mouseup', () => { drag = null; });
+window.addEventListener('mouseup', e => { if (e.button === 2) mouseBreath = false; drag = null; });
+window.addEventListener('blur', () => { mouseBreath = false; });
 window.addEventListener('mousemove', e => {
   if (!active()) return;
   let dx = 0, dy = 0;

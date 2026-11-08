@@ -124,7 +124,7 @@ button:hover { filter: brightness(1.12); }
   <div class="row"><div id="quiver"></div><span id="qn">12</span></div>
   <div class="row"><span>屏息</span><div id="breath"><b></b></div></div>
 </div>
-<div class="hud" id="tele"><span class="name">忒勒馬科斯</span><span class="state" id="teleState">跟著低音按 Q</span><div id="beat"><b></b><b></b><b></b></div></div>
+<div class="hud" id="tele"><span class="name">忒勒馬科斯</span><span class="state" id="teleState">跟著低音按 Q／右鍵</span><div id="beat"><b></b><b></b><b></b></div></div>
 <div class="hud" id="warn"></div>
 <div class="hud" id="hint"></div>
 <div class="hud" id="msgs"></div>
@@ -141,7 +141,7 @@ button:hover { filter: brightness(1.12); }
       <dt>左鍵</dt><dd>放箭：鼓聲斷掉的空檔最穩；鼓聲裡放箭會失準，還會暴露位置</dd>
       <dt>Shift</dt><dd>閃避：有人舉矛或撲上來，快命中時按</dd>
       <dt>空白鍵</dt><dd>按住屏息：撲上來的人會撲空（擲矛躲不掉）</dd>
-      <dt>Q</dt><dd>跟著最低沉的鼓聲按：忒勒馬科斯舉盾，替你擋下一次攻擊</dd>
+      <dt>Q 或 滑鼠右鍵</dt><dd>跟著最低沉的鼓聲按：忒勒馬科斯舉盾，替你擋下一次攻擊</dd>
       <dt>W A S D／E</dt><dd>在門檻前走動／撿起地上的箭（箭只有 12 支）</dd>
       <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
@@ -701,7 +701,7 @@ function updateHud(t) {
   // 忒勒馬科斯
   const T = game.tele, up = T.until >= t && t >= T.coolUntil, cool = t < T.coolUntil;
   $('tele').classList.toggle('up', up); $('tele').classList.toggle('cool', cool);
-  $('teleState').textContent = cool ? `盾被撞開，${Math.ceil(T.coolUntil - t)} 秒後才能再舉` : up ? '盾舉著（下一擊他會擋）' : '跟著低音按 Q';
+  $('teleState').textContent = cool ? `盾被撞開，${Math.ceil(T.coolUntil - t)} 秒後才能再舉` : up ? '盾舉著（下一擊他會擋）' : '跟著低音按 Q／右鍵';
   // 低音圓點：這一輪的第幾拍（圓點數 = 這一輪的拍數）
   const bb = Rules.bassBeatNear(t, game.bass.anchor, game.bass.period);
   const bi = Math.round((bb.beat - cy.start - game.T.BASS_OFFSET) / game.bass.period);
@@ -759,9 +759,14 @@ function shootNow() {
   if (!active()) return;
   pend.shoot = true; pend.shootAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
 }
+function teleNow() {   // 舉盾：Q 或滑鼠右鍵，記按鍵當下的音訊時間
+  if (!active()) return;
+  pend.tele = true; pend.teleAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+}
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousedown', e => {
   if (!active()) return;
+  if (e.button === 2) { teleNow(); return; }   // 右鍵＝舉盾（右手按節奏、左手走位）
   if (locked) { if (e.button === 0) shootNow(); return; }
   drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
   if (!lockFailed) lockPointer();
@@ -787,7 +792,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyR' && (game.phase === 'fail' || game.phase === 'win')) { startGame(); return; }
   if (!active() || e.repeat || was) return;
   const at = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
-  if (e.code === 'KeyQ') { pend.tele = true; pend.teleAt = at; }
+  if (e.code === 'KeyQ') teleNow();
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { pend.dodge = true; pend.dodgeAt = at; }
   if (e.code === 'KeyE') pend.pick = true;
   if (e.code === 'KeyF') shootNow();          // 備用放箭鍵（觸控板）
