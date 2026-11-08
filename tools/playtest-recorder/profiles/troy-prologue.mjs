@@ -26,6 +26,18 @@ export default {
   viewport: { width: 960, height: 540 },
   renderScale: 0.5,                     // 無 GPU 的雲端：三維場景以半解析度算圖，幀率約 2 倍
   defaults: { duration: 80 },
+  /* 喇叭可聽度檢查（analyze.mjs 第 6～8 項；11/08 加，回應 11/07 喇叭試玩）：
+   *   preBlind：一般盲區前 lead 秒內，1～3 kHz 頻帶峰值比前 1 秒平均高 ≥ 6 dB（預告音在喇叭上聽得出來；假驟降前不該有）
+   *   bassMid ：警戒時每個低音拍，200～600 Hz 頻帶峰值比前 1 秒背景高 ≥ 6 dB（低音拍的中頻敲擊成分，喇叭聽得到的最低頻段）
+   *   steps   ：step_loud 與 step_masked 在 1～4 kHz「相對前 0.3 秒上升量」的中位差 ≥ 12 dB（不合拍的碎石聲要突然冒出來、合拍的不多出聲音）
+   * 另外 analyze.mjs 會把錄音先過 200 Hz 高通（喇叭模擬）再跑全部檢查，報告兩組數字。 */
+  analysis: {
+    speaker: {
+      preBlind: { band: [1000, 3000], lead: 0.4, minDb: 6 },
+      bassMid: { band: [200, 600], minDb: 6 },
+      steps: { loud: '^step_?loud$', masked: '^step_?masked$', band: [1000, 4000], minDb: 12 }
+    }
+  },
 
   async prepare(page, o) {
     await page.waitForFunction(() => window.TroyDebug && window.RissetRules && window.RissetAudio, null, { timeout: 30000 });
@@ -178,19 +190,19 @@ export default {
    *   警戒＝panic.active、追殺＝hunted（以取樣幀為界，起點用 alert cue 的實際時間）。 */
   intervals(timeline, meta, events) {
     const B = ((meta.prepared || {}).rules || {}).BLIND || 0.6;
-    const blind = [], fake = [], seen = new Set();
+    const blind = [], normalBlind = [], fake = [], seen = new Set();   // normalBlind：一般盲區（不含警戒時低音拍之間的），給預告音檢查
     let prevCyc = null;
     for (const s of timeline) {
       if (s.blind && s.bid != null && !seen.has(s.bid) && s.bf != null && s.bt != null) {
-        seen.add(s.bid); blind.push([s.bf, s.bt]);
+        seen.add(s.bid); blind.push([s.bf, s.bt]); if (!s.ab) normalBlind.push([s.bf, s.bt]);
       }
       if (prevCyc != null && s.cyc !== prevCyc && s.cs != null) {
         if (s.fake) fake.push([s.cs, s.cs + B]);
-        else if (!s.ab && !seen.has('c' + s.cyc) && s.t - s.cs > B) { seen.add('c' + s.cyc); blind.push([s.cs, s.cs + B]); }
+        else if (!s.ab && !seen.has('c' + s.cyc) && s.t - s.cs > B) { seen.add('c' + s.cyc); blind.push([s.cs, s.cs + B]); normalBlind.push([s.cs, s.cs + B]); }
       }
       prevCyc = s.cyc;
     }
-    blind.sort((a, b) => a[0] - b[0]);
+    blind.sort((a, b) => a[0] - b[0]); normalBlind.sort((a, b) => a[0] - b[0]);
     const run = (key) => {
       const out = []; let cur = null;
       for (const s of timeline) {
@@ -203,7 +215,7 @@ export default {
     const alert = run('alert');
     const cues = (events || []).filter(e => e.type === 'cue' && /^alert$/i.test(e.name));
     for (const iv of alert) { const c = cues.find(e => e.at <= iv[0] + 1e-3 && e.at > iv[0] - 1); if (c) iv[0] = c.at; }
-    return { blind, fake, alert, hunted: run('hunted') };
+    return { blind, normalBlind, fake, alert, hunted: run('hunted') };
   },
 
   /* 規則上的拍點（給分析比對）：P1、P2。

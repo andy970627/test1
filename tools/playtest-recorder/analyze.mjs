@@ -9,6 +9,12 @@
  *   envelope.svg / .png      音量包絡（50 ms RMS，dBFS），疊上同樣的區段、偵測到的起音、規則拍點
  *   analysis.json            全部數字
  *   report.md                數字、通過／不通過、圖檔與 mp4／wav 路徑
+ *
+ * 喇叭可聽度（11/08 加，回應 11/07 喇叭試玩「三個核心訊號聽不出來」）：
+ *   - 設定檔 analysis.speaker 宣告三項「中頻可辨」檢查（預告音 1～3 kHz、低音拍 200～600 Hz、腳步 1～4 kHz 差），
+ *     用短時 FFT（1024 點、hop 256 ≈ 5.8 ms）算各頻帶能量隨時間的曲線，再以時間軸事件（盲區、低音拍、cue）對齊量峰值。
+ *   - 喇叭模擬：把錄音先過 200 Hz 高通（ffmpeg，兩級 = 24 dB/oct，近似筆電喇叭聽不到的低頻），
+ *     以 `--speaker` 子行程重跑全部檢查，寫成 analysis-speaker.json；主報告多一節「原始 vs 喇叭模擬」兩組數字。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +24,9 @@ import { createRequire } from 'node:module';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FFMPEG = process.env.FFMPEG || (fs.existsSync('/usr/bin/ffmpeg') ? '/usr/bin/ffmpeg' : 'ffmpeg');
-const dir = path.resolve(process.argv[2] || '.');
+const SPK = process.argv.includes('--speaker');                 // 喇叭模擬子行程：讀高通後的 wav，只寫 analysis-speaker.json
+const SPEAKER_HP = +(process.env.SPEAKER_HP || 200);           // 喇叭模擬的高通頻率（Hz）
+const dir = path.resolve(process.argv.filter(a => !a.startsWith('--'))[2] || '.');
 const J = JSON.parse(fs.readFileSync(path.join(dir, 'timeline.json'), 'utf8'));
 const meta = J.meta, TL = J.timeline || [], EV = J.events || [];
 let profile = null;
@@ -37,7 +45,7 @@ const TH = Object.assign({
   // 玩家自己的動作音（走提示音匯流排，盲區不壓）：盲區內有這些 cue 時，那次盲區照列但不計入盲區檢查
   blindConfoundCues: '^(dash|trapdoor|checkpoint|step_loud|gasp|takedown|takedown_fail|latch|latch_step|calm_ok|calm_bad|calm_done|alert|caught|hunt|escape|gate_open)$'
 }, (profile && profile.analysis && profile.analysis.thresholds) || {});
-const log = (...a) => console.log('[analyze]', ...a);
+const log = (...a) => console.log(SPK ? '[analyze:喇叭模擬]' : '[analyze]', ...a);
 
 // ---------- 讀 WAV ----------
 function readWav(f) {
@@ -64,7 +72,14 @@ function readWav(f) {
   }
   return { sr: fmt.sr, ch: fmt.ch, n, mono, peak: peak / 32768, clip };
 }
-const wav = readWav(path.join(dir, meta.audio.file || 'audio.wav'));
+let wavFile = path.join(dir, meta.audio.file || 'audio.wav');
+if (SPK) {   // 喇叭模擬：兩級 200 Hz 高通（24 dB/oct）；筆電喇叭 150～200 Hz 以下幾乎聽不到
+  const out = path.join(dir, 'audio-speaker.wav');
+  const r = spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', wavFile, '-af', `highpass=f=${SPEAKER_HP}:poles=2,highpass=f=${SPEAKER_HP}:poles=2`, '-c:a', 'pcm_s16le', out], { encoding: 'utf8' });
+  if (r.status !== 0) { console.error('[analyze:喇叭模擬] ffmpeg 高通失敗', r.stderr); process.exit(2); }
+  wavFile = out;
+}
+const wav = readWav(wavFile);
 const SR = wav.sr, T0 = meta.audio.startAudioTime, DUR = wav.n / SR;
 const tOf = (i) => T0 + i / SR, iOf = (t) => Math.round((t - T0) * SR);
 const gaps = (meta.audio.gapList || []).map(([t, n]) => [t, t + n / SR]);
@@ -285,9 +300,11 @@ if (starts.length) {
 }
 
 // 4. 爆音（削峰）
-add('clip', '有無爆音（削峰）', wav.clip <= TH.clipSamples && (meta.audio.clipSamplesFloat || 0) <= TH.clipSamples,
-  `削峰樣本 ${wav.clip}（16-bit）／${meta.audio.clipSamplesFloat ?? '—'}（浮點 ≥ 0.999）；峰值 ${r1(db(wav.peak * wav.peak))} dBFS`,
-  `門檻：削峰樣本 ≤ ${TH.clipSamples}。`);
+// 喇叭模擬：高通濾波會抬高峰值（相位旋轉），濾波後的削峰不代表遊戲輸出有爆音，所以不判定、只列峰值
+add('clip', '有無爆音（削峰）', SPK ? null : wav.clip <= TH.clipSamples && (meta.audio.clipSamplesFloat || 0) <= TH.clipSamples,
+  SPK ? `（高通後不判定）濾波後峰值 ${r1(db(wav.peak * wav.peak))} dBFS、超過 16-bit 範圍的樣本 ${wav.clip}` :
+    `削峰樣本 ${wav.clip}（16-bit）／${meta.audio.clipSamplesFloat ?? '—'}（浮點 ≥ 0.999）；峰值 ${r1(db(wav.peak * wav.peak))} dBFS`,
+  `門檻：削峰樣本 ≤ ${TH.clipSamples}。喇叭模擬（高通後）不判定這項：濾波會改變峰值。`);
 
 // 5. 長時間完全無聲／丟拍
 const silences = [];
@@ -309,15 +326,116 @@ const silences = [];
     `門檻：無 ≥ ${TH.silenceSec} 秒、低於 −60 dBFS 的段落，且丟拍比例 ≤ ${TH.dropRate * 100}%。無頭環境的音訊斷塊（補 0）不算。`);
 }
 
+// ---------- 6～8. 喇叭可聽度：中頻帶能量對事件對齊（設定檔 analysis.speaker 宣告） ----------
+// 短時 FFT：1024 點漢寧窗、hop 256（≈ 5.8 ms），一次算完所有要看的頻帶，回傳每個頻帶的 dB 曲線。
+function bandSeries(bands) {
+  const N = 1024, Hh = 256, win = new Float64Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+  const bins = bands.map(([f0, f1]) => [Math.ceil(f0 * N / SR), Math.min(N / 2, Math.floor(f1 * N / SR))]);
+  const nF = Math.max(0, Math.floor((wav.n - N) / Hh) + 1);
+  const out = bands.map(() => new Float32Array(nF)), tt = new Float32Array(nF);
+  const re = new Float64Array(N), im = new Float64Array(N);
+  for (let f = 0; f < nF; f++) {
+    const i0 = f * Hh;
+    tt[f] = tOf(i0 + N / 2);
+    for (let k = 0; k < N; k++) { re[k] = wav.mono[i0 + k] * win[k]; im[k] = 0; }
+    fft(re, im);
+    bins.forEach(([k0, k1], bi) => { let p = 0; for (let k = k0; k <= k1; k++) p += re[k] * re[k] + im[k] * im[k]; out[bi][f] = p / (N * N); });
+  }
+  return { t: tt, p: out, hop: Hh / SR };
+}
+const SPKC = (profile && profile.analysis && profile.analysis.speaker) || null;
+const speaker = { checks: [] };
+if (SPKC) {
+  const bandList = [SPKC.preBlind && SPKC.preBlind.band, SPKC.bassMid && SPKC.bassMid.band, SPKC.steps && SPKC.steps.band].filter(Boolean);
+  const BS = bandSeries(bandList);
+  const fIdx = (t) => Math.round((t - BS.t[0]) / BS.hop);
+  const bandOf = (band) => BS.p[bandList.indexOf(band)];
+  // 區間內的峰值 dB、平均功率 dB（略過音訊斷塊）
+  const peakDb = (arr, a, b) => { let m = 0, any = false; for (let f = Math.max(0, fIdx(a)); f <= Math.min(arr.length - 1, fIdx(b)); f++) { if (gapMask[Math.min(wav.n - 1, Math.round((BS.t[f] - T0) * SR))]) continue; any = true; if (arr[f] > m) m = arr[f]; } return any ? db(m) : null; };
+  const meanDb = (arr, a, b) => { let s = 0, n = 0; for (let f = Math.max(0, fIdx(a)); f <= Math.min(arr.length - 1, fIdx(b)); f++) { if (gapMask[Math.min(wav.n - 1, Math.round((BS.t[f] - T0) * SR))]) continue; s += arr[f]; n++; } return n ? db(s / n) : null; };
+  const inRange = (a, b) => a >= T0 && b <= T0 + DUR;
+  const fmtList = (xs) => xs.map(v => (v >= 0 ? '+' : '') + r1(v)).join('、');
+
+  // 6. 盲區前 0.4 秒有沒有預告音：1～3 kHz 頻帶峰值相對前 1 秒平均 ≥ +6 dB（只看一般盲區；假驟降前不該有）
+  if (SPKC.preBlind) {
+    const cfg = SPKC.preBlind, arr = bandOf(cfg.band), lead = cfg.lead || 0.4, need = cfg.minDb || 6;
+    const normal = (IV.normalBlind && IV.normalBlind.length ? IV.normalBlind : IV.blind);
+    const rows = [], fakeRows = [];
+    const measure = (a) => {
+      const w0 = a - lead - 0.05, w1 = a - 0.01, b0 = w0 - 1.0, b1 = w0;
+      if (!inRange(b0, w1) || gapFrac(b0, w1) > 0.2) return null;
+      const pk = peakDb(arr, w0, w1), bg = meanDb(arr, b0, b1);
+      if (pk == null || bg == null) return null;
+      return { t: +a.toFixed(3), peakDb: r1(pk), baseDb: r1(bg), riseDb: r1(pk - bg) };
+    };
+    for (const [a] of normal) { const m = measure(a); if (m) rows.push(m); }
+    for (const [a] of IV.fake || []) { const m = measure(a); if (m) fakeRows.push(m); }
+    const rises = rows.map(r => r.riseDb), md = median(rises), mn = rises.length ? Math.min(...rises) : null;
+    const okN = rises.filter(v => v >= need).length;
+    const pass = rises.length ? (md >= need && okN / rises.length >= 0.8) : null;
+    const fakeOk = fakeRows.every(r => r.riseDb < need);
+    add('preBlindMid', `盲區前 ${lead} 秒的預告音在 ${cfg.band[0] / 1000}～${cfg.band[1] / 1000} kHz 聽得出來`, pass == null ? null : pass && fakeOk,
+      (rises.length ? `相對前 1 秒平均：中位 +${md} dB、最小 ${mn >= 0 ? '+' : ''}${mn} dB、≥ +${need} dB 的 ${okN}／${rises.length} 次（${fmtList(rises)}）` : '沒有可量的一般盲區') +
+      (fakeRows.length ? `；假驟降前（不該有）：${fmtList(fakeRows.map(r => r.riseDb))} dB${fakeOk ? '' : '（**有加強，不對**）'}` : ''),
+      `門檻：每次一般盲區，盲區前 [${lead + 0.05}, 0.01] 秒內 ${cfg.band[0]}～${cfg.band[1]} Hz 頻帶的峰值，比再往前 1 秒的平均高 ≥ ${need} dB；中位 ≥ ${need} 且八成以上達標才通過。假驟降前量到的必須 < ${need} dB（沒有預告音才是假的）。短時 FFT 1024 點、hop ${(BS.hop * 1000).toFixed(1)} ms。`);
+    speaker.preBlind = { rows, fakeRows, medianDb: md, minDb: mn };
+  }
+  // 7. 警戒時低音拍在 200～600 Hz 是否可辨：拍點附近的峰值相對背景 ≥ +6 dB
+  if (SPKC.bassMid) {
+    const cfg = SPKC.bassMid, arr = bandOf(cfg.band), need = cfg.minDb || 6;
+    const inAlert = (t) => IV.alert.some(([a, b]) => t >= a && t <= b);
+    const rows = [], patrolRows = [];
+    for (const b of expected.filter(x => x.kind === 'bass')) {
+      const w0 = b.t - 0.02, w1 = b.t + 0.15, b0 = b.t - 1.0, b1 = b.t - 0.12;
+      if (!inRange(b0, w1) || gapFrac(b0, w1) > 0.2) continue;
+      const pk = peakDb(arr, w0, w1), bg = meanDb(arr, b0, b1);
+      if (pk == null || bg == null) continue;
+      (inAlert(b.t) ? rows : patrolRows).push({ t: +b.t.toFixed(3), peakDb: r1(pk), baseDb: r1(bg), riseDb: r1(pk - bg) });
+    }
+    const rises = rows.map(r => r.riseDb), md = median(rises), mn = rises.length ? Math.min(...rises) : null, okN = rises.filter(v => v >= need).length;
+    const pass = rises.length ? (md >= need && okN / rises.length >= 0.8) : null;
+    const pr = patrolRows.map(r => r.riseDb);
+    add('bassMid', `警戒時低音拍在 ${cfg.band[0]}～${cfg.band[1]} Hz 聽得出來`, pass,
+      (rises.length ? `警戒 ${rises.length} 拍：相對前 1 秒背景 中位 +${md} dB、最小 ${mn >= 0 ? '+' : ''}${mn} dB、≥ +${need} dB 的 ${okN} 拍（${fmtList(rises)}）` : '這次錄製沒有警戒時的低音拍') +
+      (pr.length ? `；巡邏時（對照，不計）${pr.length} 拍中位 ${median(pr) >= 0 ? '+' : ''}${median(pr)} dB` : ''),
+      `門檻：警戒段每個規則低音拍，[−0.02, +0.15] 秒內 ${cfg.band[0]}～${cfg.band[1]} Hz 頻帶的峰值比前 1 秒（到 −0.12 秒）的平均高 ≥ ${need} dB；中位 ≥ ${need} 且八成以上達標才通過。這一帶是筆電喇叭聽得到的最低頻段，低音拍要靠它被認出來。`);
+    speaker.bassMid = { rows, patrolRows, medianDb: md, minDb: mn };
+  }
+  // 8. step_loud 與 step_masked 的 1～4 kHz 能量差 ≥ 12 dB（用時間軸事件對齊）
+  if (SPKC.steps) {
+    const cfg = SPKC.steps, arr = bandOf(cfg.band), need = cfg.minDb || 12;
+    const cueT = (re) => EV.filter(e => e.type === 'cue' && re.test(e.name)).map(e => e.at || e.t).filter(t => inRange(t - 0.3, t + 0.15) && gapFrac(t - 0.3, t + 0.15) < 0.2);
+    const loudT = cueT(new RegExp(cfg.loud, 'i')), maskT = cueT(new RegExp(cfg.masked, 'i'));
+    const meas = (t) => { const pk = peakDb(arr, t - 0.005, t + 0.12), bg = meanDb(arr, t - 0.3, t - 0.02); return pk == null ? null : { t: +t.toFixed(3), peakDb: r1(pk), riseDb: bg == null ? null : r1(pk - bg) }; };
+    const loud = loudT.map(meas).filter(Boolean), masked = maskT.map(meas).filter(Boolean);
+    const mdL = median(loud.map(x => x.peakDb)), mdM = median(masked.map(x => x.peakDb));
+    const diff = mdL != null && mdM != null ? r1(mdL - mdM) : null;
+    const rL = median(loud.map(x => x.riseDb)), rM = median(masked.map(x => x.riseDb));
+    // 合拍的腳步照設計是被鼓點蓋住，量到的多半是鼓；另列「附近沒有顯著拍（±60 ms 內 w ≥ 0.2）」的那幾步作對照
+    const noBeat = (t) => !expected.some(b => b.kind !== 'bass' && b.w >= 0.2 && Math.abs(b.t - t) < 0.06);
+    const maskedClean = masked.filter(x => noBeat(x.t));
+    // 判定用「相對前 0.3 秒的上升量」的差：合拍腳步照設計落在鼓點上，絕對峰值量到的是那一下鼓，
+    // 玩家聽到的差別其實是「突然冒出一聲」對「什麼都沒多出來」，所以比上升量才對
+    const riseDiff = rL != null && rM != null ? r1(rL - rM) : null;
+    add('stepBand', `不合拍腳步比合拍腳步在 ${cfg.band[0] / 1000}～${cfg.band[1] / 1000} kHz 突出 ≥ ${need} dB`, riseDiff == null ? null : riseDiff >= need,
+      riseDiff == null ? `樣本不夠（${cfg.loud} ${loud.length} 步、${cfg.masked} ${masked.length} 步）` :
+        `相對前 0.3 秒的上升中位：${cfg.loud} ${rL} dB（${loud.length} 步）、${cfg.masked} ${rM} dB（${masked.length} 步），差 ${riseDiff} dB；絕對峰值 ${mdL} 對 ${mdM} dB（差 ${diff} dB）` +
+        (maskedClean.length ? `；合拍腳步中附近沒有顯著鼓點的 ${maskedClean.length} 步峰值中位 ${median(maskedClean.map(x => x.peakDb))} dB` : ''),
+      `門檻：每個 cue 後 [−0.005, +0.12] 秒內 ${cfg.band[0]}～${cfg.band[1]} Hz 頻帶的峰值減去前 0.3 秒的平均（＝這一步讓聲音突然多出多少），兩種腳步各取中位，差 ≥ ${need} dB。合拍腳步照設計落在鼓點上，絕對峰值含那一下鼓，所以只列出來對照、不拿來判定。`);
+    speaker.steps = { loud, masked, diffDb: diff, riseLoud: rL, riseMasked: rM, riseDiffDb: riseDiff };
+  }
+}
+
 // ---------- 圖 ----------
 const W = Math.max(1000, Math.min(4000, Math.round(DUR * 20))), H = 480;
 const xOf = (t) => (t - T0) / DUR * W;
 const COLORS = { blind: '#4aa3ff', alert: '#ff9a2e', hunted: '#ff3b30', fake: '#c86bff' };
-// 頻譜圖（含座標軸）
-spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', path.join(dir, 'audio.wav'), '-lavfi',
-  `showspectrumpic=s=${W}x512:legend=1:fscale=log:start=20:stop=16000:color=intensity:gain=1.5`, path.join(dir, 'spectrogram.png')]);
+// 頻譜圖（含座標軸）；喇叭模擬只出這一張（spectrogram-speaker.png），其餘圖與報告由主行程做
+spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', wavFile, '-lavfi',
+  `showspectrumpic=s=${W}x512:legend=1:fscale=log:start=20:stop=16000:color=intensity:gain=1.5`, path.join(dir, SPK ? 'spectrogram-speaker.png' : 'spectrogram.png')]);
 // 頻譜圖＋區段（無座標軸，x 與時間線性對應）
-{
+if (!SPK) {
   const boxes = [];
   const box = (x, y, w, h, c, t) => boxes.push(`drawbox=x=${Math.round(x)}:y=${y}:w=${Math.max(1, Math.round(w))}:h=${h}:color=${c}:t=${t}`);
   for (const k of ['alert', 'hunted', 'blind', 'fake']) for (const [a, b] of IV[k] || []) {
@@ -334,7 +452,7 @@ spawnSync(FFMPEG, ['-y', '-loglevel', 'error', '-i', path.join(dir, 'audio.wav')
   fs.rmSync(script, { force: true });
 }
 // 音量包絡 SVG
-{
+if (!SPK) {
   const top = 30, ph = 300, bottom = top + ph, yOf = (d) => top + (Math.max(-80, Math.min(0, d)) / -80) * ph;
   const parts = [];
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W + 60}" height="${bottom + 70}" viewBox="0 0 ${W + 60} ${bottom + 70}" font-family="DejaVu Sans, Arial, sans-serif" font-size="11">`);
@@ -379,10 +497,18 @@ let SUM = null;
 if (profile && profile.summary) { try { SUM = profile.summary(TL, meta, EV, IV); } catch (e) { log('summary 失敗', e.message); } }
 
 // ---------- 輸出 ----------
-const analysis = { summary: SUM ? SUM.data : null, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
+const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
   intervals: { blind: IV.blind.length, blindList: IV.blind.map(x => x.map(v => +v.toFixed(3))), fake: (IV.fake || []).map(x => x.map(v => +v.toFixed(3))), alert: IV.alert.map(x => x.map(v => +v.toFixed(2))), hunted: IV.hunted.map(x => x.map(v => +v.toFixed(2))) },
   checks, dips, beatStats, silences, cueCount, fails, gaps: meta.audio.gapList, frames: meta.frames };
-fs.writeFileSync(path.join(dir, 'analysis.json'), JSON.stringify(analysis, null, 2));
+fs.writeFileSync(path.join(dir, SPK ? 'analysis-speaker.json' : 'analysis.json'), JSON.stringify(analysis, null, 2));
+if (SPK) { for (const c of checks) log(c.pass === true ? '✅ 通過' : c.pass === false ? '❌ 不通過' : '— 無資料', c.name, '—', c.value); process.exit(0); }
+// 喇叭模擬：以 --speaker 子行程把同一套檢查跑在 200 Hz 高通後的錄音上，兩組數字並列
+let SPEAK = null;
+{
+  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), dir, '--speaker'], { encoding: 'utf8', env: process.env });
+  if (r.status === 0 && fs.existsSync(path.join(dir, 'analysis-speaker.json'))) SPEAK = JSON.parse(fs.readFileSync(path.join(dir, 'analysis-speaker.json'), 'utf8'));
+  else log('喇叭模擬失敗', (r.stderr || '').slice(0, 300));
+}
 
 const abs = (f) => path.join(dir, f);
 const exists = (f) => fs.existsSync(abs(f));
@@ -408,9 +534,11 @@ if (meta.shots && meta.shots.length) L.push(`- 截圖：${meta.shots.map(s => `[
 L.push('');
 if (exists('spectrogram-marked.png')) L.push('![頻譜圖＋標記](spectrogram-marked.png)', '', '藍＝盲區、紫＝假驟降（照常交接，不該有空檔）、橘＝警戒、紅＝追殺；底部黃色刻度＝低音拍、洋紅＝音訊斷塊。', '');
 if (exists('envelope.png')) L.push('![音量包絡](envelope.png)', '');
-L.push('## 自動檢查', '', '| 檢查 | 結果 | 數字 |', '|---|---|---|');
-for (const c of checks) L.push(`| ${c.name} | ${mark(c.pass)} | ${c.value} |`);
+const spkOf = (id) => SPEAK ? SPEAK.checks.find(x => x.id === id) : null;
+L.push('## 自動檢查', '', `| 檢查 | 原始 | 喇叭模擬（${SPEAKER_HP} Hz 高通） | 數字（原始） |`, '|---|---|---|---|');
+for (const c of checks) { const sc = spkOf(c.id); L.push(`| ${c.name} | ${mark(c.pass)} | ${sc ? mark(sc.pass) : '—'} | ${c.value} |`); }
 L.push('');
+L.push(`- 前 5 項是原本的檢查；後面 3 項（預告音、低音拍中頻、腳步頻帶差）是「喇叭可聽度」檢查（11/08 加）。「喇叭模擬」欄＝把錄音先過兩級 ${SPEAKER_HP} Hz 高通（24 dB/oct，近似筆電喇叭聽不到的低頻）再跑同一套檢查；「警戒時低頻最突出」在高通後本來就會不通過，看的是其他項在喇叭上還成不成立。`, '');
 for (const c of checks) L.push(`- **${c.name}**：${c.detail}`);
 L.push('');
 if (beatStats.scheduled) L.push(`- 通用對照：偵測到的 ${beatStats.scheduled.onsets} 個起音中，${beatStats.scheduled.within20ms} 個在某個 \`start(when)\` 排程時間 ±20 ms 內（中位 |誤差| ${beatStats.scheduled.medianAbsMs} ms，帶正負號 ${beatStats.scheduled.medianSignedMs} ms）。`, '');
@@ -425,6 +553,23 @@ if (fakeDips.length) {
   L.push('### 每次假驟降（對照：不該有空檔）', '', '| 交接（音訊秒） | 前 dB | 交接後 0.6 秒內 dB | 後 dB | 壓低 dB |', '|---|---|---|---|---|');
   for (const d of fakeDips) L.push(`| ${d.t} | ${d.beforeDb} | ${d.insideDb} | ${d.afterDb} | ${d.dipDb} |`);
   L.push('');
+}
+if (SPEAK) {
+  L.push('## 喇叭可聽度：原始 vs 喇叭模擬', '', `喇叭模擬＝錄音先過兩級 ${SPEAKER_HP} Hz 高通（ffmpeg \`highpass\`，24 dB/oct）；檔案 \`${SPEAK.speakerSim.wav}\`、頻譜圖 \`spectrogram-speaker.png\`。`, '',
+    '| 檢查 | 原始 | 喇叭模擬 |', '|---|---|---|');
+  for (const c of checks) { const sc = spkOf(c.id); L.push(`| ${c.name} | ${mark(c.pass)}：${c.value} | ${sc ? mark(sc.pass) + '：' + sc.value : '—'} |`); }
+  L.push('');
+  const sp = speaker;
+  if (sp.preBlind && sp.preBlind.rows.length) {
+    L.push('### 每次一般盲區前的預告音（1～3 kHz，原始）', '', '| 盲區開始（音訊秒） | 前 1 秒平均 dB | 預告窗峰值 dB | 高出 dB |', '|---|---|---|---|');
+    for (const r of sp.preBlind.rows) L.push(`| ${r.t} | ${r.baseDb} | ${r.peakDb} | ${r.riseDb >= 0 ? '+' : ''}${r.riseDb} |`);
+    L.push('');
+  }
+  if (sp.bassMid && sp.bassMid.rows.length) {
+    L.push('### 警戒時每個低音拍的中頻（200～600 Hz，原始）', '', '| 拍點（音訊秒） | 前 1 秒背景 dB | 拍點峰值 dB | 高出 dB |', '|---|---|---|---|');
+    for (const r of sp.bassMid.rows) L.push(`| ${r.t} | ${r.baseDb} | ${r.peakDb} | ${r.riseDb >= 0 ? '+' : ''}${r.riseDb} |`);
+    L.push('');
+  }
 }
 if (SUM) { L.push(`## ${SUM.title}`, '', ...SUM.lines, ''); }
 L.push('## 這次試玩發生了什麼', '');

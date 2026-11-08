@@ -47,6 +47,17 @@
  *   路線（2.2 節）：風從暗門外（區 1）、城門方向（區 2、4）、巷尾（區 3）傳來（3D）；區 2 起偶爾有遠方號角從城門外吹響
  *   （只在盲區剛結束、吹完碰不到下一段盲區時）；城門區門外大軍的低語隨門閂進度越來越近。警戒時路線環境聲退後。
  *
+ * 喇叭可聽度（11/08，回應 11/07 喇叭試玩「驟降、慢低音、腳步合拍都聽不出來」；設計文件 2026-11-08 第 3 節第 2 點）【改編】：
+ *   筆電喇叭 150～200 Hz 以下幾乎聽不到，200～4000 Hz 最清楚，所以三個核心訊號都在中頻補一份、不只靠低頻與左右聲道。
+ *   - 驟降：預告音 pre_blind 改成兩聲短促的木魚（1.3／2.0／2.8 kHz，PRE_BLIND_GAIN），不再是極輕的弦泛音；
+ *     盲區前最後 BRIGHT_LEAD 秒節奏匯流排的高架濾波（BRIGHT_HZ 以上）往上開 BRIGHT_DB，金屬、手拍（k = 2、3）稍亮，盲區一到全部靜下。
+ *     只改音色濾波，不改拍點與音量曲線；用和盲區 gate 同一份預測時段，所以假驟降（沒有盲區）既沒有預告音也不變亮。
+ *   - 慢低音：低音拍多一層 200～600 Hz 的鼓皮拍擊＋木框敲擊（BASS_MID_GAIN），音色和 Risset 低鼓／框鼓分開；
+ *     警戒開始（規則 panic.active 轉真，低音第一拍在 BASS_LEAD 後）到第一拍後 ALERT_DUCK_BEATS 拍之間，
+ *     節奏與失控層一起壓低 ALERT_DUCK_GAIN（約 −6 dB），讓低音先單獨出來一兩拍，之後 0.6 秒回來。
+ *   - 腳步：step_loud 多一聲 1～4 kHz 的碎石「喀嚓」（STEP_CRUNCH_GAIN），最近 8 公尺內的衛兵短促吸一口氣（被聽到的回饋）；
+ *     step_masked 維持極輕、極悶。
+ *
  * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；計時器只負責「補排程」（預排 0.5 秒），不負責計時。
  *       不使用畫面幀時間。計時器優先用 Worker 裡的 setInterval（25 ms）送 tick 給主執行緒（背景分頁不被降到 1 秒），
  *       建不起來就用主執行緒 setInterval。畫面每幀很慢（例如 200 ms）時，0.5 秒的預排仍蓋得住；
@@ -117,6 +128,15 @@
     LATCH_VEL: 0.17,           // 門閂的里拉琴音量
     STEP_MASKED_GAIN: 0.05,    // 被鼓聲蓋過的腳步
     STEP_LOUD_GAIN: 0.55,      // 清楚的腳步
+    STEP_CRUNCH_GAIN: 0.6,     // 不合拍腳步的碎石「喀嚓」（1～4 kHz，喇叭也清楚；單獨量 1～4 kHz 峰值約 −25 dB，和一下鼓點相當或更亮）
+    // 喇叭可聽度（11/08）
+    PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量
+    BRIGHT_HZ: 1800,           // 盲區前節奏匯流排高架濾波的轉折頻率（Hz）：主要碰到手拍、金屬（k = 2、3）
+    BRIGHT_DB: 4,              // 盲區前最後 BRIGHT_LEAD 秒亮多少（dB）
+    BRIGHT_LEAD: 0.3,          // 盲區前多久開始變亮（秒）
+    BASS_MID_GAIN: 0.85,       // 低音拍的中頻敲擊成分（200～600 Hz）
+    ALERT_DUCK_GAIN: 0.5,      // 警戒開始時節奏層壓到多少（−6 dB），讓低音先單獨出來
+    ALERT_DUCK_BEATS: 1.5,     // 壓到低音第一拍之後幾拍才回來
     // 衛兵 3D
     MAX_GUARD_VOICES: 6,       // 同時有聲音的衛兵上限（HRTF 很吃 CPU）
     GUARD_FAR: 30,             // 超過這個距離（公尺）不出聲；最後 8 公尺淡出
@@ -235,16 +255,21 @@
     // 節奏：rhythmBus → 高通（警戒時讓出低頻給低音）→ 乾 / 殘響 / 失真 → gate → master
     // gate 只管盲區（精準排程）；rhythmOut 是節奏匯流排的固定總增益（A1：不隨 p 變，假驟降交接才沒有接縫）
     var rhythmOut = ctx.createGain(); rhythmOut.gain.value = C.RHYTHM_GAIN; rhythmOut.connect(master);
-    var gate = ctx.createGain(); gate.gain.value = 1; gate.connect(rhythmOut);
+    // 警戒開始時節奏＋失控層一起壓低（ALERT_DUCK_GAIN），讓低音先單獨出來一兩拍；平時 1
+    var rhythmDuck = ctx.createGain(); rhythmDuck.gain.value = 1; rhythmDuck.connect(rhythmOut);
+    var gate = ctx.createGain(); gate.gain.value = 1; gate.connect(rhythmDuck);
     var rhythmBus = ctx.createGain(); rhythmBus.gain.value = mute.rhythm ? 0 : 1;
     var rhythmHP = ctx.createBiquadFilter(); rhythmHP.type = 'highpass'; rhythmHP.frequency.value = 30; rhythmHP.Q.value = 0.5;
     rhythmBus.connect(rhythmHP);
-    var dry = ctx.createGain(); dry.gain.value = 0.85; rhythmHP.connect(dry); dry.connect(gate);
+    // 盲區前的「亮度」：高架濾波，平時 0 dB，盲區前 BRIGHT_LEAD 秒內開到 BRIGHT_DB（由 gateB 照預測的盲區時段排程）
+    var bright = ctx.createBiquadFilter(); bright.type = 'highshelf'; bright.frequency.value = C.BRIGHT_HZ; bright.gain.value = 0;
+    rhythmHP.connect(bright);
+    var dry = ctx.createGain(); dry.gain.value = 0.85; bright.connect(dry); dry.connect(gate);
     var verb = ctx.createConvolver(); verb.buffer = makeIR(2.4, 3);
-    var verbSend = ctx.createGain(); verbSend.gain.value = 0.28; rhythmHP.connect(verbSend); verbSend.connect(verb);
+    var verbSend = ctx.createGain(); verbSend.gain.value = 0.28; bright.connect(verbSend); verbSend.connect(verb);
     var verbOut = ctx.createGain(); verbOut.gain.value = 0.6; verb.connect(verbOut); verbOut.connect(gate);
     var shaper = ctx.createWaveShaper(); shaper.curve = shaperCurve(6); shaper.oversample = '2x';
-    var distWet = ctx.createGain(); distWet.gain.value = 0; rhythmHP.connect(distWet); distWet.connect(shaper);
+    var distWet = ctx.createGain(); distWet.gain.value = 0; bright.connect(distWet); distWet.connect(shaper);
     var distOut = ctx.createGain(); distOut.gain.value = 0.5; shaper.connect(distOut); distOut.connect(gate);
 
     // 失控層：alarmBus → 重失真 → alarmGain → gate（盲區時也要斷）
@@ -333,6 +358,10 @@
       tone(d, t, 'sine', 64, 43, 0.45, 0.95, 0.004, 1.15);
       tone(d, t, 'sine', 128, 88, 0.3, 0.25, 0.004, 0.5);
       noise(d, t, 'lowpass', 140, 0.8, 0.4, 0.003, 0.12);
+      // 中頻敲擊（200～600 Hz，11/08）：鼓皮被手掌拍到的「啪」＋木框一聲，筆電喇叭聽得到拍點；
+      // 音色和 Risset 低鼓（96→48 Hz）、框鼓（205→150 Hz＋900 Hz 噪音）分開，短促、不拖尾
+      tone(d, t, 'triangle', 330, 290, 0.06, C.BASS_MID_GAIN * 0.6, 0.002, 0.1);
+      noise(d, t, 'bandpass', 430, 1.6, C.BASS_MID_GAIN, 0.002, 0.06);
       var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
       o.type = 'sawtooth'; o.frequency.value = 55; f.type = 'lowpass'; f.frequency.value = 260; f.Q.value = 3;
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.08);
@@ -664,7 +693,8 @@
     }
 
     // ---------- 盲區 gate：照預測的時段精準排程，時段變了就從安全點起重排 ----------
-    function Gate(param, floor, fall, rise) { this.p = param; this.floor = floor; this.fall = fall; this.rise = rise; this.done = []; this.forced = false; }
+    // base：平時的值（預設 1；亮度濾波的 gain 平時 0、盲區前升到 floor = BRIGHT_DB）
+    function Gate(param, floor, fall, rise, base) { this.p = param; this.floor = floor; this.fall = fall; this.rise = rise; this.base = base == null ? 1 : base; this.done = []; this.forced = false; }
     Gate.prototype.plan = function (ws, now) {
       if (this.forced) return;
       var g = this, cut = now + 0.02, i;
@@ -677,22 +707,24 @@
       var same = A.length === B.length;
       for (i = 0; same && i < A.length; i++) same = Math.abs(A[i].s - B[i].s) < C.RESCHED_TOL && Math.abs(A[i].e - B[i].e) < C.RESCHED_TOL;
       if (same) return;
-      var p = g.p;
-      p.cancelScheduledValues(cut); p.setValueAtTime(1, cut);
+      var p = g.p, base = g.base;
+      p.cancelScheduledValues(cut); p.setValueAtTime(base, cut);
       for (i = 0; i < B.length; i++) {
-        p.setValueAtTime(1, B[i].s - g.fall); p.linearRampToValueAtTime(g.floor, B[i].s);
-        p.setValueAtTime(g.floor, B[i].e); p.linearRampToValueAtTime(1, B[i].e + g.rise);
+        p.setValueAtTime(base, B[i].s - g.fall); p.linearRampToValueAtTime(g.floor, B[i].s);
+        p.setValueAtTime(g.floor, B[i].e); p.linearRampToValueAtTime(base, B[i].e + g.rise);
       }
       g.done = g.done.filter(function (w) { return w.s - g.fall < cut && w.e + g.rise > now - 2; }).concat(B);
     };
     Gate.prototype.force = function (blind, now) {   // 以規則的 cycle.blind 為準：立刻靜音／打開
       var p = this.p;
       if (p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(now); else p.cancelScheduledValues(now);
-      p.setTargetAtTime(blind ? this.floor : 1, now, blind ? 0.015 : this.rise / 3);
+      p.setTargetAtTime(blind ? this.floor : this.base, now, blind ? 0.015 : this.rise / 3);
       this.forced = blind;
       this.done = blind ? [] : [{ s: now - 1, e: now + this.rise }];
     };
     var gateR = new Gate(gate.gain, C.GATE_FLOOR, C.GATE_FALL, C.GATE_RISE);
+    // 盲區前的亮度（11/08）：和 gateR 同一份預測時段，所以假驟降（沒有盲區）不會變亮；盲區結束後 10 ms 內回 0 dB
+    var gateB = new Gate(bright.gain, C.BRIGHT_DB, C.BRIGHT_LEAD, 0.01, 0);
 
     // ---------- 預排事件：以累計相位定位，可取消重排 ----------
     // 每一拍（以及跟著拍點的主題音）是一筆 rec = {key, P, t, dest, play, gated}；play(t, out) 把聲音接到 out。
@@ -877,7 +909,7 @@
 
     // ---------- 狀態 ----------
     var st = { alarm: 0, hunted: false, bassPeriod: C.BASS_PERIOD, bassAnchor: t0, gridAnchor: t0,
-               alarmStart: null, alarmNext: 0, lastBass: -1e9, panic: 0, lastCreak: -1e9 };
+               alarmStart: null, alarmNext: 0, lastBass: -1e9, panic: 0, lastCreak: -1e9, panicOn: false };
     var linEnd = ctx.currentTime;            // 失控層、低音已排到哪個時間（不含）
     var timer = null, dead = false;
     var gateM = new Gate(musicGate.gain, C.MUSIC_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
@@ -1085,7 +1117,7 @@
     function scheduleTo(end, now) {
       if (dead) return;
       var ws = windowsBetween(now - 1, end + C.BASS_TAIL + 0.2);
-      gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now); gateH.plan(ws, now);
+      gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now); gateH.plan(ws, now); gateB.plan(ws, now);
       var from = now + 0.004;
       scheduleBeats(from, end, ws);
       scheduleMusic(from, end);
@@ -1235,6 +1267,20 @@
         }
       });
     }
+    // 不合拍的腳步被聽到（11/08）：最近 8 公尺內出聲中的衛兵短促吸一口氣、喉嚨「嗯？」，呼吸與腳步節奏被打斷；
+    // 走衛兵自己的 3D 聲道（有方向、隨距離變小，盲區照 gateG 壓低）
+    function guardStartle(t) {
+      var best = null, bd = 8;
+      for (var i = 0; i < voices.length; i++) {
+        var v = voices[i]; if (v.id == null) continue;
+        var d = Math.sqrt((v.lx - lis.x) * (v.lx - lis.x) + (v.lz - lis.z) * (v.lz - lis.z));
+        if (d < bd) { bd = d; best = v; }
+      }
+      if (!best) return;
+      var f = noise(best.input, t, 'bandpass', 700, 1.6, 0.16, 0.05, 0.14); f.frequency.exponentialRampToValueAtTime(1600, t + 0.18);
+      tone(best.input, t + 0.02, 'sawtooth', 110, 125, 0.15, 0.012, 0.03, 0.12);
+      best.nextBreath = Math.max(best.nextBreath, t + 1.2); best.nextStep = Math.max(best.nextStep, t + 0.35);
+    }
     // 玩家自己的清楚腳步：一個常駐的 panner，放在腳步的位置（不經盲區 gate：盲區裡移動也要聽得到自己）
     var selfPan = null;
     function selfPanner() { if (!selfPan) { selfPan = makePanner(); selfPan.refDistance = 1; selfPan.connect(master); } return selfPan; }
@@ -1336,13 +1382,21 @@
         noise(cueBus, t, 'lowpass', 260 + Math.random() * 60, 0.8, C.STEP_MASKED_GAIN, 0.003, 0.06);
       },
       stepLoud: function (t, d) {         // 不合拍的腳步：清楚，有 {x, z} 就放在那個位置（3D）
+        var dest = cueBus;
         if (d && isFinite(d.x) && isFinite(d.z)) {
           var p = selfPanner(); setPos(p, +d.x, 0.05, +d.z, ctx.currentTime, true);
-          var g = ctx.createGain(); g.gain.value = 1; g.connect(p);
-          stepSound(g, t, C.STEP_LOUD_GAIN / 0.45);
-        } else stepSound(cueBus, t, C.STEP_LOUD_GAIN / 0.45);
-        noise(cueBus, t + 0.01, 'bandpass', 3200, 2.5, 0.04, 0.001, 0.03);   // 砂礫輕響，讓它比鼓聲突出
+          dest = ctx.createGain(); dest.gain.value = 1; dest.connect(p);
+        }
+        stepSound(dest, t, C.STEP_LOUD_GAIN / 0.45);
+        // 碎石被踩碎的「喀嚓」（11/08）：1～4 kHz 為主、要比鼓點亮，筆電喇叭也聽得清楚。
+        // 腳就在自己腳下，不走 HRTF（會損失約 6 dB），直接進 cueBus；幾顆小石子互相碰的短促「叮」錯開 12 ms，加三段摩擦噪音
+        var cg = C.STEP_CRUNCH_GAIN;
+        for (var i = 0; i < 5; i++) tone(cueBus, t + 0.004 + i * 0.012, 'sine', 1500 + Math.random() * 2000, 0, 0, cg * 0.5, 0.001, 0.03);
+        noise(cueBus, t + 0.004, 'bandpass', 1800, 0.8, cg * 2.2, 0.001, 0.05);
+        noise(cueBus, t + 0.012, 'bandpass', 2800, 1.0, cg * 1.8, 0.001, 0.07);
+        noise(cueBus, t + 0.03, 'bandpass', 2200, 1.5, cg * 1.1, 0.002, 0.1);
         CUES.gravel(t + 0.05, d);           // 暗示：碎石滾動一聲（走暗示匯流排，盲區不響）
+        guardStartle(t + 0.12);             // 最近的衛兵短促吸氣：你被聽到了
       },
       // ---------- 暗示聲（2.1 節）：全部走 hintBus，和盲區重疊就不發 ----------
       gravel: function (t, d) {           // 碎石滾動：幾顆小石子一路滾開，越來越輕
@@ -1350,7 +1404,7 @@
         var out = d && isFinite(d.x) ? hintAt(+d.x + 0.4, +d.z + 0.3, 0.05) : hintBus;
         for (var i = 0; i < 6; i++) {
           var ti = t + i * (0.045 + Math.random() * 0.04), k = 1 - i / 7;
-          noise(out, ti, 'bandpass', 3600 + Math.random() * 2400, 3, C.GRAVEL_GAIN * k, 0.001, 0.018);
+          noise(out, ti, 'bandpass', 2400 + Math.random() * 2000, 3, C.GRAVEL_GAIN * k, 0.001, 0.018);   // 2.4～4.4 kHz：喇叭最清楚的那一帶
           tone(out, ti, 'sine', 2200 + Math.random() * 1800, 0, 0, C.GRAVEL_GAIN * 0.12 * k, 0.001, 0.03);
         }
       },
@@ -1406,13 +1460,14 @@
         for (var s = 0; s < 3; s++) for (var i = 0; i < part.length; i++)
           tone(cueBus, t + s * 0.55, 'sine', 330 * part[i], 0, 0, 0.12 * amp[i], 0.002, 2.6 - i * 0.22);
       },
-      preBlind: function (t) {            // 盲區快到了：極輕、極短的一聲弦泛音（里拉琴輕觸），預備
-        var o = ctx.createOscillator(), g = ctx.createGain();
-        o.type = 'sine'; o.frequency.value = 1174.7;          // D6 泛音，和撥弦檢查點同調
-        o.connect(g); g.connect(cueBus);
-        env(g.gain, t, 0.035, 0.004, 0.22);
-        o.start(t); o.stop(t + 0.3);
-        noise(cueBus, t, 'bandpass', 2600, 1.2, 0.012, 0.03, 0.12);   // 一絲氣聲
+      preBlind: function (t) {            // 盲區快到了（11/08 改）：木魚「叩、叩」兩聲，短促、木質，1～3 kHz 為主，喇叭上也聽得出來
+        function tok(tt, g) {             // 木魚：空腔共鳴 1.35 kHz 為主＋兩個不諧和泛音，木槌敲到的「嗒」；0.1 秒內收掉
+          tone(cueBus, tt, 'sine', 1350, 1280, 0.05, 0.55 * g, 0.001, 0.11);
+          tone(cueBus, tt, 'sine', 2050, 2000, 0.04, 0.3 * g, 0.001, 0.07);
+          tone(cueBus, tt, 'sine', 2780, 0, 0, 0.16 * g, 0.001, 0.045);
+          noise(cueBus, tt, 'bandpass', 1900, 1.4, 0.5 * g, 0.001, 0.02);
+        }
+        tok(t, C.PRE_BLIND_GAIN); tok(t + 0.095, C.PRE_BLIND_GAIN * 0.7);   // 兩聲在 0.2 秒內結束，離盲區還有 0.2 秒
       },
       blind: function (t) {               // 盲區提示：很輕、很悶的一下
         tone(cueBus, t, 'sine', 300, 220, 0.06, 0.05, 0.003, 0.12);
@@ -1556,14 +1611,14 @@
           var ts = cy.anchor && isFinite(cy.anchor.t) ? +cy.anchor.t : (isFinite(s.time) ? +s.time : now);
           var sb = !!cy.blind, ws = windowsBetween(ts - 2, ts + 2);
           var w = inWins(ts, ws, -0.03), mis = sb ? !inWins(ts, ws, 0.03) : !!w;
-          if (gateR.forced && !sb) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); mismN = 0; }
+          if (gateR.forced && !sb) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); gateB.force(false, now); mismN = 0; }
           else if (mis && !gateR.forced) {
             if (++mismN >= 2) {
               mismN = 0;
-              if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); gateH.force(true, now); replan(now); }
+              if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); gateH.force(true, now); gateB.force(true, now); replan(now); }
               else if (w) {
                 suppress.push({ s: w.s, e: w.e });
-                gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now);
+                gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); gateB.force(false, now);
               }
               if (log) log.push({ type: 'blindFix', t: now, blind: sb });
             }
@@ -1592,6 +1647,22 @@
           // 音樂層：警戒退後＋低切（讓慢低音最清楚），追殺略提高；功能層不受影響
           rampTo(musicDuck.gain, hu ? C.MUSIC_HUNT_GAIN : Math.pow(10, C.MUSIC_ALARM_DB * al / 20), C.MUSIC_RAMP);
           rampTo(musicHP.frequency, hu ? C.MUSIC_HP_BASE : C.MUSIC_HP_BASE * Math.pow(C.MUSIC_HP_ALARM / C.MUSIC_HP_BASE, al), C.MUSIC_RAMP, true);
+        }
+        // 警戒開始（11/08）：節奏＋失控層先壓低 ALERT_DUCK_GAIN，到低音第一拍（規則 anchor = 起疑 + BASS_LEAD）後 ALERT_DUCK_BEATS 拍，
+        // 再用 0.6 秒回來；讓玩家先單獨聽到一兩下低音，知道「要跟的就是這個」。追殺或安撫完成就立刻回 1。
+        var pa = !!(s.panic && typeof s.panic === 'object' && s.panic.active) && !hu;
+        if (pa !== st.panicOn) {
+          st.panicOn = pa;
+          var dg = rhythmDuck.gain;
+          dg.cancelScheduledValues(now); dg.setValueAtTime(dg.value, now);
+          if (pa) {
+            var an0 = (s.bass && isFinite(s.bass.anchor)) ? +s.bass.anchor : st.bassAnchor;
+            var tEnd = Math.max(now + 0.5, an0 + C.ALERT_DUCK_BEATS * st.bassPeriod);
+            dg.linearRampToValueAtTime(C.ALERT_DUCK_GAIN, now + 0.12);
+            dg.setValueAtTime(C.ALERT_DUCK_GAIN, tEnd);
+            dg.linearRampToValueAtTime(1, tEnd + 0.6);
+            if (log) log.push({ type: 'alertDuck', t: now, until: tEnd });
+          } else dg.linearRampToValueAtTime(1, now + 0.3);
         }
         // 暗示：規則的 hintSignals（可暗殺的衛兵、離盲區幾秒）；路線的風、號角、門外低語
         hintSig = null;
