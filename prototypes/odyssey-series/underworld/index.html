@@ -78,6 +78,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 .result .following { color: var(--ghost); }
 .btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; margin: 8px 4px 0; }
 .btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+.home a { color: inherit; text-decoration: none; }
+.home a:hover { color: var(--lamp); }
+.home a + a { margin-left: 14px; }
 :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 </style>
 
@@ -87,7 +90,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   <div class="fade" id="fade"></div>
   <div class="hud">
     <span class="title">冥府</span>
-    <a class="home" href="../index.html">回首頁</a>
+    <nav class="home" aria-label="離開這一章"><a href="../index.html">回連作首頁</a><a class="hubLink" href="../../index.html" hidden>回總首頁</a></nav>
     <p class="count" id="count"></p>
     <p class="say" id="say"></p>
     <p class="trait" id="trait"></p>
@@ -113,6 +116,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="../series.js"></script>
+<script src="../../nav.js"></script>
 <script src="../crew-voice.js"></script>
 <script src="../underworld.js"></script>
 <script>
@@ -120,6 +124,14 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   'use strict';
   const S = window.OdysseySeries, U = window.OdysseyUnderworld;
   const $ = id => document.getElementById(id);
+  // 出口：回連作首頁（＝這個遊戲的開場，存檔照舊）、回總首頁。nav.js 沒載到或沒有總首頁可去，就藏起「回總首頁」
+  const NAV = window.OdysseyNav, HAS_HUB = !!(NAV && NAV.hasHub());
+  const goSeries = () => { location.href = '../index.html'; };
+  const goHub = () => { if (NAV) NAV.goHub(); };
+  document.querySelectorAll('.hubLink').forEach(a => {
+    a.hidden = !HAS_HUB; if (HAS_HUB) a.href = NAV.hubUrl();
+    a.addEventListener('click', e => { e.preventDefault(); goHub(); });
+  });
   const solo = new URLSearchParams(location.search).has('solo');
   // 單獨玩：示範存檔（岸邊射箭、失去三個人）；不寫存檔
   const save = solo ? S.advance(S.fresh(), 'underworld', { crewOut: 6, shore: 'shoot', crewLost: ['波利忒斯', '珀里墨得斯', '克洛墨尼俄斯'] }) : S.load();
@@ -349,11 +361,13 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     $('resNote').textContent = sum.nameless ? '你記住了阿伽門農的話：以無名之人的身分回去。' : '阿伽門農的後半句，你沒有聽見。';
     const btns = $('resBtns'); btns.innerHTML = '';
     if (solo) {
-      btns.append(btnEl('再一次', () => location.reload(), true), btnEl('回首頁', () => { location.href = '../index.html'; }));
+      btns.append(btnEl('再一次', () => location.reload(), true));
     } else {
       S.save(null, U.finish(save, results));
       btns.append(btnEl('出海（Enter）', () => { location.href = S.nextUrl('ogygia', '../'); }, true));
     }
+    btns.append(btnEl('回連作首頁', goSeries));
+    if (HAS_HUB) btns.append(btnEl('回總首頁', goHub));
     $('result').hidden = false;
     const b = btns.querySelector('button'); if (b) b.focus();
   }

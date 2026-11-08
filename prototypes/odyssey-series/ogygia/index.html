@@ -58,6 +58,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 .small { color: var(--dim); font-size: 13px; }
 .btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; margin: 8px 4px 0; }
 .btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+.home a { color: inherit; text-decoration: none; }
+.home a:hover { color: var(--lamp); }
+.home a + a { margin-left: 14px; }
 :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 </style>
 
@@ -66,7 +69,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   <p class="big" id="big"></p>
   <p class="sub" id="sub"></p>
   <p class="skip" id="skip" hidden><kbd>空白鍵</kbd>／<kbd>點一下</kbd>　跳過</p>
-  <a class="home" href="../index.html">回首頁</a>
+  <nav class="home" aria-label="離開這一章"><a href="../index.html">回連作首頁</a><a class="hubLink" href="../../index.html" hidden>回總首頁</a></nav>
   <div class="start panel" id="start">
     <h1>奧吉吉亞</h1>
     <p>海把你推到了一座島上。</p>
@@ -81,11 +84,20 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 </div>
 
 <script src="../series.js"></script>
+<script src="../../nav.js"></script>
 <script>
 (function () {
   'use strict';
   const S = window.OdysseySeries;
   const $ = id => document.getElementById(id);
+  // 出口：回連作首頁（＝這個遊戲的開場，存檔照舊）、回總首頁。nav.js 沒載到或沒有總首頁可去，就藏起「回總首頁」
+  const NAV = window.OdysseyNav, HAS_HUB = !!(NAV && NAV.hasHub());
+  const goSeries = () => { location.href = '../index.html'; };
+  const goHub = () => { if (NAV) NAV.goHub(); };
+  document.querySelectorAll('.hubLink').forEach(a => {
+    a.hidden = !HAS_HUB; if (HAS_HUB) a.href = NAV.hubUrl();
+    a.addEventListener('click', e => { e.preventDefault(); goHub(); });
+  });
   const solo = new URLSearchParams(location.search).has('solo');
   const save = solo ? S.fresh() : S.load();
   const years = save.years, lost = S.reefFigures(save), wrath = save.wrath;
@@ -389,10 +401,11 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     const btns = $('endBtns'); btns.innerHTML = '';
     const a = document.createElement('a'); a.className = 'btn main'; a.id = 'toBeggar';
     a.href = S.nextUrl('beggar-gate', '../'); a.textContent = solo ? '去看第三章：門檻上的乞丐' : '走向宮門（Enter）';
-    if (solo) a.href = '../beggar/index.html';
+    if (solo) a.href = '../../beggar-hall/index.html';
     else S.save(null, S.advance(save, 'beggar-gate'));
     btns.appendChild(a);
-    if (solo) { const r = document.createElement('a'); r.className = 'btn'; r.href = '../index.html'; r.textContent = '回首頁'; btns.appendChild(r); }
+    const home = document.createElement('a'); home.className = 'btn'; home.href = '../index.html'; home.textContent = '回連作首頁'; btns.appendChild(home);
+    if (HAS_HUB) { const h = document.createElement('a'); h.className = 'btn'; h.href = NAV.hubUrl(); h.textContent = '回總首頁'; h.addEventListener('click', e => { e.preventDefault(); goHub(); }); btns.appendChild(h); }
     $('end').hidden = false; a.focus();
     pad([110, 165, 220], 5, .05);
   }

@@ -116,8 +116,8 @@ test('nextStep 與 nextUrl', () => {
   assert.equal(S.nextUrl('shore'), 'shore/index.html');
   assert.equal(S.nextUrl('shore', '../'), '../shore/index.html');
   assert.equal(S.nextUrl('ogygia', '..'), '../ogygia/index.html');
-  assert.equal(S.nextUrl('beggar-gate', '../'), '../beggar/index.html?series=1&seg=gate');
-  assert.equal(S.nextUrl('bow', ''), 'bow/index.html?series=1');
+  assert.equal(S.nextUrl('beggar-gate', '../'), '../../beggar-hall/index.html?series=1&seg=gate');
+  assert.equal(S.nextUrl('bow', ''), '../bow-contest/index.html?series=1');
   assert.equal(S.nextUrl('ending', '../'), '../ending/index.html');
   assert.equal(S.nextUrl('cave', '../'), '../index.html#cave');
   for (const st of S.STEPS) assert.ok(S.nextUrl(st).length > 0);

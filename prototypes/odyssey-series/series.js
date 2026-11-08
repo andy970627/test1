@@ -227,9 +227,9 @@
       case 'shore': return root + 'shore/index.html';
       case 'underworld': return root + 'underworld/index.html';
       case 'ogygia': return root + 'ogygia/index.html';
-      case 'beggar-gate': return root + 'beggar/index.html?series=1&seg=gate';
-      case 'beggar-hall': return root + 'beggar/index.html?series=1&seg=hall';
-      case 'bow': return root + 'bow/index.html?series=1';
+      case 'beggar-gate': return root + '../beggar-hall/index.html?series=1&seg=gate';
+      case 'beggar-hall': return root + '../beggar-hall/index.html?series=1&seg=hall';
+      case 'bow': return root + '../bow-contest/index.html?series=1';
       case 'ending': return root + 'ending/index.html';
       default: return root + 'index.html';
     }

@@ -92,6 +92,7 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
     <div class="actions">
       <a class="btn main" id="btnContinue" href="#">開始</a>
       <button class="btn" id="btnRestart" type="button">重新開始</button>
+      <a class="btn" id="btnHub" href="../index.html" hidden>回總首頁</a>
     </div>
     <p class="where" id="where"></p>
   </header>
@@ -120,6 +121,7 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
 </div>
 
 <script src="series.js"></script>
+<script src="../nav.js"></script>
 <script>
 (function () {
   'use strict';
@@ -132,8 +134,8 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
     { id: 'shore', no: '銜接', name: '岸邊', line: '巨人睡著了。拉弓、喊名，還是默默離開？', steps: ['shore'], solo: 'shore/index.html?solo=1' },
     { id: 'underworld', no: '銜接', name: '冥府', line: '黑霧裡，他們一個一個走過來。叫得出名字嗎？', steps: ['underworld'], solo: 'underworld/index.html?solo=1' },
     { id: 'ogygia', no: '第二章', name: '奧吉吉亞', line: '卡呂普索的島。一年一年刻在沙上。', steps: ['ogygia'], solo: 'ogygia/index.html?solo=1' },
-    { id: 'beggar', no: '第三章', name: '門檻上的乞丐', line: '穿上破衣，走過宮門，走進滿是求婚者的大廳。', steps: ['beggar-gate', 'beggar-hall'], solo: 'beggar/index.html' },
-    { id: 'bow', no: '第四章', name: '比箭', line: '上弦，拉滿，穿過十二把斧頭。', steps: ['bow'], solo: 'bow/index.html' },
+    { id: 'beggar', no: '第三章', name: '門檻上的乞丐', line: '穿上破衣，走過宮門，走進滿是求婚者的大廳。', steps: ['beggar-gate', 'beggar-hall'], solo: '../beggar-hall/index.html' },
+    { id: 'bow', no: '第四章', name: '比箭', line: '上弦，拉滿，穿過十二把斧頭。', steps: ['bow'], solo: '../bow-contest/index.html' },
     { id: 'ending', no: '終章', name: '終章', line: '大廳的門關上之後。', steps: ['ending'], solo: 'ending/index.html?solo=1' }
   ];
   const STEP_NAME = { cave: '洞穴', shore: '岸邊', underworld: '冥府', ogygia: '奧吉吉亞', 'beggar-gate': '門檻上的乞丐（宮門）', 'beggar-hall': '門檻上的乞丐（大廳）', bow: '比箭', ending: '終章' };
@@ -235,6 +237,14 @@ h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-
   })();
 
   renderMap(); renderTop();
+
+  // 回總首頁：nav.js 沒載到，或沒有總首頁可去，就不顯示（不動存檔）
+  const NAV = window.OdysseyNav;
+  if (NAV && NAV.hasHub()) {
+    const hub = $('btnHub');
+    hub.href = NAV.hubUrl(); hub.hidden = false;
+    hub.addEventListener('click', e => { e.preventDefault(); NAV.goHub(); });
+  }
 
   // ---------------------------------------------------------------- 標題背景：夜海與月
   const cv = $('sky'), cx = cv.getContext('2d');

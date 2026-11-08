@@ -8,9 +8,15 @@
  *   intervals(tl,m,ev) 在 Node 端回傳 {blind, alert, hunted, fake} 區段（音訊時間）；一律用規則時間軸記錄的實際值，
  *                    不可用 t0 + k × T 推算（循環長度會變）
  *   expectedBeats(tl) 在 Node 端由時間軸算出「規則上的拍點」{t, w, kind}，給分析比對起音
+ *                    （直接 require 規則檔 risset.js，用 RissetRules.beatsBetween 產生，不抄公式、不拿聲音層常數）
  *   summary(tl,m,ev,IV) 可選：報告多加一節（這裡是循環長度隨危險變化、盲區長度、假驟降）
  * probe 與 bot 會被 toString() 送進頁面，所以只能用頁面裡的全域變數，不能引用本檔的東西。
  */
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+// 規則檔是 UMD，Node 可直接 require；期望拍一律由它產生（P1）
+const Rules = require('../../../prototypes/troy-prologue/risset.js');
+const num = (...v) => v.find(x => Number.isFinite(x));
 
 export default {
   name: 'troy-prologue',
@@ -41,7 +47,10 @@ export default {
       const C = window.RissetAudio.CONST || {};
       const g = window.TroyDebug.game;
       const T = g.T;
-      return { audioConst: { M: C.M, LAYERS: C.LAYERS, BELL_SIGMA: C.BELL_SIGMA, MIN_GAIN: C.MIN_GAIN, BLIND: C.BLIND, BASS_TAIL: C.BASS_TAIL, HUNT_FLOOR: C.HUNT_FLOOR },
+      // audioConst 只留聲音層自己的行為參數（低音餘音長度：巡邏時聲音刻意不排會拖進盲區的低音拍）；
+      // 拍點公式與音量常數不再從聲音層拿，期望拍由規則檔產生。rulesT＝遊戲實際用的整份規則常數（含選單覆寫）
+      const rulesT = {}; for (const k in T) if (typeof T[k] === 'number' || typeof T[k] === 'boolean') rulesT[k] = T[k];
+      return { audioConst: { BASS_TAIL: C.BASS_TAIL }, rulesT,
         rules: { CYCLE: T.CYCLE, DYNAMIC: T.DYNAMIC, BLIND: T.BLIND_LEN != null ? T.BLIND_LEN : T.BLIND, BASS_PERIOD: T.BASS_PERIOD, BASS_WIN: T.BASS_WIN,
           CYCLE_FAR: T.CYCLE_FAR, CYCLE_NEAR: T.CYCLE_NEAR, CYCLE_ALERT: T.CYCLE_ALERT, CYCLE_HUNT: T.CYCLE_HUNT, DIST_FAR: T.DIST_FAR, DIST_NEAR: T.DIST_NEAR,
           ZONE_MUL: T.ZONE_MUL, FAKE_FROM_ZONE: T.FAKE_FROM_ZONE, FAKE_EVERY: T.FAKE_EVERY } };
@@ -83,6 +92,8 @@ export default {
       gd: near ? +nd.toFixed(2) : null, gs: near ? near.state : null, gsusp: near ? +near.susp.toFixed(2) : null,
       bassAnchor: +g.bass.anchor.toFixed(4), bassNext: +g.bass.nextBeat.toFixed(4), bassPer: g.bass.period,
       cT: g.cycle.T, ct0: g.cycle.t0, tT: +(g.cycle.targetT || 0).toFixed(4),
+      // 規則的 anchor（聲音層與 beatsBetween 外推拍點的基準）：多留幾位小數，期望拍才算得準
+      at: g.cycle.anchor ? +g.cycle.anchor.t.toFixed(5) : null, ap: g.cycle.anchor ? +g.cycle.anchor.p.toFixed(6) : null,
       // 規則實際的循環與盲區（音訊時間）：本循環 p = 0 的時間、目前或下一段盲區、警戒盲區模式、假驟降
       cs: +(g.cycle.start != null ? g.cycle.start : g.cycle.t0).toFixed(5),
       bf: g.cycle.blindFrom != null ? +g.cycle.blindFrom.toFixed(5) : null, bt: g.cycle.blindTo != null ? +g.cycle.blindTo.toFixed(5) : null,
@@ -195,56 +206,63 @@ export default {
     return { blind, fake, alert, hunted: run('hunted') };
   },
 
-  /* 規則上的拍點（給分析比對）：循環長度會變，所以不能用 t0 + k × T。
-   * 規則每幀記下 (gt, 累計相位 U = cycle.index + p)；相鄰兩幀之間 T 最多變 20%/秒 × 幀間隔，
-   * 在這之間對 U 線性內插求「U = 第 c 輪 + 拍點相位」的時間（誤差 < 0.1 ms）。拍點相位與音量公式和規則 beatPhases／layerGain 相同。
-   * 落在規則實際盲區（intervals）裡的拍不算（聲音本來就不排）。
-   * 低音：每段相同 anchor 的網格；巡邏時聲音刻意不排「會落進盲區、或餘音（BASS_TAIL）拖進盲區」的低音拍，這裡同樣排除。 */
+  /* 規則上的拍點（給分析比對）：P1、P2。
+   * 不抄公式：每幀把時間軸記下的規則 anchor（at、ap、cT、cyc、cs）、追殺／警戒、假驟降旗標組成 beatsBetween 要的 game，
+   * 以 [這幀, 下一幀) 為區間叫 RissetRules.beatsBetween(..., { includeFakeTail: true })；
+   * 音量就是規則的 gain（追殺第 5 層、假驟降的金屬尾音 tail: true 都在裡面）。
+   * 相鄰兩幀之間 T 最多變 20%/秒 × 幀間隔，用這幀的 anchor 外推到下一幀，誤差 < 0.1 ms；同一拍（cycle:k:n）只算一次。
+   * 盲區內的拍規則自己略過；另外落在規則實際記錄的盲區（intervals）裡的也不算——聲音層的靜音閘以實際盲區為準，
+   * 那裡本來就不會有起音（尾音拍不受此限，它就排在交接處）。
+   * 低音：每段相同 anchor 的網格；巡邏時聲音刻意不排「會落進盲區、或餘音（BASS_TAIL，聲音層的行為參數）拖進盲區」的低音拍，這裡同樣排除。 */
   expectedBeats(timeline, meta) {
-    const C = Object.assign({ M: 7, LAYERS: 4, BELL_SIGMA: 0.22, MIN_GAIN: 0.02, BASS_TAIL: 1.1, HUNT_FLOOR: 0.55 }, (meta.prepared || {}).audioConst || {});
-    for (const k of Object.keys(C)) if (C[k] == null) delete C[k];
-    const Cd = Object.assign({ M: 7, LAYERS: 4, BELL_SIGMA: 0.22, MIN_GAIN: 0.02, BASS_TAIL: 1.1, HUNT_FLOOR: 0.55 }, C);
+    const prepared = meta.prepared || {};
+    const KT = Object.assign({}, Rules.T, prepared.rulesT || {});
+    const BASS_TAIL = num((prepared.audioConst || {}).BASS_TAIL, 1.1);
     const out = [];
     if (!timeline.length) return out;
     const IV = this.intervals(timeline, meta, []);
     const inIv = (t, arr, pre = 0) => arr.some(([a, b]) => t >= a - pre && t < b);
-    const bell = (x) => { const d = (x - 0.5) / Cd.BELL_SIGMA; return Math.exp(-d * d); };
     const pts = [];
     for (const s of timeline) {
-      const g = s.gt != null ? s.gt : s.t, U = s.cyc + s.p;
+      const g = s.gt != null ? s.gt : s.t;
       const L = pts[pts.length - 1];
       if (L && (g <= L.g + 1e-6)) continue;
-      pts.push({ g, U, hunted: s.hunted });
+      pts.push({ g, s });
     }
+    const seen = new Set();
     for (let i = 1; i < pts.length; i++) {
-      const A = pts[i - 1], Bp = pts[i];
-      if (!(Bp.U > A.U) || Bp.g - A.g > 1.0) continue;   // 時鐘跳躍（分頁休眠）不內插
-      for (let c = Math.floor(A.U); c <= Math.floor(Bp.U); c++) for (let k = 0; k < Cd.LAYERS; k++) {
-        const Mk = Cd.M * Math.pow(2, k);
-        for (let n = 0; n < Mk; n++) {
-          const ph = Math.log2(1 + n / Mk), U = c + ph;
-          if (U < A.U || U >= Bp.U) continue;
-          const t = A.g + (U - A.U) / (Bp.U - A.U) * (Bp.g - A.g);
-          if (inIv(t, IV.blind)) continue;
-          let w = bell((k + ph) / Cd.LAYERS);
-          if (A.hunted) w = Math.max(w, Cd.HUNT_FLOOR);
-          if (w < Cd.MIN_GAIN) continue;
-          out.push({ t, w, kind: 'risset', layer: k, cycle: c });
-        }
+      const A = pts[i - 1], Bp = pts[i], sa = A.s;
+      if (Bp.g - A.g > 1.0) continue;   // 時鐘跳躍（分頁休眠）不外推
+      const anchor = { t: num(sa.at, A.g), p: num(sa.ap, sa.p, 0), T: num(sa.cT, KT.CYCLE), index: sa.cyc | 0, start: num(sa.cs, sa.ct0, A.g) };
+      const game = {
+        T: KT, time: A.g, hunted: !!sa.hunted, panic: { active: !!sa.alert },
+        cycle: { anchor, p: anchor.p, T: anchor.T, index: anchor.index, start: anchor.start, blind: !!sa.blind, fake: !!sa.fake, nextFake: !!sa.nfake },
+        bass: { anchor: num(sa.bassAnchor, 0), period: num(sa.bassPer, KT.BASS_PERIOD) }
+      };
+      let list = null;
+      try { list = Rules.beatsBetween(A.g, Bp.g, game, { includeFakeTail: true }); } catch (e) { list = null; }
+      if (!Array.isArray(list)) continue;
+      for (const b of list) {
+        const tail = !!b.tail, key = (tail ? 'tail:' : 'b:') + b.cycle + ':' + b.k + ':' + b.n;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!tail && inIv(b.t, IV.blind)) continue;
+        const w = num(b.gain, b.g, 0);
+        out.push({ t: b.t, w, kind: 'risset', layer: b.k, cycle: b.cycle, tail, hunt: !tail && b.k >= KT.RISSET_LAYERS });
       }
     }
     // 低音：每段相同 anchor 的網格
     const tA = timeline[0].t, tB = timeline[timeline.length - 1].t;
     let i = 0;
     while (i < timeline.length) {
-      const an = timeline[i].bassAnchor, per = timeline[i].bassPer || 2.4;
+      const an = timeline[i].bassAnchor, per = timeline[i].bassPer || KT.BASS_PERIOD || 2.4;
       let j = i; while (j + 1 < timeline.length && timeline[j + 1].bassAnchor === an) j++;
       const a = timeline[i].t, b = timeline[j].t;
       for (let m = Math.ceil((a - an) / per); an + m * per <= b; m++) {
         const t = an + m * per;
         if (!(t >= an - 1e-6 && t >= tA && t <= tB)) continue;
         const s = timeline[Math.min(j, i + Math.max(0, timeline.slice(i, j + 1).findIndex(x => x.t >= t)))];
-        if (s && !s.alert && !s.hunted && inIv(t, IV.blind, Cd.BASS_TAIL)) continue;   // 巡邏：聲音刻意不排
+        if (s && !s.alert && !s.hunted && inIv(t, IV.blind, BASS_TAIL)) continue;   // 巡邏：聲音刻意不排
         out.push({ t, w: 1, kind: 'bass' });
       }
       i = j + 1;

@@ -1,0 +1,106 @@
+<title>奧德賽・原型集</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 原型總首頁：列出所有網頁原型。各原型用 nav.js 的 OdysseyNav.goHub() 回到這裡。
+ * 單一夜色主題，配色沿用《回家的路》系列首頁。
+ * 卡片連結都是相對路徑：repo、本機伺服器、itch.io 打包版的資料夾結構相同。
+ */
+:root {
+  --night: #0d0b09;
+  --deep: #15110d;
+  --line: #3a2d22;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #d6c8b1;
+  --dim: #9a8b75;
+  --old: #c26b4f;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+html, body { margin: 0; background: var(--night); overflow-x: hidden; }
+body { color: var(--ash); font-family: var(--body); line-height: 1.7; }
+*, *::before, *::after { box-sizing: border-box; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter-r) 48px var(--gutter-l); }
+.hero {
+  padding: clamp(48px, 10vh, 104px) 0 20px; text-align: center;
+  background: radial-gradient(ellipse 60% 70% at 50% 0%, rgba(240,194,122,.10), rgba(13,11,9,0) 70%);
+}
+.kicker { font-family: var(--display); color: var(--bronze); letter-spacing: .5em; font-size: 13px; margin: 0 0 8px; padding-left: .5em; }
+h1 {
+  font-family: var(--display); font-weight: 900; color: var(--lamp); margin: 0; letter-spacing: .12em; padding-left: .12em;
+  font-size: clamp(34px, 8vw, 72px); line-height: 1.2; text-shadow: 0 4px 24px rgba(0,0,0,.8);
+}
+.intro { max-width: 32em; margin: 16px auto 0; font-size: 16px; text-wrap: pretty; }
+.ear { margin: 10px auto 0; color: var(--dim); font-size: 13px; }
+.grid { list-style: none; margin: 32px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.card {
+  display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 18px 18px 16px; border: 1px solid var(--line);
+  background: var(--deep); border-radius: 3px; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s;
+}
+.card:hover, .card:focus-visible { border-color: var(--lamp); box-shadow: 0 0 0 1px var(--lamp) inset, 0 0 24px rgba(240,194,122,.12); outline: none; }
+.card .top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.card .no { font-family: var(--display); color: var(--dim); font-size: 12px; letter-spacing: .2em; }
+.card h2 { margin: 0; font-family: var(--display); font-size: 20px; color: var(--ash); letter-spacing: .06em; font-weight: 600; }
+.card:hover h2 { color: var(--lamp); }
+.card p { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.65; flex: 1; }
+.card .go { font-size: 13px; color: var(--bronze); }
+.tag { flex: none; font-size: 12px; padding: 1px 8px; border-radius: 2px; border: 1px solid var(--line); color: var(--dim); white-space: nowrap; }
+.tag.main { border-color: var(--lamp); color: var(--night); background: var(--lamp); }
+.tag.ref { border-color: var(--bronze); color: var(--bronze); }
+.tag.old { border-color: var(--old); color: #f0a184; }
+.foot { margin-top: 36px; color: var(--dim); font-size: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <p class="kicker">奧德賽</p>
+    <h1>原型集</h1>
+    <p class="intro">改編自《奧德賽》的網頁遊戲原型，以音樂切入玩法。</p>
+    <p class="ear">音樂原型建議戴耳機。</p>
+  </header>
+
+  <ol class="grid">
+    <li><a class="card" href="troy-prologue/index.html">
+      <div class="top"><span class="no">特洛伊序章</span><span class="tag main">主力</span></div>
+      <h2>木馬之夜</h2>
+      <p>跟著無限加速的鼓聲潛行，鼓點一斷才能動。</p>
+      <span class="go">進入 →</span>
+    </a></li>
+    <li><a class="card" href="bow-risset/index.html">
+      <div class="top"><span class="no">伊薩卡</span></div>
+      <h2>比箭・Risset 版</h2>
+      <p>心跳越來越快、準心越晃，驟降那一瞬間放箭最穩。</p>
+      <span class="go">進入 →</span>
+    </a></li>
+    <li><a class="card" href="vengeance/index.html">
+      <div class="top"><span class="no">伊薩卡</span></div>
+      <h2>大廳復仇</h2>
+      <p>節奏動作戰鬥，最高速時躲攻擊，驟降空檔射箭。</p>
+      <span class="go">進入 →</span>
+    </a></li>
+    <li><a class="card" href="bow-contest/index.html">
+      <div class="top"><span class="no">伊薩卡</span><span class="tag ref">對照組</span></div>
+      <h2>比箭・呼吸判定版</h2>
+      <p>第一人稱，屏住呼吸穿過 12 把斧頭的孔。</p>
+      <span class="go">進入 →</span>
+    </a></li>
+    <li><a class="card" href="beggar-hall/index.html">
+      <div class="top"><span class="no">伊薩卡</span><span class="tag old">舊版・報告後重做</span></div>
+      <h2>門檻上的乞丐</h2>
+      <p>扮成乞丐潛入大廳，被瞧不起但不能被看穿。</p>
+      <span class="go">進入 →</span>
+    </a></li>
+    <li><a class="card" href="odyssey-series/index.html">
+      <div class="top"><span class="no">網頁連作</span><span class="tag old">舊版・報告後重做</span></div>
+      <h2>回家的路</h2>
+      <p>岸邊、冥府、奧吉吉亞到終章的連作。</p>
+      <span class="go">進入 →</span>
+    </a></li>
+  </ol>
+
+  <p class="foot">各原型的暫停與結果畫面都可以回到這裡。進度只存在這台電腦的瀏覽器裡。</p>
+</div>

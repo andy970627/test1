@@ -9,7 +9,10 @@
  *   - 倒地悶響 down
  *   - Worker 計時器（25 ms tick，主執行緒 setInterval 備援）＋用 ctx.currentTime 絕對時間預排 0.5 秒
  * 和木馬之夜不同的地方：
- *   - 循環長度固定（規則的 CYCLE = 7.2 秒 = 3 個低音拍），所以拍點直接由 (t0, CYCLE) 算，不需要 anchor 外推與重排。
+ *   - 循環永遠是整數個低音拍，長度只在交接時換（規則的 cycleOf）。聲音層不自己算循環：opts.cycleAt(t) 由規則提供
+ *     {index, start, len}，拍點由它算；沒給 cycleAt 才退回固定的 (t0, cycle)。因為空檔 0.6 秒 > 前視 0.5 秒，
+ *     下一個循環的拍一定在交接之後才排，長度定案前不會排錯；依長度的自動化（張力、低吼）也等交接後才排，
+ *     只有不依長度的 gate（驟降）提早 0.08 秒排。
  *   - 每個循環額外一條「人群低吼」（濾波噪音），音量與亮度隨相位 p 爬升，驟降時一起斷掉：「越近越兇」。
  *   - 沒有音樂層（夜風、低吟、謝帕德）：大廳裡只有打擊、低吼、低音與動作音效，空檔更乾淨。
  *
@@ -25,8 +28,9 @@
  *   以上都由畫面層依規則事件呼叫；規則保證預備不在空檔裡，所以這些暗示聲不會蓋住驟降。
  *
  * 介面：
- *   createAudio(ctx, {t0, cycle, gap, bassPeriod, master}) → api
- *   api.setClock({t0, cycle, gap})   重新開局：舊的預排全部靜音，從新的 t0 接著排
+ *   createAudio(ctx, {t0, cycle, gap, bassPeriod, bassOffset, cycleAt, master}) → api
+ *     cycleAt(t) → {index, start, len}：規則的循環表（畫面層傳 t => VengeanceRules.cycleOf(game, t)）
+ *   api.setClock({t0, cycle, gap, cycleAt})   重新開局：舊的預排全部靜音，從新的 t0 接著排
  *   api.stopRhythm(dur)              勝利／失敗：打擊、低吼淡出（低音也淡出）
  *   api.cue(name, t, data)           動作音效（t 省略 = 現在）
  *   api.now()  api.destroy()  api.CONST
@@ -57,7 +61,14 @@
 
   function createAudio(ctx, opts) {
     opts = opts || {};
-    var clk = { t0: opts.t0 != null ? +opts.t0 : ctx.currentTime, T: +opts.cycle || C.CYCLE, gap: opts.gap != null ? +opts.gap : C.GAP };
+    var clk = { t0: opts.t0 != null ? +opts.t0 : ctx.currentTime, T: +opts.cycle || C.CYCLE, gap: opts.gap != null ? +opts.gap : C.GAP,
+      cycleAt: typeof opts.cycleAt === 'function' ? opts.cycleAt : null };
+    // 時間 t 的循環 {index, start, len}：優先問規則，沒有就用固定長度
+    function cycleAt(t) {
+      if (clk.cycleAt) { var c = clk.cycleAt(t); if (c && c.len > 0) return { index: c.index, start: c.start, len: c.len }; }
+      var i = Math.floor((t - clk.t0) / clk.T);
+      return { index: i, start: clk.t0 + i * clk.T, len: clk.T };
+    }
     var BP = +opts.bassPeriod || C.BASS_PERIOD, BO = opts.bassOffset != null ? +opts.bassOffset : C.BASS_OFFSET;   // 低音網格 = t0 + BO + m·BP（和規則 bass.anchor 一致）
     var sr = ctx.sampleRate, dead = false, stopped = false;
 
@@ -210,36 +221,43 @@
       [o, o2, lf].forEach(function (n) { n.start(tt); n.stop(tt + dur + 0.05); });
     }
 
-    // ---------- 排程（固定循環：拍點直接由 t0、T 算） ----------
+    // ---------- 排程（循環由規則給：每個循環各自的 start、len） ----------
     var bell = function (x) { var d = (x - 0.5) / C.BELL_SIGMA; return Math.exp(-d * d); };
     var tables = [];
     for (var k = 0; k < C.LAYERS; k++) { var Mk = C.M * Math.pow(2, k), a = []; for (var n = 0; n < Mk; n++) a.push(log2(1 + n / Mk)); tables.push(a); }
-    var linEnd = 0, autoCycle = -1, bassEnd = 0, log = opts.log ? [] : null;
+    var linEnd = 0, autoCycle = -1, rampCycle = -1, bassEnd = 0, log = opts.log ? [] : null;
 
-    function scheduleBeats(a, b) {           // [a, b) 的 Risset 拍
-      var T = clk.T, t0 = clk.t0;
-      var c0 = Math.max(0, Math.floor((a - t0) / T)), c1 = Math.floor((b - t0) / T);
-      for (var c = c0; c <= c1; c++) for (var kk = 0; kk < C.LAYERS; kk++) {
-        var tab = tables[kk];
-        for (var i = 0; i < tab.length; i++) {
-          var p = tab[i], t = t0 + (c + p) * T;
-          if (t < a || t >= b) continue;
-          if (c >= 1 && p * T < clk.gap) continue;
-          var w = bell((kk + p) / C.LAYERS);
-          if (w < C.MIN_GAIN) continue;
-          playHit(rhythmOut, (kk + p) / C.LAYERS, t, w);
-          if (log && log.length < 5000) log.push({ t: t, k: kk, w: w });
+    function scheduleBeats(a, b) {           // [a, b) 的 Risset 拍：逐個循環問規則的 start、len
+      var cy = cycleAt(Math.max(a, clk.t0));
+      while (cy.start < b) {
+        var c = cy.index, s = cy.start, T = cy.len;
+        if (c >= 0) for (var kk = 0; kk < C.LAYERS; kk++) {
+          var tab = tables[kk];
+          for (var i = 0; i < tab.length; i++) {
+            var p = tab[i], t = s + p * T;
+            if (t < a || t >= b) continue;
+            if (c >= 1 && p * T < clk.gap) continue;
+            var w = bell((kk + p) / C.LAYERS);
+            if (w < C.MIN_GAIN) continue;
+            playHit(rhythmOut, (kk + p) / C.LAYERS, t, w);
+            if (log && log.length < 5000) log.push({ t: t, k: kk, w: w });
+          }
         }
+        var nx = cycleAt(s + T + 1e-6);
+        if (!(nx.start > s)) break;
+        cy = nx;
       }
     }
-    function scheduleAuto(c) {               // 第 c 個循環的 gate／tension／低吼自動化
-      var T = clk.T, s = clk.t0 + c * T, e = s + T, g0 = c >= 1 ? s + clk.gap : s;
-      if (c >= 1) {
-        gate.gain.setValueAtTime(1, Math.max(ctx.currentTime, s - C.GATE_FALL));
-        gate.gain.linearRampToValueAtTime(C.GATE_FLOOR, s);
-        gate.gain.setValueAtTime(C.GATE_FLOOR, s + clk.gap);
-        gate.gain.linearRampToValueAtTime(1, s + clk.gap + C.GATE_RISE);
-      }
+    function scheduleGate(cy) {              // 第 cy 個循環的驟降 gate（不依循環長度，可以提早排）
+      var c = cy.index, s = cy.start;
+      if (c < 1) return;
+      gate.gain.setValueAtTime(1, Math.max(ctx.currentTime, s - C.GATE_FALL));
+      gate.gain.linearRampToValueAtTime(C.GATE_FLOOR, s);
+      gate.gain.setValueAtTime(C.GATE_FLOOR, s + clk.gap);
+      gate.gain.linearRampToValueAtTime(1, s + clk.gap + C.GATE_RISE);
+    }
+    function scheduleRamps(cy) {             // 第 cy 個循環的 tension／低吼：依循環長度，交接後（長度定案）才排
+      var c = cy.index, s = cy.start, T = cy.len, e = s + T, g0 = c >= 1 ? s + clk.gap : s;
       tension.gain.setValueAtTime(C.TENSION_LO, g0);
       tension.gain.linearRampToValueAtTime(C.TENSION_HI, e - 0.02);
       // 低吼：空檔後從無聲起，p² 曲線爬升（分 6 段近似），驟降前 0.06 秒斷
@@ -267,8 +285,26 @@
       if (end > from) { scheduleBeats(from, end); linEnd = end; }
       if (end > bassEnd) { scheduleBass(Math.max(bassEnd, now), end); bassEnd = end; }
       // 自動化：提早 0.3 秒排下一個循環
-      var cNext = Math.floor((end + 0.3 - clk.t0) / clk.T);
-      while (autoCycle < cNext) { autoCycle++; if (autoCycle >= 0 && clk.t0 + (autoCycle + 1) * clk.T > now) scheduleAuto(autoCycle); }
+      var cNext = cycleAt(end + 0.3);
+      while (autoCycle < cNext.index) {
+        autoCycle++;
+        var cy = cycleAt(end + 0.3); if (cy.index !== autoCycle) cy = cycleByIndex(autoCycle, now);
+        if (cy && autoCycle >= 0 && cy.start + cy.len > now) scheduleGate(cy);
+      }
+      // 張力與低吼：這個循環開始後才排（長度此時已定案；空檔 0.6 秒內排好，g0 = start + gap 還沒到）
+      var cur = cycleAt(now);
+      while (rampCycle < cur.index) {
+        rampCycle++;
+        var rc = rampCycle === cur.index ? cur : cycleByIndex(rampCycle, now);
+        if (rc && rampCycle >= 0 && rc.start + rc.len > now) scheduleRamps(rc);
+      }
+    }
+    // 第 c 個循環（往前最多找 6 個循環，找不到就 null）
+    function cycleByIndex(c, now) {
+      var cy = cycleAt(now);
+      for (var i = 0; i < 6 && cy.index > c; i++) cy = cycleAt(cy.start - 1e-3);
+      for (i = 0; i < 6 && cy.index < c; i++) cy = cycleAt(cy.start + cy.len + 1e-6);
+      return cy.index === c ? cy : null;
     }
     function tick() { if (!dead) scheduleTo(ctx.currentTime + C.LOOKAHEAD, ctx.currentTime); }
 
@@ -417,11 +453,12 @@
         clk.t0 = o.t0 != null ? +o.t0 : now;
         if (o.cycle) clk.T = +o.cycle;
         if (o.gap != null) clk.gap = +o.gap;
+        if (o.cycleAt !== undefined) clk.cycleAt = typeof o.cycleAt === 'function' ? o.cycleAt : null;
         newRhythmOut();                  // 舊的預排接在舊匯流排上，斷開就不出聲
         var oldBass = bassBus; bassBus = ctx.createGain(); bassBus.gain.value = C.BASS_GAIN; bassBus.connect(bassFade);
         try { oldBass.disconnect(); } catch (e) {}
         resetAuto(now);
-        stopped = false; linEnd = now; bassEnd = now; autoCycle = Math.floor((now - clk.t0) / clk.T) - 1; teleN = 0;
+        stopped = false; linEnd = now; bassEnd = now; autoCycle = cycleAt(now).index - 1; rampCycle = autoCycle; teleN = 0;
         tick();
       },
       stopRhythm: function (dur) {

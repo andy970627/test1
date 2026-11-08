@@ -78,6 +78,9 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 .result .lost { color: var(--blood); }
 .btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; margin: 6px 4px 0; }
 .btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+.home a { color: inherit; text-decoration: none; }
+.home a:hover { color: var(--lamp); }
+.home a + a { margin-left: 14px; }
 :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
 </style>
 
@@ -86,7 +89,7 @@ canvas#cv { display: block; width: 100%; height: 100%; }
   <div class="fade" id="fade"></div>
   <div class="hud">
     <span class="title">岸邊</span>
-    <a class="home" href="../index.html">回首頁</a>
+    <nav class="home" aria-label="離開這一章"><a href="../index.html">回連作首頁</a><a class="hubLink" href="../../index.html" hidden>回總首頁</a></nav>
     <p class="say" id="say"></p>
     <p class="trait" id="trait"></p>
     <p class="musterSkip" id="musterSkip" hidden>Esc：跳過點名</p>
@@ -115,12 +118,21 @@ canvas#cv { display: block; width: 100%; height: 100%; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="../series.js"></script>
+<script src="../../nav.js"></script>
 <script src="../crew-voice.js"></script>
 <script>
 (function () {
   'use strict';
   const S = window.OdysseySeries;
   const $ = id => document.getElementById(id);
+  // 出口：回連作首頁（＝這個遊戲的開場，存檔照舊）、回總首頁。nav.js 沒載到或沒有總首頁可去，就藏起「回總首頁」
+  const NAV = window.OdysseyNav, HAS_HUB = !!(NAV && NAV.hasHub());
+  const goSeries = () => { location.href = '../index.html'; };
+  const goHub = () => { if (NAV) NAV.goHub(); };
+  document.querySelectorAll('.hubLink').forEach(a => {
+    a.hidden = !HAS_HUB; if (HAS_HUB) a.href = NAV.hubUrl();
+    a.addEventListener('click', e => { e.preventDefault(); goHub(); });
+  });
   const solo = new URLSearchParams(location.search).has('solo');
   // 骰子第一次就擲好存起來（shoreRoll），重新整理沿用、失去的人不會換
   const save = S.ensureShoreRoll(solo ? S.fresh() : S.load(), Math.random);
@@ -486,11 +498,13 @@ canvas#cv { display: block; width: 100%; height: 100%; }
     $('resNote').textContent = wrath === 0 ? '海很安靜。也許安靜得太久了。' : wrath === 1 ? '海神記住了一個名字。往後的路會更長。' : '海神的兒子在洞口流血。往後的路會很長。';
     const btns = $('resBtns'); btns.innerHTML = '';
     if (solo) {
-      btns.append(btnEl('再選一次', () => location.reload(), true), btnEl('回首頁', () => { location.href = '../index.html'; }));
+      btns.append(btnEl('再選一次', () => location.reload(), true));
     } else {
       S.save(null, S.advance(save, 'underworld', { shore: choice, crewLost: lost.slice(), shadesNamed: null, shadesFollowing: null, nameless: false }));
       btns.append(btnEl(kept > 0 ? '上船（Enter）' : '獨自上船（Enter）', goNext, true));
     }
+    btns.append(btnEl('回連作首頁', goSeries));
+    if (HAS_HUB) btns.append(btnEl('回總首頁', goHub));
     $('result').hidden = false;
     const b = btns.querySelector('button'); if (b) b.focus();
   }

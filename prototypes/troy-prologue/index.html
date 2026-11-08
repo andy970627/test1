@@ -151,7 +151,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="msgs" aria-live="polite"></div>
 <div class="hud" id="hint" aria-live="polite"></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
-<div class="hud" id="breath"><span id="breathText">屏息（空白鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
+<div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
 <div class="hud" id="phase" hidden>
   <span>相位 p（除錯）<span id="phaseNum"></span></span>
   <div class="track"><div class="fill" id="phaseFill"></div><div class="blind" id="phaseBlind"></div><div class="mark"></div></div>
@@ -172,11 +172,11 @@ button:hover { filter: brightness(1.12); }
    <div class="col">
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
-      <dt>按住 空白鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
+      <dt>按住 空白鍵 或 滑鼠右鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
       <dt>Shift</dt><dd>衝刺，只在節奏重來的瞬間有用</dd>
       <dt>E</dt><dd>點一下＝從背後暗殺；在城門按住＝推開門閂</dd>
       <dt>Q</dt><dd>衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
-      <dt>Esc</dt><dd>暫停</dd>
+      <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
     <div id="optSlotIntro"></div>
    </div>
@@ -194,6 +194,8 @@ button:hover { filter: brightness(1.12); }
       <button class="primary" id="btnResume">繼續</button>
       <button id="btnRetryP">從這一區重來</button>
       <button id="btnFromTop">從頭開始</button>
+      <button type="button" class="btnIntro">回到開場</button>
+      <button type="button" class="btnHub">回總首頁</button>
     </div>
   </div>
 </div>
@@ -230,7 +232,7 @@ button:hover { filter: brightness(1.12); }
     <h2 id="failWhy">你被發現了。</h2>
     <p id="failHint" hidden></p>
     <p class="dim">按 R 從這一區重來</p>
-    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button></div>
+    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
   </div>
 </div>
 
@@ -240,10 +242,11 @@ button:hover { filter: brightness(1.12); }
     <h2>城門開了</h2>
     <p>希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
     <p class="later">十年後……</p>
-    <div class="row" style="margin-top:18px"><button id="btnAgain">再玩一次</button></div>
+    <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
   </div>
 </div>
 
+<script src="../nav.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
 <script src="risset.js"></script>
@@ -968,10 +971,11 @@ function readInput() {
   const I = {
     yaw: V.yaw,
     mx: 0, mz: 0,
-    breath: k('Space'),
+    breath: k('Space') || mouseBreath,   // 空白鍵或按住滑鼠右鍵（右手屏息、左手走位，不和 WASD、Shift 打架）
     dash: !!pend.dash, takedown: !!pend.takedown, calm: !!pend.calm,
-    // 按下 Q 的那一刻（音訊時鐘，扣掉輸出延遲＝玩家聽到的時間）；規則有 calmAt 就用它判定，不用幀時間
-    calmAt: pend.calmAt,
+    // 按鍵的那一刻（音訊時鐘，扣掉輸出延遲＝玩家聽到的時間）；規則用 actAt ?? game.time 判定衝刺、暗殺、門閂、安撫
+    // calmAt 是舊欄位名，和 actAt 同值，規則還在讀的話照用
+    actAt: pend.actAt, calmAt: pend.calmAt,
     interact: k('KeyE'),
   };
   // 規則要世界座標的移動方向：前方 (−sin yaw, −cos yaw)、右方 (cos yaw, −sin yaw)
@@ -1130,7 +1134,20 @@ const VIS = {
 };
 // 選單改變時立即生效：同步給規則的 visualAidMode（執行中可以改）
 $('oAid').addEventListener('change', () => { if (game && 'visualAidMode' in game) game.visualAidMode = $('oAid').value; });
-const bellG = x => { const d = (x - .5) / .22; return Math.exp(-d * d); };   // 和聲音層同一條鐘形增益
+// V1：拍點音量、層數、每層拍數一律從規則讀（規則是唯一來源）；規則沒有對應函式時才用備援公式
+const layerGainOf = (k, p, hunted) => {
+  if (typeof Rules.layerGain === 'function') { try { return Rules.layerGain(k, p, !!hunted, K()); } catch (e) {} }
+  const L = num(K().RISSET_LAYERS, 4), d = ((k + p) / L - .5) / num(K().BELL_SIGMA, .22); return Math.exp(-d * d);
+};
+const layerCount = hunted => {                                                      // 追殺時多一層（第 5 層）
+  if (typeof Rules.layerCount === 'function') { try { const v = Rules.layerCount(!!hunted, K()); if (Number.isFinite(v)) return v; } catch (e) {} }
+  return hunted ? num(K().HUNT_LAYERS, num(K().RISSET_LAYERS, 4) + 1) : num(K().RISSET_LAYERS, 4);
+};
+const layerBeatsOf = k => {
+  if (typeof Rules.layerBeats === 'function') { try { const v = Rules.layerBeats(k, K()); if (Number.isFinite(v)) return v; } catch (e) {} }
+  return num(K().RISSET_M, 7) * Math.pow(2, k);
+};
+const beatMinGain = () => num(K().BEAT_MIN_GAIN, .02);
 const smooth = (a, b, x) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
 function aidTarget() {
   const m = $('oAid').value;
@@ -1154,29 +1171,34 @@ function collectBeats(t) {
   const out = [], c = (game && game.cycle) || {}, T = num(c.T, curT, 10);
   const prev = VIS.prevT, p = visPhase(t), pPrev = VIS.prevP, iPrev = VIS.prevI;
   VIS.prevT = t; VIS.prevP = p; VIS.prevI = c.index;
-  if (prev == null || !(t > prev) || t - prev > .5 || visBlind()) return out;
+  // V2：盲區那一幀不再整幀回空——區間 [上一幀, 這一幀) 交給規則，盲區內的拍由 beatsBetween 自己略過，
+  // 盲區結束那一幀內已經響過的拍（通常是盲區後最響的那拍）就補得到。測試用的強制盲區仍整幀回空。
+  if (prev == null || !(t > prev) || t - prev > .5 || VIS.force.blind) return out;
+  const hunted = !!(game && game.hunted);
   if (typeof Rules.beatsBetween === 'function') {
     let list = null; try { list = Rules.beatsBetween(prev, t, game); } catch (e) { list = null; }
     if (Array.isArray(list)) {
       for (const b of list) {
         const o = typeof b === 'number' ? { t: b } : (b || {});
+        if (o.tail) continue;                                   // 假驟降的金屬尾音極輕，畫面不跳
         const k = num(o.k, o.layer, 2), bp = Number.isFinite(o.p) ? o.p : p;
-        out.push({ k, p: bp, g: num(o.g, o.gain, bellG((k + bp) / 4)), T });
+        out.push({ k, p: bp, g: num(o.g, o.gain, layerGainOf(k, bp, hunted)), T });
       }
       return out;
     }
   }
-  // 相位估：第 k 層每循環 7·2^k 拍，第 n 拍落在 p = log2(1 + n / Mk)；盲區內不算
-  if (pPrev == null || VIS.force.p != null) return out;
+  // 相位估（規則沒有 beatsBetween 時的備援）：第 k 層每循環 layerBeats(k) 拍，第 n 拍落在 p = log2(1 + n / Mk)；
+  // 盲區內不算（假驟降那一輪開頭照響）；追殺時多一層；音量門檻用規則的 BEAT_MIN_GAIN
+  if (pPrev == null || VIS.force.p != null || visBlind()) return out;
   const wrapped = (iPrev != null && c.index != null && c.index !== iPrev) || p < pPrev - .5;
   const segs = wrapped ? [[pPrev, 1], [0, p]] : p > pPrev ? [[pPrev, p]] : [];
-  const BL = num(K().BLIND_LEN, K().BLIND, .6);
-  for (const [a, b] of segs) for (let k = 0; k < 4; k++) {
-    const Mk = 7 * Math.pow(2, k);
+  const BL = num(K().BLIND_LEN, K().BLIND, .6), nL = layerCount(hunted), gMin = beatMinGain(), fake = !!c.fake;
+  for (const [a, b] of segs) for (let k = 0; k < nL; k++) {
+    const Mk = layerBeatsOf(k);
     const nA = Math.ceil(Mk * (Math.pow(2, a) - 1) - 1e-9), nB = Math.ceil(Mk * (Math.pow(2, b) - 1) - 1e-9) - 1;
     for (let n = nA; n <= nB; n++) {
-      const bp = Math.log2(1 + n / Mk); if (bp * T < BL) continue;
-      const g = bellG((k + bp) / 4); if (g < .05) continue;
+      const bp = Math.log2(1 + n / Mk); if (!fake && bp * T < BL) continue;
+      const g = layerGainOf(k, bp, hunted); if (g < gMin) continue;
       out.push({ k, p: bp, g, T });
     }
   }
@@ -1249,7 +1271,7 @@ function visFrame(dt, floorY, playing) {
   $('chill').style.opacity = (fz * .32).toFixed(3);
   // 隨拍：拍子越快振幅越小（每拍振幅 ∝ 1/√每秒拍數），但更頻繁
   for (const b of VIS.beats) {
-    const rate = 7 * Math.pow(2, b.k) * Math.LN2 * Math.pow(2, b.p) / b.T;
+    const rate = layerBeatsOf(b.k) * Math.LN2 * Math.pow(2, b.p) / b.T;      // 第 k 層在相位 p 的每秒拍數 = Mk·ln2·2^p ÷ T
     const amp = clamp(b.g, 0, 1) * clamp(Math.sqrt(1.1 / rate), .28, 1);
     VIS.pulse = Math.min(1.3, VIS.pulse + amp * aid);
     if (b.g > .3) VIS.rate += (rate - VIS.rate) * .4;
@@ -1394,7 +1416,7 @@ function hud(dt) {
   $('breathFill').style.width = ((1 - used) * 100).toFixed(1) + '%';
   $('breath').classList.toggle('on', !!P.breathing);
   $('breath').classList.toggle('low', used > .7);
-  $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵）';
+  $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵／右鍵）';
   $('shade').hidden = !P.hidden;
   // 城門進度（只在城門那一區、開始推之後出現）
   const prog = gateProg(g);
@@ -1468,13 +1490,16 @@ document.addEventListener('pointerlockchange', () => {
 });
 const active = () => game && !paused && (game.phase === 'play' || game.phase === 'intro');
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+let mouseBreath = false;   // 按住滑鼠右鍵＝屏息
 canvas.addEventListener('mousedown', e => {
   if (!active()) return;
+  if (e.button === 2) { mouseBreath = true; return; }
   if (locked) return;
   drag = { x: e.clientX, y: e.clientY };
   lockPointer();
 });
-window.addEventListener('mouseup', () => { drag = null; });
+window.addEventListener('mouseup', e => { if (e.button === 2) mouseBreath = false; drag = null; });
+window.addEventListener('blur', () => { mouseBreath = false; });
 window.addEventListener('mousemove', e => {
   if (!active()) return;
   let dx = 0, dy = 0;
@@ -1492,11 +1517,11 @@ window.addEventListener('keydown', e => {
   if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
   if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
   if (paused || e.repeat || was) return;
+  // 按鍵當下的音訊時間（扣掉輸出延遲＝玩家聽到的時間）：衝刺、暗殺、門閂、安撫的時間判定都用它，不用幀時間
+  const isAct = e.code === 'KeyE' || e.code === 'KeyQ' || e.code === 'ShiftLeft' || e.code === 'ShiftRight';
+  if (isAct && actx) pend.actAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
   if (e.code === 'KeyE') pend.takedown = true;          // 點一下＝暗殺事件；按住的狀態另外以 interact 送出
-  if (e.code === 'KeyQ') {
-    pend.calm = true;
-    if (actx) pend.calmAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
-  }
+  if (e.code === 'KeyQ') { pend.calm = true; pend.calmAt = pend.actAt; }
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') pend.dash = true;
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
@@ -1524,6 +1549,31 @@ $('btnFromTop2').onclick = startFromTop;
 $('btnRetry').onclick = retryZone;
 $('btnAgain').onclick = startFromTop;
 
+// 回到開場：頁內重設（停掉聲音、清提示、收起所有畫面、回開場字卡）。
+// 實驗開關（相位條、視覺輔助、難度、音樂層與已載入的音檔）都留在頁面上，所以自然保留；
+// 音訊環境 actx 沿用，下次「開始」由 makeAudio 重建聲音，不會兩套疊在一起。
+function backToIntro() {
+  paused = true; startedOnce = false; overShown = false;
+  unlockPointer();
+  if (audio && typeof audio.stop === 'function') { try { audio.stop(); } catch (e) {} }
+  audio = null; game = null;
+  for (const k in keys) keys[k] = false;
+  pend = {}; drag = null;
+  clearHints(); $('msgs').innerHTML = '';
+  $('pause').hidden = true; $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
+  document.body.classList.remove('playing');
+  $('optSlotIntro').appendChild($('opts'));
+  $('intro').hidden = false; $('intro').scrollTop = 0;
+}
+// 回總首頁：共用的 ../nav.js；沒載到或沒有總首頁可去（claude.ai 試玩頁未設定網址）就隱藏按鈕
+const NAV = window.OdysseyNav;
+const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
+document.querySelectorAll('.btnIntro').forEach(b => { b.onclick = backToIntro; });
+document.querySelectorAll('.btnHub').forEach(b => {
+  b.hidden = !hasHub;
+  b.onclick = () => { try { NAV.goHub(); } catch (e) { console.warn('無法前往總首頁', e); } };
+});
+
 // 開場前先建好場景當背景（看得到木馬腹中）
 try {
   t0 = 0; curT = +$('oT').value || 10;
@@ -1533,7 +1583,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW };
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats };   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>
