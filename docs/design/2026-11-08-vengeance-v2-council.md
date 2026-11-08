@@ -13,6 +13,7 @@
 | 甲 | `gemini-3.8-flash-high`（Antigravity） | 不預設立場 | 一次讀整份題目檔 | 完成 |
 | 乙 | `gpt-oss-120b-medium`（Antigravity） | 不預設立場 | 題目檔切 5 段送進同一對話再提問 | 完成（答案較短） |
 | 丙 | Claude Opus（本機 Claude Code 子代理） | 懷疑者 | 一次讀整份題目檔 | 完成 |
+| 丁 | GitHub Copilot 雲端代理（`gh agent-task`） | 不預設立場 | 在 GitHub 上自己讀 repo 裡的三份材料，答案寫成獨立檔 `2026-11-08-vengeance-v2-council-copilot.md`，PR andy970627/test1#8 | 進行中，PR 待使用者合併後再照貼進本文件 |
 
 ---
 
