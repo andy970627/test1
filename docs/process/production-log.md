@@ -161,3 +161,4 @@
 | 網頁連作《回家的路》（報告後重做） | `prototypes/odyssey-series/` |
 | 錄音分析工具 | `tools/playtest-recorder/` |
 | 設計文件 | `docs/design/`（總覽、木馬之夜、比箭與復仇、暗示引導等） |
+- 本機總控接手（11/09 晚，`ai-collaboration.md` 13.5 節）：四個角色工作階段（規則、聲音、畫面、錄音與工具，Opus）開在 worktree `openrouter-api-key-setup-383957`，首輪各填完筆記（89／127／98／107 行，主對話抽查通過）；雲端夜班雙向訊息已通。筆記第一輪就抓到：木馬之夜聲音層找不到規則的 `blindWindows` 而自己預測盲區、大廳復仇聲音層仍抄自己的層數與 σ、試玩頁重新發布漏帶 `telemetry.js` 會靜默停收數據、本機錄音工具 `NODE_PATH` 用「:」切在 Windows 無效。測試 234 項全綠（規則 227＋遙測 7）。第二輪試玩題目表 10 題已備，等真耳朵。
