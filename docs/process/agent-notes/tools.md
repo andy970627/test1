@@ -97,6 +97,7 @@
 - 本機環境：Node v24.22.1；Playwright Chromium 瀏覽器有（chromium-1248、1254，含 headless shell），但 **playwright npm 套件待裝**；ffmpeg 8.1.1 有（WinGet Gyan）；bash、curl、python3 3.14.6 有，`zip` 沒有（打包走 python）。
 - `node --test tools/telemetry/*.test.js`：7 pass、0 fail。
 - 本輪沒改任何程式。
+- 11/09 起回訊與派工認「test1 總控（Opus）」；原主對話改名「test1 設計席（Fable）」，只處理設計題。
 
 **未完成／候選工作**
 - 本機錄音要先裝 playwright 套件（版本對上已有的 Chromium），並把 `record.mjs` 第 40 行（`analyze.mjs` 第 479 行沒讀 `NODE_PATH`，只寫死雲端路徑，裝好套件就找得到）改用 `path.delimiter` → 主對話 11/09 說等試玩回饋後一起派。
@@ -105,3 +106,5 @@
 - 稽核 P1、P2：期望拍改成直接引用規則層，並補追殺第 5 層與假驟降尾音。
 - `bow-risset`、`vengeance` 設定檔還沒宣告喇叭可聽度檢查（6～8 項）。
 - 11/12 期中報告要的頻譜圖與錄影：等主對話指定原型與段落。
+
+- 11/09 晚（總控）`record.mjs` 的 `NODE_PATH` 已改用 `path.delimiter`（提交 0193cdf）；剩本機裝 playwright 與 `fireSync` 檢查。
