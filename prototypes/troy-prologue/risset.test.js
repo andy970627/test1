@@ -549,7 +549,7 @@ test('機制 B：起疑時又有第二名衛兵起疑，一起算在同一輪安
 
 // ---------------- 追殺 ----------------
 
-test('追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
+test('11/09 4A 追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
   const g = lvl({ startZone: 2 });
   const q = solo(g, 'g2a', 17, 18, Math.PI); // 南側拱廊（z ≥ 24）以北 6 m
   place(g, 17, 24.3); // 已在陰影邊緣
@@ -568,7 +568,7 @@ test('追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
   assert.ok(sfx(g).includes('escape'));
 });
 
-test('追殺：在陰影裡亂動會被聽到，撐不住的計時歸零', () => {
+test('11/09 4A 追殺：在陰影裡亂動會被聽到，撐不住的計時歸零', () => {
   const g = lvl({ startZone: 2 });
   solo(g, 'g2a', 17, 16, Math.PI);
   place(g, 17, 24.3);
@@ -586,8 +586,8 @@ test('追殺：在陰影裡亂動會被聽到，撐不住的計時歸零', () =>
 
 test('11/09 4A：追殺中連續 step_masked 會觸發 hunt_step／hunt_slip，並在 3 秒內減速', () => {
   const g = lvl({ startZone: 2 });
-  const q = solo(g, 'g2a', 25, 5, 0);
-  place(g, 25, 19);
+  const q = solo(g, 'g2a', 17, 5, 0);
+  place(g, 17, 22);
   q.state = 'hunted'; q.lastKnown = { x: g.player.x, z: g.player.z }; g.hunted = true;
   g.step(11, {});
   const maskedTimes = [];
@@ -608,15 +608,14 @@ test('11/09 4A：追殺中連續 step_masked 會觸發 hunt_step／hunt_slip，�
   assert.equal(got.filter((e) => e.a === 'hunt_slip').length, 1);
 
   const t0 = maskedTimes[2] + 0.05;
-  const z0 = q.z;
   g.step(t0, {});
-  const z1 = q.z;
-  g.step(t0 + 1, {});
-  const slowV = Math.abs(z1 - z0) / 1;
+  const z0 = q.z;
+  run(g, t0, t0 + 1);
+  const slowV = Math.abs(q.z - z0) / 1;
   assert.ok(Math.abs(slowV - K.HUNT_SPEED * K.HUNT_SLOW_MUL) <= 0.15, `slow=${slowV}`);
-  g.step(t0 + K.HUNT_SLOW_DUR + 0.2, {});
+  run(g, t0 + 1, t0 + K.HUNT_SLOW_DUR + 0.2);
   const z2 = q.z;
-  g.step(t0 + K.HUNT_SLOW_DUR + 1.2, {});
+  run(g, t0 + K.HUNT_SLOW_DUR + 0.2, t0 + K.HUNT_SLOW_DUR + 1.2);
   const normalV = Math.abs(q.z - z2) / 1;
   assert.ok(Math.abs(normalV - K.HUNT_SPEED) <= 0.2, `normal=${normalV}`);
 });
@@ -712,7 +711,7 @@ test('城門：低頻（p ≤ 0.5）按住 interact 累積，高頻按住發出�
   assert.ok(near(g.gate.progress, 5, 0.05));
 });
 
-test('城門：高頻推門閂是大聲音，附近衛兵先高度警覺、再犯轉追殺', () => {
+test('11/09 4A 城門：高頻推門閂是大聲音，附近衛兵先高度警覺、再犯轉追殺', () => {
   const g = lvl({ startZone: 4 });
   const q = solo(g, 'g4b', 52, 15 - 3, 0);
   const L = g.level.gate.latch;
@@ -720,7 +719,7 @@ test('城門：高頻推門閂是大聲音，附近衛兵先高度警覺、再�
   g.step(7, {});
   g.step(7 + DT, { interact: true });
   assert.equal(q.state, 'alerted');
-  g.step(7 + DT * 2, { interact: true });
+  g.step(7 + DT + K.LATCH_NOISE_GAP + 0.02, { interact: true });
   assert.equal(q.state, 'hunted');
 });
 
@@ -1697,7 +1696,7 @@ test('R2 盲區基準：beatsBetween 用 anchor.start 判盲區，T 在循環內
   assert.ok(drift > 0.05, `用 p × T 反推的開頭和實際 start 最多差 ${drift.toFixed(3)} 秒（要夠大，測試才有意義）`);
 });
 
-test('提示文字裡的數字由常數生成，和 T 一致；改常數文字跟著變；不再寫「一整個循環」', () => {
+test('11/09 4A 提示文字：文字裡的數字由常數生成，和 T 一致；改常數文字跟著變；不再寫「一整個循環」', () => {
   const allowed = new Set([K.BREATH_MAX, K.CALM_NEED, K.CALM_TIMEOUT, K.ESCAPE_STILL, K.BLIND_LEN, K.BASS_PERIOD, K.TAKEDOWN_R, K.ALERTED_DURATION, K.HUNT_STEP_ESCAPE].map(String));
   const texts = [];
   for (const [k, v] of Object.entries(R.HINTS)) texts.push(['HINTS.' + k, v]);
@@ -1722,7 +1721,7 @@ test('提示文字裡的數字由常數生成，和 T 一致；改常數文字�
   assert.ok(R.ladderText('breath', 3, R.hintLadderFor(K2)).includes('約 5 秒'));
   const g = lvl({ startZone: 2, T: { ESCAPE_STILL: 7 } });
   solo(g, 'g2a', 25, 22, 0); place(g, 25, 19);
-  g.step(7, {}); g.step(7 + DT, { mx: 1 });
+  moveHighTwice(g, 7, { mx: 1 });
   assert.ok(g.drain().some((e) => e.type === 'hint' && e.a.includes('不動 7 秒')));
 });
 
