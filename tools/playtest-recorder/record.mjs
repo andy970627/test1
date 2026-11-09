@@ -37,7 +37,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 function loadPlaywright() {
   const tries = ['playwright', '/opt/node-tools/node_modules/playwright'];
-  if (process.env.NODE_PATH) for (const p of process.env.NODE_PATH.split(':')) if (p) tries.push(path.join(p, 'playwright'));
+  if (process.env.NODE_PATH) for (const p of process.env.NODE_PATH.split(path.delimiter)) if (p) tries.push(path.join(p, 'playwright'));
   for (const t of tries) { try { return require(t); } catch (e) {} }
   throw new Error('找不到 playwright（試過 ' + tries.join(', ') + '）');
 }
