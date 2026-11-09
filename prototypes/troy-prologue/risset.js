@@ -25,6 +25,8 @@
  *   （機率 1 ÷ (FAKE_EVERY − 1)，平均約每 FAKE_EVERY 個循環 1 次；這一次是假的，下一次一定是真的，不會連續）。
  *   cycle.fake = 這一輪開頭的交接是假驟降（沒有盲區、感知照常）；cycle.nextFake = 下一次交接是假驟降
  *   （提早一整個循環決定，聲音才來得及不排靜音、不發 pre_blind）。警戒、追殺中不抽；追殺開始時取消已抽中的。
+ *   11/09 4A：高頻亂動／大聲先進「高度警覺」再追殺；追殺中可用盲區衝刺與連續合拍甩追兵；火光亮度公式與 blindWindows
+ *   匯出，讓聲音層、畫面層與規則判定共用同一份盲區時段。
  *   Risset 拍點公式（從聲音層移過來，兩邊共用）：第 k 層第 n 拍在 p = log2(1 + n ÷ (M·2^k))，
  *   n = 0 .. M·2^k − 1；音量 = 鐘形曲線 bell((k + p) ÷ 層數)，平常 4 層、追殺 5 層（σ 按層距等比例縮），
  *   沒有固定底限，所以交接連續、各層音量和恆定，追殺時 Risset 錯覺照樣成立。
@@ -99,17 +101,18 @@
     FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉
     FAKE_FROM_ZONE: 3,    // 從第 3 區（窄巷）起才會出現
     FAKE_EVERY: 4,        // 平均每幾個循環 1 次：每次交接以 1 ÷ (FAKE_EVERY − 1) 的機率抽，抽中後下一次一定是真的
-    R_BASE: 2,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²
-    R_GAIN: 8,
+    R_BASE: 3,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
+    R_GAIN: 10,           // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
     ALERT_MUL: 1.3,       // 警戒（起疑）與追殺時感知 ×1.3
     FOV: Math.PI / 3,     // 視野半角 ±60°
-    HIGH_P: 0.6,          // p > 0.6：範圍內移動 = 立即追殺
+    HIGH_P: 0.6,          // p > 0.6：範圍內移動／大聲先進高度警覺；再犯才追殺（11/09 4A）
     BREATH_HEAR: 0.6,     // 沒屏息、站著不動的呼吸聲，在 r × 0.6 內聽得到
     BREATH_MAX: 6,        // 屏息上限秒數，超過 = 喘氣（大聲）
     BREATH_RECOVER: 1.2,  // 不屏息時，屏息計量每秒恢復幾秒
     LOUD_R: 8,            // 大聲（喘氣、門閂聲）傳多遠（至少這麼遠，或 r 較大時用 r）
     WALK: 2.6,            // 潛行速度 m/s
-    DASH: 3,              // 衝刺距離 m（只在盲區，每個盲區一次）
+    DASH: 3,              // 衝刺距離 m（只在盲區，每個盲區一次；平常）
+    DASH_HUNT: 6,         // 追殺中在盲區衝刺的距離 m（11/09 4A：追殺生路）
     BODY_R: 0.3,          // 玩家與衛兵的碰撞半徑
     SUSP_MOVE: 0.9,       // p ≤ 0.6 時，範圍內移動每秒增加的疑心
     SUSP_SEEN_HIGH: 1.5,  // 站著被看到／聽到呼吸：p > 0.6 時每秒疑心
@@ -125,8 +128,13 @@
     CALM_TIMEOUT: 12,     // 幾秒內沒安撫完 → 追殺
     CALM_GRACE: 3,        // 安撫或擺脫後，衛兵幾秒內不累積疑心
     HUNT_SPEED: 3.0,      // 追殺時衛兵速度
+    HUNT_STEP_ESCAPE: 3,  // 追殺中連續幾步踩在鼓點上（step_masked）就讓追兵減速
+    HUNT_SLOW_MUL: 0.6,   // 追兵減速倍率：HUNT_SPEED × HUNT_SLOW_MUL
+    HUNT_SLOW_DUR: 3,     // 追兵減速持續秒數
     CATCH_R: 1.0,         // 被追到 1 m 內 = 失敗
-    ESCAPE_STILL: 10,     // 躲在陰影裡不動多少秒擺脫（以秒計；追殺循環 3 秒，約 3 個多循環，提示文字由這個常數生成）
+    ESCAPE_STILL: 6,      // 躲在陰影裡不動多少秒擺脫（11/09 4A：追殺生路；提示文字由這個常數生成）
+    ALERTED_DURATION: 10, // 高度警覺持續秒數（期間再犯就轉追殺）
+    ALERTED_SUSP: 0.8,    // 進入高度警覺時，疑心直接設成這個值
     PATROL_SPEED: 1.2,    // 巡邏速度
     PATROL_PAUSE: 1.0,    // 到路線點停多久（×0.8～1.2 隨機）
     SEARCH_TURN: 2.0,     // 追到最後位置後原地張望的轉速 rad/s
@@ -144,6 +152,9 @@
     HINT_BACK_R: 8,       //   背後有人：幾公尺內
     HINT_BACK_ANG: 1.9,   //   背後有人：和玩家正前方夾角超過幾弧度（約 110°）
     HINT_KILL_R: 3.2,     //   可暗殺：背後幾公尺內就開始提示（真正出手要 TAKEDOWN_R 內）
+    FIRE_BASE: 0.35,      // 火光亮度基準（0～1）
+    FIRE_P_GAIN: 0.65,    // 火光亮度隨相位 p 增加的量（p = 1 時到 1.0）
+    FIRE_BLIND: 0.15,     // 盲區時的火光亮度
     MAX_DT: 0.1           // step 每次最多推進 0.1 秒
   });
 
@@ -239,6 +250,54 @@
     if (t > mid + half) { k++; mid += period; }
     const blind = t >= anchor && Math.abs(t - mid) <= half + 1e-12;
     return { blind, k, from: mid - half, to: mid + half };
+  }
+  /** 火光亮度：盲區固定 FIRE_BLIND，其他時候 FIRE_BASE + FIRE_P_GAIN × p，最後夾在 0～1。 */
+  function fireBrightness(p, blind, K) {
+    K = K || T;
+    const v = blind ? K.FIRE_BLIND : (K.FIRE_BASE + K.FIRE_P_GAIN * p);
+    return Math.max(0, Math.min(1, v));
+  }
+  /**
+   * [a, b) 內的盲區時段：[{from, to, kind}]。
+   * kind = 'blind'（一般：循環開頭 BLIND_LEN 秒）或 'alert'（警戒：兩個低音拍正中央 BLIND_LEN 秒）。
+   * 一般盲區用 cycle.anchor 外推，並遵守 nextFake：下一次交接是假驟降時，該次沒有盲區。
+   */
+  function blindWindows(a, b, game) {
+    if (!(b > a) || !game || !game.cycle) return [];
+    const K = game.T || T;
+    const BL = blindLen(K);
+    const out = [];
+    if (game.panic && game.panic.active) {
+      const bass = game.bass || {};
+      const period = bass.period || K.BASS_PERIOD;
+      const anchor = Number.isFinite(bass.anchor) ? bass.anchor : 0;
+      const half = BL / 2;
+      let k = Math.floor((a - anchor) / period - 0.5) - 1;
+      const kEnd = Math.ceil((b - anchor) / period - 0.5) + 1;
+      for (; k <= kEnd; k++) {
+        const mid = anchor + (k + 0.5) * period;
+        const from = mid - half, to = mid + half;
+        if (to <= a || from >= b) continue;
+        out.push({ from, to, kind: 'alert' });
+      }
+      out.sort((x, y) => x.from - y.from);
+      return out;
+    }
+    const c = game.cycle || {};
+    const an = c.anchor || { t: game.time || 0, p: c.p || 0, T: c.T || K.CYCLE, index: c.index || 0, start: c.start };
+    const u0 = (an.index != null ? an.index : (c.index || 0)) + an.p;
+    const ua = u0 + (a - an.t) / an.T, ub = u0 + (b - an.t) / an.T;
+    const aIdx = an.index != null ? an.index : (c.index || 0);
+    const fakeCyc = (cyc) => (cyc === aIdx && !!c.fake) || (cyc === aIdx + 1 && !!c.nextFake);
+    const startOf = (cyc) => (cyc === aIdx && Number.isFinite(an.start)) ? an.start : an.t + (cyc - u0) * an.T;
+    for (let cyc = Math.floor(ua) - 1; cyc <= Math.floor(ub) + 1; cyc++) {
+      if (fakeCyc(cyc)) continue;
+      const from = startOf(cyc), to = from + BL;
+      if (to <= a || from >= b) continue;
+      out.push({ from, to, kind: 'blind' });
+    }
+    out.sort((x, y) => x.from - y.from);
+    return out;
   }
   /**
    * [a, b) 內的 Risset 拍點（依 game.cycle.anchor 外推），照時間排序。
@@ -374,7 +433,8 @@
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
       dash: '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
       panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。',
-      hunted: '被發現了！快躲進陰影裡，不動 ' + num(K.ESCAPE_STILL) + ' 秒。被追到身邊就失敗。',
+      alerted: '衛兵高度警覺了！' + num(K.ALERTED_DURATION) + ' 秒內別再動、別出聲，否則就會被追殺。',
+      hunted: '被發現了！躲進陰影不動 ' + num(K.ESCAPE_STILL) + ' 秒，或連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上甩開他。',
       takedown: '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
       gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
       lockedExit: '還在被追，先甩掉追兵才能往前走。',
@@ -573,7 +633,12 @@
       panic: { active: false, start: 0, count: 0, lastPress: null },
       gate: { progress: 0, need: K.GATE_NEED, pushing: false, open: false },
       alarm: 0,
+      fire: fireBrightness(0, false, K),
       hunted: false,
+      alerted: false,
+      huntSteps: 0,
+      huntSlowUntil: 0,
+      huntIdleT: 0,
       stillT: 0,
       failReason: null,
       failCode: null,
@@ -637,7 +702,7 @@
       return {
         id: d.id, zone: d.zone, x: p0.x, z: p0.z,
         yaw: d.yaw != null ? d.yaw : yawTo(p1.x - p0.x, p1.z - p0.z),
-        baseYaw: d.yaw, state: 'patrol', susp: 0, calm: 0,
+        baseYaw: d.yaw, state: 'patrol', susp: 0, calm: 0, alertUntil: 0,
         route: d.route, wp: d.route.length > 1 ? 1 : 0, pause: 0, grace: 0,
         lookAt: null, lastKnown: null, active: false
       };
@@ -724,6 +789,16 @@
       q.calm = g.panic.count;
       hint('panic');
     }
+    function makeAlerted(q, t, cause) {
+      if (!q || q.state !== 'patrol') return;
+      if (cause === 'move_high') hintFail('blind');
+      q.state = 'alerted';
+      q.susp = K.ALERTED_SUSP;
+      q.alertUntil = t + K.ALERTED_DURATION;
+      q.lookAt = { x: g.player.x, z: g.player.z };
+      emit('sfx', 'alerted');
+      hint('alerted');
+    }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
     function startHunt(q, cause, reason) {
       cause = cause || 'seen';
@@ -742,14 +817,14 @@
         }
       }
       clearPanic();
-      g.hunted = true; g.stillT = 0;
+      g.hunted = true; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
       g.cycle.nextFake = false;   // 追殺中不要假驟降（擺脫要靠真的盲區判斷時機）
       if (!wasHunted) { emit('sfx', 'hunt'); if (reason) emit('msg', reason); }
       hint('hunted');
     }
     function endHunt() {
       for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; }
-      g.hunted = false; g.stillT = 0; huntCause = null;
+      g.hunted = false; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0; huntCause = null;
       emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
     }
 
@@ -825,22 +900,21 @@
     function updateClock(t) {
       advanceClock(t);
       const c = g.cycle;
-      const BL = K.BLIND_LEN;
       c.alertBlind = g.phase === 'play' && g.panic.active && !g.hunted;
+      const ws = blindWindows(t - 1e-9, t + 1e-9, g);
+      c.blind = ws.length > 0;
       if (c.alertBlind) {
         const ab = alertBlindAt(t, g.bass.anchor, K.BASS_PERIOD, K);
-        c.blind = ab.blind; c.blindId = 'b' + ab.k + '@' + g.bass.anchor;
-        c.blindFrom = ab.from; c.blindTo = ab.to;
-      } else {
-        c.blind = !c.fake && t >= c.start - 1e-9 && t - c.start < BL;
-        c.blindId = 'c' + c.index;
-        if (c.blind) { c.blindFrom = c.start; c.blindTo = c.start + BL; }
-        else {   // 下一段（預估）；下一次交接是假驟降就再晚一個循環（假驟降不會連續）
-          c.blindFrom = t + (1 - c.p) * c.T + (c.nextFake ? c.T : 0); c.blindTo = c.blindFrom + BL;
-        }
+        c.blindId = 'b' + ab.k + '@' + g.bass.anchor;
+      } else c.blindId = 'c' + c.index;
+      if (c.blind) { c.blindFrom = ws[0].from; c.blindTo = ws[0].to; }
+      else {
+        const nxt = blindWindows(t + 1e-9, t + c.T * 3 + K.BLIND_LEN + K.BASS_PERIOD, g)[0];
+        if (nxt) { c.blindFrom = nxt.from; c.blindTo = nxt.to; }
       }
       c.desync = c.p > K.DESYNC_P;
       c.anchor = { t, p: c.p, T: c.T, index: c.index, start: c.start };
+      g.fire = fireBrightness(c.p, c.blind, K);
       g.visualAid = visualAidFor(g.zone, g.visualAidMode);
       refreshBass(t);
     }
@@ -859,11 +933,11 @@
       const actT = inp.actAt != null ? Math.min(inp.actAt, t) : t;
       /** 時間 tt 是否算盲區：真盲區本身，或真盲區開始前 BLIND_LEAD_GRACE 秒內（假驟降前 blindFrom 在再下一輪，自然沒有寬限）。 */
       const blindLike = (tt) => {
-        if (c.alertBlind) return alertBlindAt(tt, g.bass.anchor, K.BASS_PERIOD, K).blind;
-        if (!c.fake && tt >= c.start - 1e-9 && tt - c.start < K.BLIND_LEN) return true;
+        if (blindWindows(tt - 1e-9, tt + 1e-9, g).length > 0) return true;
         return !blind && tt < c.blindFrom && c.blindFrom - tt <= K.BLIND_LEAD_GRACE + 1e-9;
       };
       const lead = !blind && !c.alertBlind && blindLike(t);   // 本幀在盲區前沿的寬限裡（移動照盲區規則）
+      g.alerted = false;
       /** 時間 tt 的相位（本幀外推，門閂用）。 */
       const pAt = (tt) => Math.max(0, Math.min(1, p + (tt - t) / c.T));
       // 盲區預告：循環最後 PRE_BLIND 秒發一次
@@ -914,9 +988,10 @@
             let dx = mx, dz = mz;
             const l = Math.hypot(dx, dz);
             if (l < 1e-6) { const f = forward(pl.yaw); dx = f.x; dz = f.z; } else { dx /= l; dz /= l; }
-            const n = Math.ceil(K.DASH / 0.1);
-            for (let k = 0; k < n; k++) moveBody(pl, dx * K.DASH / n, dz * K.DASH / n);
-            emit('sfx', 'dash'); hintOk('blind');
+            const dashDist = g.hunted ? K.DASH_HUNT : K.DASH;
+            const n = Math.ceil(dashDist / 0.1);
+            for (let k = 0; k < n; k++) moveBody(pl, dx * dashDist / n, dz * dashDist / n);
+            emit('sfx', 'dash', { hunt: !!g.hunted }); hintOk('blind');
           } else if (!dashBlind) hint('dash');
         }
       }
@@ -941,10 +1016,29 @@
           lastStepT = t;
           stepLoud = !stepNow.masked;
           emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z, beatT: stepNow.beatT });
+          if (g.hunted) {
+            if (stepNow.masked) {
+              g.huntSteps++;
+              g.huntIdleT = 0;
+              emit('sfx', 'hunt_step', { index: g.huntSteps });
+              if (g.huntSteps >= K.HUNT_STEP_ESCAPE) {
+                g.huntSlowUntil = Math.max(g.huntSlowUntil, t + K.HUNT_SLOW_DUR);
+                g.huntSteps = 0;
+                emit('sfx', 'hunt_slip');
+              }
+            } else g.huntSteps = 0;
+          }
           if (stepNow.masked && g.guards.some((q) => q.active && dist2(q, pl) < K.STEP_R * 2)) hintOk('step');
         }
       }
       walking = walked;
+      if (g.hunted) {
+        if (walked) g.huntIdleT = 0;
+        else {
+          g.huntIdleT += dt;
+          if (g.huntIdleT > K.BASS_PERIOD) g.huntSteps = 0;
+        }
+      }
       // 暗示階梯的成功：盲區裡在衛兵附近走動（驟降）；在火光圈外、但就在旁邊走（感知範圍）；假驟降時沒動
       if (walked && g.guards.some((q) => q.active && dist3(q, pl) <= radiusAt(1, false, K))) {
         if (blind) hintOk('blind');
@@ -1047,9 +1141,10 @@
       // 感知
       for (const q of g.guards) {
         if (!q.active || g.phase !== 'play') continue;
+        if (q.state === 'alerted') g.alerted = true;
         if (q.grace > 0) q.grace = Math.max(0, q.grace - dt);
         if (blind) continue; // 盲區：感知 = 0
-        const alert = q.state === 'suspicious' || q.state === 'hunted';
+        const alert = q.state === 'suspicious' || q.state === 'hunted' || q.state === 'alerted';
         const r = radiusAt(p, alert, K);
         const d = dist3(q, pl);
         const f = forward(q.yaw);
@@ -1067,15 +1162,43 @@
           if (seen || heardMove || heardLoud || heardStep || (!pl.hidden && !blind)) q.lastKnown = { x: pl.x, z: pl.z };
           continue;
         }
+        if (q.state === 'alerted') {
+          q.lookAt = { x: pl.x, z: pl.z };
+          const moveHigh = p > K.HIGH_P && mv && (heardMove || seen);
+          if (heardLoud || moveHigh || q.susp >= 1) {
+            const msg = heardLoud ? '那聲音太大了——衛兵衝過來！' : '節奏最快的時候亂動——被發現了！';
+            startHunt(q, heardLoud ? 'loud' : 'move_high', msg);
+            continue;
+          }
+          if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
+          if (mv && (heardMove || seen) && q.grace <= 0) q.susp += K.SUSP_MOVE * dt;
+          if (seen || heardBreath) {
+            if (q.grace <= 0) q.susp += (p > K.HIGH_P ? K.SUSP_SEEN_HIGH : K.SUSP_SEEN_LOW) * dt;
+          } else q.susp = Math.max(K.ALERTED_SUSP, q.susp - K.SUSP_DECAY * dt);
+          q.susp = Math.max(K.ALERTED_SUSP, Math.min(1, q.susp));
+          if (q.susp >= 1) {
+            startHunt(q, 'seen', '衛兵盯住了你——追兵衝過來！');
+            continue;
+          }
+          if (t >= q.alertUntil) {
+            q.state = 'patrol'; q.susp = 0; q.grace = K.CALM_GRACE; q.lookAt = null;
+            emit('sfx', 'alert_over');
+          }
+          continue;
+        }
         if (heardLoud) {
-          if (p > K.HIGH_P) startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
+          if (p > K.HIGH_P) makeAlerted(q, t, 'loud');
           else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
           continue;
         }
         if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
         let why = heardStep ? 'step' : null;
         if (mv && (heardMove || seen)) {
-          if (p > K.HIGH_P) { startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！'); continue; }
+          if (p > K.HIGH_P) {
+            if (q.state === 'patrol') makeAlerted(q, t, 'move_high');
+            else startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！');
+            continue;
+          }
           // 假驟降的頭 BLIND_LEN 秒裡動了，被聽見 → 算「假驟降」；平常 → 算「感知範圍」
           why = (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN + 0.3) ? 'fake' : 'radius';
           if (why === 'fake') hintFail('fake');
@@ -1126,9 +1249,12 @@
           }
         } else if (q.state === 'suspicious') {
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
+        } else if (q.state === 'alerted') {
+          if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
         } else if (q.state === 'hunted') {
           const L = q.lastKnown || { x: pl.x, z: pl.z };
-          if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, K.HUNT_SPEED, dt);
+          const hs = t < g.huntSlowUntil ? K.HUNT_SPEED * K.HUNT_SLOW_MUL : K.HUNT_SPEED;
+          if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, hs, dt);
           else q.yaw += K.SEARCH_TURN * dt;
           if (dist2(q, pl) < K.CATCH_R) { fail(CAUSES[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
         }
@@ -1191,7 +1317,8 @@
       const z = Math.max(1, g.zone);
       g.player = makePlayer(z);
       resetGuards(z);
-      g.hunted = false; g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
+      g.hunted = false; g.alerted = false; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
+      g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
       g.gate.progress = 0; g.gate.pushing = false; g.gate.open = false;
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
@@ -1212,7 +1339,7 @@
     T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES,
     createLevel, buildLevel,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
-    zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt,
+    zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, blindWindows,
     stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
     forward, yawTo, angDiff, inRect, mulberry32
   };
