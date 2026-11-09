@@ -34,6 +34,11 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #chill { inset: 0; background: #4f6ea8; mix-blend-mode: color; opacity: 0; }
 /* 不合拍的腳步被聽到：畫面邊緣極淡的暖光一閃 */
 #stepEdge { inset: 0; box-shadow: inset 0 0 120px 24px rgba(240, 150, 70, .9); opacity: 0; }
+/* 高度警覺邊緣暈：淡橘色暈，緩慢呼吸 */
+#alertedEdge { inset: 0; box-shadow: inset 0 0 160px 40px rgba(235, 120, 30, .85); opacity: 0; pointer-events: none; }
+/* 暗殺短白閃：更明顯的短白閃，不超過 0.15 秒全白 */
+#whiteFlash { inset: 0; background: #ffffff; opacity: 0; pointer-events: none; }
+#dashFx { inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
 /* 世界內暗示（設計文件 2026-11-07 第 2.1 節；強度 × visualAid，由程式設定 opacity） */
 #behind { inset: 0; opacity: 0; }
 #hand { left: calc(-10px + var(--sl)); bottom: calc(-30px + var(--sb)); width: min(34vw, 300px); opacity: 0; transform: translate(-70%, 18%) rotate(-8deg); transform-origin: 0 100%; }
@@ -152,6 +157,7 @@ button:hover { filter: brightness(1.12); }
 <canvas class="hud" id="noise" width="160" height="90" aria-hidden="true"></canvas>
 <div class="hud" id="chill"></div>
 <div class="hud" id="stepEdge"></div>
+<div class="hud" id="alertedEdge"></div>
 <div class="hud" id="edge"></div>
 <div class="hud" id="behind"></div>
 <div class="hud" id="hand" aria-hidden="true"><svg viewBox="0 0 300 220"><!-- 同伴的手從畫面左下抓住你的手臂（剪影） -->
@@ -161,6 +167,8 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="blade" aria-hidden="true"></div>
 <div class="hud" id="whisper" aria-live="polite"></div>
 <div class="hud" id="red"></div>
+<div class="hud" id="whiteFlash"></div>
+<canvas class="hud" id="dashFx"></canvas>
 <div class="hud" id="cross"></div>
 <div class="hud" id="zone"><span id="zoneNo"></span><b id="zoneName"></b></div>
 <div class="hud" id="msgs" aria-live="polite"></div>
@@ -333,6 +341,7 @@ camera.rotation.order = 'YXZ';
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  const dcv = $('dashFx'); if (dcv) { dcv.width = w; dcv.height = h; }
 }
 window.addEventListener('resize', resize); resize();
 
@@ -417,11 +426,17 @@ moon.position.copy(MOON_DIR).multiplyScalar(MOON_DIST);
 
 let S = null;          // 目前場景的物件
 let builtFor = null;   // 已經建好場景的 level 物件
+const TORCH_COL_WARM = new THREE.Color(0xffbb44); // 衛兵火把 0: 暖黃
+const TORCH_COL_ALERT = new THREE.Color(0xeb4014); // 衛兵火把 1: 紅橘
+const tmpTorchCol = new THREE.Color();
+let ghostMesh = null, ghostTimer = 0;
+let slipRing = null, slipTimer = 0, slipScreenTimer = 0;
 const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
 function build(L) {
   scene.remove(world); world = new THREE.Group(); scene.add(world);
+  ghostMesh = null; ghostTimer = 0; slipRing = null; slipTimer = 0;
   S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null, horsePlanks: null, moonSlits: [],
-        prints: [], printI: 0, latchRings: null };
+        prints: [], printI: 0, latchRings: null, lastPrint: null };
   builtFor = L;
   world.add(new THREE.HemisphereLight(0x3a4870, 0x0a0806, .55));
   const moonL = new THREE.DirectionalLight(0x8a9cd0, .35); moonL.position.set(-30, 50, 40); world.add(moonL);
@@ -787,11 +802,16 @@ function makeGuard() {
   const torch = new THREE.Group(); torch.position.set(0, -.5, .12); armR.add(torch);
   cyl(.03, .04, .7, 0x3a2a1a, 0, .2, 0, torch, 5);
   const tf = flame(torch, 0, .52, 0, .45);
+  const torchMats = [];
+  tf.children.forEach(m => {
+    m.material = m.material.clone();
+    torchMats.push({ mat: m.material, orig: m.material.color.clone() });
+  });
   const armL = new THREE.Group(); armL.position.set(-.32, 1.5, 0); up.add(armL);
   box(.1, .55, .1, 0, 0, -.25, 0, armL, M(cloak));
   cyl(.025, .025, 2.6, 0x5a4a30, 0, .2, .1, armL, 4);
   const tip = new THREE.Mesh(new THREE.ConeGeometry(.05, .25, 4), M(0xa0a0a0)); tip.position.set(0, 1.6, .1); armL.add(tip);
-  const light = new THREE.PointLight(0xff8a3a, 1.6, 11, 2); light.position.set(0, 0, 0); tf.add(light); light.position.y = .4;
+  const light = new THREE.PointLight(0xffba44, 1.6, 11, 2); light.position.set(0, 0, 0); tf.add(light); light.position.y = .4;
   // 頭上的微光：警戒（黃）、追殺（紅）
   const glow = new THREE.Mesh(new THREE.SphereGeometry(.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xe0b04a, transparent: true, opacity: 0, depthWrite: false, fog: false }));
   glow.position.y = 2.3; up.add(glow);
@@ -807,7 +827,7 @@ function makeGuard() {
   const rim = new THREE.Mesh(new THREE.CylinderGeometry(.42, .36, 2.05, 14, 1, true), new THREE.MeshBasicMaterial({ color: 0x8fb8ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide }));
   rim.position.y = 1.05; up.add(rim);
   world.add(g);
-  return { g, up, legs, armR, armL, head, tf, light, glow, halo, ring, disc, rim, discR: 0, tilt: 0, fall: 0, run: 0, px: null, pz: null, walk: 0 };
+  return { g, up, legs, armR, armL, head, tf, light, torchMats, glow, halo, ring, disc, rim, discR: 0, tilt: 0, fall: 0, run: 0, px: null, pz: null, walk: 0 };
 }
 
 // ============================================================
@@ -1181,6 +1201,126 @@ function showMsg(text, color) {
   $('msgs').appendChild(d); setTimeout(() => d.remove(), 5100);
   while ($('msgs').children.length > 3) $('msgs').firstChild.remove();
 }
+let alertedBySfx = false, alertedEdgeV = 0;
+let whiteFlashV = 0;
+const triggerWhiteFlash = () => { whiteFlashV = 1.0; };
+
+let dashTimer = 0, dashIsHunt = false, dashRays = [];
+function spawnGhostAfterimage(x, z, yaw) {
+  if (!world) return;
+  if (ghostMesh) { world.remove(ghostMesh); ghostMesh = null; }
+  const grp = new THREE.Group();
+  grp.position.set(x, 0, z);
+  grp.rotation.y = yaw + Math.PI;
+  const gMat = new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: .65, depthWrite: false });
+  box(.5, 1.4, .3, 0, 0, .9, 0, grp, gMat);
+  const hd = new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), gMat); hd.position.y = 1.75; grp.add(hd);
+  world.add(grp);
+  ghostMesh = grp;
+  ghostMesh.gMat = gMat;
+  ghostTimer = 0.3;
+}
+function triggerDash(isHunt) {
+  dashTimer = 0.3;
+  dashIsHunt = !!isHunt;
+  dashRays = [];
+  for (let i = 0; i < 30; i++) {
+    const ang = (i / 30) * Math.PI * 2 + rand(-.09, .09);
+    dashRays.push({ ang, len: rand(.25, .52), w: rand(1.2, 2.6) });
+  }
+  if (dashIsHunt && game && game.player) {
+    spawnGhostAfterimage(game.player.x, game.player.z, V.yaw);
+  }
+}
+
+function triggerHuntSlip() {
+  slipScreenTimer = 0.35;
+  if (world && game && game.player) {
+    if (slipRing) { world.remove(slipRing); slipRing = null; }
+    const geo = new THREE.RingGeometry(.2, .32, 36);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false });
+    slipRing = new THREE.Mesh(geo, mat);
+    slipRing.rotation.x = -Math.PI / 2;
+    slipRing.position.set(game.player.x, .05, game.player.z);
+    world.add(slipRing);
+    slipTimer = 0.35;
+  }
+}
+
+function upgradeLatestPrint(tier) {
+  if (S && S.lastPrint) S.lastPrint.tier = Math.max(1, Math.min(3, tier));
+}
+
+function renderDashFx(dt) {
+  const cv = $('dashFx'); if (!cv) return;
+  if (ghostMesh && ghostTimer > 0) {
+    ghostTimer = Math.max(0, ghostTimer - dt);
+    ghostMesh.gMat.opacity = (ghostTimer / 0.3) * .65;
+    if (ghostTimer <= 0) { world.remove(ghostMesh); ghostMesh = null; }
+  }
+  if (slipRing && slipTimer > 0) {
+    slipTimer = Math.max(0, slipTimer - dt);
+    const pr = 1 - slipTimer / 0.35;
+    slipRing.scale.set(1 + pr * 3.5, 1 + pr * 3.5, 1);
+    slipRing.material.opacity = (slipTimer / 0.35) * .85;
+    if (slipTimer <= 0) { world.remove(slipRing); slipRing = null; }
+  }
+  if (dashTimer <= 0 && slipScreenTimer <= 0) {
+    if (cv.style.opacity !== '0') { cv.style.opacity = '0'; const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height); }
+    return;
+  }
+  cv.style.opacity = '1';
+  if (cv.width !== window.innerWidth || cv.height !== window.innerHeight) {
+    cv.width = window.innerWidth; cv.height = window.innerHeight;
+  }
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h / 2, maxR = Math.hypot(cx, cy);
+
+  if (dashTimer > 0) {
+    dashTimer = Math.max(0, dashTimer - dt);
+    const p = dashTimer / 0.3;
+    ctx.save();
+    ctx.strokeStyle = dashIsHunt ? `rgba(255, 215, 160, ${(p * .68).toFixed(3)})` : `rgba(230, 240, 255, ${(p * .52).toFixed(3)})`;
+    for (const r of dashRays) {
+      const r1 = maxR * (1 - (1 - p) * .3);
+      const r0 = r1 - maxR * r.len * p;
+      ctx.lineWidth = r.w;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(r.ang) * r0, cy + Math.sin(r.ang) * r0);
+      ctx.lineTo(cx + Math.cos(r.ang) * r1, cy + Math.sin(r.ang) * r1);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (dashIsHunt) {
+      ctx.save();
+      const ghostA = p * .45;
+      const gGrad = ctx.createRadialGradient(cx, cy * 1.15, 20, cx, cy * 1.15, h * .55);
+      gGrad.addColorStop(0, `rgba(180, 200, 240, ${(ghostA * .7).toFixed(3)})`);
+      gGrad.addColorStop(.4, `rgba(150, 180, 225, ${(ghostA * .4).toFixed(3)})`);
+      gGrad.addColorStop(1, 'rgba(150, 180, 225, 0)');
+      ctx.fillStyle = gGrad;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy * 1.12, w * .22 * (1 + (1 - p) * .35), h * .38, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  if (slipScreenTimer > 0) {
+    slipScreenTimer = Math.max(0, slipScreenTimer - dt);
+    const sp = 1 - slipScreenTimer / 0.35;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${(slipScreenTimer / 0.35 * .85).toFixed(3)})`;
+    ctx.lineWidth = 4 * (1 - sp * .5);
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.min(cx, cy) * (0.15 + sp * 0.8), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drain() {
   const out = game.out; if (!out || !out.length) return;
   const evs = out.splice(0, out.length);
@@ -1189,7 +1329,16 @@ function drain() {
     if (!e) continue;
     if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) { VIS.stepFlash = 1; tiltGuards(e.x, e.z); }   // 這一步被聽到了
     if (e.type === 'sfx' && e.a === 'step_masked') spawnPrint(e.x, e.z);                // 合拍：腳印發亮
-    if (e.type === 'sfx') { audio.cue(e.a, e); if (e.a === 'takedown' || e.a === 'down') lag(() => flash(.25)); }
+    if (e.type === 'sfx' && e.a === 'hunt_step') upgradeLatestPrint(num(e.index, 1));     // 合拍甩追兵：每步腳印亮一階
+    if (e.type === 'sfx' && e.a === 'hunt_slip') triggerHuntSlip();                     // 合拍甩追兵：短促白色環
+    if (e.type === 'sfx' && (e.a === 'dash' || (e.a && e.a.name === 'dash'))) triggerDash(!!e.hunt); // 衝刺／追殺衝刺
+    if (e.type === 'sfx' && e.a === 'alerted') alertedBySfx = true;
+    if (e.type === 'sfx' && (e.a === 'alert_over' || e.a === 'hunt' || e.a === 'escape')) alertedBySfx = false;
+    if (e.type === 'sfx') {
+      audio.cue(e.a, e);
+      if (e.a === 'takedown') lag(() => triggerWhiteFlash());                           // 暗殺：更明顯的短白閃，不超過 0.15 秒全白
+      else if (e.a === 'down') lag(() => flash(.25));
+    }
     else if (e.type === 'hint') { if (e.key && e.level >= 2) HW.lastLadder = { key: e.key, level: e.level, a: e.a, at: performance.now() }; lag(() => queueHint(e.a)); }
     else if (e.type === 'msg') lag(() => showMsg(e.a));
   }
@@ -1244,7 +1393,7 @@ function loop() {
     audio.update(game);
     if (!overShown) showOver();
   }
-  if (game && S) { sync(dt, nowMs / 1000); renderer.render(scene, camera); if (playing) hud(dt); }
+  if (game && S) { sync(dt, nowMs / 1000); renderer.render(scene, camera); renderDashFx(dt); if (playing) hud(dt); }
   telHud(nowMs);
   requestAnimationFrame(loop);
 }
@@ -1272,10 +1421,12 @@ function sync(dt, now) {
   const fz = visFrame(dt, inHorse ? fy : 0, playingNow);
   const motion = 1 - fz, jitter = motion * (1 + p * VIS.aid * .8);          // 拍子越快整體越躁動
   const bp = VIS.pulse * .45, bw = 1 + bp * .5;
+  // 火光亮度：每幀讀 game.fire（0.15～1.0），場景火光／火把光暈強度跟著變；不存在時沿用現在的亮度（1）
+  const fireMul = (g && Number.isFinite(g.fire)) ? clamp(g.fire, 0.15, 1.0) : 1;
   // 火光閃動
   const fl = () => 1 + (Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08) * jitter;
-  for (const F of S.fires) { F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25); }
-  if (S.horseLight) S.horseLight.intensity = .35 + Math.random() * .2 * motion + VIS.pulse * .15;
+  for (const F of S.fires) { F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25) * fireMul; }
+  if (S.horseLight) S.horseLight.intensity = (.35 + Math.random() * .2 * motion + VIS.pulse * .15) * fireMul;
 
   // 衛兵
   const seen = new Set();
@@ -1299,8 +1450,17 @@ function sync(dt, now) {
     // 倒下
     F.fall += ((down ? 1 : 0) - F.fall) * Math.min(1, dt * 5);
     F.up.rotation.z = F.fall * 1.5; F.up.position.y -= F.fall * .2;
-    F.light.intensity = (down ? .5 : 1.6) * (1 + (Math.random() * .25 - .15) * jitter) * (1 + VIS.pulse * .25);
+    F.light.intensity = (down ? .5 : 1.6) * (1 + (Math.random() * .25 - .15) * jitter) * (1 + VIS.pulse * .25) * fireMul;
     F.tf.scale.set(bw, fl() * (down ? .6 : 1) * (1 + bp), bw);
+    // 衛兵火把顏色：每個衛兵的 q.susp（0～1），0 偏暖黃、1 偏紅橘，漸變
+    const suspVal = clamp(num(G.susp, 0), 0, 1);
+    tmpTorchCol.copy(TORCH_COL_WARM).lerp(TORCH_COL_ALERT, suspVal);
+    F.light.color.copy(tmpTorchCol);
+    if (F.torchMats) {
+      F.torchMats.forEach(tm => {
+        tm.mat.color.copy(tm.orig).lerp(TORCH_COL_ALERT, suspVal * .82);
+      });
+    }
     // 頭上的微光：起疑時黃、追殺時紅，跟著低音拍輕輕脈動
     const on = hunted || susp;
     const beat = g.bass && Number.isFinite(g.bass.nextBeat) ? 1 - clamp((g.bass.nextBeat - audio.now()) / (g.bass.period || 2.4), 0, 1) : 0;
@@ -1589,7 +1749,8 @@ function spawnPrint(x, z) {                      // 合拍腳步：塵土裡的�
   if (!S || !S.prints.length || !Number.isFinite(x) || VIS.aid < .01 || (game && game.player.inBelly)) return;
   const P = S.prints[S.printI++ % S.prints.length], side = S.printI % 2 ? 1 : -1, yaw = V.yaw;
   P.m.position.set(x + Math.cos(yaw) * .12 * side, .04, z - Math.sin(yaw) * .12 * side);
-  P.m.rotation.z = yaw; P.life = 1; P.m.visible = true;
+  P.m.rotation.z = yaw; P.life = 1; P.tier = 0; P.m.visible = true;
+  S.lastPrint = P;
 }
 const RING_MOON = new THREE.Color(0xdce6ff), RING_DARK = new THREE.Color(0x1c1c22);
 function hintVisuals(dt) {
@@ -1629,8 +1790,17 @@ function hintVisuals(dt) {
     tmpC.setHex(0x55555a).lerp(low ? RING_MOON : RING_DARK, aid);
     S.latchRings.color.copy(tmpC);
   }
-  // 腳印：慢慢暗掉
-  if (S) for (const P of S.prints) if (P.life > 0) { P.life = Math.max(0, P.life - dt / 2.2); P.m.material.opacity = P.life * .55 * aid; P.m.visible = P.life > 0; }
+  // 腳印：慢慢暗掉；hunt_step 每步亮一階
+  if (S) for (const P of S.prints) if (P.life > 0) {
+    P.life = Math.max(0, P.life - dt / 2.2);
+    const tierBoost = P.tier ? (1 + P.tier * .6) : 1;
+    P.m.material.opacity = Math.min(1, P.life * .55 * aid * tierBoost);
+    if (P.tier === 1) P.m.material.color.setHex(0xffd588);
+    else if (P.tier === 2) P.m.material.color.setHex(0xffe8aa);
+    else if (P.tier >= 3) P.m.material.color.setHex(0xfff8d4);
+    else P.m.material.color.setHex(0xffc070);
+    P.m.visible = P.life > 0;
+  }
 }
 
 // ---------- 介面 ----------
@@ -1662,9 +1832,25 @@ function hud(dt) {
   const edge = (alertOn || alarm > .05) && !g.hunted ? Math.max(alarm, .4) * (.25 + .75 * Math.exp(-beat * 7)) : 0;
   const setEdge = () => { $('edge').style.opacity = edge.toFixed(3); };
   lag(setEdge);
+  // 高度警覺邊緣暈：game.alerted 為真，或收到 sfx alerted；alert_over／hunt 結束。畫面邊緣淡橘色暈，緩慢呼吸
+  const hasAlertedGuard = arr(g.guards).some(G => G.state === 'alerted');
+  const isAlerted = (!!(g && g.alerted) || alertedBySfx || hasAlertedGuard) && !g.hunted && g.phase === 'play';
+  if (!isAlerted && !hasAlertedGuard && !(g && g.alerted)) alertedBySfx = false;
+  const breathe = .32 + .18 * Math.sin(performance.now() / 420);
+  const targetAlerted = isAlerted ? breathe : 0;
+  alertedEdgeV += (targetAlerted - alertedEdgeV) * Math.min(1, dt * 4.5);
+  const aEl = $('alertedEdge');
+  if (aEl) aEl.style.opacity = alertedEdgeV > .002 ? alertedEdgeV.toFixed(3) : '0';
   // 追殺：紅色暈影
   $('red').style.opacity = g.hunted ? (.75 + Math.sin(performance.now() / 160) * .15).toFixed(2) : flashV.toFixed(2);
   flashV = Math.max(0, flashV - dt * 1.5);
+  // 暗殺短白閃：更明顯的短白閃，不超過 0.15 秒全白
+  if (whiteFlashV > 0) {
+    whiteFlashV = Math.max(0, whiteFlashV - dt / 0.12);
+    const wf = $('whiteFlash'); if (wf) wf.style.opacity = whiteFlashV.toFixed(3);
+  } else {
+    const wf = $('whiteFlash'); if (wf && wf.style.opacity !== '0') wf.style.opacity = '0';
+  }
   // p>0.8：畫面雜訊
   const dp = num(K().DESYNC_P, .8), nz = desync() ? clamp((p - dp) / (1 - dp), .15, 1) : 0;
   $('noise').style.opacity = (nz * .22).toFixed(3);

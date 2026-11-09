@@ -58,6 +58,14 @@
  *   - 腳步：step_loud 多一聲 1～4 kHz 的碎石「喀嚓」（STEP_CRUNCH_GAIN），最近 8 公尺內的衛兵短促吸一口氣（被聽到的回饋）；
  *     step_masked 維持極輕、極悶。
  *
+ * 4A 事件聲音（11/09）：
+ *   - alerted：衛兵高度警覺嗡鳴（200～400 Hz，持續至 alert_over、hunt 或 caught）。
+ *   - alert_over：高度警覺結束，停掉嗡鳴並奏輕柔下行兩音（440→330 Hz 陶木管＋吐氣）。
+ *   - hunt_step：追殺合拍腳步，短確認音隨 index 升高（587→698→880 Hz 硬木/青銅）。
+ *   - hunt_slip：連續合拍甩開一段，金屬交擊「鏗」（2.4～4 kHz，短而亮）。
+ *   - dash：追殺衝刺（hunt 為真）疊加濾波噪音掃頻風切（900→3600 Hz）。
+ *   - takedown：暗殺成功在原本倒地聲上疊加短的低頻肉體悶擊（58→32 Hz）。
+ *
  * 排程：每一拍都用 ctx.currentTime 的絕對時間預先排程；計時器只負責「補排程」（預排 0.5 秒），不負責計時。
  *       不使用畫面幀時間。計時器優先用 Worker 裡的 setInterval（25 ms）送 tick 給主執行緒（背景分頁不被降到 1 秒），
  *       建不起來就用主執行緒 setInterval。畫面每幀很慢（例如 200 ms）時，0.5 秒的預排仍蓋得住；
@@ -180,21 +188,23 @@
     gasp: 'gasp', pant: 'gasp',
     step: 'step', footstep: 'step', move: 'step',
     latch: 'latch', bolt: 'latch', door: 'latch', push: 'latch',
-    down: 'down', thud: 'down', fall: 'down', takedown: 'down', kill: 'down',
+    down: 'down', thud: 'down', fall: 'down', takedown: 'takedown', kill: 'down',
     bell: 'bell', alarm: 'bell', hunt: 'bell', hunted: 'bell',
     alert: 'alert', suspicious: 'alert',
+    alerted: 'alerted', alertover: 'alertOver',
     caught: 'caught', fail: 'caught',
     takedownfail: 'takedownFail',
     calmok: 'calmOk', calmbad: 'calmBad', calmdone: 'calmDone',
     stepmasked: 'stepMasked', steploud: 'stepLoud', latchstep: 'latchStep',
+    huntstep: 'huntStep', huntslip: 'huntSlip',
     checkpoint: 'checkpoint', dash: 'dash', escape: 'escape', trapdoor: 'trapdoor',
     gravel: 'gravel', companiongasp: 'companionGasp', whispernow: 'whisperNow', growl: 'growl', latchclick: 'latchClick',
     blind: 'blind', gap: 'blind',
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
-  // risset.js 的 game.out sfx 名稱：alert breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
-  //   dash escape gasp gate_open hunt latch takedown takedown_fail trapdoor（底線、大小寫都忽略）
+  // risset.js 的 game.out sfx 名稱：alert alerted alert_over breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
+  //   dash escape gasp gate_open hunt hunt_step hunt_slip latch takedown takedown_fail trapdoor（底線、大小寫都忽略）
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
   function frac(v) { return v - Math.floor(v); }
@@ -1360,6 +1370,43 @@
       noise(dest, t + 0.004, 'bandpass', 2500, 2, 0.06 * k, 0.001, 0.02);
     }
 
+    // ---------- 高度警覺嗡鳴（alerted，持續至 alert_over / hunt / caught）----------
+    var alertedDrone = null;
+    function stopAlertedDrone(t) {
+      if (!alertedDrone) return;
+      var d = alertedDrone;
+      alertedDrone = null;
+      var now = t != null ? t : ctx.currentTime;
+      var fade = 0.15;
+      try {
+        d.gain.cancelScheduledValues(now);
+        d.gain.setValueAtTime(d.gain.value, now);
+        d.gain.exponentialRampToValueAtTime(0.0001, now + fade);
+        d.nodes.forEach(function (n) { try { n.stop(now + fade + 0.05); } catch (e) {} });
+      } catch (e) {}
+    }
+    function startAlertedDrone(t) {
+      stopAlertedDrone(t);
+      var now = t != null ? t : ctx.currentTime;
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.18, now + 0.35);
+      var o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+      o1.type = 'triangle'; o1.frequency.setValueAtTime(220, now);
+      o2.type = 'sine'; o2.frequency.setValueAtTime(223, now);
+      var f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 280; f.Q.value = 1.4;
+      var o3 = ctx.createOscillator(), g3 = ctx.createGain();
+      o3.type = 'sine'; o3.frequency.setValueAtTime(330, now);
+      g3.gain.value = 0.25;
+      o3.connect(g3); g3.connect(f);
+      o1.connect(f); o2.connect(f);
+      f.connect(g); g.connect(cueBus);
+      o1.start(now); o2.start(now); o3.start(now);
+      o1.stop(now + 15); o2.stop(now + 15); o3.stop(now + 15);
+      alertedDrone = { gain: g, nodes: [o1, o2, o3] };
+    }
+
     // ---------- 音效 ----------
     var CUES = {
       breathIn: function (t) {            // 屏息：急吸一口氣
@@ -1455,7 +1502,8 @@
         tone(cueBus, t + 0.09, 'sine', 820, 0, 0, 0.04, 0.001, 0.25);
         tone(cueBus, t + 0.09, 'sine', 1310, 0, 0, 0.025, 0.001, 0.18);
       },
-      bell: function (t) {                // 警鐘：青銅鐘，敲三下
+      bell: function (t) {                // 警鐘：青銅鐘，敲三下（追殺開始時停掉高度警覺嗡鳴）
+        stopAlertedDrone(t);
         var part = [0.56, 0.92, 1.19, 1.71, 2, 2.74, 3, 3.76], amp = [1, 0.7, 0.6, 0.45, 0.4, 0.25, 0.2, 0.15];
         for (var s = 0; s < 3; s++) for (var i = 0; i < part.length; i++)
           tone(cueBus, t + s * 0.55, 'sine', 330 * part[i], 0, 0, 0.12 * amp[i], 0.002, 2.6 - i * 0.22);
@@ -1486,12 +1534,28 @@
         tone(cueBus, t + 0.02, 'sine', 990, 1180, 0.3, 0.05, 0.01, 0.4);
         tone(cueBus, t + 0.02, 'sine', 1050, 1240, 0.3, 0.04, 0.01, 0.4);   // 兩條略不和諧
       },
-      caught: function (t) {              // 被抓：重擊＋警鐘
+      alerted: function (t) {             // 衛兵進入高度警覺（10 秒）：低沉嗡鳴 200～400 Hz，持續到 alert_over 或 hunt 為止
+        startAlertedDrone(t);
+      },
+      alertOver: function (t) {           // 高度警覺結束：停掉嗡鳴，輕的下行兩音表示鬆口氣
+        stopAlertedDrone(t);
+        tone(cueBus, t, 'triangle', 440, 415, 0.12, 0.08, 0.01, 0.22);
+        tone(cueBus, t, 'sine', 880, 0, 0, 0.02, 0.01, 0.15);
+        tone(cueBus, t + 0.16, 'triangle', 330, 310, 0.14, 0.07, 0.01, 0.32);
+        tone(cueBus, t + 0.16, 'sine', 660, 0, 0, 0.02, 0.01, 0.2);
+        noise(cueBus, t + 0.04, 'bandpass', 700, 1.2, 0.06, 0.04, 0.38);
+      },
+      caught: function (t) {              // 被抓：重擊＋警鐘（停掉高度警覺嗡鳴）
+        stopAlertedDrone(t);
         tone(cueBus, t, 'sine', 90, 35, 0.5, 1.0, 0.002, 0.9);
         noise(cueBus, t, 'lowpass', 600, 0.8, 0.7, 0.002, 0.3);
         CUES.bell(t + 0.15);
       },
-      takedown: function (t) { CUES.down(t); },
+      takedown: function (t) {            // 暗殺成功：保留原本倒地聲，疊加短的低頻悶擊
+        CUES.down(t);
+        tone(cueBus, t, 'sine', 58, 32, 0.1, 0.75, 0.002, 0.15);
+        noise(cueBus, t, 'lowpass', 140, 1.2, 0.45, 0.002, 0.09);
+      },
       takedownFail: function (t) {        // 暗殺失手：扭打、青銅碰撞
         noise(cueBus, t, 'bandpass', 700, 1, 0.4, 0.01, 0.2);
         tone(cueBus, t + 0.12, 'sine', 760, 0, 0, 0.08, 0.001, 0.4);
@@ -1521,13 +1585,37 @@
           tone(cueBus, t + i * 0.12, 'sine', f * 2, 0, 0, 0.03, 0.002, 0.6);
         });
       },
-      dash: function (t) {                // 衝刺：一陣風聲＋兩步
+      dash: function (t, d) {             // 衝刺：一陣風聲＋兩步；追殺中盲區衝刺（d.hunt 為真）疊加一層風切
         var f = noise(cueBus, t, 'bandpass', 500, 0.8, 0.3, 0.06, 0.25); f.frequency.exponentialRampToValueAtTime(1600, t + 0.25);
+        if (d && d.hunt) {
+          var fw = noise(cueBus, t, 'bandpass', 900, 1.8, 0.42, 0.02, 0.28);
+          fw.frequency.exponentialRampToValueAtTime(3600, t + 0.22);
+          noise(cueBus, t + 0.02, 'highpass', 2400, 1.2, 0.18, 0.01, 0.15);
+        }
         CUES.step(t + 0.05); CUES.step(t + 0.2);
       },
       escape: function (t) {              // 甩掉追兵：喘一口氣，節奏退去後的空
+        stopAlertedDrone(t);
         var f = noise(cueBus, t, 'bandpass', 1200, 0.8, 0.3, 0.1, 0.8); f.frequency.exponentialRampToValueAtTime(450, t + 0.9);
         tone(cueBus, t, 'sine', 73.4, 0, 0, 0.08, 0.4, 1.8);
+      },
+      huntStep: function (t, d) {         // 追殺中合拍踩一步：短確認音，音高隨 index 上升
+        var idx = (d && d.index) ? d.index : 1;
+        var stepFreqs = [587.3, 698.5, 880.0];
+        var f0 = stepFreqs[(idx - 1) % stepFreqs.length] || (587.3 * Math.pow(1.2, idx - 1));
+        tone(cueBus, t, 'triangle', f0, f0 * 0.96, 0.02, 0.16, 0.001, 0.07);
+        tone(cueBus, t, 'sine', f0 * 2.75, 0, 0, 0.05, 0.001, 0.04);
+        noise(cueBus, t, 'bandpass', f0 * 1.5, 2.5, 0.12, 0.001, 0.025);
+      },
+      huntSlip: function (t) {            // 連續合拍甩開一段：金屬「鏗」2～4 kHz，短而亮
+        var base = 2400;
+        var parts = [1, 1.28, 1.53, 1.67];
+        var amps = [0.22, 0.15, 0.12, 0.08];
+        for (var i = 0; i < parts.length; i++) {
+          tone(cueBus, t, 'sine', base * parts[i], base * parts[i] * 0.98, 0.02, amps[i], 0.001, 0.2 - i * 0.03);
+        }
+        noise(cueBus, t, 'bandpass', 3200, 3.0, 0.28, 0.001, 0.03);
+        noise(cueBus, t + 0.004, 'highpass', 3600, 1.0, 0.15, 0.001, 0.06);
       },
       trapdoor: function (t) {            // 木馬暗門：木頭吱呀＋落地
         CUES._creak(t, 0.3); CUES._creak(t + 0.35, 0.22);
@@ -1639,6 +1727,7 @@
         var al = clamp(+s.alarm || 0, 0, 1), hu = !!s.hunted;
         if (Math.abs(al - st.alarm) > 1e-4 || hu !== st.hunted) {
           st.alarm = al; st.hunted = hu;
+          if (hu) stopAlertedDrone(now);
           alarmGain.gain.setTargetAtTime(Math.max(al * 0.9, hu ? 0.6 : 0), now, k);
           distWet.gain.setTargetAtTime(al * 0.55 + (hu ? 0.25 : 0), now, k);
           rhythmHP.frequency.setTargetAtTime(30 + al * 220, now, k);
@@ -1687,7 +1776,7 @@
       cue: function (name, arg) {
         if (dead || !name) return false;
         var data = {}, when = null;
-        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
+        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
         if (typeof name === 'object') {
           var ev = name; take(ev); take(ev.data);
           name = ev.a != null ? ev.a : (ev.name || ev.sfx || ev.cue);
@@ -1703,7 +1792,8 @@
         return true;
       },
       cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
-                 'alert', 'caught', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
+                 'alert', 'alerted', 'alertOver', 'caught', 'takedown', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
+                 'huntStep', 'huntSlip',
                  'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
@@ -1766,6 +1856,7 @@
       log: log,
       dispose: function () {
         dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack();
+        stopAlertedDrone(ctx.currentTime);
         persist.forEach(function (n) { try { n.stop(); } catch (e) {} });
         routeLive.forEach(function (n) { try { n.stop(); } catch (e) {} });
         try { master.disconnect(); } catch (e) {}
