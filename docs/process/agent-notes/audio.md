@@ -125,3 +125,5 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
   - 比箭、大廳復仇的錄音設定檔沒有喇叭三項，要請「錄音與工具」補 `analysis.speaker`（比箭：起鬨預告 `knock`；大廳復仇：`attack_warn`、低音舉盾）。
   - 本機錄音工具的 playwright 套件與 `NODE_PATH` 分隔符（`tools/` 的事，轉「錄音與工具」）。
   - 大廳復仇合成版第一批（11/12 報告後）：先讀這份第 2 節的約定，新事件先和「規則」對好名稱再接。
+
+- 11/09 晚（總控）4A 聲音草稿已由 agy 寫進 `audio.js`（提交 511b817）：alerted 嗡鳴、alert_over、hunt_step、hunt_slip、追殺 dash 風切、takedown 悶擊。接手：審程式與人耳確認（音量平衡、嗡鳴淡出無爆音）。
