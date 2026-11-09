@@ -1,4 +1,5 @@
 # 規格第 30 節：每次 push／PR 跑規則測試；對 main 的 PR、推到 main、手動執行時跑 Unity 測試、建 WebGL 並（設好的話）上傳 itch.io。
+# 2026-11-09：加路徑過濾——只改 docs/ 或網頁原型時不跑 Unity（每次約 25 分鐘）；網頁原型與遙測的 Node 測試另外一個工作，每次都跑（約 30 秒）。推到 main 與手動執行一律全跑。
 # 密鑰與 itch.io 設定步驟：docs/ci-setup.md
 name: CI
 
@@ -13,8 +14,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 哪些路徑有改：unity＝主線 Unity 專案與 C# 測試；web＝網頁原型與工具。推到 main、手動執行時兩者都當成有改。
+  changes:
+    name: 判斷改了什麼
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      unity: ${{ steps.f.outputs.unity == 'true' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+      web: ${{ steps.f.outputs.web == 'true' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            unity:
+              - 'Assets/**'
+              - 'Packages/**'
+              - 'ProjectSettings/**'
+              - 'tools/CoreTests/**'
+              - 'tools/NightSim/**'
+              - 'tools/NightSimTests/**'
+              - 'tools/playtest/**'
+              - '.github/workflows/**'
+            web:
+              - 'prototypes/**'
+              - 'tools/telemetry/**'
+              - 'tools/playtest-recorder/**'
+              - 'tools/build-itch.*'
+              - '.github/workflows/**'
+
+  # 網頁原型與遙測的規則測試（Node，約 30 秒）
+  web-tests:
+    name: 網頁原型測試（Node）
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test prototypes/*/*.test.js prototypes/odyssey-series/*.test.js tools/telemetry/*.test.js
+      - name: 打包檢查（相對連結）
+        run: bash tools/build-itch.sh | tail -5
+
   core-tests:
     name: 規則測試（Odyssey.Core）
+    needs: changes
+    if: needs.changes.outputs.unity == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -29,8 +78,8 @@ jobs:
   # 同一批測試改在真的 Unity 裡跑：多抓 Unity 編譯器（C# 版本較舊）才會報的錯，以及整個專案（含 MonoBehaviour、Editor 腳本）的編譯錯誤。
   unity-tests:
     name: Unity 測試（EditMode）
-    needs: core-tests
-    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    needs: [changes, core-tests]
+    if: needs.changes.outputs.unity == 'true' && (github.event_name != 'push' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -83,8 +132,8 @@ jobs:
 
   webgl:
     name: 網頁版建置
-    needs: unity-tests
-    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
+    needs: [changes, unity-tests]
+    if: needs.changes.outputs.unity == 'true' && (github.event_name != 'push' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -153,9 +202,9 @@ jobs:
   # 逐一跳到每個情況（?playtest=名稱）截圖、錄影、抓瀏覽器例外；結果在成品 Playtest-Screens。
   playtest:
     name: 自動畫面測試
-    needs: webgl
+    needs: [changes, webgl]
     # 網頁版建好、只有 itch.io 上傳失敗時（例如帳號 email 還沒驗證），照樣測畫面。
-    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref == 'refs/heads/main') }}
+    if: ${{ !cancelled() && needs.changes.outputs.unity == 'true' && (github.event_name != 'push' || github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
