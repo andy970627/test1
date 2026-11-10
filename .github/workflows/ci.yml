@@ -19,6 +19,10 @@ jobs:
     name: 判斷改了什麼
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # 11/10：pull_request 事件時 paths-filter 要讀 PR 的檔案清單，沒給權限會報 Resource not accessible by integration
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       unity: ${{ steps.f.outputs.unity == 'true' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
       web: ${{ steps.f.outputs.web == 'true' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
