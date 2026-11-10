@@ -108,3 +108,6 @@
 - 11/12 期中報告要的頻譜圖與錄影：等主對話指定原型與段落。
 
 - 11/09 晚（總控）`record.mjs` 的 `NODE_PATH` 已改用 `path.delimiter`（提交 0193cdf）；剩本機裝 playwright 與 `fireSync` 檢查。
+
+- 11/10 本機試錄通過：playwright@1.65.0（chromium revision 1254，對上本機快取，不用再下載）裝在 `%LOCALAPPDATA%	est1-node-tools`（`npm install --prefix`，repo 內無 package.json）。跑法（PowerShell）：`$env:NODE_PATH="$env:LOCALAPPDATA	est1-node-tools
+ode_modules"; $env:FFMPEG=(Get-Command ffmpeg).Source; $env:FFPROBE=(Get-Command ffprobe).Source; node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 30`。結果：錄 30 秒、中位 43.5 fps、錯誤 0、自動檢查 8 項全過、mp4 h264＋aac 約 38.9 秒（含聲音對齊位移 8.2 秒）。1.64.0 對應 1248、1.63.0 對應 1243。
