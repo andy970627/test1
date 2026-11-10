@@ -1,6 +1,6 @@
 # 角色筆記：畫面
 
-負責：`prototypes/*/index.html`、`prototypes/nav.js`、`prototypes/telemetry.js`。
+負責：`prototypes/*/index.html`（含 11/10 新增的 `layer-ride/`）、`prototypes/nav.js`、`prototypes/telemetry.js`。
 規則檔（`risset.js`／`rules.js`／`vengeance.js` 與測試）、`audio.js`、`tools/` 都不是我的；要改就回訊主對話。
 
 ## 1. 檔案結構與入口
@@ -84,6 +84,7 @@
 - （11/10）內建瀏覽器面板隱藏時，背景分頁的 requestAnimationFrame 不跑，從 console 推事件不會被取走；要靠截圖推進幀數。短暫特效要截圖可以凍結 `performance.now`（例：`const t=performance.now(); performance.now=()=>t`）。
 - （11/10）**瀏覽器測試一律帶 `?mute=1&nolock=1`**，測完關掉所有分頁（最後一個也關）、停伺服器。11/10 遊戲頁在背景鎖住使用者滑鼠、聲音一直播。另外：用 Edit 工具改 `index.html` 或 md 時，桌面版會自動在內建瀏覽器用 `file://` 開這個檔，改完要檢查並關掉那個分頁；大量改筆記可以改用指令碼寫檔。
 - （11/10）內建瀏覽器面板隱藏時遊戲不會前進（requestAnimationFrame 停住），等時間的檢查（教學提示、掩護窗時機）改用 Node 直接跑 risset.js 照畫面條件逐幀模擬；面板顯示中才用瀏覽器。
+- （11/11）面板隱藏時要讓遊戲照正常速度跑：在 console 用 `window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 16)` 代替畫面迴圈（背景計時器約每秒 43 次），再截一張圖把卡住的那一幀放出來；只在測試時用，不改程式。
 - （11/10）PointsMaterial 的點離鏡頭太近會放大成一大團光斑；灑在鏡頭四周的粒子至少離 1 公尺。
 - （11/10）木馬之夜在 claude.ai 預覽以 `file://` 開時，`../nav.js`、`../telemetry.js` 都載不到；本機測試用暫存站台：複製 `nav.js`、`telemetry.js` 到根目錄，原型放子資料夾，index 包外殼，`python -m http.server 8781`（8765 埠被別的程式佔用）。
 
@@ -126,5 +127,6 @@
 - 11/10 夜（畫面）照裁決稿第 7 節：7.2 落塵、地上塵土跳起、火把傾斜的強度改成 max(SHOCK_MIN, visualAid)（`SHOCK_MIN = .35`、`shockAmt()`，畫面節奏常數），鏡頭下沉照舊乘 visualAid，舊模式凝結不動；7.4 開場說明換新文字，選單選項改「不停（趁最響的一擊行動）」。驗證：內建瀏覽器帶 `?mute=1&nolock=1&startZone=3`，visualAid 0 時落塵不透明度 0.26、沒有凝結；全套測試 249 項通過；截圖 `shots-cover/5-第3區輔助0-震波最低強度.jpg`。
 - 11/10 夜（畫面）M9 教學重排的畫面配合：同伴教學區號改由 `teachNowZone()`（殘響掩護版 2、舊版 1）與 `teachBreathZone()`（殘響掩護版 3、舊版 1）決定；「別動」和同伴的手跟著屏息教學區。殘響掩護版的「就是現在」照規則 blindHintGate 的條件（進區那個循環之後、進區滿 HINT_GAP 秒）估下一個窗，和規則的「最響的一擊」提示落在同一窗；`HW.gate` 在開局與重來時清掉。驗證：Node 照同樣條件逐幀模擬（暫存 `simm9.js`），區 2 低語 5.88 秒、窗 6.86 秒、規則提示 6.83 秒；全套測試 260 項通過。
 - 11/10 夜：M9 畫面配合已由總控審過提交。區 3 同伴的手看不到的問題，由設計席 7.9 解決（殘響掩護版視覺輔助改成區 0～2 100%、區 3 50%、區 4 0%，規則角色改 `visualAidFor`），畫面不用改。注意 `aidTarget()` 的備援公式（區 0、1 是 1，區 2 是 0.5，之後 0）只有規則沒給 `game.visualAid` 時才用，和 7.9 的新比例不同，之後若要統一再改。目前待命。
+- 11/11（畫面）換層試驗場 `prototypes/layer-ride/index.html` 第一次在瀏覽器實開：載入、console 無錯誤、聲部譜與數字面板在動、W 前進、Q 換層（面板顯示偏差）、提示依事件切換、滑桿按重來生效、`?CYCLE=12` 覆寫、`?aid=0` 關聲部譜都正常。補了 `?mute=1`（同木馬之夜的總閘做法；這頁不鎖滑鼠，nolock 不用處理）；`?aid=0` 時數字面板的騎的聲部、下一條、換層窗三列改顯示「（聲部譜關閉）」，免得用眼睛看出時機。總首頁照規格不加連結。截圖在暫存 `shots-layer-ride/`。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。

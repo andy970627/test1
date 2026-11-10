@@ -294,6 +294,21 @@
 
   // 解析網址參數
   var params = new URLSearchParams(window.location.search);
+  // 自動檢查用（docs/process/agent-notes/README.md「瀏覽器測試規矩」）：?mute=1 完全不出聲。
+  // 所有接到喇叭（destination）的聲音改接一個音量 0 的總閘；音訊環境照常建立，因為規則用音訊時鐘推進。
+  // 這一頁不鎖滑鼠，所以 ?nolock=1 不用處理。一般試玩不帶參數，不受影響。
+  if (params.get('mute') === '1' && window.AudioNode && window.AudioDestinationNode) {
+    var connect0 = AudioNode.prototype.connect;
+    AudioNode.prototype.connect = function (dest) {
+      var args = Array.prototype.slice.call(arguments);
+      if (dest instanceof AudioDestinationNode) {
+        var c = dest.context;
+        if (!c.__muteGate) { c.__muteGate = c.createGain(); c.__muteGate.gain.value = 0; connect0.call(c.__muteGate, dest); }
+        args[0] = c.__muteGate;
+      }
+      return connect0.apply(this, args);
+    };
+  }
   var visualAid = params.get('aid') !== '0';
   document.getElementById('aidToggle').checked = visualAid;
 
@@ -784,8 +799,17 @@
       if (voices[i].id === rideId + 1) nextV = voices[i];
     }
 
+    // 聲部譜關閉（?aid=0）＝只靠耳朵：騎的聲部、下一條、換層窗這三列會直接說出換層時機，一起藏起來（規格第 6 節第 5 項）；
+    // 偏差、疑心、步數是事後的結果，照常顯示
+    if (!visualAid) {
+      ['valCurrentRide', 'valNextRide', 'valWindow'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { el.textContent = '（聲部譜關閉）'; el.style.color = 'var(--text-dim)'; }
+      });
+    } else {
     var elCur = document.getElementById('valCurrentRide');
     if (elCur) {
+      elCur.style.color = '';   // 從「聲部譜關閉」切回來時恢復原色
       elCur.textContent = curV
         ? (curV.u.toFixed(2) + ' / ' + curV.gain.toFixed(2) + ' / ' + curV.interval.toFixed(2) + 's')
         : '無';
@@ -793,6 +817,7 @@
 
     var elNext = document.getElementById('valNextRide');
     if (elNext) {
+      elNext.style.color = '';
       elNext.textContent = nextV
         ? (nextV.u.toFixed(2) + ' / ' + nextV.gain.toFixed(2))
         : (rideId + 1 > Math.floor((game.time - game.t0) / game.T.CYCLE) ? '尚未進場' : '無');
@@ -808,6 +833,8 @@
         elWin.textContent = '閉闔';
         elWin.style.color = 'var(--text-dim)';
       }
+    }
+
     }
 
     var elOff = document.getElementById('valLastOffset');
