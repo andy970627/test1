@@ -32,6 +32,8 @@ input[type=range] { flex:1; }
   <section>
     <label>警戒 alarm <input id="alarm" type="range" min="0" max="1" step="0.01" value="0"> <span id="alarmv">0.00</span></label>
     <button id="hunt">追殺：關</button>
+    <label><input id="cover" type="checkbox"> 殘響掩護（鼓聲不中斷，窗開頭重合擊＋餘韻）</label>
+    <label>窗前變亮 <input id="bright" type="range" min="0" max="6" step="0.5" value="4"> <span id="brightv">4</span> dB（殘響掩護下；0＝關，設計 7.3）</label>
   </section>
   <section id="cues"></section>
 </main>
@@ -49,6 +51,7 @@ input[type=range] { flex:1; }
     return {
       cycle: { T: T, t0: t0, p: audio.phase(), blind: audio.isBlind(), index: Math.floor((now - t0) / T) },
       alarm: +$('alarm').value, hunted: hunted,
+      T: { COVER_MODE: $('cover').checked, BLIND_LEN: 0.6 },   // 聲音層讀 state.T.COVER_MODE 切殘響掩護
       bass: { period: per, nextBeat: t0 + Math.ceil((now - t0) / per) * per }
     };
   }
@@ -62,6 +65,7 @@ input[type=range] { flex:1; }
   };
   $('stop').onclick = function () { if (audio) audio.suspend(); };
   $('vol').oninput = function () { if (audio) audio.setMaster(+this.value); };
+  $('bright').oninput = function () { $('brightv').textContent = this.value; if (audio) audio.CONST.COVER_BRIGHT_DB = +this.value; };
   $('alarm').oninput = function () { $('alarmv').textContent = (+this.value).toFixed(2); };
   $('hunt').onclick = function () { hunted = !hunted; this.textContent = '追殺：' + (hunted ? '開' : '關'); this.classList.toggle('on', hunted); };
   Object.keys(LABEL).forEach(function (k) {

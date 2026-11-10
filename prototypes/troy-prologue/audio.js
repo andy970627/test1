@@ -61,7 +61,8 @@
  * 殘響掩護（11/10，核心方向甲，docs/design/2026-11-10-core-direction-illusion.md 第 1 節）【改編】：規則 T.COVER_MODE === true 時，
  *   掩護窗（時段＝原本的盲區，規則判定不變）不再壓低節奏、音樂、衛兵、暗示、失控層、低音；拍子照排，鼓聲永不斷。
  *   窗開頭加一記交接重合擊（coverHit：各層第一拍同落＋300～1200 Hz 厚擊），窗內把節奏殘響送量與輸出推高（gateVS、gateVO），
- *   窗結束 COVER_VERB_RELEASE 秒內收回，聽起來是「最響的一下＋0.6 秒餘韻」。木魚預告乘規則的 visualAid（第 0、1 區有）；
+ *   送量只推窗前 COVER_VERB_HOLD 秒，窗結束時輸出 COVER_VERB_RELEASE 秒內收回、再用 gateVD 把殘響壓低 COVER_VERB_DUCK_SEC 秒，
+ *   聽起來是「最響的一下＋和窗一起結束的餘韻」（裁決 7.5：錄音餘韻中位 0.5～0.8 秒）。窗前變亮用 COVER_BRIGHT_DB（裁決 7.3，可設 0）。木魚預告乘規則的 visualAid（第 0、1 區有）；
  *   「盲區提示」那一下不響。規則沒有 COVER_MODE 或為 false：完全照現行盲區版。
  *
  * 4A 事件聲音（11/09）：
@@ -148,11 +149,19 @@
     // 殘響掩護（11/10，核心方向甲；規則 T.COVER_MODE 為真時才用）
     COVER_HIT_GAIN: 0.9,       // 交接重合擊的厚擊（300～1200 Hz）音量
     COVER_LAYER_GAIN: 0.55,    // 重合擊裡各層第一拍的音量（不照鐘形曲線，全部同時落下）
-    COVER_TAIL_GAIN: 0.12,     // 重合擊後的中頻餘韻（850／1700 Hz 帶通雜訊，約 0.6 秒收掉）：喇叭上也聽得到尾巴
+    COVER_TAIL_GAIN: 0.25,     // 重合擊後的中頻餘韻（850／1700 Hz 帶通雜訊）：喇叭上也聽得到尾巴
+    COVER_TAIL_SEC: 0.8,       // 中頻餘韻衰減到無聲的時間（秒；指數衰減，聽得到的部分約前 0.6 秒，和窗一起結束）
+    COVER_VERB_DUCK: 0.3,      // 窗結束時把節奏殘響輸出壓到平時的多少（2.4 秒的長殘響否則會拖過窗 0.5 秒以上）
+    COVER_VERB_DUCK_SEC: 0.4,  // 壓低維持多久（秒），之後 COVER_VERB_DUCK_RISE 秒回到平時
+    COVER_VERB_DUCK_RISE: 0.35,
     COVER_VERB_SEND: 0.85,     // 掩護窗內節奏殘響送量（平時 0.28）
-    COVER_VERB_OUT: 1.1,       // 掩護窗內殘響輸出（平時 0.6）
+    COVER_VERB_OUT: 0.9,       // 掩護窗內殘響輸出（平時 0.6；11/10 裁決 7.5 從 1.1 降）
     COVER_VERB_LEAD: 0.02,     // 窗開始前多久推上去（秒）：重合擊一落下就進殘響
-    COVER_VERB_RELEASE: 0.3,   // 窗結束後多久收回（秒）
+    COVER_VERB_RELEASE: 0.12,  // 窗結束後多久收回（秒；裁決 7.5 從 0.3 縮：聽到的餘韻要和判定的窗一起結束）
+    COVER_VERB_HOLD: 0.3,      // 殘響送量只在窗的前這麼多秒推高，之後收回，讓殘響在窗結束前自己衰完（裁決 7.5）
+    COVER_ALERT_BODY: 1.1,     // 警戒輕版的 700～1200 Hz 主體（三角波 900 Hz＋950 Hz 帶通雜訊）音量：突出 ≥ 8 dB 的驗收靠它
+    COVER_ALERT_GAIN: 0.85,    // 警戒輕版重擊各層的音量係數（裁決 7.5 從 0.6 提高：原本只突出 3.8 dB，低於 6 dB 等於沒訊號）
+    COVER_BRIGHT_DB: 4,        // 殘響掩護下，窗前節奏變亮多少（dB；取代 BRIGHT_DB、不乘 visualAid；裁決 7.3：留但可關，試聽頁可調 0）
     // 喇叭可聽度（11/08）
     PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
     BRIGHT_HZ: 1800,           // 盲區前節奏匯流排高架濾波的轉折頻率（Hz）：主要碰到手拍、金屬（k = 2、3）
@@ -293,7 +302,8 @@
     var dry = ctx.createGain(); dry.gain.value = 0.85; bright.connect(dry); dry.connect(gate);
     var verb = ctx.createConvolver(); verb.buffer = makeIR(2.4, 3);
     var verbSend = ctx.createGain(); verbSend.gain.value = 0.28; bright.connect(verbSend); verbSend.connect(verb);
-    var verbOut = ctx.createGain(); verbOut.gain.value = 0.6; verb.connect(verbOut); verbOut.connect(gate);
+    var verbOut = ctx.createGain(); verbOut.gain.value = 0.6; verb.connect(verbOut);
+    var verbDuck = ctx.createGain(); verbDuck.gain.value = 1; verbOut.connect(verbDuck); verbDuck.connect(gate);   // 殘響掩護：窗結束時壓低殘響（gateVD），現行版恆為 1
     var shaper = ctx.createWaveShaper(); shaper.curve = shaperCurve(6); shaper.oversample = '2x';
     var distWet = ctx.createGain(); distWet.gain.value = 0; bright.connect(distWet); distWet.connect(shaper);
     var distOut = ctx.createGain(); distOut.gain.value = 0.5; shaper.connect(distOut); distOut.connect(gate);
@@ -762,18 +772,23 @@
     // 現行盲區版傳空時段，兩個都停在平時值。
     var gateVS = new Gate(verbSend.gain, C.COVER_VERB_SEND, C.COVER_VERB_LEAD, C.COVER_VERB_RELEASE, verbSend.gain.value);
     var gateVO = new Gate(verbOut.gain, C.COVER_VERB_OUT, C.COVER_VERB_LEAD, C.COVER_VERB_RELEASE, verbOut.gain.value);
+    var gateVD = new Gate(verbDuck.gain, C.COVER_VERB_DUCK, 0.06, C.COVER_VERB_DUCK_RISE, 1);   // 時段＝[窗結束, 窗結束 + DUCK_SEC]
     var lastCover = false;
     // 交接重合擊：各層第一拍同時落下（不照鐘形曲線）＋一聲 300～1200 Hz 的厚擊（筆電喇叭聽得到）＋一點低頻身體（耳機）。
-    // 走節奏匯流排，所以吃得到窗內推高的殘響，接成 0.6 秒的尾巴。
+    // 走節奏匯流排：吃 gateVS（窗前半推高送量）／gateVO（窗內推高輸出）的殘響，窗結束時 gateVD 把殘響壓低，尾巴和窗一起收掉。
     function coverHit(out, t, alertWin) {
       var nL = layerCount(st.hunted), G = C.COVER_HIT_GAIN, k;
       if (alertWin) {
         // 警戒時（掩護窗夾在兩個低音拍中間）：厚擊往上移到 0.9～1.4 kHz、不加低頻與 300～600 Hz，200～600 Hz 讓給要跟的低音拍
         // （11/10 錄音：照一般版打，警戒低音拍相對背景從 +14 掉到 +8.6 dB）
-        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN * 0.6);
-        tone(out, t, 'triangle', 980, 820, 0.08, 0.22 * G, 0.002, 0.2);
-        tone(out, t, 'sine', 1380, 1300, 0.05, 0.12 * G, 0.002, 0.14);
-        noise(out, t, 'bandpass', 1200, 1.2, 0.3 * G, 0.001, 0.08);
+        // 11/10 晚（裁決 7.5）：係數 COVER_ALERT_GAIN 套整記輕版。只調層的係數沒用（上半層是手拍、金屬，能量多在 1200 Hz 以上，
+        // 離線量 0.6→0.85 突出只從 2.8 到 3 dB），所以把 700～1200 Hz 的主體加重：在低音拍中頻（200～600 Hz）之上，不蓋低音。
+        var ag = C.COVER_ALERT_GAIN;
+        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN * ag);
+        tone(out, t, 'triangle', 900, 760, 0.08, C.COVER_ALERT_BODY * G * ag, 0.002, 0.18);
+        tone(out, t, 'sine', 1150, 1080, 0.05, 0.5 * C.COVER_ALERT_BODY * G * ag, 0.002, 0.14);
+        noise(out, t, 'bandpass', 950, 1.1, 1.2 * C.COVER_ALERT_BODY * G * ag, 0.001, 0.09);
+        tone(out, t, 'sine', 1380, 1300, 0.05, 0.12 * G * ag, 0.002, 0.14);
         return;
       }
       for (k = 0; k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN);
@@ -783,10 +798,10 @@
       noise(out, t, 'bandpass', 1100, 1.2, 0.2 * G, 0.001, 0.06);
       tone(out, t, 'sine', 95, 60, 0.15, 0.35 * G, 0.002, 0.4);          // 低頻身體（喇叭聽不到，耳機補厚度）
       // 中頻餘韻（11/10 錄音工具回報：殘響多在 200 Hz 以下，喇叭模擬下只剩 0.10 秒）：寬帶通雜訊慢慢收掉，像大廳牆面的回聲，
-      // 撐滿 0.6 秒的窗；之後還有推高的殘響接著。走節奏匯流排，所以也會進殘響。
+      // 撐滿 0.6 秒的窗；走節奏匯流排，也進殘響。
       var TG = C.COVER_TAIL_GAIN;
-      noise(out, t + 0.015, 'bandpass', 850, 0.6, TG, 0.04, 0.6);
-      noise(out, t + 0.02, 'bandpass', 1700, 0.8, TG * 0.5, 0.05, 0.45);
+      noise(out, t + 0.015, 'bandpass', 850, 0.6, TG, 0.04, C.COVER_TAIL_SEC);
+      noise(out, t + 0.02, 'bandpass', 1700, 0.8, TG * 0.5, 0.05, C.COVER_TAIL_SEC * 0.75);
     }
     function scheduleCoverHits(from, end, ws) {
       for (var i = 0; i < ws.length; i++) {
@@ -1198,9 +1213,15 @@
         if (cov) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); }
         replan(now);
       }
+      // 窗前變亮：殘響掩護用 COVER_BRIGHT_DB（可即時改，改了就重排）
+      var bf = cov ? +C.COVER_BRIGHT_DB || 0 : C.BRIGHT_DB;
+      if (bf !== gateB.floor) { gateB.floor = bf; gateB.done = []; }
       gateR.plan(wq, now); gateM.plan(wq, now); gateG.plan(wq, now); gateH.plan(wq, now); gateB.plan(ws, now);
       var wv = (cov && !bassMode) ? ws : [];   // 警戒窗不推殘響：尾巴會墊高下一個低音拍前的背景
-      gateVS.plan(wv, now); gateVO.plan(wv, now);
+      // 送量只推前 COVER_VERB_HOLD 秒（之後的拍不再大量進殘響），輸出到窗結束、COVER_VERB_RELEASE 秒內收回
+      var hold = Math.max(0, +C.COVER_VERB_HOLD || 0);
+      gateVS.plan(wv.map(function (w) { return { s: w.s, e: Math.min(w.e, w.s + hold) }; }), now); gateVO.plan(wv, now);
+      gateVD.plan(wv.map(function (w) { return { s: w.e, e: w.e + C.COVER_VERB_DUCK_SEC }; }), now);
       var from = now + 0.004;
       if (cov) scheduleCoverHits(from, end, ws);
       scheduleBeats(from, end, wq);
