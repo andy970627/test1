@@ -200,7 +200,7 @@ button:hover { filter: brightness(1.12); }
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
       <dt>按住 空白鍵 或 滑鼠右鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
-      <dt>Shift</dt><dd>衝刺，只在節奏重來的瞬間有用</dd>
+      <dt>Shift</dt><dd><span class="modeCover">衝刺，只在最響的那一擊落下時有用</span><span class="modeGap" hidden>衝刺，只在節奏重來的瞬間有用</span></dd>
       <dt>E</dt><dd>點一下＝從背後暗殺；在城門按住＝推開門閂</dd>
       <dt>Q</dt><dd>衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
       <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
@@ -1827,7 +1827,7 @@ function worldHints(t) {
     HW.gaspAt = t; HW.handKick = 1;
     audio.cue('companionGasp'); caption('身旁的同伴壓低聲音', '別動。');
   }
-  // 驟降：前兩次，同伴在鼓聲斷掉前低聲說「就是現在」（說完正好斷）
+  // 掩護窗前：前兩次，同伴在時機到來前低聲說「就是現在」，說完正好接上（殘響掩護版是最響的那一擊，舊版是鼓聲停下）。字幕不提「斷」，兩版通用
   if (g.zone === 1 && HW.nowN < 2 && !g.panic.active && !c.nextFake && s.blindIn != null && s.blindIn < .98 && s.blindIn > .68 && HW.nowCycle !== c.index && t - HW.gaspAt > 1.5) {
     HW.nowCycle = c.index; HW.nowN++;
     audio.cue('whisperNow'); caption('同伴低聲', '就是現在。', 2000);
