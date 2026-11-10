@@ -191,7 +191,7 @@ button:hover { filter: brightness(1.12); }
     <p>今天，希臘人假裝撤退，在海灘上留下一匹巨大的木馬。特洛伊人以為那是戰利品，把它拖進城裡，喝酒慶祝到深夜。</p>
     <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b style="color:var(--fire)">今晚，由你打開城門。</b></p>
     <!-- 兩種鼓聲模式各一段說明，依「鼓聲」選單切換（coverText） -->
-    <p class="modeCover">這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，最響的那一擊落下時，就是你移動的時候。</p>
+    <p class="modeCover">這一夜，聲音比火光更危險：衛兵靠耳朵找人。踩著城裡的鼓點走，腳步聲會被蓋過；所有的鼓同時落下、最響的那一擊，就是你衝出去的時候。</p>
     <p class="dim modeCover">這座城在你耳裡響著一段永遠在加速、從不停下的節奏。節奏越急，衛兵越敏銳；每一輪最重的那一擊和它的餘韻，蓋得住你的腳步和刀聲。請戴上耳機。需要鍵盤和滑鼠。</p>
     <p class="modeGap" hidden>這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，鼓點一斷，就是你移動的時候。</p>
     <p class="dim modeGap" hidden>這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
@@ -247,7 +247,7 @@ button:hover { filter: brightness(1.12); }
   <label>視覺輔助 <select id="oAid"><option value="auto">自動（第 2 區減半、之後關閉）</option><option value="on">全開</option><option value="off">全關</option></select></label>
   <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
   <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
-  <label>鼓聲 <select id="oCover"><option value="cover">不中斷（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
+  <label>鼓聲 <select id="oCover"><option value="cover">不停（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -1241,6 +1241,9 @@ function showMsg(text, color) {
 // ---------- 4A 行動回饋（設計：2026-11-09-core-mechanics-review.md M2、M3、M4、M8） ----------
 // 畫面節奏常數（秒）：只管特效多久淡掉，不是規則數字
 const DASH_FX_DUR = .3, GHOST_DUR = .5, SLIP_DUR = .35, WHITE_DUR = .12;
+// 掩護窗震波的最低強度（裁決稿 7.2）：落塵、塵土跳起、火把傾斜是世界的反應，不跟著視覺輔助歸零；只有鏡頭下沉乘 visualAid
+const SHOCK_MIN = .35;
+const shockAmt = aid => Math.max(SHOCK_MIN, aid);
 let alertedEdgeV = 0;
 let whiteFlashV = 0;
 const triggerWhiteFlash = () => { whiteFlashV = 1.0; };
@@ -1485,8 +1488,8 @@ function sync(dt, now) {
   let fireV = g && Number.isFinite(g.fire) ? g.fire : null;
   if (fireV == null && typeof Rules.fireBrightness === 'function') { try { const v = Rules.fireBrightness(g, K()); if (Number.isFinite(v)) fireV = v; } catch (e) {} }
   const fireMul = fireV == null ? 1 : clamp(fireV, 0.15, 1.0);
-  // 重合擊震波：火把被震得一歪，來回擺兩下收住（只有鼓聲不中斷模式；強度 × visualAid）
-  const tilt = VIS.shock > 0 ? VIS.shockDir * Math.sin((1 - VIS.shock) * Math.PI * 4) * VIS.shock * .45 * VIS.aid : 0;
+  // 重合擊震波：火把被震得一歪，來回擺兩下收住（只有鼓聲不停模式；強度 max(SHOCK_MIN, visualAid)）
+  const tilt = VIS.shock > 0 ? VIS.shockDir * Math.sin((1 - VIS.shock) * Math.PI * 4) * VIS.shock * .45 * shockAmt(VIS.aid) : 0;
   // 火光閃動
   const fl = () => 1 + (Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08) * jitter;
   for (const F of S.fires) { F.f.rotation.z = tilt; F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25) * fireMul; }
@@ -1707,7 +1710,7 @@ function updateEaveDust(dt, floorY, aid) {
     eavePos[i * 3 + 1] = Math.max(floorY + .03, eavePos[i * 3 + 1] + eaveVel[i] * dt);
   }
   eaveGeo.attributes.position.needsUpdate = true;
-  eaveMat.opacity = VIS.shock * .85 * aid;
+  eaveMat.opacity = VIS.shock * .85 * shockAmt(aid);
 }
 function kickDust(amp) {                     // 一個拍點：一部分地上塵土跳起來
   const n = Math.floor(GND_N * Math.min(1, amp) * .45);
@@ -1750,7 +1753,7 @@ function visFrame(dt, floorY, playing) {
   if (cover) {
     if (blindNow && !VIS.wasBlind) {
       VIS.shock = 1; VIS.shockDir = Math.random() < .5 ? -1 : 1;
-      if (aid > .01) { kickDust(1.2 * aid); dropEaveDust(); }
+      kickDust(1.2 * shockAmt(aid)); dropEaveDust();   // 視覺輔助關掉也至少 SHOCK_MIN
     }
     VIS.shock = Math.max(0, VIS.shock - dt / num(K().BLIND_LEN, .6));
   } else VIS.shock = 0;
