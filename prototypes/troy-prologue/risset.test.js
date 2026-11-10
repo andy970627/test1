@@ -2112,7 +2112,14 @@ test('11/10 甲：火光跟實際速度走，掩護窗不壓暗；提示文字�
   while (t < 30) { t += DT; d.step(t, {}); samples.push([d.cycle.T, d.fire]); }
   for (const [len, f] of samples) assert.ok(near(f, R.fireBrightness({ T: d.T, cycle: { T: len } })), '亮度只看循環長度');
   const H = R.hintsFor(K), L = R.hintLadderFor(K);
-  for (const s of [H.blind, H.dash, H.takedown, L.blind.text, L.blind.keys, L.takedown.text, L.takedown.keys]) assert.ok(!/斷/.test(s), s);
+  // 殘響掩護版所有提示（暗殺教學、衝刺、驟降、腳步……）都不准說「斷」；只有假驟降那則例外（這版不抽假驟降，不會出現）
+  for (const [k, s] of Object.entries(H)) if (k !== 'fake') assert.ok(!/斷/.test(s), 'HINTS.' + k + '：' + s);
+  for (const [k, v] of Object.entries(L)) if (k !== 'fake') for (const s of [v.text, v.keys]) assert.ok(!/斷/.test(s), 'LADDER.' + k + '：' + s);
+  assert.ok(H.takedown.includes('最響的那一擊落下時') && L.takedown.text.includes('最響的那一擊落下時'), '暗殺教學用掩護窗的說法');
+  // 遊戲裡實際發出的提示也一樣（畫面層 createLevel 有傳 opts.T 時走 hintsFor(K)）
+  const gg = R.createLevel({ T: {} });
+  assert.equal(gg.T.COVER_MODE, true);
+  assert.ok(!/斷/.test(R.hintsFor(gg.T).takedown));
   assert.ok(H.blind.includes(`約 ${K.BLIND_LEN} 秒`) && L.blind.keys.includes(`約 ${K.BLIND_LEN} 秒`));
   assert.ok(R.hintsFor(Object.assign({}, K, { BLIND_LEN: 0.8 })).blind.includes('約 0.8 秒'), '改常數文字跟著變');
   assert.ok(/斷/.test(OH.blind) && /斷/.test(OL.blind.text), '舊版文字保留');
