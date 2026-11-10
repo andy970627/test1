@@ -149,7 +149,7 @@
     // 殘響掩護（11/10，核心方向甲；規則 T.COVER_MODE 為真時才用）
     COVER_HIT_GAIN: 0.9,       // 交接重合擊的厚擊（300～1200 Hz）音量
     COVER_LAYER_GAIN: 0.55,    // 重合擊裡各層第一拍的音量（不照鐘形曲線，全部同時落下）
-    COVER_TAIL_GAIN: 0.25,     // 重合擊後的中頻餘韻（850／1700 Hz 帶通雜訊）：喇叭上也聽得到尾巴
+    COVER_TAIL_GAIN: 0.35,     // 重合擊後的中頻餘韻（850／1700 Hz 帶通雜訊）：喇叭上也聽得到尾巴
     COVER_TAIL_SEC: 0.8,       // 中頻餘韻衰減到無聲的時間（秒；指數衰減，聽得到的部分約前 0.6 秒，和窗一起結束）
     COVER_VERB_DUCK: 0.3,      // 窗結束時把節奏殘響輸出壓到平時的多少（2.4 秒的長殘響否則會拖過窗 0.5 秒以上）
     COVER_VERB_DUCK_SEC: 0.4,  // 壓低維持多久（秒），之後 COVER_VERB_DUCK_RISE 秒回到平時
@@ -159,9 +159,13 @@
     COVER_VERB_LEAD: 0.02,     // 窗開始前多久推上去（秒）：重合擊一落下就進殘響
     COVER_VERB_RELEASE: 0.12,  // 窗結束後多久收回（秒；裁決 7.5 從 0.3 縮：聽到的餘韻要和判定的窗一起結束）
     COVER_VERB_HOLD: 0.3,      // 殘響送量只在窗的前這麼多秒推高，之後收回，讓殘響在窗結束前自己衰完（裁決 7.5）
-    COVER_ALERT_BODY: 1.1,     // 警戒輕版的 700～1200 Hz 主體（三角波 900 Hz＋950 Hz 帶通雜訊）音量：突出 ≥ 8 dB 的驗收靠它
+    COVER_ALERT_BODY: 1.7,     // 警戒輕版的 700～1200 Hz 主體（三角波 900 Hz＋950 Hz 帶通雜訊）音量：突出 ≥ 8 dB 的驗收靠它
     COVER_ALERT_GAIN: 0.85,    // 警戒輕版重擊各層的音量係數（裁決 7.5 從 0.6 提高：原本只突出 3.8 dB，低於 6 dB 等於沒訊號）
     COVER_BRIGHT_DB: 4,        // 殘響掩護下，窗前節奏變亮多少（dB；取代 BRIGHT_DB、不乘 visualAid；裁決 7.3：留但可關，試聽頁可調 0）
+    // 新訊號強調（裁決 7.9）：該區第一個循環，新訊號比平常響 INTRO_BOOST_DB，其他聲音不動（不做獨奏，獨奏等於又做出一段空白）
+    INTRO_BOOST_DB: 4,         // 試聽頁可調到 0
+    INTRO_CYCLES: 1,           // 重合擊：進區後前幾記；低音拍：整局第一次起疑後幾個循環（安撫在哪一區第一次出現都算）
+    INTRO_COVER_ZONE: 2,       // 殘響掩護版第 2 區才教最響的一擊：進區後第一記重合擊
     // 喇叭可聽度（11/08）
     PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
     BRIGHT_HZ: 1800,           // 盲區前節奏匯流排高架濾波的轉折頻率（Hz）：主要碰到手拍、金屬（k = 2、3）
@@ -388,8 +392,8 @@
     }
 
     var bassPending = [];                 // 已排程、還沒響的低音拍（重新對齊時取消舊網格）
-    function bassHit(t) {                 // 極慢重低音：深鼓 + 一聲低吟般的嗡
-      var d = ctx.createGain(); d.connect(bassBus);
+    function bassHit(t, k) {              // 極慢重低音：深鼓 + 一聲低吟般的嗡；k＝音量倍數（新訊號強調用，預設 1）
+      var d = ctx.createGain(); d.gain.value = k > 0 ? k : 1; d.connect(bassBus);
       bassPending.push({ t: t, out: d });
       tone(d, t, 'sine', 64, 43, 0.45, 0.95, 0.004, 1.15);
       tone(d, t, 'sine', 128, 88, 0.3, 0.25, 0.004, 0.5);
@@ -774,6 +778,9 @@
     var gateVO = new Gate(verbOut.gain, C.COVER_VERB_OUT, C.COVER_VERB_LEAD, C.COVER_VERB_RELEASE, verbOut.gain.value);
     var gateVD = new Gate(verbDuck.gain, C.COVER_VERB_DUCK, 0.06, C.COVER_VERB_DUCK_RISE, 1);   // 時段＝[窗結束, 窗結束 + DUCK_SEC]
     var lastCover = false;
+    // 新訊號強調（裁決 7.9）：區號一律讀規則的 state.zone；換了一局（state 換成新物件）就重來
+    var intro = { game: null, zone: -1, hitsLeft: 0, bassDone: false, bassFrom: Infinity, bassUntil: -Infinity };
+    function introGain() { return Math.pow(10, (+C.INTRO_BOOST_DB || 0) / 20); }
     // 交接重合擊：各層第一拍同時落下（不照鐘形曲線）＋一聲 300～1200 Hz 的厚擊（筆電喇叭聽得到）＋一點低頻身體（耳機）。
     // 走節奏匯流排：吃 gateVS（窗前半推高送量）／gateVO（窗內推高輸出）的殘響，窗結束時 gateVD 把殘響壓低，尾巴和窗一起收掉。
     function coverHit(out, t, alertWin) {
@@ -811,7 +818,9 @@
         if (evs[key]) continue;
         var le = log ? { type: 'coverHit', t: t, p: frac(P), alert: aw } : null;
         if (le) log.push(le);
-        (function (aw) { addEvent(key, P, rhythmBus, function (tt, out) { coverHit(out, tt, aw); }, false, le); })(aw);
+        var bst = 1;
+        if (!aw && intro.hitsLeft > 0 && intro.zone === C.INTRO_COVER_ZONE) { intro.hitsLeft--; bst = introGain(); if (le) le.boost = bst; }
+        (function (aw, bst) { addEvent(key, P, rhythmBus, function (tt, out) { out.gain.value = bst; coverHit(out, tt, aw); }, false, le); })(aw, bst);
       }
     }
 
@@ -1198,7 +1207,9 @@
           for (var i = 0; i < ws.length; i++) if (tb > ws[i].s - C.BASS_TAIL && tb < ws[i].e) { skip = true; break; }
           if (skip) continue;
         }
-        bassHit(tb); st.lastBass = tb;
+        var ib = tb < intro.bassUntil && tb >= intro.bassFrom - 1e-3 ? introGain() : 1;
+        bassHit(tb, ib); st.lastBass = tb;
+        if (log && ib !== 1) log.push({ type: 'introBoost', what: 'bass', t: tb, gain: ib });
         if (log) log.push({ type: 'bass', t: tb });
       }
     }
@@ -1873,6 +1884,17 @@
         if (s.alerted != null) {
           if (droneWanted(s)) { if (!alertedDrone || alertedDrone.until <= now + 2) startAlertedDrone(now); }
           else if (alertedDrone) stopAlertedDrone(now);
+        }
+        // 新訊號強調（裁決 7.9）：進第 INTRO_COVER_ZONE 區後的前 INTRO_CYCLES 記重合擊；整局第一次起疑後（不限區，安撫第一次出現就是教它的時候），
+        // 低音第一拍起 INTRO_CYCLES 個循環（循環長讀規則的 cycle.T）。只調那一個訊號的音量，其他聲音不動。
+        if (s !== intro.game) intro = { game: s, zone: -1, hitsLeft: 0, bassDone: false, bassFrom: Infinity, bassUntil: -Infinity };
+        var zn = isFinite(s.zone) ? (s.zone | 0) : -1;
+        if (zn !== intro.zone) { intro.zone = zn; intro.hitsLeft = zn === C.INTRO_COVER_ZONE ? Math.max(0, C.INTRO_CYCLES | 0) : 0; }
+        if (pa && !intro.bassDone) {
+          intro.bassDone = true;
+          var ib0 = (s.bass && isFinite(s.bass.anchor)) ? +s.bass.anchor : now;
+          var icl = (s.cycle && isFinite(s.cycle.T) && s.cycle.T > 0) ? +s.cycle.T : st.bassPeriod * 2;
+          intro.bassFrom = Math.max(now, ib0); intro.bassUntil = intro.bassFrom + Math.max(0, C.INTRO_CYCLES | 0) * icl;
         }
         // 暗示：規則的 hintSignals（可暗殺的衛兵、離盲區幾秒）；路線的風、號角、門外低語
         hintSig = null;

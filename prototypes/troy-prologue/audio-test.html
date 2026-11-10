@@ -33,6 +33,8 @@ input[type=range] { flex:1; }
     <label>警戒 alarm <input id="alarm" type="range" min="0" max="1" step="0.01" value="0"> <span id="alarmv">0.00</span></label>
     <button id="hunt">追殺：關</button>
     <label><input id="cover" type="checkbox"> 殘響掩護（鼓聲不中斷，窗開頭重合擊＋餘韻）</label>
+    <label>區號 <select id="zone"><option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option></select>（第 2 區：第一記重合擊加強；低音拍是整局第一次起疑時加強）</label>
+    <label>新訊號強調 <input id="introdb" type="range" min="0" max="8" step="0.5" value="4"> <span id="introdbv">4</span> dB（0＝關，設計 7.9）</label>
     <label>窗前變亮 <input id="bright" type="range" min="0" max="6" step="0.5" value="4"> <span id="brightv">4</span> dB（殘響掩護下；0＝關，設計 7.3）</label>
   </section>
   <section id="cues"></section>
@@ -46,14 +48,16 @@ input[type=range] { flex:1; }
     alert: '起疑', caught: '被抓', takedownFail: '暗殺失手', calmOk: '安撫成功', calmBad: '安撫失敗', calmDone: '安撫完成', checkpoint: '檢查點', dash: '衝刺', escape: '甩掉追兵', trapdoor: '暗門',
     alerted: '高度警覺嗡鳴', alertOver: '警覺結束', takedown: '暗殺成功', huntStep: '追殺合拍一步', huntSlip: '甩開一段' };
 
+  var ST = {};   // 同一個物件每幀更新：聲音層用「state 換成新物件」判斷換了一局（新訊號強調會重來）
   function state() {
     var T = audio.T, t0 = audio.t0, now = audio.now(), per = audio.CONST.BASS_PERIOD;
-    return {
+    return Object.assign(ST, {
       cycle: { T: T, t0: t0, p: audio.phase(), blind: audio.isBlind(), index: Math.floor((now - t0) / T) },
       alarm: +$('alarm').value, hunted: hunted,
+      zone: +$('zone').value,
       T: { COVER_MODE: $('cover').checked, BLIND_LEN: 0.6 },   // 聲音層讀 state.T.COVER_MODE 切殘響掩護
       bass: { period: per, nextBeat: t0 + Math.ceil((now - t0) / per) * per }
-    };
+    });
   }
   $('start').onclick = function () {
     if (!ctx) {
@@ -65,6 +69,7 @@ input[type=range] { flex:1; }
   };
   $('stop').onclick = function () { if (audio) audio.suspend(); };
   $('vol').oninput = function () { if (audio) audio.setMaster(+this.value); };
+  $('introdb').oninput = function () { $('introdbv').textContent = this.value; if (audio) audio.CONST.INTRO_BOOST_DB = +this.value; };
   $('bright').oninput = function () { $('brightv').textContent = this.value; if (audio) audio.CONST.COVER_BRIGHT_DB = +this.value; };
   $('alarm').oninput = function () { $('alarmv').textContent = (+this.value).toFixed(2); };
   $('hunt').onclick = function () { hunted = !hunted; this.textContent = '追殺：' + (hunted ? '開' : '關'); this.classList.toggle('on', hunted); };
