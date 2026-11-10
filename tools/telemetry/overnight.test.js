@@ -61,7 +61,7 @@ test('overnight-report judge：設計席 7.5 錄音門檻、7.8 程式玩家門�
   ] };
   const row = (o) => Object.assign({ confound: [], alertWin: false }, o);
   const an = { coverMode: true, coverRows: [row({ riseDb: 20, tailSec: 0.6 }), row({ riseDb: 14, tailSec: 0.7 }), row({ riseDb: 11, tailSec: 0.9 }), row({ alertWin: true, riseDb: 9 }), row({ confound: ['dash'], riseDb: -5, tailSec: 0 })],
-    speaker: { steps: { riseDiffDb: 11.5 } }, checks: [] };
+    speaker: { steps: { riseDiffDb: 11.5, loud: [{}, {}, {}], masked: [{}, {}, {}, {}] } }, checks: [], thresholds: { stepMinN: 3 } };
   const R = recNumbers(an);
   assert.equal(R.rise, 14); assert.equal(R.tail, 0.7); assert.equal(R.alertRise, 9); assert.equal(R.windows, 3);
   const J = judge(sim, { raw: R, spk: null }, { raw: null }, { sim: 's', cover: 'c', gap: 'g' });
@@ -75,8 +75,13 @@ test('overnight-report judge：設計席 7.5 錄音門檻、7.8 程式玩家門�
   assert.equal(by('重合擊突出中位（不停，原始）').ok, true);
   assert.equal(by('警戒輕版重擊突出中位（不停，原始）').ok, true);
   assert.equal(by('餘韻中位（不停，喇叭模擬）').ok, null, '沒有喇叭模擬＝無資料');
-  assert.equal(by('不合拍與合拍腳步 1～4 kHz 差（不停）').ok, false);
+  assert.equal(by('不合拍與合拍腳步 1～4 kHz 差（不停）').ok, false, '3 步、4 步夠樣本，11.5 < 12');
+  assert.ok(by('不合拍與合拍腳步 1～4 kHz 差（不停）').value.includes('不合拍 3 步、合拍 4 步'));
   assert.equal(by('不合拍與合拍腳步 1～4 kHz 差（留空檔）').ok, null);
+  // 腳步樣本不夠（不合拍只有 1 步）就算差值低也判無資料
+  const an2 = JSON.parse(JSON.stringify(an)); an2.speaker.steps.loud = [{}];
+  assert.equal(judge(sim, { raw: recNumbers(an2) }, null, { sim: 's', cover: 'c', gap: 'g' }).find((r) => r.item.startsWith('不合拍與合拍腳步 1～4 kHz 差（不停）')).ok, null);
+  assert.ok(J.some((r) => r.item.startsWith('通關時間中位') && r.ok === undefined), '通關時間只列');
   // σ 0.12 高度警覺不到 1 次就不過
   const sim2 = JSON.parse(JSON.stringify(sim)); sim2.results[2].stats.alertedMean = 0.8;
   assert.equal(judge(sim2, null, null, { sim: 's', cover: 'c', gap: 'g' }).find((r) => r.item.startsWith('σ 0.12 錯了')).ok, false);

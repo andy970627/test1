@@ -53,6 +53,7 @@ const TH = Object.assign({
   coverLouderDb: -3,      // 窗內整體音量比前後：中位下限（掩護版 −0.5、舊版 −24.9 dB）——窗內不能變安靜
   coverTailAboveDb: 3,
   fireTol: 0.02,          // fireSync：game.fire 與 FIRE_BASE + FIRE_P_GAIN × danger 的容許誤差
+  stepMinN: 3,            // stepBand：不合拍、合拍腳步各至少幾步才判定
   fireDrop: 0.05,         // fireSync：相鄰兩幀 fire 掉超過這個量、而 danger 沒掉（< 0.01）＝「火光掉回」
   // 玩家自己的動作音（走提示音匯流排，盲區不壓）：盲區內有這些 cue 時，那次盲區照列但不計入盲區檢查
   blindConfoundCues: '^(dash|trapdoor|checkpoint|step_loud|gasp|takedown|takedown_fail|latch|latch_step|calm_ok|calm_bad|calm_done|alert|caught|hunt|escape|gate_open)$'
@@ -518,8 +519,9 @@ if (SPKC) {
     // 判定用「相對前 0.3 秒的上升量」的差：合拍腳步照設計落在鼓點上，絕對峰值量到的是那一下鼓，
     // 玩家聽到的差別其實是「突然冒出一聲」對「什麼都沒多出來」，所以比上升量才對
     const riseDiff = rL != null && rM != null ? r1(rL - rM) : null;
-    add('stepBand', `不合拍腳步比合拍腳步在 ${cfg.band[0] / 1000}～${cfg.band[1] / 1000} kHz 突出 ≥ ${need} dB`, riseDiff == null ? null : riseDiff >= need,
-      riseDiff == null ? `樣本不夠（${cfg.loud} ${loud.length} 步、${cfg.masked} ${masked.length} 步）` :
+    const fewSteps = loud.length < TH.stepMinN || masked.length < TH.stepMinN;   // 11/11：1 步就判會被單一樣本左右，兩種各要 ≥ stepMinN 步
+    add('stepBand', `不合拍腳步比合拍腳步在 ${cfg.band[0] / 1000}～${cfg.band[1] / 1000} kHz 突出 ≥ ${need} dB`, riseDiff == null || fewSteps ? null : riseDiff >= need,
+      riseDiff == null || fewSteps ? `樣本不夠（每種要 ≥ ${TH.stepMinN} 步；${cfg.loud} ${loud.length} 步、${cfg.masked} ${masked.length} 步${riseDiff != null ? '，差 ' + riseDiff + ' dB 只列' : ''}）` :
         `相對前 0.3 秒的上升中位：${cfg.loud} ${rL} dB（${loud.length} 步）、${cfg.masked} ${rM} dB（${masked.length} 步），差 ${riseDiff} dB；絕對峰值 ${mdL} 對 ${mdM} dB（差 ${diff} dB）` +
         (maskedClean.length ? `；合拍腳步中附近沒有顯著鼓點的 ${maskedClean.length} 步峰值中位 ${median(maskedClean.map(x => x.peakDb))} dB` : ''),
       `門檻：每個 cue 後 [−0.005, +0.12] 秒內 ${cfg.band[0]}～${cfg.band[1]} Hz 頻帶的峰值減去前 0.3 秒的平均（＝這一步讓聲音突然多出多少），兩種腳步各取中位，差 ≥ ${need} dB。合拍腳步照設計落在鼓點上，絕對峰值含那一下鼓，所以只列出來對照、不拿來判定。`);

@@ -44,7 +44,8 @@ export default {
     const cycle = o.cycle ? +o.cycle : null;
     // 鼓聲模式（核心方向甲，11/10）：--cover cover｜gap 設定開場選單 #oCover（規則 T.COVER_MODE）；不給就用頁面預設（cover）
     const cover = o.cover === 'gap' || o.cover === 'false' ? 'gap' : (o.cover === 'cover' || o.cover === true || o.cover === 'true') ? 'cover' : null;
-    await page.evaluate(({ cycle, phaseBar, cover }) => {
+    await page.evaluate(({ cycle, phaseBar, cover, stepTest }) => {
+      window.__recStepTest = !!stepTest;   // --step-test：第 1 區改成離拍起步累積腳步樣本（不喘氣引起注意）
       const cv = document.getElementById('oCover');
       if (cover && cv && !cv.disabled) { cv.value = cover; cv.dispatchEvent(new Event('change', { bubbles: true })); }
       const sel = document.getElementById('oT');
@@ -56,7 +57,7 @@ export default {
       }
       const ph = document.getElementById('oPhase');
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, { cycle, phaseBar: o.phaseBar !== false, cover });
+    }, { cycle, phaseBar: o.phaseBar !== false, cover, stepTest: !!o.stepTest });
     await page.click('#btnStart');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
     return page.evaluate(() => {
@@ -171,10 +172,33 @@ export default {
         if (!highP && p > 0.08 && q) {
           const tx = Math.max(5.7, Math.min(10.0, q.x));
           if (tx > P.x + 0.3) fwd = 1; else if (tx < P.x - 0.3) fwd = -1;
+          else if (window.__recStepTest) {
+            // --step-test（11/11）：腳步檢查要樣本。挑「不在可聽拍上」的時候起步、走 0.12 秒就停，每次起步都是離拍的出聲腳步（step_loud）；
+            // 走近的路上連續走的腳步是合拍的（step_masked）。木馬腹中離衛兵遠，出聲腳步不會引起注意，所以這段錄不到警戒。
+            const R = window.RissetRules;
+            if (st.burstUntil != null && t < st.burstUntil) fwd = st.burstDir;
+            else if (st.burstUntil != null && t < st.burstUntil + 0.45) fwd = 0;          // 停一下，下一步才算新的起步
+            else if (R && R.stepMasked && !R.stepMasked(t + st.fd, g)) {
+              st.burstDir = st.burstDir === 1 ? -1 : 1; st.burstUntil = t + 0.12; fwd = st.burstDir;
+            }
+          }
+          else if (g.T.COVER_MODE) st.provokeGasp = true;     // 已在正上方：殘響掩護版改用喘氣引起注意（見下）
           else fwd = (Math.floor(t * 4) % 2) ? 1 : -1;      // 已在正上方：小幅來回挪動
           if (P.x > 9.9 && fwd > 0) fwd = -1;
         }
         breath = holdWrap;
+        // 殘響掩護版（11/11）：踩拍走的腳步聽不見；離拍腳步只在 STEP_R（2.5 m，含高度）內聽得到，木馬腹中離地面衛兵太遠。
+        // 改成在衛兵正上方一直屏息、故意喘氣（loud，LOUD_R 8 m）。喘氣要落在 p ≤ HIGH_P 才會「起疑」（進警戒、要安撫），
+        // p 高時只會進高度警覺：快到上限（BREATH_MAX − 0.3）時相位偏高就先放開，換氣後下一輪再試。
+        if (st.provokeGasp && g.T.COVER_MODE) {
+          fwd = 0;
+          const near = P.breathT >= g.T.BREATH_MAX - 0.3;
+          if (P.breathLock) breath = false;
+          else if (near && p > 0.45 && p < 0.97) { breath = false; st.gaspRetry = true; }
+          else if (st.gaspRetry && P.breathT > 0.5) breath = false;          // 換完氣再重來
+          else { st.gaspRetry = false; breath = true; }
+          if (near && breath && !st.gaspLogged) { st.gaspLogged = true; api.log('provoke_gasp', { p: +p.toFixed(3) }); }
+        }
       } else {                          // 安撫完：下一個盲區衝刺到暗門
         if (s.blind) {
           fwd = 1;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 整夜自動驗證一鍵跑：程式玩家批次 → 兩版錄音 → 確認沒有殘留瀏覽器 → 報告
+# 整夜自動驗證一鍵跑：程式玩家批次 → 兩版錄音（不停版會故意喘氣引起警戒）＋腳步測試段 → 確認沒有殘留瀏覽器 → 報告
 #   bash tools/telemetry/overnight-run.sh                 # 各 500 局、錄音各 90 秒
 #   N=50 DUR=30 TAG=trial bash tools/telemetry/overnight-run.sh   # 小樣本試跑
 # 本機要先有 playwright（NODE_PATH 指到 %LOCALAPPDATA%\test1-node-tools\node_modules）與 ffmpeg；見 docs/process/agent-notes/tools.md。
@@ -29,9 +29,12 @@ for m in cover gap; do
   fi
 done
 
+log "錄音：腳步測試段 45 秒（不停，離拍起步累積腳步樣本）"
+node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 45 --cover cover --step-test --no-video --out "$OUT/overnight-steps-$TAG" > "$OUT/overnight-steps-$TAG.log" 2>&1 || log "腳步測試段失敗（exit $?）"
+
 sleep 5   # 瀏覽器關閉要幾秒，太早數會數到正在結束的程式
 left=$( (tasklist 2>/dev/null || ps -e) | grep -ci "headless" || true)
 log "殘留的無頭瀏覽器：$left 個"
 
-node tools/telemetry/overnight-report.mjs --sim "$OUT/overnight-sim-$TAG.json" --cover "$OUT/overnight-cover-$TAG" --gap "$OUT/overnight-gap-$TAG" --out "$REPORT"
+node tools/telemetry/overnight-report.mjs --sim "$OUT/overnight-sim-$TAG.json" --cover "$OUT/overnight-cover-$TAG" --gap "$OUT/overnight-gap-$TAG" --steps "$OUT/overnight-steps-$TAG" --out "$REPORT"
 log "完成：$REPORT"
