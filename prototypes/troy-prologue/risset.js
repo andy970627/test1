@@ -70,6 +70,13 @@
 
   // ---------- 常數（第 6.2 節，全部可調） ----------
   const T = Object.freeze({
+    // 11/10 核心方向甲「殘響掩護」（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：
+    // true ＝鼓聲不中斷，交接那一下的重合擊與殘響當掩護；false ＝舊的盲區版（對照、測試用）。
+    // 兩版的時間窗（cycle.blind／blindWindows＝coverWindows、BLIND_LEN、BLIND_LEAD_GRACE）完全一樣，差別只有三條：
+    //   1. 不抽假驟降（cycle.fake、nextFake 恆為 false）；
+    //   2. p > HIGH_P 時，踩在可聽拍上的腳步（step_masked）不算被聽見，出聲的腳步（step_loud）才進高度警覺；被看見照舊；
+    //   3. 掩護窗內感知仍為 0（和盲區一樣）。另外火光改讀實際速度 danger，FIRE_BLIND 不用。
+    COVER_MODE: true,
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
     CYCLE_FAR: 12,        // 附近沒有衛兵時的目標循環長度
@@ -98,7 +105,7 @@
     BLIND: 0.6,           // 舊名，等於 BLIND_LEN（畫面、聲音還在讀）；只改 BLIND_LEN 時會跟著改
     BLIND_LEAD_GRACE: 0.15, // 真盲區開始前這麼多秒內，移動、衝刺、暗殺都照盲區規則處理（聽到預告就動的人不會被判 move_high）；假驟降前沒有寬限
     PRE_BLIND: 0.4,       // 盲區前幾秒發出 sfx 'pre_blind'（預告）
-    FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉
+    FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉。COVER_MODE 下一律不抽（每次交接都無縫）
     FAKE_FROM_ZONE: 3,    // 從第 3 區（窄巷）起才會出現
     FAKE_EVERY: 4,        // 平均每幾個循環 1 次：每次交接以 1 ÷ (FAKE_EVERY − 1) 的機率抽，抽中後下一次一定是真的
     R_BASE: 3,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
@@ -153,8 +160,8 @@
     HINT_BACK_ANG: 1.9,   //   背後有人：和玩家正前方夾角超過幾弧度（約 110°）
     HINT_KILL_R: 3.2,     //   可暗殺：背後幾公尺內就開始提示（真正出手要 TAKEDOWN_R 內）
     FIRE_BASE: 0.35,      // 火光亮度基準（0～1）
-    FIRE_P_GAIN: 0.65,    // 火光亮度隨相位 p 增加的量（p = 1 時到 1.0）
-    FIRE_BLIND: 0.15,     // 盲區時的火光亮度
+    FIRE_P_GAIN: 0.65,    // 火光亮度隨危險度 danger 增加的量（danger = 1，即循環縮到 CYCLE_HUNT 時到 1.0）；名稱沿用 4A
+    FIRE_BLIND: 0.15,     // 盲區時的火光亮度（只有舊模式 COVER_MODE = false 用；殘響掩護版不壓暗）
     MAX_DT: 0.1           // step 每次最多推進 0.1 秒
   });
 
@@ -1180,8 +1187,9 @@
         const inFov = d < 1e-6 || angDiff(toward, fa) <= K.FOV;
         const seen = !pl.hidden && d <= r && inFov;
         const mv = moved && !lead;   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
-        const heardMove = mv && d <= (seen || p > K.HIGH_P ? r : Math.min(r, K.STEP_R));
-        const heardBreath = !pl.breathing && !moved && d <= (pl.hidden ? K.R_BASE * K.BREATH_HEAR : r * K.BREATH_HEAR);
+        // 4A 的 M7 只改 R_BASE／R_GAIN，不做感知分級：移動聲、呼吸聲仍以整個 r(p) 判定（分級是 4B 的事）
+        const heardMove = mv && d <= r;
+        const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
         const heardStep = stepLoud && d < K.STEP_R;
 
@@ -1210,7 +1218,11 @@
           continue;
         }
         if (heardLoud) {
-          if (p > K.HIGH_P) makeAlerted(q, t, 'loud');
+          if (p > K.HIGH_P) {
+            // 只有巡邏中的衛兵先進高度警覺；起疑（安撫中）的照舊直接追殺（起疑流程不變）
+            if (q.state === 'patrol') makeAlerted(q, t, 'loud');
+            else startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
+          }
           else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
           continue;
         }

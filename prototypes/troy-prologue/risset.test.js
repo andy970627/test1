@@ -211,6 +211,21 @@ test('11/09 4A：高頻（p > 0.6）在衛兵範圍內第一次 move_high 只進
   assert.equal(g.alarm, 1);
 });
 
+test('11/10 4A 複審：起疑（安撫中）的衛兵在節奏最快時聽到喘氣，照舊直接追殺，不會降成高度警覺', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 22, 0);
+  place(g, 25, 19);                                   // 站在他看得到的地方，等他起疑
+  let t = 1; g.step(t, {});
+  while (q.state === 'patrol' && t < 9) { t += DT; g.step(t, {}); }
+  assert.equal(q.state, 'suspicious');
+  g.drain();
+  let ev = [];
+  while (!ev.includes('gasp') && t < 30) { t += DT; g.step(t, { breath: true }); ev = ev.concat(sfx(g)); }
+  assert.ok(ev.includes('gasp'), '憋到喘氣');
+  assert.ok(g.cycle.p > K.HIGH_P || ev.includes('hunt'), `喘氣時 p = ${g.cycle.p}`);
+  assert.ok(ev.includes('hunt') && !ev.includes('alerted'), '起疑中喘氣 → 追殺，不是高度警覺');
+});
+
 test('11/09 4A：高度警覺持續時間到期會回巡邏，並發 alert_over', () => {
   const g = lvl({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 22, 0);
@@ -575,12 +590,17 @@ test('11/09 4A 追殺：在陰影裡亂動會被聽到，撐不住的計時歸�
   moveHighTwice(g, 9.5, { mz: 1 });
   run(g, 9.5 + DT * 2, 10.1, () => ({ breath: true }));
   g.step(10.1 + DT, { dash: true, mz: 1 });
-  run(g, 10.1 + DT, 13, () => ({}));
+  let t = run(g, 10.1 + DT, 13, () => ({}));
   assert.equal(g.phase, 'play');
   assert.ok(g.stillT > 2);
-  g.step(13 + DT, { mx: 0.2 });
-  assert.equal(g.stillT, 0);
+  // 4A：追殺衝刺是 DASH_HUNT（6 m），衝完已在聽覺半徑外（這正是生路）。
+  // 原地不動等相位升高、追殺感知半徑 r(p) 蓋過距離，再動一下，才是「在陰影裡亂動」的情境。
   const q = g.guards.find((x) => x.id === 'g2a');
+  const dist = () => Math.hypot(q.x - g.player.x, q.z - g.player.z);
+  while (R.radiusAt(g.cycle.p, true, g.T) <= dist() + 0.2) { t += DT; g.step(t, {}); }
+  assert.ok(g.hunted && g.stillT > 2 && g.stillT < K.ESCAPE_STILL, '還在追殺、還沒撐到擺脫');
+  g.step(t + DT, { mx: 0.2 });
+  assert.equal(g.stillT, 0);
   assert.ok(Math.hypot(q.lastKnown.x - g.player.x, q.lastKnown.z - g.player.z) < 0.1, '動了會被聽到，衛兵知道你在哪');
 });
 
@@ -1243,9 +1263,10 @@ test('8.3 不合拍的腳步：2.5 m 內的衛兵疑心 + SUSP_STEP；合拍的�
     else { if (ev.length) masked++; assert.ok(near(q.susp, base, 1e-9), `t=${t}：${q.susp}`); }
   }
   assert.ok(loud >= 1 && masked >= 1, `loud ${loud} masked ${masked}`);
-  // 3 m 外（r(p) 也到不了）：不合拍也聽不到
+  // r(p) 與 STEP_R 都到不了的距離：不合拍也聽不到（距離由常數推算；4A 放大 R_BASE／R_GAIN 後 3.2 m 已在 r 內）
   const h = lvl({ startZone: 2 });
-  const q2 = solo(h, 'g2a', 25, 22.2, Math.PI);
+  const farD = Math.max(K.STEP_R, R.radiusAt(2.8 / K.CYCLE, false, h.T)) + 0.4;
+  const q2 = solo(h, 'g2a', 25, 19 + farD, Math.PI);
   place(h, 25, 19);
   h.step(0.7, {}); h.drain();
   let n = 0;
@@ -1529,10 +1550,13 @@ test('8.5 假驟降：衛兵照常聽得到、衝刺沒有用', () => {
 
 test('8.5 假驟降：警戒、追殺中不抽；追殺開始時取消已抽中的', () => {
   const h = lvl({ startZone: 3, seed: 2 });
-  const q = solo(h, 'g3a', 38, 23, 0);
-  place(h, 33, 26);                                   // 先待在遠處
+  // 先待在遠處：等假驟降抽中時，衛兵連站著的呼吸聲都聽不到（r(1) × BREATH_HEAR 之外；4A 放大半徑後原本 5.8 m 不夠遠）
+  const q = solo(h, 'g3a', 45, 18, 0);
+  place(h, 33, 26);
+  assert.ok(Math.hypot(45 - 33, 18 - 26) > R.radiusAt(1, false, h.T) * K.BREATH_HEAR + 0.5);
   let u = 0; h.step(u, {});
   u = runUntil(h, u, (gg) => gg.cycle.nextFake && gg.cycle.p > 0.1 && gg.cycle.p < 0.5);
+  solo(h, 'g3a', 38, 23, 0);                          // 衛兵回到原位，玩家貼到他背後
   place(h, 38, 24.2);
   h.step(u + 0.01, { takedown: true });               // 盲區外按 → 起疑
   assert.equal(h.panic.active, true);
