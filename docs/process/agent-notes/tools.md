@@ -87,7 +87,10 @@
 - 2026-11-10 背景要取窗前包絡的**中位數**：鼓聲不斷時窗前平均會被鼓點拉高。
 - 2026-11-10 `ANALYZE_COVER=1|0` 只換第 1 項的量法；fireSync 一律看規則實際模式（`RULE_COVER`），否則舊模式盲區照設計壓暗的火光會被誤判成掉回。
 - 2026-11-10 錄製中途偶爾「Page crashed」（60 秒留空檔版第一次），重錄就好。
-- 2026-11-10 錄製預設 `--mute-audio`（不從喇叭出聲），網址自動加 `nolock=1`（總控加，免得無頭 Chromium 鎖住實體滑鼠）。
+- **2026-11-10 本機錄製三條鐵則**（使用者 11/09 晚～11/10 一直被鎖滑鼠、喇叭一直響的原因）：
+  1. 無頭 Chromium 在 Windows 上，遊戲呼叫 `requestPointerLock` 會對**實體滑鼠**做 ClipCursor，把滑鼠鎖在左上角錄影視窗大小（640×360）。`record.mjs` 開頁一律加 `nolock=1`（第 167 行）。**不要加 `mute=1`**：它把總閘音量設 0，會錄到靜音。
+  2. `LAUNCH_ARGS` 預設加 `--mute-audio`（第 134 行；要聽才加 `--audible`）。已驗證不影響錄音：分接點在 `destination` 前，11/10 兩份 60 秒錄音峰值 −0.9 dBFS、檢查照常。
+  3. 錄完確認沒有殘留程式：`tasklist | grep -i headless` 應該沒有結果（`chrome-native-host.exe` 是 Chrome 擴充功能的，不是錄影留下的）。
 - 2026-11-09 本角色在 worktree `C:\Users\恩\test1\.claude\worktrees\openrouter-api-key-setup-383957`（分支 `claude/gracious-bardeen-vwo4rr`）工作；不要寫 `C:\Users\恩\test1` 主資料夾，hook 會擋。
 
 ## 4. 驗證方式
