@@ -26,6 +26,7 @@
 | 比箭・Risset 版 `prototypes/bow-risset/` | 比箭【經典】 | 心跳 Risset 加速、準心越晃；驟降瞬間最穩 | 可玩；正在加暗示；和原本呼吸判定版比較中 | `2026-11-07-risset-bow-vengeance.md` |
 | 大廳復仇 `prototypes/vengeance/` | 殺求婚者【經典】 | 節奏動作戰鬥：最高速躲攻擊，驟降空檔射箭，照低音讓兒子舉盾 | 可玩；三段難度＋越危險越快、右鍵舉盾。**使用者認為太被動**，11/08 寫了兩份主動性規格（A 節奏射箭自由度、B 近戰比例加大）與比較，建議「A 前半＋B 後半」合成，待選 | `2026-11-07-risset-bow-vengeance.md`、`2026-11-08-vengeance-active-archery.md`、`2026-11-08-vengeance-active-melee.md`、`2026-11-08-vengeance-active-comparison.md`、**合成版規格 `2026-11-08-vengeance-v2-spec.md`**（報告後實作） |
 
+| 比箭、大廳復仇的維持錯覺版（11/10 設計，報告後實作） | 比箭、殺求婚者【經典】 | 照木馬之夜甲版同一招：判定時間窗不搬、交接從「靜」改「響」，各加一個開關（大廳 `COVER_MODE`、比箭 `heart.coverMode`）；比箭關掉 `heart.urgent`、`heart.tensionLo` 以免出現接縫；大廳最後一名頭目留換層接口 | 設計席定稿，新常數待量 | `2026-11-10-illusion-hall-bow.md`（agy 初稿 `2026-11-10-illusion-hall-bow-draft.md`） |
 | 換層試驗場 `prototypes/layer-ride/`（11/10 規格，待實作） | 方向乙試驗場【改編】 | 腳步騎在一條越來越快的鼓聲部上，在重合拍按 Q 改騎底下剛進場的慢聲部；太早、太晚、按歪都出聲，疑心滿才失敗；鼓聲不中斷 | 設計席規格完成，agy 寫第一版、規則角色收尾。待驗：進場聲部在喇叭上聽不聽得出、一循環一個決定會不會太少 | `2026-11-10-direction-b-layer-sandbox.md` |
 
 試玩網址見 `docs/process/local-handoff.md`。
