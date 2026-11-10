@@ -82,6 +82,7 @@
 - （11/10）`spawnPrint` 在視覺輔助 0 的區域會直接 return；`hunt_step` 跟在 `step_masked` 後面改「最新腳印」，沒先清 `S.lastPrint` 就會改到舊腳印。追殺中的腳印不受 visualAid 影響。
 - （11/10）`hud()` 只在遊玩中跑，暫停或回開場時 HUD 的 opacity 會停在當下的值（靠 `body:not(.playing) .hud` 藏起來）；所以重開局要 `resetActionFx()` 歸零，不能等 hud 自己衰減。
 - （11/10）內建瀏覽器面板隱藏時，背景分頁的 requestAnimationFrame 不跑，從 console 推事件不會被取走；要靠截圖推進幀數。短暫特效要截圖可以凍結 `performance.now`（例：`const t=performance.now(); performance.now=()=>t`）。
+- （11/10）PointsMaterial 的點離鏡頭太近會放大成一大團光斑；灑在鏡頭四周的粒子至少離 1 公尺。
 - （11/10）木馬之夜在 claude.ai 預覽以 `file://` 開時，`../nav.js`、`../telemetry.js` 都載不到；本機測試用暫存站台：複製 `nav.js`、`telemetry.js` 到根目錄，原型放子資料夾，index 包外殼，`python -m http.server 8781`（8765 埠被別的程式佔用）。
 
 ## 4. 驗證方式
@@ -111,5 +112,12 @@
   - 暗殺白閃從整片全白改成畫面邊緣白閃（規格 M3），先顯示再衰減，低幀率也看得到。
   - 高度警覺邊緣暈只讀 `game.alerted`／衛兵 `state === 'alerted'`，拿掉多餘的 `alertedBySfx`。
   - 驗證：PR #10 規則檔與目前規則檔都在瀏覽器實開，console 沒有錯誤；全套 `node --test` 234 項通過。截圖在畫面工作階段的暫存資料夾 `shots-4A/`。
-- 未做（規格有、草稿沒有，等派工）：M3「安撫每對拍 → 衛兵火焰收一格」、M4「p → 1 火光泛紅」。
+- 11/10（畫面）核心方向甲「殘響掩護」畫面（`docs/design/2026-11-10-core-direction-illusion.md` 第 1 節；只改 `troy-prologue/index.html`，未提交）：
+  - 開場「實驗開關」加「鼓聲：不中斷／留空檔」（`#oCover`），`newGame` 設定 `opts.T.COVER_MODE`。規則檔還沒有 `COVER_MODE` 常數時（`'COVER_MODE' in Rules.T` 為假）選單停用、顯示「規則檔還沒支援」，一律當舊版。判斷用 `coverMode()`。
+  - 開場說明兩段跟著選單換（`.modeCover`／`.modeGap`）：不中斷版寫「最響的那一擊落下時，就是你移動的時候」。
+  - 不中斷模式下，掩護窗開頭（`visBlind()` 由假變真）不凝結、不變暗，改成震波 `VIS.shock` 1 → 0，在 `BLIND_LEN` 秒內衰減：屋簷落塵（`eavePts`，360 點）、地上塵土跳起（`kickDust`）、火把與衛兵火把震歪（`rotation.z`）、鏡頭下沉再彈回。強度一律乘 visualAid（和舊版凝結一樣）。
+  - 火光：優先讀 `game.fire`，沒有才試 `Rules.fireBrightness(game, K)`，非數字就維持 1。
+  - 驗證：PR #10 規則檔副本加上 `COVER_MODE: true` 測兩種模式；舊規則檔下選單停用、console 沒有錯誤；全套測試 234 項通過。截圖在暫存資料夾 `shots-cover/`。
+- 未做（規格有、草稿沒有，等派工）：M3「安撫每對拍 → 衛兵火焰收一格」、M4「p → 1 火光泛紅」（M4 已改成跟速度走，泛紅要等設計席說還要不要）。
+- 規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。

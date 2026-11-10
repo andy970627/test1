@@ -36,8 +36,8 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #stepEdge { inset: 0; box-shadow: inset 0 0 120px 24px rgba(240, 150, 70, .9); opacity: 0; }
 /* 高度警覺邊緣暈：淡橘色暈，緩慢呼吸 */
 #alertedEdge { inset: 0; box-shadow: inset 0 0 160px 40px rgba(235, 120, 30, .85); opacity: 0; pointer-events: none; }
-/* 暗殺短白閃：更明顯的短白閃，不超過 0.15 秒全白 */
-#whiteFlash { inset: 0; background: #ffffff; opacity: 0; pointer-events: none; }
+/* 暗殺：畫面邊緣短白閃（規格 M3「畫面邊緣白閃」；只閃邊緣，不整片全白） */
+#whiteFlash { inset: 0; box-shadow: inset 0 0 180px 60px rgba(255, 255, 255, .95); opacity: 0; pointer-events: none; }
 #dashFx { inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; }
 /* 世界內暗示（設計文件 2026-11-07 第 2.1 節；強度 × visualAid，由程式設定 opacity） */
 #behind { inset: 0; opacity: 0; }
@@ -190,8 +190,11 @@ button:hover { filter: brightness(1.12); }
     <p class="lead">十年了。希臘大軍圍攻特洛伊城整整十年，始終攻不進那道城牆。</p>
     <p>今天，希臘人假裝撤退，在海灘上留下一匹巨大的木馬。特洛伊人以為那是戰利品，把它拖進城裡，喝酒慶祝到深夜。</p>
     <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b style="color:var(--fire)">今晚，由你打開城門。</b></p>
-    <p>這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，鼓點一斷，就是你移動的時候。</p>
-    <p class="dim">這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
+    <!-- 兩種鼓聲模式各一段說明，依「鼓聲」選單切換（coverText） -->
+    <p class="modeCover">這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，最響的那一擊落下時，就是你移動的時候。</p>
+    <p class="dim modeCover">這座城在你耳裡響著一段永遠在加速、從不停下的節奏。節奏越急，衛兵越敏銳；每一輪最重的那一擊和它的餘韻，蓋得住你的腳步和刀聲。請戴上耳機。需要鍵盤和滑鼠。</p>
+    <p class="modeGap" hidden>這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，鼓點一斷，就是你移動的時候。</p>
+    <p class="dim modeGap" hidden>這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
    </div>
    <div class="col">
     <dl class="keys">
@@ -224,7 +227,7 @@ button:hover { filter: brightness(1.12); }
   <div class="card">
     <h2>暫停</h2>
     <div id="optSlotPause"></div>
-    <p class="dim">難度要「從頭開始」才會套用；音樂層設定立即生效。</p>
+    <p class="dim">難度、鼓聲模式要「從頭開始」才會套用；音樂層設定立即生效。</p>
     <div class="row">
       <button class="primary" id="btnResume">繼續</button>
       <button id="btnRetryP">從這一區重來</button>
@@ -243,6 +246,8 @@ button:hover { filter: brightness(1.12); }
   <label><input type="checkbox" id="oTel"> 顯示試玩數據摘要（試驗場、錄影用）</label>
   <label>視覺輔助 <select id="oAid"><option value="auto">自動（第 2 區減半、之後關閉）</option><option value="on">全開</option><option value="off">全關</option></select></label>
   <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
+  <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
+  <label>鼓聲 <select id="oCover"><option value="cover">不中斷（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -325,6 +330,17 @@ if (!Rules || !AudioMod) {
 }
 const K = () => (game && game.T) || Rules.T || {};
 const num = (...v) => v.find(x => Number.isFinite(x));
+// 鼓聲模式（核心方向甲）：規則常數 T.COVER_MODE。true＝鼓聲不中斷、掩護窗是重合擊與殘響；false＝舊版盲區。
+// 規則檔還沒有這個常數時一律當舊版（聲音也還在靜音），選單停用並說明
+const COVER_SUPPORTED = !!(Rules.T && 'COVER_MODE' in Rules.T);
+const coverMode = () => COVER_SUPPORTED && !!K().COVER_MODE;
+if (!COVER_SUPPORTED) { $('oCover').value = 'gap'; $('oCover').disabled = true; $('oCoverNote').hidden = false; }
+function coverText() {                            // 開場說明跟著選單換：趁最響行動／趁安靜行動
+  const cv = $('oCover').value === 'cover';
+  document.querySelectorAll('.modeCover').forEach(el => { el.hidden = !cv; });
+  document.querySelectorAll('.modeGap').forEach(el => { el.hidden = cv; });
+}
+$('oCover').addEventListener('change', coverText); coverText();
 
 // ============================================================
 // three.js 場景
@@ -434,7 +450,7 @@ let slipRing = null, slipTimer = 0, slipScreenTimer = 0;
 const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
 function build(L) {
   scene.remove(world); world = new THREE.Group(); scene.add(world);
-  ghostMesh = null; ghostTimer = 0; slipRing = null; slipTimer = 0;
+  disposeFxMeshes();                             // 舊場景的殘影、白環：釋放幾何與材質（新場景用到時再建）
   S = { guards: new Map(), fires: [], shafts: [], gate: null, horseLight: null, invaders: null, lastP: null, horsePlanks: null, moonSlits: [],
         prints: [], printI: 0, latchRings: null, lastPrint: null };
   builtFor = L;
@@ -949,7 +965,7 @@ function telEnv() {
   const opt = v => (v == null ? null : v);
   return TEL.collectEnv({
     outputLatency: actx ? opt(actx.outputLatency) : null, baseLatency: actx ? opt(actx.baseLatency) : null, sampleRate: actx ? actx.sampleRate : null,
-    toggles: { phaseBar: $('oPhase').checked, visualAid: $('oAid').value, cycle: curT, music: music.mode, synthVol: music.synthVol, trackVol: music.trackVol },
+    toggles: { phaseBar: $('oPhase').checked, visualAid: $('oAid').value, cycle: curT, cover: coverMode(), music: music.mode, synthVol: music.synthVol, trackVol: music.trackVol },
     query: location.search || ''
   });
 }
@@ -1114,16 +1130,19 @@ function newGame() {
   const aidMode = $('oAid').value;
   const qz = +new URLSearchParams(location.search).get('startZone');     // 實驗：?startZone=1..4 直接從某一區開始
   const opts = { t0, startZone: qz >= 1 && qz <= 4 ? qz | 0 : 0, T: { CYCLE: curT } };
+  if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
-  VIS.prevT = VIS.prevP = VIS.prevI = null; VIS.beats = []; VIS.aid = aidTarget();
+  VIS.prevT = VIS.prevP = VIS.prevI = null; VIS.beats = []; VIS.aid = aidTarget(); VIS.shock = 0; VIS.wasBlind = false;
   if (game.level !== builtFor) build(game.level);
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
   HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
+  resetActionFx(); S.lastPrint = null;
+  for (const P of S.prints) { P.life = 0; P.tier = 0; P.m.visible = false; }
   $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
 }
 function startFromTop() {
@@ -1201,49 +1220,70 @@ function showMsg(text, color) {
   $('msgs').appendChild(d); setTimeout(() => d.remove(), 5100);
   while ($('msgs').children.length > 3) $('msgs').firstChild.remove();
 }
-let alertedBySfx = false, alertedEdgeV = 0;
+// ---------- 4A 行動回饋（設計：2026-11-09-core-mechanics-review.md M2、M3、M4、M8） ----------
+// 畫面節奏常數（秒）：只管特效多久淡掉，不是規則數字
+const DASH_FX_DUR = .3, GHOST_DUR = .5, SLIP_DUR = .35, WHITE_DUR = .12;
+let alertedEdgeV = 0;
 let whiteFlashV = 0;
 const triggerWhiteFlash = () => { whiteFlashV = 1.0; };
+const prePos = { x: null, z: null };            // 上一幀的玩家位置：追殺殘影要留在衝刺「之前」的位置
 
-let dashTimer = 0, dashIsHunt = false, dashRays = [];
-function spawnGhostAfterimage(x, z, yaw) {
-  if (!world) return;
-  if (ghostMesh) { world.remove(ghostMesh); ghostMesh = null; }
-  const grp = new THREE.Group();
-  grp.position.set(x, 0, z);
-  grp.rotation.y = yaw + Math.PI;
-  const gMat = new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: .65, depthWrite: false });
-  box(.5, 1.4, .3, 0, 0, .9, 0, grp, gMat);
-  const hd = new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), gMat); hd.position.y = 1.75; grp.add(hd);
-  world.add(grp);
-  ghostMesh = grp;
-  ghostMesh.gMat = gMat;
-  ghostTimer = 0.3;
+let dashTimer = 0, dashIsHunt = false;
+const dashRays = Array.from({ length: 30 }, () => ({ ang: 0, len: 0, w: 0 }));
+// 殘影與白環：每個場景各建一次、重複使用（不每次衝刺都新建幾何，免得 GPU 記憶體越積越多）
+function ensureFxMeshes() {
+  if (!world) return false;
+  if (!ghostMesh) {
+    const gMat = new THREE.MeshBasicMaterial({ color: 0x9fb0d8, transparent: true, opacity: 0, depthWrite: false, fog: false });
+    const grp = new THREE.Group();
+    box(.5, 1.4, .3, 0, 0, .9, 0, grp, gMat);
+    const hd = new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), gMat); hd.position.y = 1.75; grp.add(hd);
+    grp.visible = false; grp.gMat = gMat; world.add(grp); ghostMesh = grp;
+  }
+  if (!slipRing) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+    slipRing = new THREE.Mesh(new THREE.RingGeometry(.2, .32, 36), mat);
+    slipRing.rotation.x = -Math.PI / 2; slipRing.visible = false; world.add(slipRing);
+  }
+  return true;
+}
+function disposeFxMeshes() {
+  for (const o of [ghostMesh, slipRing]) {
+    if (!o) continue;
+    if (o.parent) o.parent.remove(o);
+    o.traverse(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+  }
+  ghostMesh = null; slipRing = null; ghostTimer = 0; slipTimer = 0;
+}
+function resetActionFx() {                       // 重開局、回開場：所有 4A 特效歸零
+  dashTimer = 0; slipScreenTimer = 0; whiteFlashV = 0; alertedEdgeV = 0;
+  ghostTimer = 0; slipTimer = 0;
+  if (ghostMesh) ghostMesh.visible = false;
+  if (slipRing) slipRing.visible = false;
+  prePos.x = prePos.z = null;
+  for (const id of ['whiteFlash', 'alertedEdge', 'dashFx']) { const el = $(id); if (el) el.style.opacity = '0'; }
 }
 function triggerDash(isHunt) {
-  dashTimer = 0.3;
+  dashTimer = DASH_FX_DUR;
   dashIsHunt = !!isHunt;
-  dashRays = [];
-  for (let i = 0; i < 30; i++) {
-    const ang = (i / 30) * Math.PI * 2 + rand(-.09, .09);
-    dashRays.push({ ang, len: rand(.25, .52), w: rand(1.2, 2.6) });
-  }
-  if (dashIsHunt && game && game.player) {
-    spawnGhostAfterimage(game.player.x, game.player.z, V.yaw);
+  dashRays.forEach((r, i) => { r.ang = (i / dashRays.length) * Math.PI * 2 + rand(-.09, .09); r.len = rand(.25, .52); r.w = rand(1.2, 2.6); });
+  // 追殺衝刺：在衝刺前的位置留一個人形殘影（玩家回頭看得到自己甩開的地方）
+  // 衝刺距離不到 1.5 公尺（撞牆、被擋）就不放：殘影會和鏡頭重疊，變成橫跨畫面的一條色帶
+  const P = game && game.player;
+  const moved = P && Number.isFinite(prePos.x) ? Math.hypot(P.x - prePos.x, P.z - prePos.z) : 0;
+  if (dashIsHunt && moved >= 1.5 && ensureFxMeshes()) {
+    const x = prePos.x, z = prePos.z;
+    ghostMesh.position.set(x, 0, z); ghostMesh.rotation.y = V.yaw;
+    ghostMesh.visible = true; ghostMesh.gMat.opacity = .65; ghostTimer = GHOST_DUR;
   }
 }
 
 function triggerHuntSlip() {
-  slipScreenTimer = 0.35;
-  if (world && game && game.player) {
-    if (slipRing) { world.remove(slipRing); slipRing = null; }
-    const geo = new THREE.RingGeometry(.2, .32, 36);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false });
-    slipRing = new THREE.Mesh(geo, mat);
-    slipRing.rotation.x = -Math.PI / 2;
+  slipScreenTimer = SLIP_DUR;
+  if (game && game.player && ensureFxMeshes()) {
     slipRing.position.set(game.player.x, .05, game.player.z);
-    world.add(slipRing);
-    slipTimer = 0.35;
+    slipRing.scale.set(1, 1, 1); slipRing.material.opacity = .85; slipRing.visible = true;
+    slipTimer = SLIP_DUR;
   }
 }
 
@@ -1255,15 +1295,15 @@ function renderDashFx(dt) {
   const cv = $('dashFx'); if (!cv) return;
   if (ghostMesh && ghostTimer > 0) {
     ghostTimer = Math.max(0, ghostTimer - dt);
-    ghostMesh.gMat.opacity = (ghostTimer / 0.3) * .65;
-    if (ghostTimer <= 0) { world.remove(ghostMesh); ghostMesh = null; }
+    ghostMesh.gMat.opacity = (ghostTimer / GHOST_DUR) * .65;
+    if (ghostTimer <= 0) ghostMesh.visible = false;
   }
   if (slipRing && slipTimer > 0) {
     slipTimer = Math.max(0, slipTimer - dt);
-    const pr = 1 - slipTimer / 0.35;
+    const pr = 1 - slipTimer / SLIP_DUR;
     slipRing.scale.set(1 + pr * 3.5, 1 + pr * 3.5, 1);
-    slipRing.material.opacity = (slipTimer / 0.35) * .85;
-    if (slipTimer <= 0) { world.remove(slipRing); slipRing = null; }
+    slipRing.material.opacity = (slipTimer / SLIP_DUR) * .85;
+    if (slipTimer <= 0) slipRing.visible = false;
   }
   if (dashTimer <= 0 && slipScreenTimer <= 0) {
     if (cv.style.opacity !== '0') { cv.style.opacity = '0'; const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height); }
@@ -1279,7 +1319,7 @@ function renderDashFx(dt) {
 
   if (dashTimer > 0) {
     dashTimer = Math.max(0, dashTimer - dt);
-    const p = dashTimer / 0.3;
+    const p = dashTimer / DASH_FX_DUR;
     ctx.save();
     ctx.strokeStyle = dashIsHunt ? `rgba(255, 215, 160, ${(p * .68).toFixed(3)})` : `rgba(230, 240, 255, ${(p * .52).toFixed(3)})`;
     for (const r of dashRays) {
@@ -1294,25 +1334,25 @@ function renderDashFx(dt) {
     ctx.restore();
 
     if (dashIsHunt) {
+      // 追殺衝刺：畫面中央一團淡藍往外散（螢幕上的殘影）。用柔邊漸層鋪滿，不畫硬邊橢圓，也壓淡，不擋住前方
       ctx.save();
-      const ghostA = p * .45;
-      const gGrad = ctx.createRadialGradient(cx, cy * 1.15, 20, cx, cy * 1.15, h * .55);
-      gGrad.addColorStop(0, `rgba(180, 200, 240, ${(ghostA * .7).toFixed(3)})`);
-      gGrad.addColorStop(.4, `rgba(150, 180, 225, ${(ghostA * .4).toFixed(3)})`);
+      const ghostA = p * .22;
+      const gr = h * .5 * (1 + (1 - p) * .4);
+      const gGrad = ctx.createRadialGradient(cx, cy * 1.1, 0, cx, cy * 1.1, gr);
+      gGrad.addColorStop(0, `rgba(180, 200, 240, ${ghostA.toFixed(3)})`);
+      gGrad.addColorStop(.5, `rgba(150, 180, 225, ${(ghostA * .45).toFixed(3)})`);
       gGrad.addColorStop(1, 'rgba(150, 180, 225, 0)');
       ctx.fillStyle = gGrad;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy * 1.12, w * .22 * (1 + (1 - p) * .35), h * .38, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(0, 0, w, h);
       ctx.restore();
     }
   }
 
   if (slipScreenTimer > 0) {
     slipScreenTimer = Math.max(0, slipScreenTimer - dt);
-    const sp = 1 - slipScreenTimer / 0.35;
+    const sp = 1 - slipScreenTimer / SLIP_DUR;
     ctx.save();
-    ctx.strokeStyle = `rgba(255, 255, 255, ${(slipScreenTimer / 0.35 * .85).toFixed(3)})`;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${(slipScreenTimer / SLIP_DUR * .85).toFixed(3)})`;
     ctx.lineWidth = 4 * (1 - sp * .5);
     ctx.beginPath();
     ctx.arc(cx, cy, Math.min(cx, cy) * (0.15 + sp * 0.8), 0, Math.PI * 2);
@@ -1332,11 +1372,9 @@ function drain() {
     if (e.type === 'sfx' && e.a === 'hunt_step') upgradeLatestPrint(num(e.index, 1));     // 合拍甩追兵：每步腳印亮一階
     if (e.type === 'sfx' && e.a === 'hunt_slip') triggerHuntSlip();                     // 合拍甩追兵：短促白色環
     if (e.type === 'sfx' && (e.a === 'dash' || (e.a && e.a.name === 'dash'))) triggerDash(!!e.hunt); // 衝刺／追殺衝刺
-    if (e.type === 'sfx' && e.a === 'alerted') alertedBySfx = true;
-    if (e.type === 'sfx' && (e.a === 'alert_over' || e.a === 'hunt' || e.a === 'escape')) alertedBySfx = false;
     if (e.type === 'sfx') {
       audio.cue(e.a, e);
-      if (e.a === 'takedown') lag(() => triggerWhiteFlash());                           // 暗殺：更明顯的短白閃，不超過 0.15 秒全白
+      if (e.a === 'takedown') lag(() => triggerWhiteFlash());                           // 暗殺：畫面邊緣短白閃
       else if (e.a === 'down') lag(() => flash(.25));
     }
     else if (e.type === 'hint') { if (e.key && e.level >= 2) HW.lastLadder = { key: e.key, level: e.level, a: e.a, at: performance.now() }; lag(() => queueHint(e.a)); }
@@ -1374,6 +1412,7 @@ function loop() {
   document.body.classList.toggle('playing', playing);
   if (playing) {
     const t = audio.now();
+    if (game.player) { prePos.x = game.player.x; prePos.z = game.player.z; }   // 追殺殘影用：這一步之前的位置
     game.step(t, readInput());
     VIS.beats.push(...collectBeats(t));
     // 3D 聽聲辨位：聆聽者跟著玩家（聲音層沒有這個函式時略過）
@@ -1413,7 +1452,9 @@ function sync(dt, now) {
   if (mv > .001 && mv < 1) V.bob += mv * 5;
   const bob = Math.sin(V.bob) * .035;
   const shake = g.hunted ? .02 : 0;
-  camera.position.set(P.x + rand(-shake, shake), V.eye + bob, P.z);
+  // 重合擊震波：鏡頭往下一沉再彈回（只有鼓聲不中斷模式，× visualAid）
+  const thump = VIS.shock > 0 ? -Math.sin((1 - VIS.shock) * Math.PI * 3) * VIS.shock * .05 * VIS.aid : 0;
+  camera.position.set(P.x + rand(-shake, shake), V.eye + bob + thump, P.z);
   camera.rotation.set(V.pitch, V.yaw, 0);
 
   // 視覺輔助：凝結（火焰停住）、拍點（火焰縮放）、月亮
@@ -1421,11 +1462,16 @@ function sync(dt, now) {
   const fz = visFrame(dt, inHorse ? fy : 0, playingNow);
   const motion = 1 - fz, jitter = motion * (1 + p * VIS.aid * .8);          // 拍子越快整體越躁動
   const bp = VIS.pulse * .45, bw = 1 + bp * .5;
-  // 火光亮度：每幀讀 game.fire（0.15～1.0），場景火光／火把光暈強度跟著變；不存在時沿用現在的亮度（1）
-  const fireMul = (g && Number.isFinite(g.fire)) ? clamp(g.fire, 0.15, 1.0) : 1;
+  // 火光亮度（規格 M4，11/10 改成跟實際速度走）：優先讀規則每步算好的 game.fire；
+  // 沒有就呼叫規則的 fireBrightness(game)（新版參數是 game，舊版傳 game 會得到非數字而略過）；都沒有就維持 1
+  let fireV = g && Number.isFinite(g.fire) ? g.fire : null;
+  if (fireV == null && typeof Rules.fireBrightness === 'function') { try { const v = Rules.fireBrightness(g, K()); if (Number.isFinite(v)) fireV = v; } catch (e) {} }
+  const fireMul = fireV == null ? 1 : clamp(fireV, 0.15, 1.0);
+  // 重合擊震波：火把被震得一歪，來回擺兩下收住（只有鼓聲不中斷模式；強度 × visualAid）
+  const tilt = VIS.shock > 0 ? VIS.shockDir * Math.sin((1 - VIS.shock) * Math.PI * 4) * VIS.shock * .45 * VIS.aid : 0;
   // 火光閃動
   const fl = () => 1 + (Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08) * jitter;
-  for (const F of S.fires) { F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25) * fireMul; }
+  for (const F of S.fires) { F.f.rotation.z = tilt; F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25) * fireMul; }
   if (S.horseLight) S.horseLight.intensity = (.35 + Math.random() * .2 * motion + VIS.pulse * .15) * fireMul;
 
   // 衛兵
@@ -1452,6 +1498,7 @@ function sync(dt, now) {
     F.up.rotation.z = F.fall * 1.5; F.up.position.y -= F.fall * .2;
     F.light.intensity = (down ? .5 : 1.6) * (1 + (Math.random() * .25 - .15) * jitter) * (1 + VIS.pulse * .25) * fireMul;
     F.tf.scale.set(bw, fl() * (down ? .6 : 1) * (1 + bp), bw);
+    F.tf.rotation.z = down ? 0 : tilt;
     // 衛兵火把顏色：每個衛兵的 q.susp（0～1），0 偏暖黃、1 偏紅橘，漸變
     const suspVal = clamp(num(G.susp, 0), 0, 1);
     tmpTorchCol.copy(TORCH_COL_WARM).lerp(TORCH_COL_ALERT, suspVal);
@@ -1521,6 +1568,7 @@ function sync(dt, now) {
 // ============================================================
 const VIS = {
   aid: 1, freeze: 0, pulse: 0, rate: 1, stepFlash: 0, filter: '',
+  shock: 0, shockDir: 1, wasBlind: false,   // 鼓聲不中斷模式的重合擊震波：1 → 0，BLIND_LEN 秒內衰減
   prevT: null, prevP: null, prevI: null, beats: [],
   force: { p: null, blind: null },        // 測試用：強制相位／盲區（只影響畫面）
 };
@@ -1618,6 +1666,31 @@ const gndGeo = new THREE.BufferGeometry(); gndGeo.setAttribute('position', new T
 const gndMat = new THREE.PointsMaterial({ map: dotTex, color: 0xc0a47a, size: .06, transparent: true, opacity: .6, depthWrite: false, blending: THREE.AdditiveBlending });
 const gndPts = new THREE.Points(gndGeo, gndMat); gndPts.frustumCulled = false; scene.add(gndPts);
 const AIR_WARM = new THREE.Color(0xe8c89a), AIR_COLD = new THREE.Color(0xa8b8d8);
+// 屋簷落塵（鼓聲不中斷模式的重合擊震波）：掩護窗一開始，鏡頭四周上方灑下一陣塵土，跟著震波淡掉
+const EAVE_N = 360, EAVE_G = 4;                // 粒子數、下落加速度（公尺／秒²，比真重力慢，像細粉飄落）
+const eavePos = new Float32Array(EAVE_N * 3), eaveVel = new Float32Array(EAVE_N);
+const eaveGeo = new THREE.BufferGeometry(); eaveGeo.setAttribute('position', new THREE.BufferAttribute(eavePos, 3));
+const eaveMat = new THREE.PointsMaterial({ map: dotTex, color: 0xf0d8a8, size: .06, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+const eavePts = new THREE.Points(eaveGeo, eaveMat); eavePts.frustumCulled = false; eavePts.visible = false; scene.add(eavePts);
+function dropEaveDust() {
+  const c = camera.position;
+  for (let i = 0; i < EAVE_N; i++) {
+    const a = Math.random() * Math.PI * 2, r = rand(1, 4);   // 離鏡頭至少 1 公尺：太近的點會放大成一團光斑
+    eavePos[i * 3] = c.x + Math.cos(a) * r; eavePos[i * 3 + 1] = c.y + rand(.2, 1.6); eavePos[i * 3 + 2] = c.z + Math.sin(a) * r;
+    eaveVel[i] = -rand(0, .8);
+  }
+  eaveGeo.attributes.position.needsUpdate = true; eavePts.visible = true;
+}
+function updateEaveDust(dt, floorY, aid) {
+  if (!eavePts.visible) return;
+  if (VIS.shock <= 0) { eavePts.visible = false; eaveMat.opacity = 0; return; }
+  for (let i = 0; i < EAVE_N; i++) {
+    eaveVel[i] -= EAVE_G * dt;
+    eavePos[i * 3 + 1] = Math.max(floorY + .03, eavePos[i * 3 + 1] + eaveVel[i] * dt);
+  }
+  eaveGeo.attributes.position.needsUpdate = true;
+  eaveMat.opacity = VIS.shock * .85 * aid;
+}
 function kickDust(amp) {                     // 一個拍點：一部分地上塵土跳起來
   const n = Math.floor(GND_N * Math.min(1, amp) * .45);
   for (let j = 0; j < n; j++) { const i = (Math.random() * GND_N) | 0; if (gndH[i] < .01) gndV[i] = rand(.6, 1.4) * (.6 + amp); }
@@ -1654,8 +1727,18 @@ function visFrame(dt, floorY, playing) {
   const g = game;
   VIS.aid += (aidTarget() - VIS.aid) * Math.min(1, dt * 1.5);
   const aid = VIS.aid;
-  // 凝結：進出各約 0.08 秒
-  const ft = playing && visBlind() ? 1 : 0;
+  // 掩護窗開頭：舊版凝結（變冷灰、火焰停住）；鼓聲不中斷模式改成重合擊震波（屋簷落塵、地上塵土跳起、火把震歪），不凝結也不變暗
+  const cover = coverMode(), blindNow = playing && visBlind();
+  if (cover) {
+    if (blindNow && !VIS.wasBlind) {
+      VIS.shock = 1; VIS.shockDir = Math.random() < .5 ? -1 : 1;
+      if (aid > .01) { kickDust(1.2 * aid); dropEaveDust(); }
+    }
+    VIS.shock = Math.max(0, VIS.shock - dt / num(K().BLIND_LEN, .6));
+  } else VIS.shock = 0;
+  VIS.wasBlind = blindNow;
+  // 凝結：進出各約 0.08 秒（只有舊版）
+  const ft = blindNow && !cover ? 1 : 0;
   VIS.freeze = ft > VIS.freeze ? Math.min(1, VIS.freeze + dt / .08) : Math.max(0, VIS.freeze - dt / .08);
   const fz = VIS.freeze * aid;
   const f = fz > .002 ? `saturate(${(1 - .85 * fz).toFixed(3)}) brightness(${(1 - .1 * fz).toFixed(3)})` : '';
@@ -1672,6 +1755,7 @@ function visFrame(dt, floorY, playing) {
   VIS.beats = [];
   VIS.pulse *= Math.exp(-dt * (9 + VIS.rate * 1.5));
   updateDust(dt, 1 - fz, floorY);
+  updateEaveDust(dt, floorY, aid);
   tmpC.copy(AIR_WARM).lerp(AIR_COLD, fz); airMat.color.copy(tmpC); gndMat.color.setHex(0xc0a47a).lerp(AIR_COLD, fz);
   // 月亮相位鐘：月面缺口繞一圈、外圈進度弧；p 越接近 1 越紅，盲區時銀白
   const pv = g ? visPhase(audio ? audio.now() : 0) : 0;
@@ -1746,13 +1830,17 @@ function tiltGuards(x, z) {                      // 不合拍腳步被聽到：�
   for (const G of arr(game.guards)) { if (!G.active) continue; const F = S && S.guards.get(G.id); if (F && Math.hypot(G.x - x, G.z - z) <= R2) F.tilt = 1; }
 }
 function spawnPrint(x, z) {                      // 合拍腳步：塵土裡的腳印微微發亮
-  if (!S || !S.prints.length || !Number.isFinite(x) || VIS.aid < .01 || (game && game.player.inBelly)) return;
+  // 追殺中的合拍腳印是甩開追兵的回饋（規格 M2），視覺輔助關掉的區域也要看得到；平常仍乘 visualAid
+  const hunted = !!(game && game.hunted);
+  if (S) S.lastPrint = null;                     // 這一步沒留腳印時，hunt_step 不能去改上一個舊腳印
+  if (!S || !S.prints.length || !Number.isFinite(x) || (VIS.aid < .01 && !hunted) || (game && game.player.inBelly)) return;
   const P = S.prints[S.printI++ % S.prints.length], side = S.printI % 2 ? 1 : -1, yaw = V.yaw;
   P.m.position.set(x + Math.cos(yaw) * .12 * side, .04, z - Math.sin(yaw) * .12 * side);
   P.m.rotation.z = yaw; P.life = 1; P.tier = 0; P.m.visible = true;
   S.lastPrint = P;
 }
 const RING_MOON = new THREE.Color(0xdce6ff), RING_DARK = new THREE.Color(0x1c1c22);
+const PRINT_COL = [0xffc070, 0xff5a3c, 0xb070e0, 0x6aa8ff];   // 平常（暖黃）、追殺合拍第 1／2／3 步（紅、紫、藍）
 function hintVisuals(dt) {
   const g = game, s = HW.sig, aid = VIS.aid, blind = !!(g.cycle && g.cycle.blind);
   // 同伴的手：屏息警告越強越伸進畫面（只在木馬腹中）
@@ -1790,15 +1878,12 @@ function hintVisuals(dt) {
     tmpC.setHex(0x55555a).lerp(low ? RING_MOON : RING_DARK, aid);
     S.latchRings.color.copy(tmpC);
   }
-  // 腳印：慢慢暗掉；hunt_step 每步亮一階
+  // 腳印：慢慢暗掉。追殺中合拍（hunt_step）每步一階，紅 → 紫 → 藍（規格 M2「合拍腳印紅轉藍」），不受 visualAid 影響
   if (S) for (const P of S.prints) if (P.life > 0) {
     P.life = Math.max(0, P.life - dt / 2.2);
-    const tierBoost = P.tier ? (1 + P.tier * .6) : 1;
-    P.m.material.opacity = Math.min(1, P.life * .55 * aid * tierBoost);
-    if (P.tier === 1) P.m.material.color.setHex(0xffd588);
-    else if (P.tier === 2) P.m.material.color.setHex(0xffe8aa);
-    else if (P.tier >= 3) P.m.material.color.setHex(0xfff8d4);
-    else P.m.material.color.setHex(0xffc070);
+    const tier = P.tier | 0;
+    P.m.material.opacity = tier ? Math.min(1, P.life * (.6 + tier * .13)) : P.life * .55 * aid;
+    P.m.material.color.setHex(PRINT_COL[Math.min(3, tier)]);
     P.m.visible = P.life > 0;
   }
 }
@@ -1832,10 +1917,8 @@ function hud(dt) {
   const edge = (alertOn || alarm > .05) && !g.hunted ? Math.max(alarm, .4) * (.25 + .75 * Math.exp(-beat * 7)) : 0;
   const setEdge = () => { $('edge').style.opacity = edge.toFixed(3); };
   lag(setEdge);
-  // 高度警覺邊緣暈：game.alerted 為真，或收到 sfx alerted；alert_over／hunt 結束。畫面邊緣淡橘色暈，緩慢呼吸
-  const hasAlertedGuard = arr(g.guards).some(G => G.state === 'alerted');
-  const isAlerted = (!!(g && g.alerted) || alertedBySfx || hasAlertedGuard) && !g.hunted && g.phase === 'play';
-  if (!isAlerted && !hasAlertedGuard && !(g && g.alerted)) alertedBySfx = false;
+  // 高度警覺邊緣暈（規格 M8，紅色留給追殺）：讀規則的 game.alerted，沒有這個欄位時看有沒有衛兵 state === 'alerted'；緩慢呼吸
+  const isAlerted = (g.alerted === true || arr(g.guards).some(G => G.active !== false && G.state === 'alerted')) && !g.hunted && g.phase === 'play';
   const breathe = .32 + .18 * Math.sin(performance.now() / 420);
   const targetAlerted = isAlerted ? breathe : 0;
   alertedEdgeV += (targetAlerted - alertedEdgeV) * Math.min(1, dt * 4.5);
@@ -1844,10 +1927,11 @@ function hud(dt) {
   // 追殺：紅色暈影
   $('red').style.opacity = g.hunted ? (.75 + Math.sin(performance.now() / 160) * .15).toFixed(2) : flashV.toFixed(2);
   flashV = Math.max(0, flashV - dt * 1.5);
-  // 暗殺短白閃：更明顯的短白閃，不超過 0.15 秒全白
+  // 暗殺：邊緣短白閃，WHITE_DUR 秒內淡完
   if (whiteFlashV > 0) {
-    whiteFlashV = Math.max(0, whiteFlashV - dt / 0.12);
+    // 先顯示再衰減：幀率低時（dt 0.1 秒）也至少有一幀是全亮，不會一閃就沒
     const wf = $('whiteFlash'); if (wf) wf.style.opacity = whiteFlashV.toFixed(3);
+    whiteFlashV = Math.max(0, whiteFlashV - dt / WHITE_DUR);
   } else {
     const wf = $('whiteFlash'); if (wf && wf.style.opacity !== '0') wf.style.opacity = '0';
   }
@@ -1863,7 +1947,7 @@ function hud(dt) {
   const showPhase = $('oPhase').checked; $('phase').hidden = !showPhase;
   if (showPhase && g.cycle) {
     const T = g.cycle.T || curT;
-    $('phaseNum').textContent = `　p=${p.toFixed(2)}${g.cycle.blind ? '・盲區' : ''}　alarm=${alarm.toFixed(2)}`;
+    $('phaseNum').textContent = `　p=${p.toFixed(2)}${g.cycle.blind ? (coverMode() ? '・掩護窗' : '・盲區') : ''}　alarm=${alarm.toFixed(2)}`;
     $('phaseFill').style.width = (p * 100) + '%';
     $('phaseBlind').style.width = (num(K().BLIND_LEN, K().BLIND, .6) / T * 100) + '%';
     $('phaseBlind').style.opacity = g.cycle.blind ? 1 : .35;
@@ -1980,6 +2064,7 @@ function backToIntro() {
   if (TEL && TEL.active()) { try { TEL.endRun({ outcome: 'quit', zone: game ? game.zone : null }); } catch (e) {} }
   paused = true; startedOnce = false; overShown = false;
   unlockPointer();
+  resetActionFx();
   if (audio && typeof audio.stop === 'function') { try { audio.stop(); } catch (e) {} }
   audio = null; game = null;
   for (const k in keys) keys[k] = false;
