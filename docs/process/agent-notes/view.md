@@ -82,6 +82,7 @@
 - （11/10）`spawnPrint` 在視覺輔助 0 的區域會直接 return；`hunt_step` 跟在 `step_masked` 後面改「最新腳印」，沒先清 `S.lastPrint` 就會改到舊腳印。追殺中的腳印不受 visualAid 影響。
 - （11/10）`hud()` 只在遊玩中跑，暫停或回開場時 HUD 的 opacity 會停在當下的值（靠 `body:not(.playing) .hud` 藏起來）；所以重開局要 `resetActionFx()` 歸零，不能等 hud 自己衰減。
 - （11/10）內建瀏覽器面板隱藏時，背景分頁的 requestAnimationFrame 不跑，從 console 推事件不會被取走；要靠截圖推進幀數。短暫特效要截圖可以凍結 `performance.now`（例：`const t=performance.now(); performance.now=()=>t`）。
+- （11/10）**瀏覽器測試一律帶 `?mute=1&nolock=1`**，測完關掉所有分頁（最後一個也關）、停伺服器。11/10 遊戲頁在背景鎖住使用者滑鼠、聲音一直播。另外：用 Edit 工具改 `index.html` 或 md 時，桌面版會自動在內建瀏覽器用 `file://` 開這個檔，改完要檢查並關掉那個分頁；大量改筆記可以改用指令碼寫檔。
 - （11/10）PointsMaterial 的點離鏡頭太近會放大成一大團光斑；灑在鏡頭四周的粒子至少離 1 公尺。
 - （11/10）木馬之夜在 claude.ai 預覽以 `file://` 開時，`../nav.js`、`../telemetry.js` 都載不到；本機測試用暫存站台：複製 `nav.js`、`telemetry.js` 到根目錄，原型放子資料夾，index 包外殼，`python -m http.server 8781`（8765 埠被別的程式佔用）。
 
@@ -89,7 +90,7 @@
 - **本機開原型（有外殼）**：
   - 打包：`bash tools/build-itch.sh` → 輸出 `dist/odyssey-series/`（結構同 `prototypes/`，片段自動包外殼、three.js 改本地）。在該資料夾起靜態伺服器（例如 `python -m http.server -d dist/odyssey-series 8000`），開 `http://localhost:8000/troy-prologue/index.html`。這條路徑 `../telemetry.js`、`../nav.js` 都載得到。
   - 錄音工具：`node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 80`（自動包外殼、錄聲音與畫面、跑 analyze；注意上面的 404 陷阱）。
-  - 網址參數：`?startZone=1..4`（木馬之夜直接進某區）、`?telemetry=1`（右下角即時摘要）、`?musicZone=0..4`、`?musicOff=chant,chorus,shepard,theme`；比箭 `?debug`。
+  - 網址參數：`?mute=1`（靜音）、`?nolock=1`（不鎖滑鼠）、`?startZone=1..4`（木馬之夜直接進某區）、`?telemetry=1`（右下角即時摘要）、`?musicZone=0..4`、`?musicOff=chant,chorus,shepard,theme`；比箭 `?debug`。
 - **telemetry 測試**：`node --test tools/telemetry/*.test.js`（手算答案驗摘要數字、儲存上限、匯出格式；11/09 跑過 0 失敗）。CI 全部：`node --test prototypes/*/*.test.js prototypes/odyssey-series/*.test.js tools/telemetry/*.test.js`。
 - **數據讀出**：`node tools/telemetry/summarize.mjs <匯出.json 或資料夾>`。
 - **畫面檢查**：瀏覽器 console 讀 `TroyDebug.game`、`TroyDebug.hintState()`、`TroyDebug.vis.aid`、`TroyDebug.telemetry.summary()`；大廳復仇用 `VengeanceDebug`。確認 console 沒有紅字、提示文字裡沒有寫死的數字。
@@ -119,5 +120,6 @@
   - 火光：優先讀 `game.fire`，沒有才試 `Rules.fireBrightness(game, K)`，非數字就維持 1。
   - 驗證：PR #10 規則檔副本加上 `COVER_MODE: true` 測兩種模式；舊規則檔下選單停用、console 沒有錯誤；全套測試 234 項通過。截圖在暫存資料夾 `shots-cover/`。
 - 未做（規格有、草稿沒有，等派工）：M3「安撫每對拍 → 衛兵火焰收一格」、M4「p → 1 火光泛紅」（M4 已改成跟速度走，泛紅要等設計席說還要不要）。
+- 11/10（畫面）木馬之夜加自動檢查用網址參數：`?mute=1`（所有接到喇叭的聲音改接音量 0 的總閘；音訊環境照建，因為規則靠音訊時鐘推進）、`?nolock=1`（不鎖滑鼠，當作鎖定失敗，拖曳轉視角照常）。驗證：內建瀏覽器帶參數開局，總閘音量 0、遊戲時間正常前進、點畫面不鎖滑鼠也不暫停；全套測試 234 項通過。大廳復仇、比箭還沒加，等派工。
 - 規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。

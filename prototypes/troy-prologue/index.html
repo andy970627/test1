@@ -330,6 +330,24 @@ if (!Rules || !AudioMod) {
 }
 const K = () => (game && game.T) || Rules.T || {};
 const num = (...v) => v.find(x => Number.isFinite(x));
+// 自動檢查用的網址參數（docs/process/agent-notes/README.md「瀏覽器測試規矩」；一般試玩不帶，不受影響）：
+//   ?mute=1   完全不出聲：所有接到喇叭（destination）的聲音改接一個音量 0 的總閘。
+//             音訊環境照常建立，因為規則用音訊時鐘推進，關掉它遊戲就不會動
+//   ?nolock=1 不呼叫 requestPointerLock，不鎖使用者的滑鼠
+const URLQ = new URLSearchParams(location.search);
+const MUTE = URLQ.get('mute') === '1', NOLOCK = URLQ.get('nolock') === '1';
+if (MUTE && window.AudioNode && window.AudioDestinationNode) {
+  const connect0 = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (dest, ...rest) {
+    if (dest instanceof AudioDestinationNode) {
+      const ctx = dest.context;
+      let gate = ctx.__muteGate;
+      if (!gate) { gate = ctx.createGain(); gate.gain.value = 0; connect0.call(gate, dest); ctx.__muteGate = gate; }
+      return connect0.call(this, gate, ...rest);
+    }
+    return connect0.call(this, dest, ...rest);
+  };
+}
 // 鼓聲模式（核心方向甲）：規則常數 T.COVER_MODE。true＝鼓聲不中斷、掩護窗是重合擊與殘響；false＝舊版盲區。
 // 規則檔還沒有這個常數時一律當舊版（聲音也還在靜音），選單停用並說明
 const COVER_SUPPORTED = !!(Rules.T && 'COVER_MODE' in Rules.T);
@@ -1977,7 +1995,8 @@ function showOver() {
 // ============================================================
 // 輸入
 // ============================================================
-let locked = false, lockFailed = false, drag = null;
+// ?nolock=1：自動檢查用，不鎖滑鼠（當作鎖定失敗，滑鼠拖曳轉視角照常）
+let locked = false, lockFailed = NOLOCK, drag = null;
 function lockPointer() {
   if (lockFailed) return;
   try {
