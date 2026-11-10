@@ -42,7 +42,11 @@ export default {
   async prepare(page, o) {
     await page.waitForFunction(() => window.TroyDebug && window.RissetRules && window.RissetAudio, null, { timeout: 30000 });
     const cycle = o.cycle ? +o.cycle : null;
-    await page.evaluate(({ cycle, phaseBar }) => {
+    // 鼓聲模式（核心方向甲，11/10）：--cover cover｜gap 設定開場選單 #oCover（規則 T.COVER_MODE）；不給就用頁面預設（cover）
+    const cover = o.cover === 'gap' || o.cover === 'false' ? 'gap' : (o.cover === 'cover' || o.cover === true || o.cover === 'true') ? 'cover' : null;
+    await page.evaluate(({ cycle, phaseBar, cover }) => {
+      const cv = document.getElementById('oCover');
+      if (cover && cv && !cv.disabled) { cv.value = cover; cv.dispatchEvent(new Event('change', { bubbles: true })); }
       const sel = document.getElementById('oT');
       if (cycle && sel) {               // 放慢循環：在難度選單加一個選項（遊戲本身把它同時交給規則與聲音）
         if (![...sel.options].some(x => +x.value === cycle)) {
@@ -52,7 +56,7 @@ export default {
       }
       const ph = document.getElementById('oPhase');
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, { cycle, phaseBar: o.phaseBar !== false });
+    }, { cycle, phaseBar: o.phaseBar !== false, cover });
     await page.click('#btnStart');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
     return page.evaluate(() => {
@@ -62,7 +66,8 @@ export default {
       // audioConst 只留聲音層自己的行為參數（低音餘音長度：巡邏時聲音刻意不排會拖進盲區的低音拍）；
       // 拍點公式與音量常數不再從聲音層拿，期望拍由規則檔產生。rulesT＝遊戲實際用的整份規則常數（含選單覆寫）
       const rulesT = {}; for (const k in T) if (typeof T[k] === 'number' || typeof T[k] === 'boolean') rulesT[k] = T[k];
-      return { audioConst: { BASS_TAIL: C.BASS_TAIL }, rulesT,
+      // coverMode：遊戲實際用的鼓聲模式（rulesT.COVER_MODE 也有；規則檔沒有這個常數時為 false＝舊盲區版）
+      return { audioConst: { BASS_TAIL: C.BASS_TAIL }, rulesT, coverMode: T.COVER_MODE === true,
         rules: { CYCLE: T.CYCLE, DYNAMIC: T.DYNAMIC, BLIND: T.BLIND_LEN != null ? T.BLIND_LEN : T.BLIND, BASS_PERIOD: T.BASS_PERIOD, BASS_WIN: T.BASS_WIN,
           CYCLE_FAR: T.CYCLE_FAR, CYCLE_NEAR: T.CYCLE_NEAR, CYCLE_ALERT: T.CYCLE_ALERT, CYCLE_HUNT: T.CYCLE_HUNT, DIST_FAR: T.DIST_FAR, DIST_NEAR: T.DIST_NEAR,
           ZONE_MUL: T.ZONE_MUL, FAKE_FROM_ZONE: T.FAKE_FROM_ZONE, FAKE_EVERY: T.FAKE_EVERY } };
@@ -110,6 +115,8 @@ export default {
       cs: +(g.cycle.start != null ? g.cycle.start : g.cycle.t0).toFixed(5),
       bf: g.cycle.blindFrom != null ? +g.cycle.blindFrom.toFixed(5) : null, bt: g.cycle.blindTo != null ? +g.cycle.blindTo.toFixed(5) : null,
       bid: g.cycle.blindId || null, ab: !!g.cycle.alertBlind, fake: !!g.cycle.fake, nfake: !!g.cycle.nextFake,
+      // 火光與危險度（11/10 甲：fire 跟 danger＝實際速度走，給 fireSync 檢查）；舊規則檔沒有就是 null
+      fire: Number.isFinite(g.fire) ? +g.fire.toFixed(4) : null, dg: Number.isFinite(g.danger) ? +g.danger.toFixed(4) : null,
       events: evs
     };
   },

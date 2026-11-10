@@ -129,6 +129,9 @@ const { chromium } = loadPlaywright();
 // 實測讓錄影（screencast）從約 2 fps、會凍結數秒，變成約 15 fps，遊戲幀的最長卡頓也從 1 秒多降到約 0.2 秒
 const LAUNCH_ARGS = ['--autoplay-policy=no-user-gesture-required', '--disable-accelerated-2d-canvas', '--use-angle=swiftshader',
   '--disable-gpu-vsync', '--disable-frame-rate-limit', '--in-process-gpu', '--disable-gpu-compositing'];
+// 本機錄製不從使用者喇叭出聲（使用者 11/10 瀏覽器規矩）：--mute-audio 只靜音輸出裝置，Web Audio 照常算、分接點照常錄。
+// 要真的聽（除錯）時加 --audible。
+if (!opt.audible) LAUNCH_ARGS.push('--mute-audio');
 const browser = await chromium.launch({ args: LAUNCH_ARGS });
 const renderScale = opt.renderScale != null ? +opt.renderScale : (P.renderScale || null);
 const videoDir = path.join(outDir, '.video');
@@ -160,7 +163,9 @@ const page = await context.newPage();
 page.on('console', m => { if (consoleLog.length < 500) consoleLog.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', e => consoleLog.push('[pageerror] ' + e.message));
 
-await page.goto(base + entry, { waitUntil: 'load', timeout: 60000 });
+// 不鎖滑鼠（總控 11/10）：無頭 Chromium 在 Windows 上會把 requestPointerLock 變成對實體滑鼠的 ClipCursor，鎖住使用者滑鼠
+const entryUrl = entry + (entry.includes('?') ? '&' : '?') + 'nolock=1';
+await page.goto(base + entryUrl, { waitUntil: 'load', timeout: 60000 });
 log('已載入', entry);
 let prepared = null;
 if (P.prepare) prepared = await P.prepare(page, opt);

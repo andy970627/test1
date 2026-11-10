@@ -29,6 +29,8 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90
 ## 常用選項（`record.mjs`）
 
 - `--duration <秒>`：錄多久（預設取設定檔，木馬之夜 80）
+- `--cover cover|gap`（木馬之夜）：鼓聲模式。`cover`＝不中斷（殘響掩護，規則 `T.COVER_MODE = true`，預設）；`gap`＝留空檔（舊盲區版）。第 1 項檢查依模式換量法
+- `--audible`：讓瀏覽器真的從喇叭出聲（預設 `--mute-audio` 靜音輸出裝置，錄音不受影響）；網址一律加 `nolock=1`，不鎖滑鼠
 - `--cycle <秒>`：放慢遊戲循環（木馬之夜會同時交給規則與聲音；報告會註明「放慢」）
 - `--no-bot`：不掛程式玩家；`--scenario <劇本.json>`：照劇本按鍵（可和程式玩家並用）
 - `--width/--height`、`--render-scale 0.5`：畫面大小與 WebGL 內部解析度

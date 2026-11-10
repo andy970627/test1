@@ -20,10 +20,12 @@
 
 輸出資料夾內容：`playtest.mp4`、`audio.wav`（44.1 kHz 立體聲 16-bit）、`spectrogram.png`、`spectrogram-marked.png`（盲區藍、警戒橘、追殺紅、低音拍黃刻度）、`envelope.png/.svg`（50 ms RMS）、`report.md`、`timeline.json`、`analysis.json`、`meta.json`、`shots/`（每 10 秒）；喇叭模擬另出 `audio-speaker.wav`、`spectrogram-speaker.png`、`analysis-speaker.json`。
 
-#### 8 項自動檢查（`analyze.mjs` 第 207～430 行）
+#### 9 項自動檢查（`analyze.mjs` 第 215～520 行；11/10 加 fireSync、第 1 項依模式）
 | # | id | 量什麼 | 門檻（預設） |
 |---|---|---|---|
-| 1 | `blind` | 盲區時整體音量比前後低多少 dB。盲區內取 [+0.10, 結束−0.03] 秒，前取 −1.0～−0.15 秒、後取 +0.25～+1.0 秒平均。盲區內有玩家動作音（`blindConfoundCues`）的那次照列、不計 | 中位 ≥ 10 dB 且每次 ≥ 6 dB |
+| 1 | `blind`（舊盲區版 `COVER_MODE = false`） | 盲區時整體音量比前後低多少 dB。盲區內取 [+0.10, 結束−0.03] 秒，前取 −1.0～−0.15 秒、後取 +0.25～+1.0 秒平均。盲區內有玩家動作音（`blindConfoundCues`）的那次照列、不計 | 中位 ≥ 10 dB 且每次 ≥ 6 dB |
+| 1' | `blind`（殘響掩護版 `COVER_MODE = true`） | 一般掩護窗：①突出＝窗開頭 [−0.01, +0.15] 秒 300～1200 Hz 峰值 − 窗前 1.0～0.15 秒平均；②殘響＝從峰值後到全頻 50 ms 包絡回到「窗前包絡中位 + 3 dB」，自窗開始算；③窗內整體比前後。警戒時低音拍之間的窗只列不判 | 突出中位 ≥ 8、每次 ≥ 6 dB；殘響中位 ≥ 0.12 秒；整體中位 ≥ −3 dB（`TH.cover*`） |
+| 1b | `fireSync` | 每幀 `game.fire` vs `FIRE_BASE + FIRE_P_GAIN × game.danger`（舊模式盲區幀＝`FIRE_BLIND`）；相鄰兩幀 fire 掉 > 0.05 而 danger 沒掉＝掉回；列 fire×danger、fire×p 相關係數 | 誤差 > 0.02 的幀 ≤ 1%，掉回 0 次 |
 | 2 | `onset` | 偵測到的起音 vs 規則拍點（`expectedBeats`，沒有就用 `start(when)` 排程）的誤差，正號＝聲音晚 | 中位 \|誤差\| ≤ 15 ms 且顯著拍（w ≥ 0.5）±30 ms 命中 ≥ 80% |
 | 3 | `alertLow` | 警戒時段三頻帶（低 20–250、中 250–2000、高 2–10k Hz）總功率，4096 點 FFT | 低頻帶最強；沒有警戒區段＝無資料 |
 | 4 | `clip` | 削峰樣本數（整數與浮點都看） | ≤ 0；喇叭模擬不判定（高通會抬峰值） |
@@ -80,6 +82,12 @@
 - 2026-11-07 程式玩家自己的動作也會發聲，盲區檢查要看「每次盲區」表裡盲區內還在響的 cue。
 - 2026-11-09 遙測版本號一律 `dev`：`build-itch.mjs` 還沒寫 `<meta name="odyssey-build">`。
 - 2026-11-09 改 `.github/workflows/**` 會同時觸發 web 與 unity 兩組（PR 上就會跑 Unity 約 25 分鐘），非必要不要和其他改動混在一起推。
+- 2026-11-10 `analyze.mjs` 是 CRLF 換行：用 node 字串取代改檔時要含 `\r\n`，否則比對不到；用 Edit 工具最穩。
+- 2026-11-10 掩護版的殘響不在 300～1200 Hz：重合擊在這個頻帶 50 ms 內就掉回背景，餘韻在全頻（多半是 200 Hz 以下），所以殘響量全頻包絡；喇叭模擬（200 Hz 高通）下殘響中位只剩 0.10 秒、第 1 項不通過，這是聲音本身的特性，不是量法錯。
+- 2026-11-10 背景要取窗前包絡的**中位數**：鼓聲不斷時窗前平均會被鼓點拉高。
+- 2026-11-10 `ANALYZE_COVER=1|0` 只換第 1 項的量法；fireSync 一律看規則實際模式（`RULE_COVER`），否則舊模式盲區照設計壓暗的火光會被誤判成掉回。
+- 2026-11-10 錄製中途偶爾「Page crashed」（60 秒留空檔版第一次），重錄就好。
+- 2026-11-10 錄製預設 `--mute-audio`（不從喇叭出聲），網址自動加 `nolock=1`（總控加，免得無頭 Chromium 鎖住實體滑鼠）。
 - 2026-11-09 本角色在 worktree `C:\Users\恩\test1\.claude\worktrees\openrouter-api-key-setup-383957`（分支 `claude/gracious-bardeen-vwo4rr`）工作；不要寫 `C:\Users\恩\test1` 主資料夾，hook 會擋。
 
 ## 4. 驗證方式
@@ -107,6 +115,14 @@
 - `bow-risset`、`vengeance` 設定檔還沒宣告喇叭可聽度檢查（6～8 項）。
 - 11/12 期中報告要的頻譜圖與錄影：等主對話指定原型與段落。
 
-- 11/09 晚（總控）`record.mjs` 的 `NODE_PATH` 已改用 `path.delimiter`（提交 0193cdf）；剩本機裝 playwright 與 `fireSync` 檢查。
+- 11/09 晚（總控）`record.mjs` 的 `NODE_PATH` 已改用 `path.delimiter`（提交 0193cdf）；剩本機裝 playwright 與 `fireSync` 檢查（兩件 11/10 都完成）。
 
 - 11/10 本機試錄通過：playwright@1.65.0（chromium revision 1254，對上本機快取，不用再下載）裝在 `%LOCALAPPDATA%\test1-node-tools`（`npm install --prefix`，repo 內無 package.json）。跑法（PowerShell）：`$env:NODE_PATH="$env:LOCALAPPDATA\test1-node-tools\node_modules"; $env:FFMPEG=(Get-Command ffmpeg).Source; $env:FFPROBE=(Get-Command ffprobe).Source; node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 30`。結果：錄 30 秒、中位 43.5 fps、錯誤 0、自動檢查 8 項全過、mp4 h264＋aac 約 38.9 秒（含聲音對齊位移 8.2 秒）。1.64.0 對應 1248、1.63.0 對應 1243。
+
+**2026-11-10 第二輪：殘響掩護版的錄音檢查（總控派工）**
+- 改了：`analyze.mjs`（第 1 項依 `COVER_MODE` 換量法、新增 `fireSync`、報告加「每次掩護窗」表與模式說明、`ANALYZE_COVER` 對照開關）、`profiles/troy-prologue.mjs`（`--cover cover|gap`、prepare 記 `coverMode`、probe 記 `fire`／`dg`）、`record.mjs`（預設 `--mute-audio`、`--audible`）、`README.md`（新選項）。
+- 驗證：兩模式各錄 60 秒，輸出 `tools/playtest-recorder/out/cover-cover-1110/`、`cover-gap-1110/`（不進 git）。
+  - 掩護版：第 1 項通過（突出中位 +12.6、最小 +10.9 dB；殘響中位 0.18 秒；整體比前後 +1.9 dB；6 個一般窗）；fireSync 通過（2236 幀誤差 0、掉回 0、fire×danger 1.0、fire×p −0.09）；其餘全過、腳步樣本不夠。喇叭模擬下第 1 項不通過（殘響 0.10 秒）。
+  - 舊盲區版：fireSync 通過（2383 幀、掉回 0）；第 1 項不通過——中位 30.1 dB，但 33.3、40.5、53.0 秒三個盲區聲音只靜約 0.3 秒或晚 0.3 秒才靜，都碰上循環長度 T 正在變，疑似聲音層的靜音和規則盲區對不上（已回報總控，不是本角色的檔）。
+  - 對照：舊版錄音用掩護量法跑 → 不通過（突出 +5.2、殘響 0、整體 −24.9 dB），門檻分得開。
+- 未完成：殘響門檻 0.12 秒只根據一次 60 秒錄音、6 個窗，下次多錄幾段再調；腳步檢查樣本太少時應判「無資料」而不是不通過（舊版 1 步就判了）。

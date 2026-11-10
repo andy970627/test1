@@ -42,6 +42,15 @@ const TH = Object.assign({
   dropRate: 0.1,          // 丟拍比例上限（±40 ms 內找不到起音）
   silenceSec: 0.75,       // 低於 −60 dBFS 連續多久算「完全無聲」
   clipSamples: 0,         // 允許的削峰樣本數
+  // 殘響掩護版（COVER_MODE = true，11/10 核心方向甲）第 1 項改量重合擊與殘響；門檻依 11/10 兩模式各 60 秒實錄定（見 report 說明）
+  coverBand: [300, 1200], // 重合擊的厚擊頻帶（聲音層實作 420～1100 Hz，留邊）
+  coverRiseMedianDb: 8,   // 窗開頭 [−0.01, +0.15] 秒頻帶峰值比窗前 1 秒平均高：中位下限（11/10 實錄 掩護版 +12.6、舊版同量法 +6.6 且峰值在窗前）
+  coverRiseMinDb: 6,      // 每一次下限（掩護版最小 +10.9）
+  coverTailSec: 0.12,     // 殘響（從窗開始到全頻 50 ms 包絡回到窗前中位 + coverTailAboveDb）中位下限（掩護版 0.18、舊版 0.05 秒）
+  coverLouderDb: -3,      // 窗內整體音量比前後：中位下限（掩護版 −0.5、舊版 −24.9 dB）——窗內不能變安靜
+  coverTailAboveDb: 3,
+  fireTol: 0.02,          // fireSync：game.fire 與 FIRE_BASE + FIRE_P_GAIN × danger 的容許誤差
+  fireDrop: 0.05,         // fireSync：相鄰兩幀 fire 掉超過這個量、而 danger 沒掉（< 0.01）＝「火光掉回」
   // 玩家自己的動作音（走提示音匯流排，盲區不壓）：盲區內有這些 cue 時，那次盲區照列但不計入盲區檢查
   blindConfoundCues: '^(dash|trapdoor|checkpoint|step_loud|gasp|takedown|takedown_fail|latch|latch_step|calm_ok|calm_bad|calm_done|alert|caught|hunt|escape|gate_open)$'
 }, (profile && profile.analysis && profile.analysis.thresholds) || {});
@@ -228,7 +237,55 @@ for (const [a, b] of list) {
 }
 return dips;
 }
-{
+// 鼓聲模式：規則 T.COVER_MODE（profile 的 prepare 記在 meta.prepared.coverMode／rulesT）；沒有就當舊盲區版
+const PREP = meta.prepared || {};
+const RULE_COVER = PREP.coverMode != null ? !!PREP.coverMode : !!((PREP.rulesT || {}).COVER_MODE);   // 規則實際用的模式（fireSync 一律看這個）
+// 環境變數 ANALYZE_COVER=1｜0 可強制第 1 項用某一種量法（對照用：拿舊盲區版錄音跑掩護量法，看門檻分不分得開）
+const COVER = process.env.ANALYZE_COVER != null ? process.env.ANALYZE_COVER === '1' : RULE_COVER;
+// 1'. 殘響掩護版：掩護窗開頭的重合擊在 coverBand 比窗前突出多少、殘響尾巴多長；並列整體音量比前後「響」多少（只列不判）
+const coverRows = [];
+if (COVER) {
+  const band = TH.coverBand, CS = bandSeries([band]), arr = CS.p[0];
+  const fI = (t) => Math.round((t - CS.t[0]) / CS.hop);
+  const gapAt = (f) => gapMask[Math.min(wav.n - 1, Math.max(0, Math.round((CS.t[f] - T0) * SR)))];
+  const meanP = (a, b) => { let s = 0, n = 0; for (let f = Math.max(0, fI(a)); f <= Math.min(arr.length - 1, fI(b)); f++) { if (gapAt(f)) continue; s += arr[f]; n++; } return n ? s / n : null; };
+  for (const [a, b] of IV.blind) {
+    if (a - 1.0 < T0 || b + 1.0 > T0 + DUR || gapFrac(a - 1.0, b + 1.0) > 0.2) continue;
+    const base = meanP(a - 1.0, a - 0.15);
+    let pk = 0, pkF = -1;
+    for (let f = Math.max(0, fI(a - 0.01)); f <= Math.min(arr.length - 1, fI(a + 0.15)); f++) if (!gapAt(f) && arr[f] > pk) { pk = arr[f]; pkF = f; }
+    if (base == null || pkF < 0) continue;
+    // 殘響尾巴量全頻（50 ms RMS 包絡）：11/10 實錄看到重合擊在 300～1200 Hz 50 ms 內就掉回背景，餘韻在全頻（殘響送量推高的整條節奏線）。
+    // 背景取窗前 1.0～0.15 秒包絡的中位數（拍與拍之間的底），不用平均——平均會被窗前的鼓點拉高。
+    const pre = env.filter(e => e.t >= a - 1.0 && e.t <= a - 0.15).map(e => e.db);
+    const envBase = median(pre);
+    const tPk = CS.t[pkF];
+    let endT = null;
+    if (envBase != null) for (const e of env) { if (e.t <= tPk + 0.025) continue; if (e.t > a + 1.5) break; if (e.db <= envBase + TH.coverTailAboveDb) { endT = e.t; break; } }
+    const tail = endT == null ? 1.5 : endT - a;        // 1.5 秒內沒回到背景：記 1.5（上限）
+    const alertWin = IV.normalBlind ? !IV.normalBlind.some(([x]) => Math.abs(x - a) < 1e-3) : false;   // 警戒時低音拍之間的窗（聲音層只打較輕的重合擊）
+    const inside = powerIn(a + 0.02, b - 0.03), before = powerIn(a - 1.0, a - 0.15), after = powerIn(b + 0.25, b + 1.0);
+    const conf = EV.filter(e => e.type === 'cue' && (e.at || e.t) >= a - 0.05 && (e.at || e.t) < b && new RegExp(TH.blindConfoundCues, 'i').test(e.name)).map(e => e.name);
+    coverRows.push({ t: +a.toFixed(3), len: +(b - a).toFixed(3), alertWin, confound: conf, envBaseDb: r1(envBase), baseDb: r1(db(base)), peakDb: r1(db(pk)), riseDb: r1(db(pk) - db(base)), peakAt: +(CS.t[pkF] - a).toFixed(3),
+      tailSec: +tail.toFixed(3), louderDb: inside != null && before != null && after != null ? r1(db(inside) - (db(before) + db(after)) / 2) : null });
+  }
+  const clean = coverRows.filter(x => !x.confound.length && !x.alertWin), conf = coverRows.filter(x => x.confound.length), aw = coverRows.filter(x => x.alertWin && !x.confound.length);
+  const rs = clean.map(x => x.riseDb), ts = clean.map(x => x.tailSec), ld = clean.map(x => x.louderDb).filter(v => v != null);
+  const mdR = median(rs), mnR = rs.length ? Math.min(...rs) : null, mdT = median(ts);
+  const awTxt = aw.length ? `；警戒時低音拍之間的窗 ${aw.length} 次（只列：突出中位 ${median(aw.map(x => x.riseDb))} dB、殘響中位 ${r1(median(aw.map(x => x.tailSec)))} 秒）` : '';
+  add('blind', `掩護窗開頭的重合擊在 ${band[0]}～${band[1]} Hz 突出、殘響撐得夠久（殘響掩護版）`,
+    rs.length ? mdR >= TH.coverRiseMedianDb && mnR >= TH.coverRiseMinDb && mdT >= TH.coverTailSec && (median(ld) == null || median(ld) >= TH.coverLouderDb) : null,
+    (rs.length ? `突出：中位 +${mdR} dB、最小 +${mnR} dB；殘響：中位 ${r1(mdT)} 秒、最短 ${r1(Math.min(...ts))} 秒（${rs.length} 次掩護窗）；整體音量比前後：中位 ${median(ld) >= 0 ? '+' : ''}${median(ld)} dB` : '沒有可量的一般掩護窗') + awTxt +
+    (conf.length ? `；另 ${conf.length} 次窗內有玩家自己的動作音，照列不計` : ''),
+    `模式：規則 T.COVER_MODE = true（鼓聲不中斷）。門檻：突出中位 ≥ ${TH.coverRiseMedianDb} dB、每次 ≥ ${TH.coverRiseMinDb} dB，、殘響中位 ≥ ${TH.coverTailSec} 秒，且窗內整體音量比前後的中位 ≥ ${TH.coverLouderDb} dB（窗內不能變安靜）。` +
+    `突出＝窗開頭 [−0.01, +0.15] 秒內 ${band[0]}～${band[1]} Hz 頻帶（短時 FFT 1024 點）的峰值，減去窗前 1.0～0.15 秒的平均；` +
+    `殘響＝從窗開始到全頻 50 ms RMS 包絡回到「窗前 1.0～0.15 秒包絡的中位數 + ${TH.coverTailAboveDb} dB」的時間（從峰值後算起；1.5 秒內沒回到記 1.5）。` +
+    `只判一般掩護窗；警戒時低音拍之間的窗聲音層只打較輕的重合擊（上半層 × 0.6），只列不判。` +
+    `門檻依據（11/10 木馬之夜兩模式各 60 秒實錄，6 個一般窗 vs 舊版 10 個窗，用同一量法）：突出 掩護版中位 +12.6、最小 +10.9 dB；舊版中位約 +6 dB，峰值都在窗開始前（窗前最後一拍漏進來，起點改 −0.01 秒後再降）→ 中位 8、每次 6。` +
+    `殘響 掩護版中位 0.18 秒（0.10～0.52）、舊版 0.05 秒（0.02～0.10）→ 0.12 秒。整體比前後 掩護版中位 −0.5 dB（−2.9～+3.0）、舊版 −24.9 dB → −3 dB。` +
+    `聲音角色量到窗內 −15.5、窗前 −27.9 dB（差 12.4 dB），和這裡的突出 +12.6 dB 一致。` +
+    `注意：設計寫「0.6 秒可聽的餘韻」，但實測重合擊在 300～1200 Hz 50 ms 內就掉回背景，全頻餘韻多半 0.1～0.25 秒就沒入持續的鼓聲；殘響門檻照實測定，餘韻夠不夠要真耳朵判。`);
+} else {
   const clean = dips.filter(x => !x.confound.length), conf = dips.filter(x => x.confound.length);
   const d = clean.map(x => x.dipDb), md = median(d), mn = d.length ? Math.min(...d) : null;
   add('blind', '盲區時整體音量比前後低', d.length ? md >= TH.blindDipMedianDb && mn >= TH.blindDipMinDb : null,
@@ -236,6 +293,36 @@ return dips;
     (conf.length ? `；另 ${conf.length} 次盲區內有玩家自己的動作音（${conf.map(x => x.t + ' 秒：' + [...new Set(x.confound)].join('、')).join('；')}），照列不計` : ''),
     `門檻：中位 ≥ ${TH.blindDipMedianDb} dB 且每次 ≥ ${TH.blindDipMinDb} dB。盲區內取 [+0.10, 結束−0.03] 秒，前後取盲區前 1.0～0.15 秒與結束後 0.25～1.0 秒的平均。` +
     `區段以規則時間軸記錄的實際盲區為準。玩家自己的動作音（衝刺、暗門、檢查點、不合拍腳步、安撫哼唱等）走提示音匯流排、盲區本來就不壓，盲區內有這些 cue 的那幾次列在表裡但不計入。`);
+}
+
+// 1b. fireSync：火光 game.fire 跟 game.danger（實際速度）走，不能每循環掉回一次（11/10 甲；核心方向文件第 2 節 fireBrightness 改讀 danger）
+const fireInfo = {};
+{
+  const KT = PREP.rulesT || {};
+  const fr = TL.filter(s => s.phase === 'play' && s.fire != null && s.dg != null);
+  if (!fr.length) add('fireSync', '火光跟著實際速度（danger）走、不每循環掉回', null, '時間軸沒有 fire／danger（舊規則檔或舊錄製）', '設定檔 probe 要記 game.fire 與 game.danger。');
+  else {
+    const hasK = Number.isFinite(KT.FIRE_BASE) && Number.isFinite(KT.FIRE_P_GAIN);
+    const oldBlind = (s) => !RULE_COVER && s.blind && Number.isFinite(KT.FIRE_BLIND);   // 舊模式盲區照設計壓暗
+    const expect = (s) => oldBlind(s) ? KT.FIRE_BLIND : Math.min(1, Math.max(0, KT.FIRE_BASE + KT.FIRE_P_GAIN * s.dg));
+    const off = hasK ? fr.filter(s => Math.abs(s.fire - expect(s)) > TH.fireTol) : [];
+    const drops = [];
+    for (let i = 1; i < fr.length; i++) {
+      const A = fr[i - 1], B = fr[i];
+      if (B.t - A.t > 0.5 || oldBlind(A) || oldBlind(B)) continue;
+      if (A.fire - B.fire > TH.fireDrop && A.dg - B.dg < 0.01) drops.push({ t: +B.t.toFixed(3), from: A.fire, to: B.fire, p: B.p });
+    }
+    const corr = (xs, ys) => { const n = xs.length, mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n; let sxy = 0, sxx = 0, syy = 0; for (let i = 0; i < n; i++) { const dx = xs[i] - mx, dy = ys[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; } return sxx && syy ? +(sxy / Math.sqrt(sxx * syy)).toFixed(3) : null; };
+    const nb = fr.filter(s => !oldBlind(s));
+    Object.assign(fireInfo, { frames: fr.length, offFrames: off.length, drops: drops.slice(0, 20), dropCount: drops.length, corrDanger: corr(nb.map(s => s.fire), nb.map(s => s.dg)), corrP: corr(nb.map(s => s.fire), nb.map(s => s.p)),
+      fireRange: [Math.min(...fr.map(s => s.fire)), Math.max(...fr.map(s => s.fire))], dangerRange: [Math.min(...fr.map(s => s.dg)), Math.max(...fr.map(s => s.dg))] });
+    const okOff = !hasK || off.length / fr.length <= 0.01;
+    add('fireSync', '火光跟著實際速度（danger）走、不每循環掉回', okOff && drops.length === 0,
+      `${fr.length} 幀：${hasK ? `和 FIRE_BASE + FIRE_P_GAIN × danger 差 > ${TH.fireTol} 的 ${off.length} 幀；` : '（規則常數缺，只看掉回）'}掉回 ${drops.length} 次${drops.length ? '（' + drops.slice(0, 5).map(d => d.t + ' 秒 p=' + d.p).join('、') + '）' : ''}；` +
+      `相關係數 fire×danger ${fireInfo.corrDanger ?? '—'}、fire×p ${fireInfo.corrP ?? '—'}；fire ${fireInfo.fireRange.map(v => v.toFixed(2)).join('～')}、danger ${fireInfo.dangerRange.map(v => v.toFixed(2)).join('～')}`,
+      `門檻：誤差 > ${TH.fireTol} 的幀 ≤ 1%，且沒有「相鄰兩幀 fire 掉超過 ${TH.fireDrop}、danger 卻沒掉（< 0.01）」的掉回。舊模式（COVER_MODE = false）盲區幀照設計壓到 FIRE_BLIND，不算掉回。` +
+      `fire×p 的相關係數是對照：火光若跟著循環相位走，等於用眼睛把交接點指出來（核心方向文件第 2 節）。danger 在錄製中變化小時兩個相關係數都可能不穩，只看前兩條。`);
+  }
 }
 
 // 2. 起音與規則拍點
@@ -497,7 +584,7 @@ let SUM = null;
 if (profile && profile.summary) { try { SUM = profile.summary(TL, meta, EV, IV); } catch (e) { log('summary 失敗', e.message); } }
 
 // ---------- 輸出 ----------
-const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
+const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, coverMode: COVER, coverRows, fire: fireInfo, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
   intervals: { blind: IV.blind.length, blindList: IV.blind.map(x => x.map(v => +v.toFixed(3))), fake: (IV.fake || []).map(x => x.map(v => +v.toFixed(3))), alert: IV.alert.map(x => x.map(v => +v.toFixed(2))), hunted: IV.hunted.map(x => x.map(v => +v.toFixed(2))) },
   checks, dips, beatStats, silences, cueCount, fails, gaps: meta.audio.gapList, frames: meta.frames };
 fs.writeFileSync(path.join(dir, SPK ? 'analysis-speaker.json' : 'analysis.json'), JSON.stringify(analysis, null, 2));
@@ -538,11 +625,17 @@ const spkOf = (id) => SPEAK ? SPEAK.checks.find(x => x.id === id) : null;
 L.push('## 自動檢查', '', `| 檢查 | 原始 | 喇叭模擬（${SPEAKER_HP} Hz 高通） | 數字（原始） |`, '|---|---|---|---|');
 for (const c of checks) { const sc = spkOf(c.id); L.push(`| ${c.name} | ${mark(c.pass)} | ${sc ? mark(sc.pass) : '—'} | ${c.value} |`); }
 L.push('');
-L.push(`- 前 5 項是原本的檢查；後面 3 項（預告音、低音拍中頻、腳步頻帶差）是「喇叭可聽度」檢查（11/08 加）。「喇叭模擬」欄＝把錄音先過兩級 ${SPEAKER_HP} Hz 高通（24 dB/oct，近似筆電喇叭聽不到的低頻）再跑同一套檢查；「警戒時低頻最突出」在高通後本來就會不通過，看的是其他項在喇叭上還成不成立。`, '');
+L.push(`- 鼓聲模式：**${COVER ? '不中斷（殘響掩護，COVER_MODE = true）：第 1 項改量重合擊與殘響' : '留空檔（舊盲區版，COVER_MODE = false）：第 1 項量盲區壓低'}**；fireSync（火光跟實際速度走）11/10 加。`);
+L.push(`- 第 1～6 項是基本檢查；後面 3 項（預告音、低音拍中頻、腳步頻帶差）是「喇叭可聽度」檢查（11/08 加）。「喇叭模擬」欄＝把錄音先過兩級 ${SPEAKER_HP} Hz 高通（24 dB/oct，近似筆電喇叭聽不到的低頻）再跑同一套檢查；「警戒時低頻最突出」在高通後本來就會不通過，看的是其他項在喇叭上還成不成立。`, '');
 for (const c of checks) L.push(`- **${c.name}**：${c.detail}`);
 L.push('');
 if (beatStats.scheduled) L.push(`- 通用對照：偵測到的 ${beatStats.scheduled.onsets} 個起音中，${beatStats.scheduled.within20ms} 個在某個 \`start(when)\` 排程時間 ±20 ms 內（中位 |誤差| ${beatStats.scheduled.medianAbsMs} ms，帶正負號 ${beatStats.scheduled.medianSignedMs} ms）。`, '');
-if (dips.length) {
+if (COVER && coverRows.length) {
+  L.push('### 每次掩護窗（殘響掩護版）', '', `| 窗開始（音訊秒） | 種類 | 窗前 ${TH.coverBand[0]}～${TH.coverBand[1]} Hz dB | 峰值 dB | 突出 dB | 峰值在窗開始後（秒） | 殘響（秒） | 整體比前後 dB | 玩家動作音（不計） |`, '|---|---|---|---|---|---|---|---|---|');
+  for (const d of coverRows) L.push(`| ${d.t} | ${d.alertWin ? '警戒（只列）' : '一般'} | ${d.baseDb} | ${d.peakDb} | ${d.riseDb} | ${d.peakAt} | ${d.tailSec} | ${d.louderDb ?? '—'} | ${d.confound.join('、') || '—'} |`);
+  L.push('');
+}
+if (dips.length && !COVER) {
   L.push('### 每次盲區', '', '| 盲區開始（音訊秒） | 長度（秒） | 前 dB | 盲區內 dB | 後 dB | 壓低 dB | 盲區內（含前 0.3 秒）還在響的 |', '|---|---|---|---|---|---|---|');
   for (const d of dips) L.push(`| ${d.t} | ${d.len} | ${d.beforeDb} | ${d.insideDb} | ${d.afterDb} | ${d.dipDb} | ${d.sounding.join('、') || '—'} |`);
   const withBass = dips.filter(d => d.sounding.some(x => x.startsWith('低音拍'))), noBass = dips.filter(d => !d.sounding.some(x => x.startsWith('低音拍')));
