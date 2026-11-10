@@ -1459,9 +1459,15 @@ function makeBot(opts = {}) {
       else inp.breath = pl.breathT < K.BREATH_MAX - 0.5 && wantBreath();
       return inp;
     }
-    const w = WP[g.zone][wi];
-    const dx = w.x - pl.x, dz = w.z - pl.z, dw = Math.hypot(dx, dz);
-    if (dw < 0.35) { wi++; return inp; }
+    let w = WP[g.zone][wi];
+    let dx = w.x - pl.x, dz = w.z - pl.z, dw = Math.hypot(dx, dz);
+    // 11/11 修：到了路線點同一幀就轉向下一個點，不停一幀（停了再起步，幀率抖動時起步那一步可能離拍出聲；
+    // 整夜驗證 seed 191、315 就是這樣在窄巷驚動 g3a、之後被盯著站在他面前而被抓）
+    while (dw < 0.35) {
+      wi++;
+      if (!WP[g.zone][wi]) return inp;
+      w = WP[g.zone][wi]; dx = w.x - pl.x; dz = w.z - pl.z; dw = Math.hypot(dx, dz);
+    }
     const ux = dx / dw, uz = dz / dw;
     // 暗殺目標：區 3 的站崗衛兵
     const tgt = act.find(q => q.id === 'g3a');
@@ -1484,8 +1490,9 @@ function makeBot(opts = {}) {
       const f = R.forward(q.yaw);
       return R.angDiff(Math.atan2(nx - q.x, nz - q.z), Math.atan2(f.x, f.z)) > K.FOV + 0.2;
     });
+    // 11/11：起步要看「下一幀」會不會踩在鼓點上，而下一幀可能在 1/144～1/30 秒後（幀率抖動），整段都踩得到才起步
     const coverStep = !!opts.cover && K.COVER_MODE && pV > K.COVER_EAR_P + 0.01 && unseen &&
-      (walkingPrev || R.stepMasked(tv + 1 / 60, g)) && act.every((q) => Math.hypot(q.x - nx, q.z - nz) > K.STEP_R);
+      (walkingPrev || [1 / 144, 1 / 60, 1 / 30].every((d) => R.stepMasked(tv + d, g))) && act.every((q) => Math.hypot(q.x - nx, q.z - nz) > K.STEP_R);
     const canMove = blindV || (pV <= 0.57 && safe) || coverStep;
     if (canMove) {
       inp.mx = ux; inp.mz = uz;
