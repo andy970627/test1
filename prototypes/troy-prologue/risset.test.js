@@ -2280,50 +2280,124 @@ function runGame(cover, seed, botMaker, maxT = 420) {
   const g = R.createLevel({ t0, seed, T: { COVER_MODE: cover } });
   const bot = botMaker();
   const jr = R.mulberry32(seed * 7 + 3);
-  let t = 2, act = 0, actC = 0, all = 0;
+  let t = 2, act = 0, actC = 0, all = 0, alerted = 0;
   g.step(t, {}); g.step(t, { start: true });
   while (g.phase === 'play' || g.phase === 'intro') {
     if (t > maxT) break;
     const dt = jitter ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : DT;
     t += dt;
     g.step(t, bot(g));
-    g.drain();
+    for (const e of g.drain()) if (e.type === 'sfx' && e.a === 'alerted') alerted++;
     if (g.phase === 'play') { all += dt; if (activeNow(g)) act += dt; if (activeNow(g, 'cover')) actC += dt; }
   }
-  return { win: g.phase === 'win', t, n1: all > 0 ? act / all : 0, n1c: all > 0 ? actC / all : 0, zone: g.zone, why: g.failReason };
+  return { win: g.phase === 'win', t, alerted, n1: all > 0 ? act / all : 0, n1c: all > 0 ? actC / all : 0, zone: g.zone, why: g.failReason };
 }
 function stats(cover, botMaker, n) {
   const rs = [];
   for (let seed = 1; seed <= n; seed++) rs.push(runGame(cover, seed, () => botMaker(seed)));
   const wins = rs.filter((r) => r.win);
   const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const median = (a) => { if (!a.length) return NaN; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
   const stuck = {};
   for (const r of rs) if (!r.win) stuck[r.zone] = (stuck[r.zone] || 0) + 1;
-  return { n, winRate: wins.length / n, reachGate: rs.filter((r) => r.win || r.zone >= 4).length / n, reach3: rs.filter((r) => r.win || r.zone >= 3).length / n, n1: mean(rs.map((r) => r.n1)), n1c: mean(rs.map((r) => r.n1c)), n1Win: mean(wins.map((r) => r.n1)), tWin: mean(wins.map((r) => r.t - 2)), stuck };
+  return { n, winRate: wins.length / n, reachGate: rs.filter((r) => r.win || r.zone >= 4).length / n, reach3: rs.filter((r) => r.win || r.zone >= 3).length / n, alerted: mean(rs.map((r) => r.alerted)), tMed: median(wins.map((r) => r.t - 2)), n1: mean(rs.map((r) => r.n1)), n1c: mean(rs.map((r) => r.n1c)), n1Win: mean(wins.map((r) => r.n1)), tWin: mean(wins.map((r) => r.t - 2)), stuck };
 }
 
-test('11/10 甲：程式玩家兩種模式各 50 局的 N1 與通關率、起步誤差 σ 0.12 秒的通關率；只按前進鍵 ≤ 30%（印出數字給設計文件用）', () => {
+test('11/10 7.8 改：程式玩家各 50 局——只按前進 ≤ 30%、完美 100%；錯了要付代價（σ0.12 時間 ≥ 完美 1.2 倍、每局進高度警覺 ≥ 1 次）；越不準越吃虧（σ0.25 比 σ0.12 差）', () => {
   const N = 50;
   const pct = (v) => (v * 100).toFixed(0) + '%';
-  const fmt = (s) => `通關 ${pct(s.winRate)}（走到窄巷 ${pct(s.reach3)}、城門 ${pct(s.reachGate)}）、N1 ${(s.n1 * 100).toFixed(1)}%（新版量法 ${(s.n1c * 100).toFixed(1)}%）、通關平均 ${s.tWin.toFixed(0)} 秒、卡關區 ${JSON.stringify(s.stuck)}`;
+  const fmt = (s) => `通關 ${pct(s.winRate)}（走到窄巷 ${pct(s.reach3)}、城門 ${pct(s.reachGate)}）、通關時間中位 ${Number.isFinite(s.tMed) ? s.tMed.toFixed(0) : '—'} 秒、每局進高度警覺 ${s.alerted.toFixed(2)} 次、N1 ${(s.n1 * 100).toFixed(1)}%（新版量法 ${(s.n1c * 100).toFixed(1)}%）、卡關區 ${JSON.stringify(s.stuck)}`;
   const oldBot = stats(false, () => makeBot(), N);
-  const coverBot = stats(true, () => makeBot({ cover: true }), N);
-  const coverSigma = stats(true, (seed) => makeBot({ cover: true, sigma: 0.12, seed }), N);
   const oldSigma = stats(false, (seed) => makeBot({ sigma: 0.12, seed }), N);
-  const coverSafe = stats(true, () => makeBot(), N);
+  const perfect = stats(true, () => makeBot({ cover: true }), N);
+  const s12 = stats(true, (seed) => makeBot({ cover: true, sigma: 0.12, seed }), N);
+  const s25 = stats(true, (seed) => makeBot({ cover: true, sigma: 0.25, seed }), N);
   const fwdCover = stats(true, makeForwardBot, N);
   const fwdOld = stats(false, makeForwardBot, N);
-  console.log('[11/10 程式玩家，各 ' + N + ' 局，一條命；COVER_EAR_P = ' + K.COVER_EAR_P + '、R_GAIN = ' + K.R_GAIN + ']');
+  console.log('[11/10 7.8 程式玩家，各 ' + N + ' 局，一條命；COVER_EAR_P = ' + K.COVER_EAR_P + '、R_GAIN = ' + K.R_GAIN + ']');
   console.log('  舊盲區版   完美起步：' + fmt(oldBot));
   console.log('  舊盲區版   起步誤差 σ 0.12：' + fmt(oldSigma));
-  console.log('  殘響掩護版 完美踩拍：' + fmt(coverBot));
-  console.log('  殘響掩護版 起步誤差 σ 0.12：' + fmt(coverSigma));
-  console.log('  殘響掩護版 不用踩拍走：' + fmt(coverSafe));
+  console.log('  殘響掩護版 完美踩拍：' + fmt(perfect));
+  console.log('  殘響掩護版 起步誤差 σ 0.12：' + fmt(s12));
+  console.log('  殘響掩護版 起步誤差 σ 0.25：' + fmt(s25));
   console.log('  殘響掩護版 只按前進鍵：' + fmt(fwdCover));
   console.log('  舊盲區版   只按前進鍵：' + fmt(fwdOld));
+  // 保留的兩條
   assert.ok(fwdCover.winRate <= 0.3, `只按前進鍵通關率 ${fwdCover.winRate} 要 ≤ 30%`);
-  // 設計席 7.1 的目標是 50～85%。11/10 夜實測 92%，R_GAIN 10 → 12 → 14 都是 92%／92%／90%（程式玩家讀得到精確的 r，
-  // 半徑放大它就跟著繞遠）；會動的是 COVER_EAR_P（0.6 時 66%），但 7.1 指定不動聽覺。待設計席裁決，先印出、不擋測試。
-  if (coverSigma.winRate < 0.5 || coverSigma.winRate > 0.85) console.log(`  ⚠ 起步誤差 σ 0.12 通關率 ${pct(coverSigma.winRate)} 不在設計席 7.1 的 50～85%（待裁決，見 docs/process/approvals.md）`);
-  for (const s of [oldBot, oldSigma, coverBot, coverSigma, coverSafe, fwdCover, fwdOld]) assert.ok(s.n1 >= 0 && s.n1 <= 1 && s.n1c >= s.n1 - 1e-9);
+  assert.equal(perfect.winRate, 1, '完美踩拍要 100%');
+  // 7.8 新增的兩條：今晚只量、不改規則；沒過的先印出來（設計席 7.8 第 4 點：登記後等 11/11 試玩一起看）
+  const costTime = s12.tMed / perfect.tMed, costAlert = s12.alerted;
+  const worseRate = s12.winRate - s25.winRate, worseTime = s25.tMed / s12.tMed;
+  const pay = costTime >= 1.2 && costAlert >= 1;
+  const worse = worseRate >= 0.1 || worseTime >= 1.2;
+  console.log(`  7.8 錯了要付代價：σ0.12 通關時間中位 ÷ 完美 = ${costTime.toFixed(2)}（要 ≥ 1.2）、每局進高度警覺 ${costAlert.toFixed(2)} 次（要 ≥ 1）→ ${pay ? '過' : '⚠ 沒過'}`);
+  console.log(`  7.8 越不準越吃虧：σ0.25 通關率比 σ0.12 低 ${(worseRate * 100).toFixed(0)} 個百分點（要 ≥ 10）、時間中位 ÷ σ0.12 = ${worseTime.toFixed(2)}（要 ≥ 1.2）→ ${worse ? '過' : '⚠ 沒過'}`);
+  for (const s of [oldBot, oldSigma, perfect, s12, s25, fwdCover, fwdOld]) assert.ok(s.n1 >= 0 && s.n1 <= 1 && s.n1c >= s.n1 - 1e-9);
+});
+
+// ---------------- 11/10 夜 教學順序 M9（殘響掩護版：踩拍走 → 最響的一擊 → 被看見與屏息 → 警戒；舊版不變） ----------------
+
+/** 程式玩家打一整關，記下每則主動提示（type 'hint'、沒有 level 的那種）第一次出現的 {key, zone, t, index}。 */
+function hintTimeline(cover, seed) {
+  const g = R.createLevel({ t0: (seed * 1.37) % 10, seed, T: { COVER_MODE: cover } });
+  const H = R.hintsFor(g.T);
+  const byText = new Map(Object.entries(H).map(([k, v]) => [v, k]));
+  const bot = makeBot({ cover });
+  const seen = [], all = [];
+  let t = 2; g.step(t, {}); g.step(t, { start: true });
+  while (g.phase !== 'win' && t < 600) {
+    t += DT; g.step(t, bot(g));
+    for (const e of g.drain()) {
+      if (e.type === 'hint' || e.type === 'msg') all.push(e.a);
+      if (e.type === 'hint' && !e.level && byText.has(e.a)) seen.push({ key: byText.get(e.a), zone: g.zone, t, index: g.cycle.index });
+    }
+    if (g.phase === 'fail') g.retry();
+  }
+  return { g, seen, all, first: (k) => seen.find((x) => x.key === k) };
+}
+
+test('11/10 夜 M9：殘響掩護版教學順序——區 1 踩拍走、區 2 最響的一擊再衝刺、區 3 暗殺再屏息、區 4 城門；一次一則、不說「斷」', () => {
+  for (const seed of [1, 2, 3]) {
+    const { g, seen, all, first } = hintTimeline(true, seed);
+    assert.equal(g.phase, 'win', `seed ${seed} 過關`);
+    const z = (k) => first(k) && first(k).zone;
+    assert.equal(z('step'), 1, '踩拍走在木馬腹中先教');
+    assert.equal(z('blind'), 2, '最響的一擊在神殿廣場');
+    assert.equal(z('dash'), 2, '衝刺也在神殿廣場');
+    // 衝刺提示也會在「窗外按 Shift」時即時出現（事件教學），所以整關裡只要求它在區 2；主動排序另有一條單獨測
+    assert.equal(z('takedown'), 3, '暗殺在窄巷');
+    assert.equal(z('breath'), 3, '被看見與屏息在窄巷、暗殺之後');
+    assert.ok(first('breath').t - first('takedown').t >= K.HINT_GAP, '屏息提示和暗殺提示隔開');
+    assert.equal(z('gate'), 4);
+    const order = ['step', 'blind', 'takedown', 'breath', 'gate'].map((k) => first(k).t);
+    for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], `順序：${seen.map((x) => x.key).join(' → ')}`);
+    // 一次一則：同一幀不出兩則主動提示
+    for (let i = 1; i < seen.length; i++) assert.ok(seen[i].t > seen[i - 1].t, `${seen[i - 1].key} 與 ${seen[i].key} 同一幀`);
+    for (const a of all) assert.ok(!/斷/.test(a), `殘響掩護版出現「斷」：${a}`);
+  }
+});
+
+test('11/10 夜 M9：殘響掩護版區 2 不按 Shift 時，第一個掩護窗教最響的一擊、下一個掩護窗才教衝刺', () => {
+  const g = allDown(cvr({ startZone: 2 }));
+  const H = R.hintsFor(g.T);
+  const got = [];
+  let t = 0; g.step(t, {});
+  while (t < 40) {
+    t += DT; g.step(t, {});
+    for (const e of g.drain()) if (e.type === 'hint' && (e.a === H.blind || e.a === H.dash)) got.push({ a: e.a === H.blind ? 'blind' : 'dash', i: g.cycle.index, blind: g.cycle.blind });
+  }
+  assert.deepEqual(got.map((x) => x.a), ['blind', 'dash']);
+  assert.ok(got.every((x) => x.blind), '都在掩護窗裡出');
+  assert.equal(got[1].i, got[0].i + 1, '衝刺在下一個掩護窗');
+});
+
+test('11/10 夜 M9：舊盲區版教學順序不變（區 1 屏息再盲區、區 2 衝刺、區 3 暗殺、區 4 城門）', () => {
+  const { g, first } = hintTimeline(false, 1);
+  assert.equal(g.phase, 'win');
+  assert.equal(first('breath').zone, 1);
+  assert.equal(first('blind').zone, 1);
+  assert.ok(first('blind').t > first('breath').t);
+  assert.equal(first('dash').zone, 2);
+  assert.equal(first('takedown').zone, 3);
+  assert.equal(first('gate').zone, 4);
 });

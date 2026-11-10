@@ -717,7 +717,9 @@
     let latchNoiseAt = -1e9;
     let dashCycle = null; // 每個盲區只能衝刺一次
     let preBlindCycle = null; // 每個循環只預告一次
-    let blindHintGate = null; // {i, t}：進區 1 時的循環與時間；盲區提示要等到下一個循環以後
+    let blindHintGate = null; // {i, t}：進教盲區那一區時的循環與時間；盲區提示要等到下一個循環以後
+    let dashHintGate = null;  // 殘響掩護教學：最響的一擊提示出過之後的循環；衝刺提示等到下一個掩護窗
+    let breathHintAt = null;  // 殘響掩護教學：第 3 區暗殺提示出現的時間；屏息提示至少隔 HINT_GAP 秒、等節奏快起來
     let huntCause = null;
     let clockT = null;    // 循環時鐘上次推進到的音訊時間
     let lastStepT = -1e9; // 上一步的音訊時間（腳步跟著鼓走：下一步由 nextStepAt 決定）
@@ -789,10 +791,19 @@
       g.visualAid = visualAidFor(z, g.visualAidMode);
       walking = false; lastStepT = -1e9;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
-      if (z === 1) { hint('breath'); blindHintGate = null; }
-      if (z === 2) hint('dash');
-      if (z === 3) hint('takedown');
-      if (z === 4) hint('gate');
+      // 教學順序（M9）。一區只主動教一件新事；起疑、高度警覺、追殺、腳步太吵是「第一次發生時」才教（要馬上會解）。
+      if (K.COVER_MODE) {
+        // 殘響掩護版（總控 11/10 夜）：踩拍走 → 最響的一擊（衝刺、暗殺） → 被看見與屏息 → 警戒
+        if (z === 1) hint('step');                                   // 木馬腹中：踩著鼓點走，腳步被蓋過
+        if (z === 2) { blindHintGate = null; dashHintGate = null; }  // 神殿廣場：第一個掩護窗教最響的一擊，下一個教衝刺
+        if (z === 3) { hint('takedown'); breathHintAt = null; }      // 窄巷：最響的一擊暗殺；之後教被看見與屏息
+        if (z === 4) hint('gate');
+      } else {
+        if (z === 1) { hint('breath'); blindHintGate = null; }
+        if (z === 2) hint('dash');
+        if (z === 3) hint('takedown');
+        if (z === 4) hint('gate');
+      }
     }
 
     g.player = makePlayer(Math.max(1, startZone));
@@ -1199,10 +1210,19 @@
       if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
       if (g.phase !== 'play') return g;
 
-      // 盲區提示：不和開場的屏息提示同時出，等到進區 1 之後的下一個循環、而且隔 HINT_GAP 秒以上
-      if (g.zone === 1) {
+      // 盲區提示：不和進區提示同時出，等到進區之後的下一個循環、而且隔 HINT_GAP 秒以上。
+      // 舊版在區 1（屏息之後）；殘響掩護版在區 2（踩拍走之後），出過之後下一個掩護窗再教衝刺。
+      if (g.zone === (K.COVER_MODE ? 2 : 1)) {
         if (!blindHintGate) blindHintGate = { i: c.index, t };
-        if (blind && c.index > blindHintGate.i && t - blindHintGate.t >= K.HINT_GAP) hint('blind');
+        if (blind && c.index > blindHintGate.i && t - blindHintGate.t >= K.HINT_GAP) {
+          if (!g.hintsShown.blind) { hint('blind'); dashHintGate = c.index; }
+          else if (K.COVER_MODE && dashHintGate != null && c.index > dashHintGate) hint('dash');
+        }
+      }
+      // 殘響掩護版：窄巷的暗殺提示之後隔 HINT_GAP 秒，等節奏快起來（被看見最危險的時候）才教屏息
+      if (K.COVER_MODE && g.zone === 3) {
+        if (breathHintAt == null) breathHintAt = t;
+        if (!blind && p > K.HIGH_P && t - breathHintAt >= K.HINT_GAP) hint('breath');
       }
       if (c.alertBlind && blind && g.panic.count > 0) hint('alertBlind');
       if (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN) hint('fake');   // 第一次假驟降時說明
