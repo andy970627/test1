@@ -1158,7 +1158,7 @@ function newGame() {
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
-  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
+  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
   resetActionFx(); S.lastPrint = null;
   for (const P of S.prints) { P.life = 0; P.tier = 0; P.m.visible = false; }
   $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
@@ -1175,6 +1175,7 @@ function retryZone() {
   if (!game) return startFromTop();
   if (!actx) makeAudio(curT);
   game.retry();                                  // 規則：從這一區開頭重來（前區已放倒的衛兵維持）
+  HW.gate = null;                                // 同伴「就是現在」的閘門跟規則一起重算
   if (TEL && TEL.active()) { try { TEL.event('retry', { zone: game.zone }); } catch (e) {} tel.phase = game.phase; }
   const L = HW.lastLadder;
   if (L && performance.now() - L.at < 15000) { clearHints(); queueHint(L.a); }
@@ -1817,6 +1818,11 @@ function caption(who, text, ms) {
   el.style.opacity = 1;
   clearTimeout(HW.capTimer); HW.capTimer = setTimeout(() => { el.style.opacity = 0; }, ms || 1800);
 }
+// 同伴教學在哪一區（M9 教學重排；對照 risset.js enterZone 的教學順序）：
+//   殘響掩護版：區 2 第一個掩護窗教最響的一擊（「就是現在」），區 3 之後節奏快時教屏息（「別動」）
+//   舊版：兩個都在區 1（木馬腹中）
+const teachNowZone = () => (coverMode() ? 2 : 1);
+const teachBreathZone = () => (coverMode() ? 3 : 1);
 function worldHints(t) {
   const g = game;
   let s = null;
@@ -1826,12 +1832,16 @@ function worldHints(t) {
   for (const q of s.guards) HW.sigBy[q.id] = q;
   const c = g.cycle;
   // 屏息：衛兵靠近、節奏正往最快走 → 同伴倒吸一口氣、壓低聲音說「別動」，手從畫面邊緣抓住你的手臂
-  if (g.zone === 1 && s.breathWarn > .45 && t - HW.gaspAt > 7 && (s.blindIn == null || s.blindIn > 1.1)) {
+  if (g.zone === teachBreathZone() && s.breathWarn > .45 && t - HW.gaspAt > 7 && (s.blindIn == null || s.blindIn > 1.1)) {
     HW.gaspAt = t; HW.handKick = 1;
     audio.cue('companionGasp'); caption('身旁的同伴壓低聲音', '別動。');
   }
-  // 掩護窗前：前兩次，同伴在時機到來前低聲說「就是現在」，說完正好接上（殘響掩護版是最響的那一擊，舊版是鼓聲停下）。字幕不提「斷」，兩版通用
-  if (g.zone === 1 && HW.nowN < 2 && !g.panic.active && !c.nextFake && s.blindIn != null && s.blindIn < .98 && s.blindIn > .68 && HW.nowCycle !== c.index && t - HW.gaspAt > 1.5) {
+  // 掩護窗前：前兩次，同伴在時機到來前低聲說「就是現在」，說完正好接上。字幕不提「斷」，兩版通用。
+  // 殘響掩護版在區 2，而且要和規則的「最響的一擊」提示落在同一個掩護窗：規則的閘門是「進區那個循環之後、
+  //   而且進區滿 HINT_GAP 秒」的第一個窗（risset.js blindHintGate），這裡用同樣的條件估下一個窗；第二次接著下一窗（衝刺提示那一窗）
+  if (coverMode() && g.zone === teachNowZone() && !HW.gate) HW.gate = { i: c.index, t };
+  const nowGate = !coverMode() || (HW.gate && s.blindIn != null && c.index + 1 > HW.gate.i && t + s.blindIn - HW.gate.t >= num(K().HINT_GAP, 4));
+  if (g.zone === teachNowZone() && nowGate && HW.nowN < 2 && !g.panic.active && !c.nextFake && s.blindIn != null && s.blindIn < .98 && s.blindIn > .68 && HW.nowCycle !== c.index && t - HW.gaspAt > 1.5) {
     HW.nowCycle = c.index; HW.nowN++;
     audio.cue('whisperNow'); caption('同伴低聲', '就是現在。', 2000);
   }
@@ -1864,9 +1874,9 @@ const RING_MOON = new THREE.Color(0xdce6ff), RING_DARK = new THREE.Color(0x1c1c2
 const PRINT_COL = [0xffc070, 0xff5a3c, 0xb070e0, 0x6aa8ff];   // 平常（暖黃）、追殺合拍第 1／2／3 步（紅、紫、藍）
 function hintVisuals(dt) {
   const g = game, s = HW.sig, aid = VIS.aid, blind = !!(g.cycle && g.cycle.blind);
-  // 同伴的手：屏息警告越強越伸進畫面（只在木馬腹中）
+  // 同伴的手：屏息警告越強越伸進畫面（只在教屏息的那一區：舊版木馬腹中、殘響掩護版窄巷）
   HW.handKick = Math.max(0, HW.handKick - dt * .45);
-  const handT = g.zone === 1 && s ? Math.max(s.breathWarn * .8, HW.handKick) : 0;
+  const handT = g.zone === teachBreathZone() && s ? Math.max(s.breathWarn * .8, HW.handKick) : 0;
   HW.hand += (handT - HW.hand) * Math.min(1, dt * 6);
   const hEl = $('hand'), hv = HW.hand * aid;
   hEl.style.opacity = Math.min(1, hv * 1.4).toFixed(3);
