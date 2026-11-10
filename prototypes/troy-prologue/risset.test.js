@@ -8,7 +8,14 @@ const K = R.T;
 const DT = 1 / 60;
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 /** 舊規則測試用：固定 10 秒循環（T.DYNAMIC = false），時間點和第 6.2 節一樣好算。 */
-const lvl = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false }, o.T || {}) }));
+/** 11/10 起 T.COVER_MODE 預設 true（殘響掩護）。既有測試是舊盲區版的回歸測試，一律用 COVER_MODE = false；新版另外寫（檔尾）。 */
+const OLD = { COVER_MODE: false };
+/** 舊模式的提示文字（OH／OL 是預設常數產生的，現在是殘響掩護版）。 */
+const OH = R.hintsFor(Object.assign({}, R.T, OLD));
+const OL = R.hintLadderFor(Object.assign({}, R.T, OLD));
+const lvl = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false }, OLD, o.T || {}) }));
+/** 舊盲區版、動態循環（原本直接呼叫 R.createLevel 的測試）。 */
+const dynLvl = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({}, OLD, o.T || {}) }));
 
 /** 從 from 跑到 to（每幀 DT），inputFn(g, t) 回傳該幀輸入。 */
 function run(g, from, to, inputFn) {
@@ -27,6 +34,7 @@ function solo(g, id, x, z, yaw) {
 }
 const place = (g, x, z) => { g.player.x = x; g.player.z = z; };
 const sfx = (g) => g.drain().filter((e) => e.type === 'sfx').map((e) => e.a);
+const moveHighTwice = (g, t, input) => { g.step(t, {}); g.step(t + DT, input || { mx: 1 }); g.step(t + DT * 2, input || { mx: 1 }); };
 
 // ---------------- 相位、盲區、感知半徑、低音 ----------------
 
@@ -56,11 +64,16 @@ test('相位與盲區：p = ((t − t0)/T) mod 1，每個循環開頭 BLIND_LEN�
   assert.equal(g.cycle.desync, true, 'p > 0.8 時畫面要延遲加雜訊');
 });
 
-test('感知半徑 r(p) = 2 + 8p²，警戒 ×1.3', () => {
-  assert.ok(near(R.radiusAt(0), 2));
-  assert.ok(near(R.radiusAt(0.5), 4));
-  assert.ok(near(R.radiusAt(1), 10));
-  assert.ok(near(R.radiusAt(0.5, true), 5.2));
+test('11/09 4A 常數：ESCAPE_STILL、R_BASE、R_GAIN 與新增常數存在且有限', () => {
+  assert.equal(K.ESCAPE_STILL, 6);
+  assert.equal(K.R_BASE, 3);
+  assert.equal(K.R_GAIN, 10);
+  assert.ok(near(R.radiusAt(1, false, K), 13));
+  for (const key of ['DASH_HUNT', 'HUNT_STEP_ESCAPE', 'HUNT_SLOW_MUL', 'HUNT_SLOW_DUR', 'ALERTED_DURATION', 'ALERTED_SUSP', 'FIRE_BASE', 'FIRE_P_GAIN', 'FIRE_BLIND']) {
+    assert.ok(Number.isFinite(K[key]), `${key} 應存在且為有限數`);
+  }
+  assert.ok(near(R.radiusAt(0.5), 5.5));
+  assert.ok(near(R.radiusAt(0.5, true), 7.15));
 });
 
 test('低音拍點：最近一拍、±0.15 秒、下一拍', () => {
@@ -111,7 +124,7 @@ test('step 用絕對時間，每次最多推進 0.1 秒', () => {
 });
 
 test('開場字卡 → start 進入區 1', () => {
-  const g = R.createLevel();
+  const g = dynLvl();
   assert.equal(g.phase, 'intro'); assert.equal(g.zone, 0);
   g.step(0, {}); g.step(0.1, { mx: 1 });
   assert.equal(g.phase, 'intro');
@@ -125,7 +138,7 @@ test('開場字卡 → start 進入區 1', () => {
 
 test('開場：屏息提示和盲區提示不同時出；盲區提示等到下一個循環以後', () => {
   for (const startT of [0.2, 9.0]) { // 9.0：開始後 1 秒就是盲區，也不能馬上出
-    const g = R.createLevel();
+    const g = dynLvl();
     g.step(startT, {}); g.step(startT, { start: true });
     const blindHints = [];
     const t0 = startT;
@@ -137,7 +150,7 @@ test('開場：屏息提示和盲區提示不同時出；盲區提示等到下�
     assert.equal(breathAt, t0);
     while (t < 40) {
       t += DT; g.step(t, {});
-      for (const e of g.drain()) if (e.type === 'hint' && e.a === R.HINTS.blind) { blindHints.push(t); assert.ok(g.cycle.blind && g.cycle.index > i0, '在之後循環的盲區裡'); }
+      for (const e of g.drain()) if (e.type === 'hint' && e.a === OH.blind) { blindHints.push(t); assert.ok(g.cycle.blind && g.cycle.index > i0, '在之後循環的盲區裡'); }
     }
     assert.equal(blindHints.length, 1, '盲區提示出一次');
     assert.ok(blindHints[0] - t0 >= K.HINT_GAP, `start ${startT}：盲區提示在 ${blindHints[0]}`);
@@ -166,7 +179,7 @@ test('屏息：不能移動、最多 6 秒，超過就喘氣（大聲），放�
   assert.equal(g.player.breathing, true);
 });
 
-test('喘氣是大聲音：低頻時附近衛兵起疑，高頻時直接追殺', () => {
+test('喘氣是大聲音：低頻時附近衛兵起疑，高頻時先進高度警覺、再犯才追殺', () => {
   const g = lvl({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 12, 0); // 7 m 外，背對
   place(g, 25, 19);
@@ -180,27 +193,67 @@ test('喘氣是大聲音：低頻時附近衛兵起疑，高頻時直接追殺',
   place(h, 25, 19);
   h.step(1.5, {});
   run(h, 1.5, 7.6, () => ({ breath: true }));
+  assert.equal(q2.state, 'alerted');
+  h.step(7.6 + DT, { mx: 1 });
   assert.equal(q2.state, 'hunted');
   assert.equal(h.hunted, true);
 });
 
-test('高頻（p > 0.6）在衛兵範圍內移動 = 立刻追殺', () => {
+test('11/09 4A：高頻（p > 0.6）在衛兵範圍內第一次 move_high 只進高度警覺，再犯才追殺', () => {
   const g = lvl({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 22, 0); // 3 m，背對，靠聽覺
   place(g, 25, 19);
   g.step(7, {});
-  g.step(7 + DT, { mx: 1 });
+  g.step(7 + DT, { mx: 1 }); // 第一次：alerted
+  const ev = g.drain();
+  assert.equal(q.state, 'alerted');
+  assert.equal(g.hunted, false);
+  assert.equal(g.phase, 'play');
+  assert.equal(q.susp, K.ALERTED_SUSP);
+  assert.ok(ev.some((e) => e.type === 'sfx' && e.a === 'alerted'));
+  assert.ok(ev.every((e) => !(e.type === 'sfx' && e.a === 'hunt')));
+  g.step(7 + DT * 2, { mx: 1 }); // 再犯：hunt
   assert.equal(q.state, 'hunted');
   assert.equal(g.hunted, true);
   assert.equal(g.alarm, 1);
 });
 
-test('高頻時在範圍外移動、或屏息不動且不在視野內，都不會被發現', () => {
+test('11/10 4A 複審：起疑（安撫中）的衛兵在節奏最快時聽到喘氣，照舊直接追殺，不會降成高度警覺', () => {
   const g = lvl({ startZone: 2 });
-  const q = solo(g, 'g2a', 25, 27, 0); // 8 m
+  const q = solo(g, 'g2a', 25, 22, 0);
+  place(g, 25, 19);                                   // 站在他看得到的地方，等他起疑
+  let t = 1; g.step(t, {});
+  while (q.state === 'patrol' && t < 9) { t += DT; g.step(t, {}); }
+  assert.equal(q.state, 'suspicious');
+  g.drain();
+  let ev = [];
+  while (!ev.includes('gasp') && t < 30) { t += DT; g.step(t, { breath: true }); ev = ev.concat(sfx(g)); }
+  assert.ok(ev.includes('gasp'), '憋到喘氣');
+  assert.ok(g.cycle.p > K.HIGH_P || ev.includes('hunt'), `喘氣時 p = ${g.cycle.p}`);
+  assert.ok(ev.includes('hunt') && !ev.includes('alerted'), '起疑中喘氣 → 追殺，不是高度警覺');
+});
+
+test('11/09 4A：高度警覺持續時間到期會回巡邏，並發 alert_over', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 22, 0);
   place(g, 25, 19);
   g.step(7, {});
-  run(g, 7, 7.5, () => ({ mx: -1 })); // r(0.7..0.75) ≈ 5.9～6.5 < 8
+  g.step(7 + DT, { mx: 1 });
+  const out = [];
+  run(g, 7 + DT, 17.2, (gg, t) => { if (Math.abs(t - (7 + DT)) > 1e-9) out.push(...gg.drain()); return {}; });
+  out.push(...g.drain());
+  assert.equal(q.state, 'patrol');
+  assert.equal(q.susp, 0);
+  assert.equal(g.alerted, false);
+  assert.ok(out.some((e) => e.type === 'sfx' && e.a === 'alert_over'));
+});
+
+test('高頻時在範圍外移動、或屏息不動且不在視野內，都不會被發現', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 29, 0); // 10 m（11/09 4A 感知放遠後仍在範圍外）
+  place(g, 25, 19);
+  g.step(7, {});
+  run(g, 7, 7.5, () => ({ mx: -1 })); // r(0.7..0.75) ≈ 7.9～8.6 < 10
   assert.equal(q.state, 'patrol');
   q.x = 25; q.z = 22; // 3 m，背對（朝 −z 會看向玩家……改朝 +z）
   q.baseYaw = q.yaw = R.yawTo(0, 1);
@@ -252,7 +305,7 @@ test('盲區：感知是 0，貼著衛兵走也沒事', () => {
   assert.equal(q.susp, 0);
 });
 
-test('衝刺：只能在盲區、每個盲區一次，衝 3 公尺', () => {
+test('衝刺：盲區外無效、平常約 3 公尺；追殺中盲區約 6 公尺，dash 事件帶 hunt 旗標', () => {
   const g = lvl({ startZone: 2 });
   for (const q of g.guards) { q.state = 'down'; q.active = false; }
   place(g, 23, 19);
@@ -263,12 +316,27 @@ test('衝刺：只能在盲區、每個盲區一次，衝 3 公尺', () => {
   g.step(10.1, {});
   g.step(10.1 + DT, { dash: true, mx: 1 });
   assert.ok(near(g.player.x, 23 + 3 + K.WALK * DT, 1e-6));
-  assert.ok(sfx(g).includes('dash'));
+  {
+    const ev = g.drain().find((e) => e.type === 'sfx' && e.a === 'dash');
+    assert.ok(ev && ev.hunt === false);
+  }
   g.step(10.2, { dash: true, mx: 1 });
   assert.ok(g.player.x < 26.5, '同一個盲區不能衝第二次');
   g.step(20.1, {});
   g.step(20.1 + DT, { dash: true, mz: -1 });
   assert.ok(near(g.player.z, 19 - 3 - K.WALK * DT, 1e-6), '下一個盲區可以再衝');
+
+  const h = lvl({ startZone: 2 });
+  for (const q of h.guards) { q.state = 'down'; q.active = false; }
+  place(h, 23, 19);
+  h.hunted = true;
+  h.step(10.1, {});
+  h.step(10.1 + DT, { dash: true, mx: 1 });
+  assert.ok(Math.abs(h.player.x - (23 + K.DASH_HUNT + K.WALK * DT)) <= 0.1);
+  {
+    const ev = h.drain().find((e) => e.type === 'sfx' && e.a === 'dash');
+    assert.ok(ev && ev.hunt === true);
+  }
 });
 
 test('衝刺會被牆擋住', () => {
@@ -474,9 +542,8 @@ test('失敗原因：failReason 是一句完整、看得懂的話', () => {
   const h = lvl({ startZone: 2 });
   solo(h, 'g2a', 25, 23, 0);
   place(h, 25, 19);
-  h.step(7, {});
-  h.step(7 + DT, { mx: 0.1 }); // 高頻時動
-  run(h, 7 + DT, 10, () => ({}));
+  moveHighTwice(h, 7, { mx: 0.1 }); // 11/09 4A：第一次 alerted，第二次才追殺
+  run(h, 7 + DT * 2, 10, () => ({}));
   assert.equal(h.phase, 'fail');
   assert.match(h.failReason, /節奏最快時你動了，衛兵聽見了/);
   for (const v of Object.values(R.CAUSES)) assert.ok(/[一-鿿]/.test(v) && !/電影/.test(v));
@@ -504,14 +571,13 @@ test('機制 B：起疑時又有第二名衛兵起疑，一起算在同一輪安
 
 // ---------------- 追殺 ----------------
 
-test('追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
+test('11/09 4A 追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
   const g = lvl({ startZone: 2 });
   const q = solo(g, 'g2a', 17, 18, Math.PI); // 南側拱廊（z ≥ 24）以北 6 m
   place(g, 17, 24.3); // 已在陰影邊緣
-  g.step(9.5, {});
-  g.step(9.5 + DT, { mz: 1 }); // 高頻時移動：被聽到
+  moveHighTwice(g, 9.5, { mz: 1 }); // 11/09 4A：第二次 move_high 才追殺
   assert.equal(g.hunted, true);
-  let t = run(g, 9.5 + DT, 10.1, () => ({ breath: true }));
+  let t = run(g, 9.5 + DT * 2, 10.1, () => ({ breath: true }));
   g.step(t + DT, { dash: true, mz: 1 }); t += DT; // 盲區裡往陰影深處衝
   assert.ok(g.player.z > 27);
   t = run(g, t, t + K.ESCAPE_STILL - 0.3, (gg) => ({ breath: gg.player.breathT < 5 && gg.cycle.p > 0.5 }));
@@ -524,31 +590,87 @@ test('追殺：躲進陰影、一整個循環不動 → 擺脫', () => {
   assert.ok(sfx(g).includes('escape'));
 });
 
-test('追殺：在陰影裡亂動會被聽到，撐不住的計時歸零', () => {
+test('11/09 4A 追殺：在陰影裡亂動會被聽到，撐不住的計時歸零', () => {
   const g = lvl({ startZone: 2 });
   solo(g, 'g2a', 17, 16, Math.PI);
   place(g, 17, 24.3);
-  g.step(9.5, {});
-  g.step(9.5 + DT, { mz: 1 });
-  run(g, 9.5 + DT, 10.1, () => ({ breath: true }));
+  moveHighTwice(g, 9.5, { mz: 1 });
+  run(g, 9.5 + DT * 2, 10.1, () => ({ breath: true }));
   g.step(10.1 + DT, { dash: true, mz: 1 });
-  run(g, 10.1 + DT, 13, () => ({}));
+  let t = run(g, 10.1 + DT, 13, () => ({}));
   assert.equal(g.phase, 'play');
   assert.ok(g.stillT > 2);
-  g.step(13 + DT, { mx: 0.2 });
-  assert.equal(g.stillT, 0);
+  // 4A：追殺衝刺是 DASH_HUNT（6 m），衝完已在聽覺半徑外（這正是生路）。
+  // 原地不動等相位升高、追殺感知半徑 r(p) 蓋過距離，再動一下，才是「在陰影裡亂動」的情境。
   const q = g.guards.find((x) => x.id === 'g2a');
+  const dist = () => Math.hypot(q.x - g.player.x, q.z - g.player.z);
+  while (R.radiusAt(g.cycle.p, true, g.T) <= dist() + 0.2) { t += DT; g.step(t, {}); }
+  assert.ok(g.hunted && g.stillT > 2 && g.stillT < K.ESCAPE_STILL, '還在追殺、還沒撐到擺脫');
+  g.step(t + DT, { mx: 0.2 });
+  assert.equal(g.stillT, 0);
   assert.ok(Math.hypot(q.lastKnown.x - g.player.x, q.lastKnown.z - g.player.z) < 0.1, '動了會被聽到，衛兵知道你在哪');
+});
+
+test('11/09 4A：追殺中連續 step_masked 會觸發 hunt_step／hunt_slip，並在 3 秒內減速', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 17, 5, 0);
+  place(g, 17, 22);
+  q.state = 'hunted'; q.lastKnown = { x: g.player.x, z: g.player.z }; g.hunted = true;
+  g.step(11, {});
+  const maskedTimes = [];
+  for (const b of R.beatsBetween(11.2, 16, g, { minGain: K.MASK_GAIN })) {
+    if (!maskedTimes.length || b.t - maskedTimes[maskedTimes.length - 1] > K.STEP_GAP * K.STEP_GAP_MIN + 0.02) maskedTimes.push(b.t);
+    if (maskedTimes.length >= 3) break;
+  }
+  assert.equal(maskedTimes.length, 3, '要能找到三個可用拍點');
+  const got = [];
+  for (const bt of maskedTimes) {
+    g.step(bt - DT, {});
+    g.step(bt, { mx: 0.2 });
+    const ev = g.drain();
+    assert.ok(ev.some((e) => e.type === 'sfx' && e.a === 'step_masked'), `t=${bt}`);
+    got.push(...ev.filter((e) => e.type === 'sfx' && (e.a === 'hunt_step' || e.a === 'hunt_slip')));
+  }
+  assert.deepEqual(got.filter((e) => e.a === 'hunt_step').map((e) => e.index), [1, 2, 3]);
+  assert.equal(got.filter((e) => e.a === 'hunt_slip').length, 1);
+
+  const t0 = maskedTimes[2] + 0.05;
+  g.step(t0, {});
+  const z0 = q.z;
+  run(g, t0, t0 + 1);
+  const slowV = Math.abs(q.z - z0) / 1;
+  assert.ok(Math.abs(slowV - K.HUNT_SPEED * K.HUNT_SLOW_MUL) <= 0.15, `slow=${slowV}`);
+  run(g, t0 + 1, t0 + K.HUNT_SLOW_DUR + 0.2);
+  const z2 = q.z;
+  run(g, t0 + K.HUNT_SLOW_DUR + 0.2, t0 + K.HUNT_SLOW_DUR + 1.2);
+  const normalV = Math.abs(q.z - z2) / 1;
+  assert.ok(Math.abs(normalV - K.HUNT_SPEED) <= 0.2, `normal=${normalV}`);
+});
+
+test('11/09 4A：追殺中 step_loud 會把 huntSteps 歸零', () => {
+  const g = lvl({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 5, 0);
+  place(g, 25, 19);
+  q.state = 'hunted'; q.lastKnown = { x: g.player.x, z: g.player.z }; g.hunted = true;
+  g.huntSteps = 2;
+  const loud = R.beatsBetween(2, 5, g, { minGain: K.MASK_GAIN });
+  let t0 = null;
+  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > K.STEP_WIN * 2 + 0.02) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
+  assert.ok(t0 != null);
+  g.step(t0 - DT, {});
+  g.step(t0, { mx: 0.15 });
+  const ev = g.drain();
+  assert.ok(ev.some((e) => e.type === 'sfx' && e.a === 'step_loud'));
+  assert.equal(g.huntSteps, 0);
 });
 
 test('追殺：被追到 1 公尺內 → 失敗', () => {
   const g = lvl({ startZone: 2 });
   solo(g, 'g2a', 25, 23, 0);
   place(g, 25, 19);
-  g.step(7, {});
-  g.step(7 + DT, { mx: 0.1 });
+  moveHighTwice(g, 7, { mx: 0.1 });
   assert.equal(g.hunted, true);
-  run(g, 7 + DT, 10, () => ({}));
+  run(g, 7 + DT * 2, 10, () => ({}));
   assert.equal(g.phase, 'fail');
   assert.match(g.failReason, /追上/);
 });
@@ -566,13 +688,16 @@ test('追殺中不能離開這一區', () => {
   assert.ok(g.drain().some((e) => e.type === 'hint' && /甩掉/.test(e.a)));
 });
 
-test('木馬腹中被發現 = 立刻失敗（衛兵會叫人）', () => {
+test('11/09 4A 木馬腹中：第一次 move_high 只進高度警覺，再犯才失敗', () => {
   const g = lvl({ startZone: 1 });
   const q = g.guards.find((x) => x.id === 'g1');
   assert.equal(q.active, true);
   g.step(7, {});
   q.x = 6; q.z = 15;
   g.step(7 + DT, { mx: 1 });
+  assert.equal(g.phase, 'play');
+  assert.equal(q.state, 'alerted');
+  g.step(7 + DT * 2, { mx: 1 });
   assert.equal(g.phase, 'fail');
   assert.match(g.failReason, /木馬/);
 });
@@ -613,13 +738,15 @@ test('城門：低頻（p ≤ 0.5）按住 interact 累積，高頻按住發出�
   assert.ok(near(g.gate.progress, 5, 0.05));
 });
 
-test('城門：高頻推門閂是大聲音，附近衛兵直接追殺', () => {
+test('11/09 4A 城門：高頻推門閂是大聲音，附近衛兵先高度警覺、再犯轉追殺', () => {
   const g = lvl({ startZone: 4 });
   const q = solo(g, 'g4b', 52, 15 - 3, 0);
   const L = g.level.gate.latch;
   place(g, L.x - 0.5, L.z);
   g.step(7, {});
   g.step(7 + DT, { interact: true });
+  assert.equal(q.state, 'alerted');
+  g.step(7 + DT + K.LATCH_NOISE_GAP + 0.02, { interact: true });
   assert.equal(q.state, 'hunted');
 });
 
@@ -641,7 +768,7 @@ test('城門：累積 GATE_NEED（7）秒的低頻推門 → 城門打開、過�
   const Tg = R.cycleTargetFor({ dist: 4, zone: 4 }, K);
   assert.ok(K.GATE_NEED / (K.GATE_LOW_P * Tg) <= 4, `需要 ${K.GATE_NEED / (K.GATE_LOW_P * Tg)} 個循環`);
   // 動態循環、沒有衛兵：實際跑一次，從開始推到開門不超過 4 個循環
-  const h = R.createLevel({ startZone: 4 });
+  const h = dynLvl({ startZone: 4 });
   for (const q of h.guards) { q.state = 'down'; q.active = false; }
   place(h, L.x, L.z + 0.5);
   h.step(0, {});
@@ -697,9 +824,9 @@ test('從區 3 走進區 4：玩家移到區 4 的起點（暗處），和重來
   g.phase = 'fail';
   g.retry();
   assert.deepEqual({ x: g.player.x, z: g.player.z }, enterAt);
-  // 離巡邏線夠遠：低頻時（p ≤ 0.5）每名區 4 衛兵的路線點都在 r(0.5) 外
+  // 離巡邏線夠遠：低頻時（p 約 0.3）每名區 4 衛兵的路線點都在感知半徑外
   for (const d of g.level.guards.filter((q) => q.zone === 4)) {
-    for (const pt of d.route) assert.ok(Math.hypot(pt.x - s.x, pt.z - s.z) > R.radiusAt(0.5), d.id);
+    for (const pt of d.route) assert.ok(Math.hypot(pt.x - s.x, pt.z - s.z) > R.radiusAt(0.3), d.id);
   }
 });
 
@@ -712,7 +839,7 @@ test('retry：在城門重來，門閂進度歸零', () => {
 });
 
 test('提示：每個機制只提示一次，而且是繁體中文、不提電影', () => {
-  for (const [k, v] of Object.entries(R.HINTS)) {
+  for (const [k, v] of Object.entries(OH)) {
     assert.ok(/[一-鿿]/.test(v), k);
     assert.ok(!/電影|諾蘭|奧德賽/.test(v), k);
   }
@@ -759,7 +886,7 @@ test('8.1 目標循環長度：沒人 12 秒、靠近變短（最短 6）、警�
 });
 
 test('8.1 遊戲中：targetT 跟著衛兵距離與狀態走；實際長度平滑逼近，每秒最多 ±20%', () => {
-  const g = R.createLevel({ startZone: 2 });
+  const g = dynLvl({ startZone: 2 });
   const q = solo(g, 'g2a', 15, 3, 0);
   place(g, 25, 26); // 離衛兵 > 20 m
   g.step(1, {});
@@ -778,7 +905,7 @@ test('8.1 遊戲中：targetT 跟著衛兵距離與狀態走；實際長度平�
   const T5 = g.cycle.T;
   assert.ok(T5 < 10.8 * 0.8 && T5 >= 10.8 * Math.exp(-0.2 * 5) - 0.01, `5 秒後 T=${T5}`);
   // 一次跳很大（例如 2 秒沒畫面）也一樣受限：分段平滑
-  const g2 = R.createLevel({ startZone: 2 });
+  const g2 = dynLvl({ startZone: 2 });
   for (const x of g2.guards) { x.state = 'down'; x.active = false; }
   g2.step(0, {});
   const a = g2.cycle.T;
@@ -793,7 +920,7 @@ test('8.1 遊戲中：targetT 跟著衛兵距離與狀態走；實際長度平�
 test('8.1 遊戲中：警戒目標 4 秒、追殺目標 3 秒', () => {
   const { g } = panicSetup();
   assert.equal(g.panic.active, true);
-  const h = R.createLevel({ startZone: 3 });
+  const h = dynLvl({ startZone: 3 });
   const q = solo(h, 'g3a', 38, 23, 0);
   place(h, 38, 24.2);
   h.step(3, {}); h.step(3.02, { takedown: true }); h.step(3.04, {});
@@ -805,7 +932,7 @@ test('8.1 遊戲中：警戒目標 4 秒、追殺目標 3 秒', () => {
 });
 
 test('8.1 相位累加 p += dt ÷ T；跳回 0 時 index + 1；anchor 是本幀的 {t, p, T}', () => {
-  const g = R.createLevel({ startZone: 1 });
+  const g = dynLvl({ startZone: 1 });
   g.step(5, {});
   let t = 5;
   for (let i = 0; i < 2000; i++) {
@@ -841,7 +968,7 @@ test('8.1 盲區固定 0.6 秒：T = 3、6、12 都一樣；T 正在變化時也
     for (const L of lens) assert.ok(Math.abs(L - 0.6) <= dt + 1e-9, `T=${P}：盲區 ${L} 秒`);
   }
   // 動態：一開始很遠（12 秒），衛兵瞬移到身邊，T 一路縮短
-  const g = R.createLevel({ startZone: 2 });
+  const g = dynLvl({ startZone: 2 });
   for (const x of g.guards) { x.state = 'down'; x.active = false; }
   g.step(0, {});
   const T0 = g.cycle.T;
@@ -872,7 +999,7 @@ test('8.1 警戒時：循環開頭的盲區暫停，改成兩個低音拍正中�
   const s0 = q.susp;
   run(g, m2 - 0.28, m2 + 0.28, () => ({ mx: 0.3 }));
   assert.equal(q.state, 'suspicious'); assert.equal(q.susp, s0);
-  assert.ok(g.drain().some((e) => e.type === 'hint' && e.a === R.HINTS.alertBlind));
+  assert.ok(g.drain().some((e) => e.type === 'hint' && e.a === OH.alertBlind));
   // 循環剛跳回 0（t = 10.0）時不算盲區
   const h = lvl({ startZone: 3 });
   solo(h, 'g3a', 38, 23, 0);
@@ -940,6 +1067,52 @@ test('R1 追殺 5 層：交接連續（第 k 層 p→1 ＝ 第 k+1 層 p→0）�
 
 const fakeGame = (an, extra) => Object.assign({ T: K, cycle: { anchor: an }, hunted: false, panic: { active: false }, bass: { anchor: 0, period: 2.4 } }, extra || {});
 
+test('11/10 fireBrightness(game)：亮度跟實際速度 danger 走；舊模式盲區壓暗到 FIRE_BLIND', () => {
+  const span = K.CYCLE_FAR - K.CYCLE_HUNT;
+  const at = (len, blind, cover) => R.fireBrightness({ T: Object.assign({}, K, { COVER_MODE: cover }), cycle: { T: len, blind } });
+  for (const cover of [true, false]) {
+    assert.ok(near(at(K.CYCLE_FAR, false, cover), K.FIRE_BASE), '附近沒人（最慢）= FIRE_BASE');
+    assert.ok(near(at(K.CYCLE_HUNT, false, cover), Math.min(1, K.FIRE_BASE + K.FIRE_P_GAIN)), '追殺（最快）= FIRE_BASE + FIRE_P_GAIN');
+    assert.ok(near(at(K.CYCLE_FAR - span / 2, false, cover), K.FIRE_BASE + K.FIRE_P_GAIN / 2), '中間線性');
+    assert.ok(near(at(20, false, cover), K.FIRE_BASE) && near(at(1, false, cover), 1), '超出範圍夾住');
+  }
+  assert.ok(near(at(6, true, false), K.FIRE_BLIND), '舊模式：盲區壓暗');
+  assert.ok(near(at(6, true, true), at(6, false, true)), '殘響掩護：掩護窗不壓暗');
+  // 跑一局：舊模式盲區幀 = FIRE_BLIND；game.danger 與 game.fire 一致
+  const g = lvl({ startZone: 2 });
+  g.step(10.1, {});
+  assert.equal(g.cycle.blind, true);
+  assert.ok(near(g.fire, K.FIRE_BLIND));
+  assert.ok(near(g.danger, (K.CYCLE_FAR - g.cycle.T) / span));
+});
+
+test('11/09 4A：blindWindows 匯出一般盲區、nextFake 與警戒 alert 盲區', () => {
+  const an = { t: 0, p: 0, T: 10, index: 0, start: 0 };
+  const G = fakeGame(an, { cycle: { anchor: an, index: 0, p: 0, T: 10, start: 0, fake: false, nextFake: false }, panic: { active: false } });
+  const ws = R.blindWindows(0, 30, G);
+  assert.deepEqual(ws.map((w) => [w.from, w.to, w.kind]), [[0, 0.6, 'blind'], [10, 10.6, 'blind'], [20, 20.6, 'blind']]);
+
+  const F = fakeGame(an, { cycle: { anchor: an, index: 0, p: 0, T: 10, start: 0, fake: false, nextFake: true }, panic: { active: false } });
+  const wf = R.blindWindows(0, 30, F);
+  assert.deepEqual(wf.map((w) => [w.from, w.to]), [[0, 0.6], [20, 20.6]]);
+
+  const A = fakeGame(an, { panic: { active: true }, bass: { anchor: 0, period: 2.4 } });
+  const wa = R.blindWindows(0, 8, A);
+  assert.ok(wa.length >= 3 && wa.every((w) => w.kind === 'alert'));
+});
+
+test('11/09 4A：blindWindows 與逐幀 cycle.blind 取樣一致（0.05 秒）', () => {
+  const g = lvl({ startZone: 2, t0: 0 });
+  for (const q of g.guards) { q.state = 'down'; q.active = false; }
+  const ws = R.blindWindows(0, 30, g);
+  assert.deepEqual(ws.map((w) => [w.from, w.to]), [[0, 0.6], [10, 10.6], [20, 20.6]]);
+  for (let t = 0; t < 30; t += 0.05) {
+    g.step(t, {});
+    const byWin = ws.some((w) => t >= w.from - 1e-9 && t < w.to - 1e-9);
+    assert.equal(g.cycle.blind, byWin, `t=${t.toFixed(2)}`);
+  }
+});
+
 test('8.4 beatsBetween：依 anchor 外推，回傳 [a, b) 內的拍點時間與層別', () => {
   const an = { t: 100, p: 0.25, T: 8, index: 3 };
   const G = fakeGame(an);
@@ -980,7 +1153,7 @@ test('8.4 beatsBetween：依 anchor 外推，回傳 [a, b) 內的拍點時間與
 });
 
 test('8.4 beatsBetween 讀遊戲物件：和本幀 cycle 一致', () => {
-  const g = R.createLevel({ startZone: 1 });
+  const g = dynLvl({ startZone: 1 });
   g.step(3, {}); g.step(3.5, {});
   const c = g.cycle;
   const bs = R.beatsBetween(3.5, 4.0, g, { includeBlind: true, includeQuiet: true });
@@ -1012,7 +1185,7 @@ test('8.3 stepMasked：響亮拍點 ±0.08 秒內被蓋過，太小聲的層不�
 
 test('8.3 腳步跟著鼓走：起步那一步照 stepMasked 判，之後每步對齊下一個可聽拍（beatT），沒拍才照 STEP_GAP × 1.6 落步出聲', () => {
   assert.equal(K.STEP_GAP, 0.45); assert.equal(K.STEP_GAP_MIN, 0.6); assert.equal(K.STEP_GAP_MAX, 1.6);
-  const g = R.createLevel({ startZone: 2 });
+  const g = dynLvl({ startZone: 2 });
   for (const q of g.guards) { q.state = 'down'; q.active = false; }
   place(g, 14, 22);
   g.step(1, {}); g.drain();
@@ -1106,9 +1279,10 @@ test('8.3 不合拍的腳步：2.5 m 內的衛兵疑心 + SUSP_STEP；合拍的�
     else { if (ev.length) masked++; assert.ok(near(q.susp, base, 1e-9), `t=${t}：${q.susp}`); }
   }
   assert.ok(loud >= 1 && masked >= 1, `loud ${loud} masked ${masked}`);
-  // 3 m 外（r(p) 也到不了）：不合拍也聽不到
+  // r(p) 與 STEP_R 都到不了的距離：不合拍也聽不到（距離由常數推算；4A 放大 R_BASE／R_GAIN 後 3.2 m 已在 r 內）
   const h = lvl({ startZone: 2 });
-  const q2 = solo(h, 'g2a', 25, 22.2, Math.PI);
+  const farD = Math.max(K.STEP_R, R.radiusAt(2.8 / K.CYCLE, false, h.T)) + 0.4;
+  const q2 = solo(h, 'g2a', 25, 19 + farD, Math.PI);
   place(h, 25, 19);
   h.step(0.7, {}); h.drain();
   let n = 0;
@@ -1154,16 +1328,16 @@ test('8.4 門閂每推進 1/8 發 latch_step（index 0～7），推滿正好 8 �
 });
 
 test('8.2 visualAid：區 0、1 = 1，區 2 = 0.5，其後 0；opts.visualAid 可以覆寫，執行中也能改', () => {
-  assert.equal(R.createLevel().visualAid, 1);
+  assert.equal(dynLvl().visualAid, 1);
   const want = { 1: 1, 2: 0.5, 3: 0, 4: 0 };
   for (const z of [1, 2, 3, 4]) {
-    const g = R.createLevel({ startZone: z });
+    const g = dynLvl({ startZone: z });
     g.step(0, {});
     assert.equal(g.visualAid, want[z], '區 ' + z);
-    assert.equal(R.createLevel({ startZone: z, visualAid: 'on' }).visualAid, 1);
-    assert.equal(R.createLevel({ startZone: z, visualAid: 'off' }).visualAid, 0);
+    assert.equal(dynLvl({ startZone: z, visualAid: 'on' }).visualAid, 1);
+    assert.equal(dynLvl({ startZone: z, visualAid: 'off' }).visualAid, 0);
   }
-  const g = R.createLevel({ startZone: 2 });
+  const g = dynLvl({ startZone: 2 });
   g.step(0, {}); place(g, 30.5, 22); g.step(0.05, {});
   assert.equal(g.zone, 3); assert.equal(g.visualAid, 0, '進下一區跟著變');
   g.visualAidMode = 'on'; g.step(0.1, {});
@@ -1181,16 +1355,18 @@ test('8.2 visualAid：區 0、1 = 1，區 2 = 0.5，其後 0；opts.visualAid �
  *   窄巷：先摸到站崗衛兵背後，等盲區走近按 takedown。
  *   城門：低頻而且附近沒人時按住 interact，高頻時放手、需要就屏息。
  *   被追殺時躲進最近的陰影深處不動。
+ *   opts.cover（11/10 甲）：COVER_MODE 下多一條路——p > HIGH_P 時，只要範圍內沒有衛兵看得到下一步的位置，
+ *   就踩著鼓點走（起步只在可聽拍上；之後腳步自己跟著鼓走）。
  */
-function makeBot() {
+function makeBot(opts = {}) {
   const WP = {
     1: [{ x: 11, z: 15 }],
     2: [{ x: 14, z: 22 }, { x: 17, z: 26.5 }, { x: 28, z: 25.5 }, { x: 31, z: 22.5 }],
     3: [{ x: 34, z: 25.5 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
     4: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.5 }]
   };
-  let zone = -1, wi = 0, calmBeat = null;
-  return function (g) {
+  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false;
+  const inner = function (g) {
     const K = g.T, t = g.time, pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
     const inp = { mx: 0, mz: 0 };
     if (g.zone !== zone) { zone = g.zone; wi = 0; }
@@ -1237,7 +1413,18 @@ function makeBot() {
       const mg = q === tgt ? 0.25 : 0.6;
       return Math.hypot(q.x - nx, q.z - nz, pl.y || 0) > r(q, Math.min(1, p + 0.03)) + mg;
     });
-    const canMove = blind || (p <= 0.57 && safe);
+    // 殘響掩護：範圍內的衛兵都看不到下一步的位置（在陰影裡，或在視野外留 0.2 rad 餘裕）
+    const hiddenAt = (x, z) => g.level.shadows.some((s) => R.inRect(x, z, s));
+    const unseen = act.every((q) => {
+      const d = Math.hypot(q.x - nx, q.z - nz, pl.y || 0);
+      if (d > r(q, Math.min(1, p + 0.03)) + 0.6) return true;
+      if (hiddenAt(nx, nz)) return true;
+      const f = R.forward(q.yaw);
+      return R.angDiff(Math.atan2(nx - q.x, nz - q.z), Math.atan2(f.x, f.z)) > K.FOV + 0.2;
+    });
+    const coverStep = !!opts.cover && K.COVER_MODE && p > K.HIGH_P + 0.01 && unseen &&
+      (walkingPrev || R.stepMasked(t + 1 / 60, g)) && act.every((q) => Math.hypot(q.x - nx, q.z - nz) > K.STEP_R);
+    const canMove = blind || (p <= 0.57 && safe) || coverStep;
     if (canMove) {
       inp.mx = ux; inp.mz = uz;
       if (blind && dw > 1.5 && !(tgt && g.zone === 3)) inp.dash = true;
@@ -1246,10 +1433,11 @@ function makeBot() {
     }
     return inp;
   };
+  return function (g) { const out = inner(g); walkingPrev = !!(out.mx || out.mz); return out; };
 }
 
 function playthrough(seed, t0, jitter) {
-  const g = R.createLevel({ t0, seed });
+  const g = dynLvl({ t0, seed });
   const bot = makeBot();
   const jr = R.mulberry32(seed * 7 + 3);
   let t = 2;
@@ -1320,9 +1508,9 @@ const allDown = (g) => { for (const q of g.guards) { q.state = 'down'; q.active 
 test('8.5 假驟降：常數；前兩區（木馬腹中、神殿廣場）不會出現', () => {
   assert.equal(K.FAKE_FROM_ZONE, 3);
   assert.equal(K.FAKE_EVERY, 4);
-  assert.equal(R.HINTS.fake, '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。');
+  assert.equal(OH.fake, '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。');
   for (const z of [1, 2]) for (const dyn of [false, true]) {
-    const g = allDown(dyn ? R.createLevel({ startZone: z, seed: 11 }) : lvl({ startZone: z, seed: 11 }));
+    const g = allDown(dyn ? dynLvl({ startZone: z, seed: 11 }) : lvl({ startZone: z, seed: 11 }));
     g.step(0, {});
     const { list } = handoffs(g, 0, 1500, 1 / 30);
     assert.ok(list.length > 100, `區 ${z}`);
@@ -1343,7 +1531,7 @@ test('8.5 假驟降：第 3 區起約每 4 個循環 1 次、不會連續；沒�
       if (h.fake) { assert.equal(h.blindFrames, 0, '假驟降沒有盲區'); assert.equal(h.pre, false, '假驟降前沒有 pre_blind'); }
       else { assert.ok(h.blindFrames > 0, '真的交接有盲區'); assert.equal(h.pre, true, '真的交接前有 pre_blind'); }
     }
-    const fh = hints.filter((x) => x.a === R.HINTS.fake);
+    const fh = hints.filter((x) => x.a === OH.fake);
     assert.equal(fh.length, 1, '提示只出一次');
     assert.equal(fh[0].idx, fakes[0].index, '在第一次假驟降時提示');
   }
@@ -1392,10 +1580,13 @@ test('8.5 假驟降：衛兵照常聽得到、衝刺沒有用', () => {
 
 test('8.5 假驟降：警戒、追殺中不抽；追殺開始時取消已抽中的', () => {
   const h = lvl({ startZone: 3, seed: 2 });
-  const q = solo(h, 'g3a', 38, 23, 0);
-  place(h, 33, 26);                                   // 先待在遠處
+  // 先待在遠處：等假驟降抽中時，衛兵連站著的呼吸聲都聽不到（r(1) × BREATH_HEAR 之外；4A 放大半徑後原本 5.8 m 不夠遠）
+  const q = solo(h, 'g3a', 45, 18, 0);
+  place(h, 33, 26);
+  assert.ok(Math.hypot(45 - 33, 18 - 26) > R.radiusAt(1, false, h.T) * K.BREATH_HEAR + 0.5);
   let u = 0; h.step(u, {});
   u = runUntil(h, u, (gg) => gg.cycle.nextFake && gg.cycle.p > 0.1 && gg.cycle.p < 0.5);
+  solo(h, 'g3a', 38, 23, 0);                          // 衛兵回到原位，玩家貼到他背後
   place(h, 38, 24.2);
   h.step(u + 0.01, { takedown: true });               // 盲區外按 → 起疑
   assert.equal(h.panic.active, true);
@@ -1415,19 +1606,19 @@ test('8.5 假驟降：警戒、追殺中不抽；追殺開始時取消已抽中�
 
 // ---------------- 2026-11-07 稽核修正：盲區前沿寬限、按鍵時間、假驟降尾音、盲區基準、提示數字 ----------------
 
-test('盲區前沿寬限：真盲區開始前 0.15 秒內移動不算 move_high、也不累積疑心；更早就算；假驟降前沒有寬限', () => {
+test('11/09 4A：盲區前沿寬限與 move_high（第一次只進高度警覺）', () => {
   assert.equal(K.BLIND_LEAD_GRACE, 0.15);
   // 固定 10 秒循環：盲區 10.0 起。9.86 動 → 寬限；9.8 動 → move_high
-  for (const [t0, hunted] of [[9.86, false], [9.99, false], [9.8, true], [9.6, true]]) {
+  for (const [t0, state] of [[9.86, 'patrol'], [9.99, 'patrol'], [9.8, 'alerted'], [9.6, 'alerted']]) {
     const g = lvl({ startZone: 2 });
     const q = solo(g, 'g2a', 25, 22, R.yawTo(0, 1));   // 3 m，面向 +z 背對玩家，靠聽覺
     place(g, 25, 19);
     g.step(t0 - DT, {});
     g.step(t0, { mx: 1 });
-    assert.equal(g.hunted, hunted, `t=${t0}`);
-    if (!hunted) assert.equal(q.susp, 0, '寬限裡移動不累積疑心');
+    assert.equal(q.state, state, `t=${t0}`);
+    if (state === 'patrol') assert.equal(q.susp, 0, '寬限裡移動不累積疑心');
   }
-  // 假驟降：下一次交接是假的 → 交接前 0.15 秒動照樣 move_high
+  // 假驟降：下一次交接是假的 → 交接前 0.15 秒動照樣 move_high（第一次 alerted）
   const f = lvl({ startZone: 3, T: { FAKE: false } });
   const q = solo(f, 'g3a', 38, 23, Math.PI);   // 面向 +z，玩家在他正前方 1.3 m
   place(f, 38, 24.3);
@@ -1436,7 +1627,7 @@ test('盲區前沿寬限：真盲區開始前 0.15 秒內移動不算 move_high�
   f.step(9.86, {});
   assert.ok(f.cycle.blindFrom > 19, '下一段盲區在再下一輪');
   f.step(9.88, { mx: 1 });
-  assert.equal(f.hunted, true, '假驟降前沒有寬限');
+  assert.equal(q.state, 'alerted', '假驟降前沒有寬限');
   void q;
 });
 
@@ -1536,7 +1727,7 @@ test('8.5 includeFakeTail：假驟降的循環多回傳交接處 2 拍尾音（k
 
 test('R2 盲區基準：beatsBetween 用 anchor.start 判盲區，T 在循環內變化時和 updateClock 一致', () => {
   // 動態循環，衛兵全關、強制追殺讓 T 從約 10.8 一路縮到 3：每個循環裡 T 都在變
-  const g = R.createLevel({ startZone: 2 });
+  const g = dynLvl({ startZone: 2 });
   for (const q of g.guards) { q.state = 'down'; q.active = false; }
   g.step(0, {});
   let t = 0, checked = 0, drift = 0;
@@ -1559,28 +1750,32 @@ test('R2 盲區基準：beatsBetween 用 anchor.start 判盲區，T 在循環內
   assert.ok(drift > 0.05, `用 p × T 反推的開頭和實際 start 最多差 ${drift.toFixed(3)} 秒（要夠大，測試才有意義）`);
 });
 
-test('提示文字裡的數字由常數生成，和 T 一致；改常數文字跟著變；不再寫「一整個循環」', () => {
-  const allowed = new Set([K.BREATH_MAX, K.CALM_NEED, K.CALM_TIMEOUT, K.ESCAPE_STILL, K.BLIND_LEN, K.BASS_PERIOD, K.TAKEDOWN_R].map(String));
+test('11/09 4A 提示文字：文字裡的數字由常數生成，和 T 一致；改常數文字跟著變；不再寫「一整個循環」', () => {
+  const allowed = new Set([K.BREATH_MAX, K.CALM_NEED, K.CALM_TIMEOUT, K.ESCAPE_STILL, K.BLIND_LEN, K.BASS_PERIOD, K.TAKEDOWN_R, K.ALERTED_DURATION, K.HUNT_STEP_ESCAPE].map(String));
   const texts = [];
-  for (const [k, v] of Object.entries(R.HINTS)) texts.push(['HINTS.' + k, v]);
-  for (const [k, v] of Object.entries(R.HINT_LADDER)) { texts.push(['LADDER.' + k + '.text', v.text]); texts.push(['LADDER.' + k + '.keys', v.keys]); }
+  for (const [k, v] of Object.entries(OH)) texts.push(['HINTS.' + k, v]);
+  for (const [k, v] of Object.entries(OL)) { texts.push(['LADDER.' + k + '.text', v.text]); texts.push(['LADDER.' + k + '.keys', v.keys]); }
   let found = 0;
   for (const [name, txt] of texts) {
     assert.ok(!/3D/.test(txt.replace('3D', '')) || true);
     for (const m of txt.replace(/3D/g, '').match(/\d+(\.\d+)?/g) || []) { found++; assert.ok(allowed.has(m), `${name} 裡的數字 ${m} 不在常數裡`); }
   }
   assert.ok(found >= 8, `抓到 ${found} 個數字`);
-  assert.ok(!/循環/.test(R.HINTS.hunted) && R.HINTS.hunted.includes(`不動 ${K.ESCAPE_STILL} 秒`));
-  assert.ok(R.HINTS.panic.includes(`${K.CALM_NEED} 次`) && !/四次/.test(R.HINTS.panic));
-  assert.ok(!/等鼓點密起來/.test(R.HINT_LADDER.step.keys) && /起步踩在鼓點上/.test(R.HINT_LADDER.step.keys), '腳步提示不再和屏息規則矛盾');
+  assert.ok(!/循環/.test(OH.hunted) && OH.hunted.includes(`不動 ${K.ESCAPE_STILL} 秒`));
+  assert.ok(OH.hunted.includes(`連續 ${K.HUNT_STEP_ESCAPE} 步`));
+  assert.ok(OH.alerted.includes(`${K.ALERTED_DURATION} 秒`));
+  assert.ok(OH.panic.includes(`${K.CALM_NEED} 次`) && !/四次/.test(OH.panic));
+  assert.ok(!/等鼓點密起來/.test(OL.step.keys) && /起步踩在鼓點上/.test(OL.step.keys), '腳步提示不再和屏息規則矛盾');
   // 改常數：文字跟著變（createLevel 也用改過的）
-  const K2 = Object.assign({}, K, { ESCAPE_STILL: 7, CALM_NEED: 3, BREATH_MAX: 5 });
+  const K2 = Object.assign({}, K, { ESCAPE_STILL: 7, CALM_NEED: 3, BREATH_MAX: 5, ALERTED_DURATION: 9, HUNT_STEP_ESCAPE: 4 });
   assert.ok(R.hintsFor(K2).hunted.includes('不動 7 秒'));
+  assert.ok(R.hintsFor(K2).hunted.includes('連續 4 步'));
+  assert.ok(R.hintsFor(K2).alerted.includes('9 秒'));
   assert.ok(R.hintLadderFor(K2).calm.keys.includes('對準 3 次') && R.hintLadderFor(K2).breath.keys.includes('約 5 秒'));
   assert.ok(R.ladderText('breath', 3, R.hintLadderFor(K2)).includes('約 5 秒'));
   const g = lvl({ startZone: 2, T: { ESCAPE_STILL: 7 } });
   solo(g, 'g2a', 25, 22, 0); place(g, 25, 19);
-  g.step(7, {}); g.step(7 + DT, { mx: 1 });
+  moveHighTwice(g, 7, { mx: 1 });
   assert.ok(g.drain().some((e) => e.type === 'hint' && e.a.includes('不動 7 秒')));
 });
 
@@ -1600,15 +1795,15 @@ test('暗示階梯：文字照設計文件 2.1 節「提示文字」欄；第 3 
     listen: '「戴上耳機，聽聲音從哪邊來。」',
     latch: '「節奏慢的時候才推，快的時候放手。」'
   };
-  assert.deepEqual(Object.keys(R.HINT_LADDER).sort(), Object.keys(want).sort());
+  assert.deepEqual(Object.keys(OL).sort(), Object.keys(want).sort());
   for (const [k, v] of Object.entries(want)) {
-    assert.equal(R.HINT_LADDER[k].text, v, k);
-    assert.equal(R.ladderText(k, 1), null, '第 1 階沒有文字');
-    assert.equal(R.ladderText(k, 2), v.slice(1, -1));
-    const l3 = R.ladderText(k, 3);
+    assert.equal(OL[k].text, v, k);
+    assert.equal(R.ladderText(k, 1, OL), null, '第 1 階沒有文字');
+    assert.equal(R.ladderText(k, 2, OL), v.slice(1, -1));
+    const l3 = R.ladderText(k, 3, OL);
     assert.ok(l3.startsWith(v.slice(1, -1)) && l3.length > v.length, k);
-    assert.ok(/空白鍵|W A S D|\bE\b|\bQ\b|滑鼠/.test(R.HINT_LADDER[k].keys), `${k} 的按鍵說明要寫出按鍵`);
-    assert.ok(!/電影|諾蘭|奧德賽/.test(R.HINT_LADDER[k].keys + v), k);
+    assert.ok(/空白鍵|W A S D|\bE\b|\bQ\b|滑鼠/.test(OL[k].keys), `${k} 的按鍵說明要寫出按鍵`);
+    assert.ok(!/電影|諾蘭|奧德賽/.test(OL[k].keys + v), k);
   }
   const g = lvl({ startZone: 1 });
   for (const k of Object.keys(want)) assert.deepEqual(g.hints[k], { fails: 0, level: 1, lastFail: -1e9 }, '一開始都在第 1 階');
@@ -1697,7 +1892,7 @@ test('暗示階梯：安撫失敗（按太急、錯拍）算安撫；高頻亂�
   place(h, 20, 22);
   h.step(7, {});
   h.step(7.1, { mx: 1 });
-  assert.equal(h.hunted, true);
+  assert.equal(h.guards.find((q) => q.id === 'g2a').state, 'alerted');
   assert.equal(h.hints.blind.fails, 1);
 });
 
@@ -1707,6 +1902,7 @@ test('暗示階梯：被背後的衛兵發現算「聽聲辨位」；轉身面�
   place(g, 20, 20); g.player.yaw = 0;
   g.step(7, { yaw: 0 });
   g.step(7.1, { yaw: 0, mx: 1 });
+  g.step(7.1 + DT, { yaw: 0, mx: 1 });
   assert.equal(g.hunted, true);
   assert.equal(g.hints.listen.fails, 1);
   const h = lvl({ startZone: 2 });
@@ -1728,7 +1924,7 @@ test('暗示階梯：不合拍的腳步被聽到算腳步；假驟降時動了�
   const loud = R.beatsBetween(1, 4, g, { minGain: K.MASK_GAIN });
   g.step(1.2, {});
   let t0 = null;
-  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > 0.3) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
+  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > K.STEP_WIN * 2 + 0.02) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
   assert.ok(t0 != null && t0 > 1.2);
   g.step(t0 - DT, {});
   g.step(t0, { mx: 0.15 });
@@ -1777,4 +1973,236 @@ test('hintSignals：屏息警告、可暗殺、背後有人、門閂旁的高低
   assert.deepEqual(Object.assign({}, R.hintSignals(h).latch, { d: 0 }), { near: true, low: true, d: 0 });
   h.step(7, {});
   assert.equal(R.hintSignals(h).latch.low, false);
+});
+
+// ---------------- 11/10 核心方向甲「殘響掩護」（COVER_MODE，docs/design/2026-11-10-core-direction-illusion.md 第 1 節） ----------------
+
+/** 殘響掩護版、固定 10 秒循環。 */
+const cvr = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false, COVER_MODE: true }, o.T || {}) }));
+/** 從 t 開始空跑到 cond(g, t) 成立為止（每幀 DT），回傳那時的 t。 */
+function idleUntil(g, t, cond, maxT) {
+  while (!cond(g, t + DT) && t < maxT) { t += DT; g.step(t, {}); }
+  assert.ok(t < maxT, '找不到符合條件的時刻');
+  return t;
+}
+
+test('11/10 甲：COVER_MODE 預設開；coverWindows 是 blindWindows 的別名；dangerOf 匯出', () => {
+  assert.equal(K.COVER_MODE, true);
+  assert.equal(R.coverWindows, R.blindWindows);
+  assert.equal(typeof R.dangerOf, 'function');
+  assert.equal(dynLvl().T.COVER_MODE, false, '測試用的舊版開關關得掉');
+});
+
+test('11/10 甲 第 1 條：每次交接都無縫，第 3、4 區也不抽假驟降（fake、nextFake 恆為 false）', () => {
+  for (const z of [3, 4]) {
+    for (const dyn of [false, true]) {
+      const g = allDown(dyn ? R.createLevel({ startZone: z, seed: 2 }) : cvr({ startZone: z, seed: 2 }));
+      let t = 0, cycles = 0, last = g.cycle.index, pre = 0;
+      g.step(t, {});
+      while (cycles < 40) {
+        t += 1 / 30; g.step(t, {});
+        assert.ok(!g.cycle.fake && !g.cycle.nextFake, `區 ${z}${dyn ? '（動態）' : ''}：t=${t.toFixed(2)} 出現假驟降`);
+        if (g.cycle.index !== last) { last = g.cycle.index; cycles++; }
+        pre += g.drain().filter((e) => e.a === 'pre_blind').length;
+      }
+      assert.ok(pre >= cycles - 1, '每一輪交接前都照常預告（掩護窗每輪都有）');
+    }
+  }
+});
+
+test('11/10 甲：時間窗一格都不搬——同樣條件下，cycle.blind 逐幀和舊版（關掉假驟降）完全一樣，blindWindows 也一樣', () => {
+  const a = allDown(cvr({ startZone: 2, t0: 1.3 }));
+  const b = allDown(lvl({ startZone: 2, t0: 1.3, T: { FAKE: false } }));
+  let t = 1.3; a.step(t, {}); b.step(t, {});
+  let blindFrames = 0;
+  while (t < 41.3) {
+    t += DT; a.step(t, {}); b.step(t, {});
+    assert.equal(a.cycle.blind, b.cycle.blind, `t=${t.toFixed(3)}`);
+    if (a.cycle.blind) blindFrames++;
+  }
+  assert.ok(blindFrames > 100, '有掩護窗');
+  assert.deepEqual(R.coverWindows(t, t + 30, a), R.blindWindows(t, t + 30, b));
+  const ws = R.coverWindows(t, t + 30, a);
+  assert.ok(ws.length >= 3 && ws.every((w) => near(w.to - w.from, K.BLIND_LEN, 1e-9) && w.kind === 'blind'), JSON.stringify(ws));
+});
+
+test('11/10 甲 第 2 條：節奏最快時在他背後踩著鼓點走，衛兵聽不出來（不進高度警覺）；舊版同樣走法會進', () => {
+  for (const cover of [true, false]) {
+    const g = cover ? cvr({ startZone: 2 }) : lvl({ startZone: 2, T: { FAKE: false } });
+    const q = solo(g, 'g2a', 25, 22, R.yawTo(0, 1));   // 面向 +z，背對玩家：只能靠耳朵
+    place(g, 25, 19);                                   // 3 m：在 r(p) 內、在 STEP_R（2.5 m）外
+    let t = 6.4; g.step(t, { breath: true });
+    // 等到 p > HIGH_P、而且下一幀起步正好踩在可聽拍上
+    t = idleUntil(g, t, (gg, tt) => gg.cycle.p > K.HIGH_P + 0.02 && R.stepMasked(tt, gg), 9);
+    g.drain();
+    const ev = [];
+    let dir = 1;
+    while (t < 9.6 && q.state === 'patrol') {
+      t += DT; g.step(t, { mx: dir });
+      if (g.player.x > 25.6) dir = -1; if (g.player.x < 24.4) dir = 1;
+      ev.push(...sfx(g));
+    }
+    assert.ok(R.radiusAt(g.cycle.p, false, g.T) > 3.2, '一直在感知範圍內');
+    if (cover) {
+      assert.ok(ev.filter((e) => e === 'step_masked').length >= 2, `有踩在鼓點上的腳步：${ev.join(' ')}`);
+      assert.ok(!ev.includes('step_loud'), '最快的時候鼓點很密，不會有出聲的腳步');
+      assert.equal(q.state, 'patrol', '耳朵被鼓聲騙過');
+      assert.ok(!ev.includes('alerted'));
+    } else {
+      assert.equal(q.state, 'alerted', '舊版：最快時在範圍內移動就被聽見');
+    }
+  }
+});
+
+test('11/10 甲 第 2 條：節奏最快時離拍起步（step_loud）→ 高度警覺；被看見照舊（踩在鼓點上也沒用）', () => {
+  // 出聲的腳步
+  const g = cvr({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 22, R.yawTo(0, 1));
+  place(g, 25, 19);
+  let t = 6.4; g.step(t, { breath: true });
+  t = idleUntil(g, t, (gg, tt) => gg.cycle.p > K.HIGH_P + 0.02 && !R.stepMasked(tt, gg), 9);
+  g.drain();
+  t += DT; g.step(t, { mx: 1 });
+  const ev = sfx(g);
+  assert.ok(ev.includes('step_loud'), ev.join(' '));
+  assert.ok(ev.includes('alerted') && q.state === 'alerted', '出聲的腳步才進高度警覺');
+  assert.equal(g.hunted, false, '不是直接追殺');
+  // 被看見：面對玩家、玩家不在陰影裡，踩著鼓點走也一樣進高度警覺
+  const h = cvr({ startZone: 2 });
+  const q2 = solo(h, 'g2a', 25, 22, 0);               // 面向 −z，看著玩家
+  place(h, 25, 19);
+  let u = 6.4; h.step(u, { breath: true });
+  assert.equal(h.player.hidden, false);
+  u = idleUntil(h, u, (gg, tt) => gg.cycle.p > K.HIGH_P + 0.02 && R.stepMasked(tt, gg), 9);
+  h.drain();
+  u += DT; h.step(u, { mx: 1 });
+  const ev2 = sfx(h);
+  assert.ok(ev2.includes('step_masked') && !ev2.includes('step_loud'), ev2.join(' '));
+  assert.equal(q2.state, 'alerted', '眼睛不能用鼓聲騙');
+});
+
+test('11/10 甲 第 3 條：掩護窗內感知仍為 0、衝刺有效；p ≤ HIGH_P 時和舊版相同（範圍內移動累積疑心）', () => {
+  const g = cvr({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 20.5, 0);              // 面對玩家 1.5 m
+  place(g, 25, 19);
+  g.step(9.99, { breath: true }); g.drain();
+  run(g, 9.99, 10.4, () => ({ mx: 0.3 }));
+  assert.equal(q.susp, 0, '掩護窗裡在他眼前走也沒事');
+  g.step(10.4 + DT, { dash: true, mx: 1 });
+  assert.ok(sfx(g).includes('dash'), '掩護窗裡可以衝刺');
+  // 慢的時候
+  const h = cvr({ startZone: 2 });
+  const q2 = solo(h, 'g2a', 25, 21, R.yawTo(0, 1));
+  place(h, 25, 19);
+  h.step(2, {}); h.drain();
+  run(h, 2, 2.5, (gg) => ({ mx: gg.player.x > 25.4 ? -1 : 1 }));
+  assert.ok(q2.susp > 0, 'p ≤ HIGH_P 在範圍內走動照舊累積疑心');
+});
+
+test('11/10 甲：火光跟實際速度走，掩護窗不壓暗；提示文字不再說「斷掉」，數字由常數生成', () => {
+  const g = cvr({ startZone: 2 });
+  g.step(10.1, {});
+  assert.equal(g.cycle.blind, true);
+  assert.ok(near(g.fire, K.FIRE_BASE + K.FIRE_P_GAIN * g.danger), '掩護窗：不壓暗');
+  assert.ok(g.fire > K.FIRE_BLIND);
+  // 動態循環：衛兵越近、循環越短，火光越亮；同一圈裡不隨相位掉回去
+  const d = R.createLevel({ startZone: 2 });
+  let t = 0; d.step(t, {});
+  const samples = [];
+  while (t < 30) { t += DT; d.step(t, {}); samples.push([d.cycle.T, d.fire]); }
+  for (const [len, f] of samples) assert.ok(near(f, R.fireBrightness({ T: d.T, cycle: { T: len } })), '亮度只看循環長度');
+  const H = R.hintsFor(K), L = R.hintLadderFor(K);
+  for (const s of [H.blind, H.dash, H.takedown, L.blind.text, L.blind.keys, L.takedown.text, L.takedown.keys]) assert.ok(!/斷/.test(s), s);
+  assert.ok(H.blind.includes(`約 ${K.BLIND_LEN} 秒`) && L.blind.keys.includes(`約 ${K.BLIND_LEN} 秒`));
+  assert.ok(R.hintsFor(Object.assign({}, K, { BLIND_LEN: 0.8 })).blind.includes('約 0.8 秒'), '改常數文字跟著變');
+  assert.ok(/斷/.test(OH.blind) && /斷/.test(OL.blind.text), '舊版文字保留');
+});
+
+// ---------------- 11/10 甲：程式玩家兩種模式各 50 局（N1 主動時間比例、通關率；只按前進鍵的通關率） ----------------
+
+/*
+ * N1（總綱第 7 節）：玩家「至少有一個會改變狀態的合法動作」的時間 ÷ 總時間。每幀照程式玩家當下的位置查，算主動的情況：
+ *   掩護窗（盲區）裡；p ≤ HIGH_P 而且不在任何衛兵的 r(p) 內；城門區站在門閂旁而且 p ≤ GATE_LOW_P；
+ *   COVER_MODE 另加：p > HIGH_P 而且 r(p) 內的衛兵都看不到你（在陰影裡或在視野外）——這時踩著鼓點走是合法動作。
+ *   起疑（安撫）、只能屏息或等待都算被動；只算 phase = 'play' 的幀。
+ */
+function activeNow(g) {
+  const K = g.T, pl = g.player, p = g.cycle.p;
+  if (g.cycle.blind) return true;
+  const act = g.guards.filter((q) => q.active);
+  if (g.panic.active) return false;
+  const rq = (q) => R.radiusAt(p, q.state !== 'patrol', K);
+  const d = (q) => Math.hypot(q.x - pl.x, q.z - pl.z, pl.y || 0);
+  if (g.zone === 4 && g.level.gate && Math.hypot(g.level.gate.latch ? g.level.gate.latch.x - pl.x : 1e9, g.level.gate.latch ? g.level.gate.latch.z - pl.z : 1e9) <= K.LATCH_R && p <= K.GATE_LOW_P) return true;
+  if (p <= K.HIGH_P) return act.every((q) => d(q) > rq(q));
+  if (!K.COVER_MODE) return false;
+  return act.every((q) => {
+    if (d(q) > rq(q) || pl.hidden) return true;
+    const f = R.forward(q.yaw);
+    return R.angDiff(Math.atan2(pl.x - q.x, pl.z - q.z), Math.atan2(f.x, f.z)) > K.FOV;
+  });
+}
+/** 只按住前進鍵：照路線點一直走，不看衛兵、不屏息、不衝刺、不安撫、不暗殺；到城門就一直按住 E。 */
+function makeForwardBot() {
+  const WP = {
+    1: [{ x: 11, z: 15 }],
+    2: [{ x: 14, z: 22 }, { x: 17, z: 26.5 }, { x: 28, z: 25.5 }, { x: 31, z: 22.5 }],
+    3: [{ x: 34, z: 25.5 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
+    4: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.5 }]
+  };
+  let zone = -1, wi = 0;
+  return function (g) {
+    const pl = g.player;
+    if (g.zone !== zone) { zone = g.zone; wi = 0; }
+    const w = (WP[g.zone] || [])[wi];
+    if (!w) return { interact: true };
+    const dx = w.x - pl.x, dz = w.z - pl.z, dw = Math.hypot(dx, dz);
+    if (dw < 0.35) { wi++; return {}; }
+    return { mx: dx / dw, mz: dz / dw };
+  };
+}
+/** 一局：一條命（第一次 fail 就算沒過），最多 maxT 秒。回傳 {win, t, n1, zone}。 */
+function runGame(cover, seed, botMaker, maxT = 420) {
+  const t0 = (seed * 1.37) % 10, jitter = seed % 2 === 1;
+  const g = R.createLevel({ t0, seed, T: { COVER_MODE: cover } });
+  const bot = botMaker();
+  const jr = R.mulberry32(seed * 7 + 3);
+  let t = 2, act = 0, all = 0;
+  g.step(t, {}); g.step(t, { start: true });
+  while (g.phase === 'play' || g.phase === 'intro') {
+    if (t > maxT) break;
+    const dt = jitter ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : DT;
+    t += dt;
+    g.step(t, bot(g));
+    g.drain();
+    if (g.phase === 'play') { all += dt; if (activeNow(g)) act += dt; }
+  }
+  return { win: g.phase === 'win', t, n1: all > 0 ? act / all : 0, zone: g.zone, why: g.failReason };
+}
+function stats(cover, botMaker, n) {
+  const rs = [];
+  for (let seed = 1; seed <= n; seed++) rs.push(runGame(cover, seed, botMaker));
+  const wins = rs.filter((r) => r.win);
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  const stuck = {};
+  for (const r of rs) if (!r.win) stuck[r.zone] = (stuck[r.zone] || 0) + 1;
+  return { n, winRate: wins.length / n, reachGate: rs.filter((r) => r.win || r.zone >= 4).length / n, reach3: rs.filter((r) => r.win || r.zone >= 3).length / n, n1: mean(rs.map((r) => r.n1)), n1Win: mean(wins.map((r) => r.n1)), tWin: mean(wins.map((r) => r.t - 2)), stuck };
+}
+
+test('11/10 甲：程式玩家兩種模式各 50 局的 N1 與通關率；COVER_MODE 下「只按前進鍵」通關率 ≤ 30%（印出數字給設計文件用）', () => {
+  const N = 50;
+  const fmt = (s) => `通關 ${(s.winRate * 100).toFixed(0)}%（走到窄巷 ${(s.reach3 * 100).toFixed(0)}%、城門 ${(s.reachGate * 100).toFixed(0)}%）、N1 ${(s.n1 * 100).toFixed(1)}%（通關局 ${(s.n1Win * 100).toFixed(1)}%）、通關平均 ${s.tWin.toFixed(0)} 秒、卡關區 ${JSON.stringify(s.stuck)}`;
+  const oldBot = stats(false, () => makeBot(), N);
+  const coverBot = stats(true, () => makeBot({ cover: true }), N);
+  const coverSafe = stats(true, () => makeBot(), N);
+  const fwdCover = stats(true, makeForwardBot, N);
+  const fwdOld = stats(false, makeForwardBot, N);
+  console.log('[11/10 甲 程式玩家，各 ' + N + ' 局，一條命]');
+  console.log('  舊盲區版   固定策略：' + fmt(oldBot));
+  console.log('  殘響掩護版 固定策略＋踩拍走：' + fmt(coverBot));
+  console.log('  殘響掩護版 固定策略（不用踩拍走）：' + fmt(coverSafe));
+  console.log('  殘響掩護版 只按前進鍵：' + fmt(fwdCover));
+  console.log('  舊盲區版   只按前進鍵：' + fmt(fwdOld));
+  assert.ok(fwdCover.winRate <= 0.3, `只按前進鍵通關率 ${fwdCover.winRate} 要 ≤ 30%`);
+  for (const s of [oldBot, coverBot, coverSafe, fwdCover, fwdOld]) assert.ok(s.n1 >= 0 && s.n1 <= 1);
 });

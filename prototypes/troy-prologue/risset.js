@@ -25,6 +25,8 @@
  *   （機率 1 ÷ (FAKE_EVERY − 1)，平均約每 FAKE_EVERY 個循環 1 次；這一次是假的，下一次一定是真的，不會連續）。
  *   cycle.fake = 這一輪開頭的交接是假驟降（沒有盲區、感知照常）；cycle.nextFake = 下一次交接是假驟降
  *   （提早一整個循環決定，聲音才來得及不排靜音、不發 pre_blind）。警戒、追殺中不抽；追殺開始時取消已抽中的。
+ *   11/09 4A：高頻亂動／大聲先進「高度警覺」再追殺；追殺中可用盲區衝刺與連續合拍甩追兵；火光亮度公式與 blindWindows
+ *   匯出，讓聲音層、畫面層與規則判定共用同一份盲區時段。
  *   Risset 拍點公式（從聲音層移過來，兩邊共用）：第 k 層第 n 拍在 p = log2(1 + n ÷ (M·2^k))，
  *   n = 0 .. M·2^k − 1；音量 = 鐘形曲線 bell((k + p) ÷ 層數)，平常 4 層、追殺 5 層（σ 按層距等比例縮），
  *   沒有固定底限，所以交接連續、各層音量和恆定，追殺時 Risset 錯覺照樣成立。
@@ -68,6 +70,13 @@
 
   // ---------- 常數（第 6.2 節，全部可調） ----------
   const T = Object.freeze({
+    // 11/10 核心方向甲「殘響掩護」（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：
+    // true ＝鼓聲不中斷，交接那一下的重合擊與殘響當掩護；false ＝舊的盲區版（對照、測試用）。
+    // 兩版的時間窗（cycle.blind／blindWindows＝coverWindows、BLIND_LEN、BLIND_LEAD_GRACE）完全一樣，差別只有三條：
+    //   1. 不抽假驟降（cycle.fake、nextFake 恆為 false）；
+    //   2. p > HIGH_P 時，踩在可聽拍上的腳步（step_masked）不算被聽見，出聲的腳步（step_loud）才進高度警覺；被看見照舊；
+    //   3. 掩護窗內感知仍為 0（和盲區一樣）。另外火光改讀實際速度 danger，FIRE_BLIND 不用。
+    COVER_MODE: true,
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
     CYCLE_FAR: 12,        // 附近沒有衛兵時的目標循環長度
@@ -96,20 +105,21 @@
     BLIND: 0.6,           // 舊名，等於 BLIND_LEN（畫面、聲音還在讀）；只改 BLIND_LEN 時會跟著改
     BLIND_LEAD_GRACE: 0.15, // 真盲區開始前這麼多秒內，移動、衝刺、暗殺都照盲區規則處理（聽到預告就動的人不會被判 move_high）；假驟降前沒有寬限
     PRE_BLIND: 0.4,       // 盲區前幾秒發出 sfx 'pre_blind'（預告）
-    FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉
+    FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉。COVER_MODE 下一律不抽（每次交接都無縫）
     FAKE_FROM_ZONE: 3,    // 從第 3 區（窄巷）起才會出現
     FAKE_EVERY: 4,        // 平均每幾個循環 1 次：每次交接以 1 ÷ (FAKE_EVERY − 1) 的機率抽，抽中後下一次一定是真的
-    R_BASE: 2,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²
-    R_GAIN: 8,
+    R_BASE: 3,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
+    R_GAIN: 10,           // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
     ALERT_MUL: 1.3,       // 警戒（起疑）與追殺時感知 ×1.3
     FOV: Math.PI / 3,     // 視野半角 ±60°
-    HIGH_P: 0.6,          // p > 0.6：範圍內移動 = 立即追殺
+    HIGH_P: 0.6,          // p > 0.6：範圍內移動／大聲先進高度警覺；再犯才追殺（11/09 4A）
     BREATH_HEAR: 0.6,     // 沒屏息、站著不動的呼吸聲，在 r × 0.6 內聽得到
     BREATH_MAX: 6,        // 屏息上限秒數，超過 = 喘氣（大聲）
     BREATH_RECOVER: 1.2,  // 不屏息時，屏息計量每秒恢復幾秒
     LOUD_R: 8,            // 大聲（喘氣、門閂聲）傳多遠（至少這麼遠，或 r 較大時用 r）
     WALK: 2.6,            // 潛行速度 m/s
-    DASH: 3,              // 衝刺距離 m（只在盲區，每個盲區一次）
+    DASH: 3,              // 衝刺距離 m（只在盲區，每個盲區一次；平常）
+    DASH_HUNT: 6,         // 追殺中在盲區衝刺的距離 m（11/09 4A：追殺生路）
     BODY_R: 0.3,          // 玩家與衛兵的碰撞半徑
     SUSP_MOVE: 0.9,       // p ≤ 0.6 時，範圍內移動每秒增加的疑心
     SUSP_SEEN_HIGH: 1.5,  // 站著被看到／聽到呼吸：p > 0.6 時每秒疑心
@@ -125,8 +135,13 @@
     CALM_TIMEOUT: 12,     // 幾秒內沒安撫完 → 追殺
     CALM_GRACE: 3,        // 安撫或擺脫後，衛兵幾秒內不累積疑心
     HUNT_SPEED: 3.0,      // 追殺時衛兵速度
+    HUNT_STEP_ESCAPE: 3,  // 追殺中連續幾步踩在鼓點上（step_masked）就讓追兵減速
+    HUNT_SLOW_MUL: 0.6,   // 追兵減速倍率：HUNT_SPEED × HUNT_SLOW_MUL
+    HUNT_SLOW_DUR: 3,     // 追兵減速持續秒數
     CATCH_R: 1.0,         // 被追到 1 m 內 = 失敗
-    ESCAPE_STILL: 10,     // 躲在陰影裡不動多少秒擺脫（以秒計；追殺循環 3 秒，約 3 個多循環，提示文字由這個常數生成）
+    ESCAPE_STILL: 6,      // 躲在陰影裡不動多少秒擺脫（11/09 4A：追殺生路；提示文字由這個常數生成）
+    ALERTED_DURATION: 10, // 高度警覺持續秒數（期間再犯就轉追殺）
+    ALERTED_SUSP: 0.8,    // 進入高度警覺時，疑心直接設成這個值
     PATROL_SPEED: 1.2,    // 巡邏速度
     PATROL_PAUSE: 1.0,    // 到路線點停多久（×0.8～1.2 隨機）
     SEARCH_TURN: 2.0,     // 追到最後位置後原地張望的轉速 rad/s
@@ -144,6 +159,9 @@
     HINT_BACK_R: 8,       //   背後有人：幾公尺內
     HINT_BACK_ANG: 1.9,   //   背後有人：和玩家正前方夾角超過幾弧度（約 110°）
     HINT_KILL_R: 3.2,     //   可暗殺：背後幾公尺內就開始提示（真正出手要 TAKEDOWN_R 內）
+    FIRE_BASE: 0.35,      // 火光亮度基準（0～1）
+    FIRE_P_GAIN: 0.65,    // 火光亮度隨危險度 danger 增加的量（danger = 1，即循環縮到 CYCLE_HUNT 時到 1.0）；名稱沿用 4A
+    FIRE_BLIND: 0.15,     // 盲區時的火光亮度（只有舊模式 COVER_MODE = false 用；殘響掩護版不壓暗）
     MAX_DT: 0.1           // step 每次最多推進 0.1 秒
   });
 
@@ -239,6 +257,84 @@
     if (t > mid + half) { k++; mid += period; }
     const blind = t >= anchor && Math.abs(t - mid) <= half + 1e-12;
     return { blind, k, from: mid - half, to: mid + half };
+  }
+  /**
+   * 危險度：跟「實際速度」（目前循環長度 cycle.T）走，不跟相位 p 走——跟 p 走會每個循環掉回去一次，等於用眼睛指出交接點。
+   * danger = (CYCLE_FAR − T) ÷ (CYCLE_FAR − CYCLE_HUNT)，夾在 0～1：附近沒人 12 秒一圈 = 0，追殺 3 秒一圈 = 1。
+   */
+  function dangerOf(game) {
+    const K = (game && game.T) || T;
+    const c = (game && game.cycle) || {};
+    const len = Number.isFinite(c.T) ? c.T : K.CYCLE;
+    const span = K.CYCLE_FAR - K.CYCLE_HUNT;
+    return span > 0 ? Math.max(0, Math.min(1, (K.CYCLE_FAR - len) / span)) : 0;
+  }
+  /**
+   * 火光亮度（11/10 甲版改讀 game）：FIRE_BASE + FIRE_P_GAIN × danger，夾在 0～1。
+   * 只有舊模式（COVER_MODE = false）在盲區內壓暗到 FIRE_BLIND；殘響掩護版不壓暗。
+   */
+  function fireBrightness(game) {
+    const K = (game && game.T) || T;
+    const blind = !!(game && game.cycle && game.cycle.blind);
+    const v = (!K.COVER_MODE && blind) ? K.FIRE_BLIND : (K.FIRE_BASE + K.FIRE_P_GAIN * dangerOf(game));
+    return Math.max(0, Math.min(1, v));
+  }
+  /**
+   * [a, b) 內的盲區時段：[{from, to, kind}]。
+   * kind = 'blind'（一般：循環開頭 BLIND_LEN 秒）或 'alert'（警戒：兩個低音拍正中央 BLIND_LEN 秒）。
+   * 一般盲區用 cycle.anchor 外推，並遵守 nextFake：下一次交接是假驟降時，該次沒有盲區。
+   */
+  function blindWindows(a, b, game) {
+    if (!(b > a) || !game) return [];
+    const K = game.T || T;
+    const BL = blindLen(K);
+    const out = [];
+
+    const hunted = !!game.hunted;
+    const alert = !!(game.panic && game.panic.active) && !hunted;
+
+    if (alert) {
+      const bass = game.bass || {};
+      const period = bass.period || K.BASS_PERIOD;
+      const anchor = Number.isFinite(bass.anchor) ? bass.anchor : 0;
+      const half = BL / 2;
+      let k = Math.max(0, Math.floor((a - anchor - half) / period));
+      while (true) {
+        const mid = anchor + (k + 0.5) * period;
+        const from = mid - half;
+        const to = mid + half;
+        if (from >= b) break;
+        if (to > a) {
+          out.push({ from, to, kind: 'alert' });
+        }
+        k++;
+      }
+      out.sort((x, y) => x.from - y.from);
+      return out;
+    }
+
+    const c = game.cycle || {};
+    const an = c.anchor || { t: game.time || 0, p: c.p || 0, T: c.T || K.CYCLE, index: c.index || 0, start: c.start };
+    const aIdx = an.index != null ? an.index : (c.index || 0);
+    const u0 = aIdx + (an.p || 0);
+    const ua = u0 + (a - an.t) / an.T;
+    const ub = u0 + (b - an.t) / an.T;
+
+    const fakeCyc = (cyc) => (cyc === aIdx && !!c.fake) || (cyc === aIdx + 1 && !!c.nextFake);
+    const startOf = (cyc) => (cyc === aIdx && Number.isFinite(an.start)) ? an.start : an.t + (cyc - u0) * an.T;
+
+    const minCyc = Math.floor(ua) - 1;
+    const maxCyc = Math.ceil(ub) + 1;
+
+    for (let cyc = minCyc; cyc <= maxCyc; cyc++) {
+      if (fakeCyc(cyc)) continue;
+      const from = startOf(cyc);
+      const to = from + BL;
+      if (to <= a || from >= b) continue;
+      out.push({ from, to, kind: 'blind' });
+    }
+    out.sort((x, y) => x.from - y.from);
+    return out;
   }
   /**
    * [a, b) 內的 Risset 拍點（依 game.cycle.anchor 外推），照時間排序。
@@ -367,18 +463,24 @@
   const num = (v) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
   function hintsFor(K) {
     K = K || T;
+    const cover = !!K.COVER_MODE;   // 殘響掩護版：鼓聲不斷，時機改說「最響的那一擊」（11/10 甲；文字待設計席潤稿）
     return {
       breath: '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
-      blind: '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
+      blind: cover ? '每一輪最後，所有鼓同時落下最響的一擊，餘韻約 ' + num(K.BLIND_LEN) + ' 秒蓋住一切，衛兵什麼都察覺不到——趁這時移動。'
+        : '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
       trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
-      dash: '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
+      dash: cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
+        : '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
       panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。',
-      hunted: '被發現了！快躲進陰影裡，不動 ' + num(K.ESCAPE_STILL) + ' 秒。被追到身邊就失敗。',
-      takedown: '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
+      alerted: '衛兵高度警覺了！' + num(K.ALERTED_DURATION) + ' 秒內別再動、別出聲，否則就會被追殺。',
+      hunted: '被發現了！躲進陰影不動 ' + num(K.ESCAPE_STILL) + ' 秒，或連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上甩開他。',
+      takedown: cover ? '最響的那一擊落下時，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。'
+        : '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
       gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
       lockedExit: '還在被追，先甩掉追兵才能往前走。',
-      step: '起步踩在鼓點上，之後腳步會自己跟著鼓走、被蓋過；離拍起步、或鼓很稀疏時走，身邊的衛兵聽得到。',
+      step: cover ? '起步踩在鼓點上，之後腳步會自己跟著鼓走、被蓋過；節奏最快時踩著鼓點走，衛兵聽不出來，但看得見你。離拍起步、或鼓很稀疏時走，身邊的衛兵聽得到。'
+        : '起步踩在鼓點上，之後腳步會自己跟著鼓走、被蓋過；離拍起步、或鼓很稀疏時走，身邊的衛兵聽得到。',
       alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
       fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
     };
@@ -389,19 +491,26 @@
   // 第 3 次起發 level 3（text＋keys）；成功一次退回第 1 階。text 照設計文件 2.1 節「提示文字」欄；keys 裡的數字從常數生成。
   function hintLadderFor(K) {
     K = K || T;
+    const cover = !!K.COVER_MODE;
     return {
       breath: { name: '屏息', text: '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
         keys: '按住 空白鍵 屏息，放開就換氣；最多撐約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來就放開。' },
-      blind: { name: '驟降（盲區）', text: '「鼓聲一斷，就是你移動的時候。」',
-        keys: '鼓聲斷掉的那 ' + num(K.BLIND_LEN) + ' 秒才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' },
+      blind: cover
+        ? { name: '重擊掩護', text: '「最響的那一擊落下，就是你移動的時候。」',
+          keys: '所有鼓同時落下的那一擊和它的餘韻約 ' + num(K.BLIND_LEN) + ' 秒，這時才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' }
+        : { name: '驟降（盲區）', text: '「鼓聲一斷，就是你移動的時候。」',
+          keys: '鼓聲斷掉的那 ' + num(K.BLIND_LEN) + ' 秒才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' },
       radius: { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他聽得到的範圍。」',
         keys: '火光圈外才按 W A S D 移動；被照到時停下，或按住 空白鍵。' },
       step: { name: '腳步合拍', text: '「踩著鼓點走，腳步聲會被蓋過。」',
         keys: '起步踩在鼓點上，然後按住 W A S D 不放、跟著鼓走，腳步會自己落在鼓點上；離拍起步或鼓很稀疏時才會出聲。' },
       calm: { name: '警戒與安撫', text: '「別跟著亂掉的鼓聲快。聽最低的那個聲音，跟著它按 Q。」',
         keys: '最低的那聲約 ' + num(K.BASS_PERIOD) + ' 秒響一次，每響一聲按一下 Q，對準 ' + num(K.CALM_NEED) + ' 次（' + num(K.CALM_TIMEOUT) + ' 秒內，漏一拍沒關係）；不要連按。' },
-      takedown: { name: '衝刺與暗殺', text: '「鼓聲斷掉時，從背後靠近按 E。」',
-        keys: '用 W A S D 繞到他背後 ' + num(K.TAKEDOWN_R) + ' 公尺內，鼓聲一斷就按 E。' },
+      takedown: cover
+        ? { name: '衝刺與暗殺', text: '「最響的那一擊落下時，從背後靠近按 E。」',
+          keys: '用 W A S D 繞到他背後 ' + num(K.TAKEDOWN_R) + ' 公尺內，那一擊落下就按 E。' }
+        : { name: '衝刺與暗殺', text: '「鼓聲斷掉時，從背後靠近按 E。」',
+          keys: '用 W A S D 繞到他背後 ' + num(K.TAKEDOWN_R) + ' 公尺內，鼓聲一斷就按 E。' },
       fake: { name: '假驟降', text: '「有時鼓聲只是換手，沒有那聲預告，就不要動。」',
         keys: '沒聽到那聲預告的輕響，就不要按 W A S D；等下一次真的斷掉再走。' },
       listen: { name: '3D 聽聲辨位', text: '「戴上耳機，聽聲音從哪邊來。」',
@@ -453,7 +562,7 @@
       R(11, 16, 15, 20, '木馬的影子'),
       R(18, 8, 28, 10.5, '神殿柱廊'),
       R(20, 14.5, 24, 18, '雕像的影子'),
-      R(14, 24, 20, 29, '南側拱廊'),
+      R(14, 24, 20, 30, '南側拱廊'),
       R(26.5, 23.5, 30, 27, '廣場東南角'),
       R(31, 23.5, 35, 28, '巷口屋簷'),
       R(37, 24.5, 40, 28, '貨堆後'),
@@ -573,7 +682,13 @@
       panic: { active: false, start: 0, count: 0, lastPress: null },
       gate: { progress: 0, need: K.GATE_NEED, pushing: false, open: false },
       alarm: 0,
+      fire: fireBrightness({ T: K, cycle: { T: K.CYCLE, blind: false } }),
+      danger: dangerOf({ T: K, cycle: { T: K.CYCLE } }),   // 0～1，跟實際速度走（火光、畫面危險度共用）
       hunted: false,
+      alerted: false,
+      huntSteps: 0,
+      huntSlowUntil: 0,
+      huntIdleT: 0,
       stillT: 0,
       failReason: null,
       failCode: null,
@@ -637,7 +752,7 @@
       return {
         id: d.id, zone: d.zone, x: p0.x, z: p0.z,
         yaw: d.yaw != null ? d.yaw : yawTo(p1.x - p0.x, p1.z - p0.z),
-        baseYaw: d.yaw, state: 'patrol', susp: 0, calm: 0,
+        baseYaw: d.yaw, state: 'patrol', susp: 0, calm: 0, alertUntil: 0,
         route: d.route, wp: d.route.length > 1 ? 1 : 0, pause: 0, grace: 0,
         lookAt: null, lastKnown: null, active: false
       };
@@ -724,6 +839,21 @@
       q.calm = g.panic.count;
       hint('panic');
     }
+    let alertedMsgShown = false;
+    function makeAlerted(q, t, cause) {
+      if (!q || q.state !== 'patrol') return;
+      if (cause === 'move_high') hintFail('blind');
+      q.state = 'alerted';
+      q.susp = K.ALERTED_SUSP;
+      q.alertUntil = t + K.ALERTED_DURATION;
+      q.lookAt = { x: g.player.x, z: g.player.z };
+      emit('sfx', 'alerted');
+      if (!alertedMsgShown) {
+        alertedMsgShown = true;
+        emit('msg', HTXT.alerted);
+      }
+      hint('alerted');
+    }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
     function startHunt(q, cause, reason) {
       cause = cause || 'seen';
@@ -737,19 +867,19 @@
       const wasHunted = g.hunted;
       for (const o of g.guards) {
         if (!o.active) continue;
-        if (o === q || o.state === 'suspicious') {
+        if (o === q || o.state === 'suspicious' || o.state === 'alerted') {
           o.state = 'hunted'; o.susp = 1; o.lastKnown = { x: pl.x, z: pl.z }; o.calm = 0;
         }
       }
       clearPanic();
-      g.hunted = true; g.stillT = 0;
+      g.hunted = true; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
       g.cycle.nextFake = false;   // 追殺中不要假驟降（擺脫要靠真的盲區判斷時機）
       if (!wasHunted) { emit('sfx', 'hunt'); if (reason) emit('msg', reason); }
       hint('hunted');
     }
     function endHunt() {
       for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; }
-      g.hunted = false; g.stillT = 0; huntCause = null;
+      g.hunted = false; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0; huntCause = null;
       emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
     }
 
@@ -781,9 +911,9 @@
     /** 假驟降：相位跳回 0 時抽下一次交接（這一次是假的就不抽，不會連續）。 */
     function rollFake() {
       const c = g.cycle;
-      c.fake = c.nextFake;
+      c.fake = K.COVER_MODE ? false : c.nextFake;   // 殘響掩護：每次交接都無縫，沒有「假」可言
       c.nextFake = false;
-      if (!K.FAKE || c.fake || g.phase !== 'play' || g.zone < K.FAKE_FROM_ZONE || g.hunted || g.panic.active) return;
+      if (K.COVER_MODE || !K.FAKE || c.fake || g.phase !== 'play' || g.zone < K.FAKE_FROM_ZONE || g.hunted || g.panic.active) return;
       c.nextFake = rng() < 1 / Math.max(1, K.FAKE_EVERY - 1);
     }
     /** 首幀或重來：T 直接等於目標，相位照 t0 對齊。 */
@@ -841,6 +971,8 @@
       }
       c.desync = c.p > K.DESYNC_P;
       c.anchor = { t, p: c.p, T: c.T, index: c.index, start: c.start };
+      g.danger = dangerOf(g);
+      g.fire = fireBrightness(g);
       g.visualAid = visualAidFor(g.zone, g.visualAidMode);
       refreshBass(t);
     }
@@ -864,6 +996,7 @@
         return !blind && tt < c.blindFrom && c.blindFrom - tt <= K.BLIND_LEAD_GRACE + 1e-9;
       };
       const lead = !blind && !c.alertBlind && blindLike(t);   // 本幀在盲區前沿的寬限裡（移動照盲區規則）
+      g.alerted = false;
       /** 時間 tt 的相位（本幀外推，門閂用）。 */
       const pAt = (tt) => Math.max(0, Math.min(1, p + (tt - t) / c.T));
       // 盲區預告：循環最後 PRE_BLIND 秒發一次
@@ -914,9 +1047,10 @@
             let dx = mx, dz = mz;
             const l = Math.hypot(dx, dz);
             if (l < 1e-6) { const f = forward(pl.yaw); dx = f.x; dz = f.z; } else { dx /= l; dz /= l; }
-            const n = Math.ceil(K.DASH / 0.1);
-            for (let k = 0; k < n; k++) moveBody(pl, dx * K.DASH / n, dz * K.DASH / n);
-            emit('sfx', 'dash'); hintOk('blind');
+            const dashDist = g.hunted ? K.DASH_HUNT : K.DASH;
+            const n = Math.ceil(dashDist / 0.1);
+            for (let k = 0; k < n; k++) moveBody(pl, dx * dashDist / n, dz * dashDist / n);
+            emit('sfx', 'dash', { hunt: !!g.hunted }); hintOk('blind');
           } else if (!dashBlind) hint('dash');
         }
       }
@@ -941,10 +1075,29 @@
           lastStepT = t;
           stepLoud = !stepNow.masked;
           emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z, beatT: stepNow.beatT });
+          if (g.hunted) {
+            if (stepNow.masked) {
+              g.huntSteps++;
+              g.huntIdleT = 0;
+              emit('sfx', 'hunt_step', { index: g.huntSteps });
+              if (g.huntSteps >= K.HUNT_STEP_ESCAPE) {
+                g.huntSlowUntil = Math.max(g.huntSlowUntil, t + K.HUNT_SLOW_DUR);
+                g.huntSteps = 0;
+                emit('sfx', 'hunt_slip');
+              }
+            } else g.huntSteps = 0;
+          }
           if (stepNow.masked && g.guards.some((q) => q.active && dist2(q, pl) < K.STEP_R * 2)) hintOk('step');
         }
       }
       walking = walked;
+      if (g.hunted) {
+        if (walked) g.huntIdleT = 0;
+        else {
+          g.huntIdleT += dt;
+          if (g.huntIdleT > K.BASS_PERIOD) g.huntSteps = 0;
+        }
+      }
       // 暗示階梯的成功：盲區裡在衛兵附近走動（驟降）；在火光圈外、但就在旁邊走（感知範圍）；假驟降時沒動
       if (walked && g.guards.some((q) => q.active && dist3(q, pl) <= radiusAt(1, false, K))) {
         if (blind) hintOk('blind');
@@ -1048,8 +1201,13 @@
       for (const q of g.guards) {
         if (!q.active || g.phase !== 'play') continue;
         if (q.grace > 0) q.grace = Math.max(0, q.grace - dt);
+        if (q.state === 'alerted' && t >= q.alertUntil) {
+          q.state = 'patrol'; q.susp = 0; q.grace = K.CALM_GRACE; q.lookAt = null;
+          emit('sfx', 'alert_over');
+          continue;
+        }
         if (blind) continue; // 盲區：感知 = 0
-        const alert = q.state === 'suspicious' || q.state === 'hunted';
+        const alert = q.state === 'suspicious' || q.state === 'hunted' || q.state === 'alerted';
         const r = radiusAt(p, alert, K);
         const d = dist3(q, pl);
         const f = forward(q.yaw);
@@ -1058,7 +1216,11 @@
         const inFov = d < 1e-6 || angDiff(toward, fa) <= K.FOV;
         const seen = !pl.hidden && d <= r && inFov;
         const mv = moved && !lead;   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
-        const heardMove = mv && d <= r;
+        // 4A 的 M7 只改 R_BASE／R_GAIN，不做感知分級：移動聲、呼吸聲仍以整個 r(p) 判定（分級是 4B 的事）
+        // 殘響掩護（COVER_MODE）第 2 條：p > HIGH_P 時耳朵可以用鼓聲騙——踩在可聽拍上的腳步不算被聽見，
+        // 只有這一幀出聲的腳步（step_loud）才算；被看見（seen）照舊。p ≤ HIGH_P 時兩版相同。
+        const coverEar = !!K.COVER_MODE && p > K.HIGH_P;
+        const heardMove = mv && d <= r && (!coverEar || stepLoud);
         const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
         const heardStep = stepLoud && d < K.STEP_R;
@@ -1067,15 +1229,43 @@
           if (seen || heardMove || heardLoud || heardStep || (!pl.hidden && !blind)) q.lastKnown = { x: pl.x, z: pl.z };
           continue;
         }
+        if (q.state === 'alerted') {
+          if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
+          const moveHigh = p > K.HIGH_P && mv && (heardMove || seen);
+          if (heardLoud || moveHigh) {
+            const msg = heardLoud ? '那聲音太大了——衛兵衝過來！' : '節奏最快的時候亂動——被發現了！';
+            startHunt(q, heardLoud ? 'loud' : 'move_high', msg);
+            continue;
+          }
+          if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
+          if (mv && (heardMove || seen) && q.grace <= 0) q.susp += K.SUSP_MOVE * dt;
+          if (!mv && !heardStep && !heardLoud) {
+            q.susp = Math.max(K.ALERTED_SUSP, q.susp - K.SUSP_DECAY * dt);
+          }
+          q.susp = Math.max(K.ALERTED_SUSP, Math.min(1, q.susp));
+          if (q.susp >= 1) {
+            startHunt(q, 'seen', '衛兵盯住了你——追兵衝過來！');
+            continue;
+          }
+          continue;
+        }
         if (heardLoud) {
-          if (p > K.HIGH_P) startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
+          if (p > K.HIGH_P) {
+            // 只有巡邏中的衛兵先進高度警覺；起疑（安撫中）的照舊直接追殺（起疑流程不變）
+            if (q.state === 'patrol') makeAlerted(q, t, 'loud');
+            else startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
+          }
           else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
           continue;
         }
         if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
         let why = heardStep ? 'step' : null;
         if (mv && (heardMove || seen)) {
-          if (p > K.HIGH_P) { startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！'); continue; }
+          if (p > K.HIGH_P) {
+            if (q.state === 'patrol') makeAlerted(q, t, 'move_high');
+            else startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！');
+            continue;
+          }
           // 假驟降的頭 BLIND_LEN 秒裡動了，被聽見 → 算「假驟降」；平常 → 算「感知範圍」
           why = (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN + 0.3) ? 'fake' : 'radius';
           if (why === 'fake') hintFail('fake');
@@ -1093,6 +1283,7 @@
           makeSuspicious(q, t);
         }
       }
+      g.alerted = g.guards.some((q) => q.active && q.state === 'alerted');
       if (g.phase !== 'play') return g;
 
       // 暗示階梯「聽聲辨位」的成功：背後的衛兵，3 秒內被你轉身面對（8 公尺內、正前方 ±40°）
@@ -1126,9 +1317,12 @@
           }
         } else if (q.state === 'suspicious') {
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
+        } else if (q.state === 'alerted') {
+          if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
         } else if (q.state === 'hunted') {
           const L = q.lastKnown || { x: pl.x, z: pl.z };
-          if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, K.HUNT_SPEED, dt);
+          const hs = t < g.huntSlowUntil ? K.HUNT_SPEED * K.HUNT_SLOW_MUL : K.HUNT_SPEED;
+          if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, hs, dt);
           else q.yaw += K.SEARCH_TURN * dt;
           if (dist2(q, pl) < K.CATCH_R) { fail(CAUSES[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
         }
@@ -1191,7 +1385,8 @@
       const z = Math.max(1, g.zone);
       g.player = makePlayer(z);
       resetGuards(z);
-      g.hunted = false; g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
+      g.hunted = false; g.alerted = false; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
+      g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
       g.gate.progress = 0; g.gate.pushing = false; g.gate.open = false;
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
@@ -1212,7 +1407,7 @@
     T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES,
     createLevel, buildLevel,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
-    zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt,
+    zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
     stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
     forward, yawTo, angDiff, inRect, mulberry32
   };
