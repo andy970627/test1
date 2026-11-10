@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 const require = createRequire(import.meta.url);
 const Bots = require('./troy-bots.js');
 
@@ -88,10 +89,19 @@ function main(argv) {
     process.stderr.write(`[overnight-sim] ${m}/${b}：${o.n} 局，通關 ${pct(stats.winRate)}，N1 ${pct(stats.n1)}（${((Date.now() - t1) / 1000).toFixed(0)} 秒）\n`);
   }
   const doc = { created: new Date().toISOString(), rules: path.relative(process.cwd(), Bots.RULES_PATH), n: o.n, command: 'node tools/telemetry/overnight-sim.mjs ' + argv.join(' '),
-    constants: pickT(), totalSec: +((Date.now() - t0) / 1000).toFixed(1), results };
+    rev: pickRev(), constants: pickT(), totalSec: +((Date.now() - t0) / 1000).toFixed(1), results };
   if (o.out) { fs.mkdirSync(path.dirname(path.resolve(o.out)), { recursive: true }); fs.writeFileSync(o.out, JSON.stringify(doc, null, 1)); }
   console.log(formatTable(results));
   return 0;
+}
+/** 記下這次跑的規則與程式玩家版本：提交編號＋規則檔、玩家檔有沒有未提交的修改。 */
+function pickRev() {
+  try {
+    const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+    const h = execFileSync('git', ['-C', repo, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
+    const dirty = execFileSync('git', ['-C', repo, 'status', '--porcelain', '--', 'prototypes/troy-prologue/risset.js', 'tools/telemetry/troy-bots.js'], { encoding: 'utf8' }).trim();
+    return h + (dirty ? '（' + dirty.split(/\r?\n/).map(l => l.replace(/^\s*\S+\s+/, '')).join('、') + ' 有未提交的修改）' : '');
+  } catch (e) { return null; }
 }
 /** 記下這次跑的規則常數（報告要寫清楚是哪一版規則量的）。 */
 function pickT() {

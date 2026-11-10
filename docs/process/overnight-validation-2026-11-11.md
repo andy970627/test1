@@ -1,14 +1,14 @@
 # 整夜自動驗證：木馬之夜殘響掩護（2026-11-11）
 
-- 產生：2026-11-10T16:06:09.029Z；規則與聲音版本：提交 37db718
+- 產生：2026-11-10T16:15:58.751Z；版本：程式玩家 提交 0f21bf8（tools/telemetry/troy-bots.js 有未提交的修改：照搬 0f21bf8 的程式玩家修正）；錄音 提交 37db718（11/11 凌晨錄的；這次只重跑程式玩家，錄音沒重錄）
 - 門檻：`docs/design/2026-11-10-core-direction-illusion.md` 第 7 節（7.5 錄音、7.8 程式玩家；7.1 的「σ 0.12 通關 50～85%」已被 7.8 作廢，通關率只列不判）。
 - 重產這份報告：`node tools/telemetry/overnight-report.mjs --sim tools/playtest-recorder/out/overnight-sim-1111.json --cover tools/playtest-recorder/out/overnight-cover-1111 --gap tools/playtest-recorder/out/overnight-gap-1111 --steps tools/playtest-recorder/out/overnight-steps-1111 --out docs/process/overnight-validation-2026-11-11.md`
 - 錄音原始輸出在 `tools/playtest-recorder/out/`，不進 git；程式玩家 JSON 在 `tools/playtest-recorder/out/overnight-sim-1111.json`（同樣不進 git）。
 
 ## 結論
 
-- 判定 13 項：過 6、不過 5、無資料 2（另 3 項只列不判）。
-- 不過：完美踩拍：通關率（不停） 99.6%（500 局）；σ 0.12 錯了要付代價：通關時間中位 ÷ 完美玩家，且每局平均進高度警覺（不停） 44.3 秒 ÷ 44.1 秒 ＝ 1.01 倍；高度警覺 0.55 次／局；警戒輕版重擊突出中位（不停，原始） 7.3 dB（3 個警戒窗）；餘韻中位（不停，喇叭模擬） 0.49 秒（平均背景 0.12 秒，參考）；11 個一般窗；警戒輕版重擊突出中位（不停，喇叭模擬） 7.6 dB（3 個警戒窗）。
+- 判定 13 項：過 7、不過 4、無資料 2（另 3 項只列不判）。
+- 不過：σ 0.12 錯了要付代價：通關時間中位 ÷ 完美玩家，且每局平均進高度警覺（不停） 44.4 秒 ÷ 44.0 秒 ＝ 1.01 倍；高度警覺 0.59 次／局；警戒輕版重擊突出中位（不停，原始） 7.3 dB（3 個警戒窗）；餘韻中位（不停，喇叭模擬） 0.49 秒（平均背景 0.12 秒，參考）；11 個一般窗；警戒輕版重擊突出中位（不停，喇叭模擬） 7.6 dB（3 個警戒窗）。
 - 無資料：不合拍與合拍腳步 1～4 kHz 差（不停）；不合拍與合拍腳步 1～4 kHz 差（留空檔）。
 
 ## 門檻對照
@@ -16,11 +16,11 @@
 | 項目 | 數字 | 門檻 | 結果 | 來源指令 |
 |---|---|---|---|---|
 | 只按前進：通關率（不停） | 0.0%（500 局） | ≤ 30% | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
-| 完美踩拍：通關率（不停） | 99.6%（500 局） | 100% | ❌ 不過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
-| σ 0.12 錯了要付代價：通關時間中位 ÷ 完美玩家，且每局平均進高度警覺（不停） | 44.3 秒 ÷ 44.1 秒 ＝ 1.01 倍；高度警覺 0.55 次／局 | ≥ 1.2 倍，且 ≥ 1 次／局 | ❌ 不過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
-| σ 0.25 越不準越吃虧：通關率比 σ 0.12 低，或通關時間中位再多（不停） | 通關率 80.4% vs 93.2%（低 12.8 個百分點）；時間中位 44.6 秒 vs 44.3 秒（1.00 倍） | 低 ≥ 10 個百分點，或 ≥ 1.2 倍 | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
-| σ 0.12 通關率（不停；只列，7.8 不當門檻） | 93.2%（500 局） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
-| σ 0.25 通關率（不停；只列，7.8 不當門檻） | 80.4%（500 局） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| 完美踩拍：通關率（不停） | 100.0%（500 局） | 100% | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.12 錯了要付代價：通關時間中位 ÷ 完美玩家，且每局平均進高度警覺（不停） | 44.4 秒 ÷ 44.0 秒 ＝ 1.01 倍；高度警覺 0.59 次／局 | ≥ 1.2 倍，且 ≥ 1 次／局 | ❌ 不過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.25 越不準越吃虧：通關率比 σ 0.12 低，或通關時間中位再多（不停） | 通關率 83.8% vs 94.4%（低 10.6 個百分點）；時間中位 44.7 秒 vs 44.4 秒（1.01 倍） | 低 ≥ 10 個百分點，或 ≥ 1.2 倍 | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.12 通關率（不停；只列，7.8 不當門檻） | 94.4%（500 局） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.25 通關率（不停；只列，7.8 不當門檻） | 83.8%（500 局） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
 | 餘韻中位（不停，原始） | 0.65 秒（平均背景 0.31 秒，參考）；11 個一般窗 | 0.5～0.8 秒 | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
 | 重合擊突出中位（不停，原始） | +22.5 dB（最小 20.4） | ≥ 12 dB | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
 | 警戒輕版重擊突出中位（不停，原始） | 7.3 dB（3 個警戒窗） | ≥ 8 dB | ❌ 不過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
@@ -30,27 +30,27 @@
 | 不合拍與合拍腳步 1～4 kHz 差（不停） | 9.3 dB（不合拍 1 步、合拍 1 步） | ≥ 12 dB（兩種各 ≥ 3 步才判） | — 無資料 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
 | 不合拍與合拍腳步 1～4 kHz 差（留空檔） | 樣本不夠（不合拍 0 步、合拍 3 步） | ≥ 12 dB（兩種各 ≥ 3 步才判） | — 無資料 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover gap --out tools/playtest-recorder/out/overnight-gap-1111` |
 | 不合拍與合拍腳步 1～4 kHz 差（不停・腳步測試段） | 25.8 dB（不合拍 19 步、合拍 30 步） | ≥ 12 dB（兩種各 ≥ 3 步才判） | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 45 --cover cover --step-test --no-video --out tools/playtest-recorder/out/overnight-steps-1111` |
-| 通關時間中位：完美玩家，舊版 vs 新版（只列） | 舊版 87.9 秒、新版 44.1 秒（程式玩家） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| 通關時間中位：完美玩家，舊版 vs 新版（只列） | 舊版 87.3 秒、新版 44.0 秒（程式玩家） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
 
 ## 程式玩家（Node 直接跑規則層）
 
-指令：`node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json`；500 局 × 8 組，共 0.7 分鐘。每局一條命、最多 420 秒；seed 1～500（t0 與幀率抖動由 seed 決定）。
+指令：`node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json`；500 局 × 8 組，共 0.8 分鐘。每局一條命、最多 420 秒；seed 1～500（t0 與幀率抖動由 seed 決定）。
 
 | 模式 | 玩家 | 局數 | 通關率 | 通關時間中位（秒） | 每局進高度警覺 | N1（自己規則／同一把尺） | 走到窄巷／城門 | 各區平均停留秒數（1／2／3／4） | 死因分布 |
 |---|---|---|---|---|---|---|---|---|---|
 | 不停 | 只按前進 | 500 | 0.0% | — | 1.63 次 | 80.4%／80.4% | 63.4%／9.6% | 1.8／9.8／8.0／10.7 | caught_move_high 436（87%）、caught_seen 60（12%）、caught_loud 4（1%） |
-| 不停 | 完美踩拍 | 500 | 99.6% | 44.1 | 0.08 次 | 95.1%／95.1% | 100.0%／99.6% | 3.6／8.4／12.3／22.5 | caught_seen 2（0%） |
-| 不停 | σ 0.12 起步誤差 | 500 | 93.2% | 44.3 | 0.55 次 | 93.9%／93.9% | 96.0%／93.4% | 3.8／8.6／15.9／22.2 | belly_seen 16（3%）、caught_calm_slow 8（2%）、belly_move_high 4（1%）、caught_seen 3（1%）、逾時（420 秒沒過） 3（1%） |
-| 不停 | σ 0.25 起步誤差 | 500 | 80.4% | 44.6 | 0.66 次 | 93.7%／93.7% | 86.6%／80.4% | 4.2／8.7／15.4／21.6 | belly_seen 43（9%）、caught_calm_slow 26（5%）、belly_move_high 24（5%）、caught_seen 3（1%）、caught_move_high 1（0%）、逾時（420 秒沒過） 1（0%） |
+| 不停 | 完美踩拍 | 500 | 100.0% | 44.0 | 0.04 次 | 95.1%／95.1% | 100.0%／100.0% | 3.6／8.4／12.2／22.4 | 無 |
+| 不停 | σ 0.12 起步誤差 | 500 | 94.4% | 44.4 | 0.59 次 | 94.1%／94.1% | 95.2%／94.4% | 3.8／8.7／14.4／22.3 | belly_seen 20（4%）、belly_move_high 4（1%）、caught_calm_slow 2（0%）、caught_seen 2（0%） |
+| 不停 | σ 0.25 起步誤差 | 500 | 83.8% | 44.7 | 0.69 次 | 93.3%／93.3% | 87.4%／83.8% | 4.2／8.9／16.9／21.6 | belly_seen 42（8%）、belly_move_high 21（4%）、caught_calm_slow 15（3%）、caught_seen 3（1%） |
 | 留空檔 | 只按前進 | 500 | 0.0% | — | 0.91 次 | 9.1%／89.5% | 0.0%／0.0% | 0.8／9.4／—／— | belly_move_high 341（68%）、caught_move_high 159（32%） |
-| 留空檔 | 完美時機（舊版沒有踩拍走） | 500 | 100.0% | 87.9 | 0.00 次 | 38.7%／77.6% | 100.0%／100.0% | 4.0／13.5／49.9／23.8 | 無 |
-| 留空檔 | σ 0.12 起步誤差 | 500 | 70.0% | 93.2 | 1.31 次 | 38.7%／80.7% | 95.8%／72.6% | 4.1／13.5／44.0／23.9 | caught_seen 140（28%）、caught_move_high 9（2%）、belly_seen 1（0%） |
-| 留空檔 | σ 0.25 起步誤差 | 500 | 15.0% | 99.2 | 2.61 次 | 37.6%／89.2% | 60.0%／17.8% | 4.5／13.8／32.3／23.0 | caught_seen 277（55%）、caught_move_high 112（22%）、belly_move_high 29（6%）、belly_seen 7（1%） |
+| 留空檔 | 完美時機（舊版沒有踩拍走） | 500 | 100.0% | 87.3 | 0.00 次 | 38.8%／77.5% | 100.0%／100.0% | 4.0／13.4／49.8／23.7 | 無 |
+| 留空檔 | σ 0.12 起步誤差 | 500 | 72.6% | 93.9 | 1.19 次 | 38.5%／80.0% | 96.4%／75.4% | 4.1／13.4／44.9／23.9 | caught_seen 127（25%）、caught_move_high 9（2%）、belly_seen 1（0%） |
+| 留空檔 | σ 0.25 起步誤差 | 500 | 13.4% | 101.0 | 2.49 次 | 37.6%／89.2% | 61.4%／17.6% | 4.5／13.4／31.9／21.9 | caught_seen 273（55%）、caught_move_high 124（25%）、belly_move_high 29（6%）、belly_seen 7（1%） |
 
 規則常數：`COVER_MODE` true、`COVER_EAR_P` 0、`HIGH_P` 0.6、`R_BASE` 3、`R_GAIN` 10、`BLIND_LEN` 0.6、`STEP_WIN` 0.08、`MASK_GAIN` 0.3、`SUSP_MOVE` 0.9、`SUSP_STEP` 0.2、`ALERTED_DURATION` 10。
 
 - N1＝主動時間比例（玩家至少有一個會改變狀態的合法動作的時間 ÷ 遊玩時間），每局平均。表裡兩個數字：「自己規則」＝各版照自己的規則量（舊版沒有踩拍走）；「同一把尺」＝兩版都用新版量法（設計席 7.6、7.8：簡報要對比只能用這個，並註明是程式玩家）。
-- 玩家定義：`tools/telemetry/troy-bots.js`，`makeBot` 與 `activeNow` 逐字照搬規則角色的 `risset.test.js`（提交 11b1944），數字和規則角色的測試同一套模型。「完美踩拍」＝固定策略＋踩拍走；舊版沒有踩拍走，同一個玩家就是完美時機的固定策略。
+- 玩家定義：`tools/telemetry/troy-bots.js`，`makeBot` 與 `activeNow` 逐字照搬規則角色的 `risset.test.js`（提交 0f21bf8：路線點不停、起步判定涵蓋 1/144～1/30 秒的幀率抖動），數字和規則角色的測試同一套模型。「完美踩拍」＝固定策略＋踩拍走；舊版沒有踩拍走，同一個玩家就是完美時機的固定策略。
 - 「σ 0.12／0.25 起步誤差」（規則角色的模型）：每次從停下到起步抽一個 e ~ N(0, σ)，用「t − e 那一刻」的狀態（在不在掩護窗、會不會踩在鼓點上、相位）決定要不要起步，e < 0 太早、e > 0 太晚；走著、停下、衝刺、暗殺、城門都用真實狀態；起步後重抽。
 - 「每局進高度警覺」＝規則發出 `alerted` 音效的次數（衛兵從巡邏轉高度警覺），全部局平均（含沒過的局）。通關時間中位只算通關局。
 - 死因代號是規則的 `failCode`（`belly_*`＝木馬腹中、`caught_*`＝其他區；`move_high`＝節奏快時腳步露聲、`seen`＝被看見、`loud`＝聲音太大）；`timeout`＝420 秒沒過。
@@ -109,4 +109,3 @@
 - 錄音用無頭 Chromium：預設 `--mute-audio`（不從喇叭出聲，分接點在 destination 前，錄音不受影響）、網址加 `nolock=1`（不鎖實體滑鼠）。**不加 `mute=1`**：它把遊戲總閘音量設 0，會錄到靜音。
 - 程式玩家照抄規則測試的策略，數字代表「這套策略」的表現，不是真人；真人的手感以 11/11 試玩為準。
 - 警戒輕版只量到 3 個警戒窗（錄音程式玩家在第 1 區故意喘氣引起一次起疑，安撫 4 拍後就結束），樣本少；差 1 dB 上下的結果要多錄幾段才能下定論。
-- 完美踩拍玩家 500 局有 2 局沒過（caught_seen 2（0%））：規則測試的 50 局全過，500 局才出現；屬於程式玩家策略（看得到精確感知半徑仍偶爾被看見）或規則的邊界情況，要規則角色用對應 seed 查。

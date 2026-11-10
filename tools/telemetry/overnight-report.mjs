@@ -111,7 +111,7 @@ export function buildReport(o) {
   const fails = J.filter(r => r.ok === false), nodata = J.filter(r => r.ok === null), listed = J.filter(r => r.ok === undefined);
   const L = [];
   L.push(`# 整夜自動驗證：木馬之夜殘響掩護（${o.date || localDate()}）`, '');
-  L.push(`- 產生：${new Date().toISOString()}；規則與聲音版本：提交 ${gitRev()}`);
+  L.push(`- 產生：${new Date().toISOString()}；版本：程式玩家 提交 ${(sim && sim.rev) || '—'}；錄音 提交 ${o.recRev || gitRev()}${o.recRev ? '' : '（產生報告當下的工作樹）'}`);
   L.push(`- 門檻：\`docs/design/2026-11-10-core-direction-illusion.md\` 第 7 節（7.5 錄音、7.8 程式玩家；7.1 的「σ 0.12 通關 50～85%」已被 7.8 作廢，通關率只列不判）。`);
   L.push(`- 重產這份報告：\`node tools/telemetry/overnight-report.mjs --sim ${o.sim ? rel(o.sim) : '<json>'} --cover ${o.cover ? rel(o.cover) : '<資料夾>'} --gap ${o.gap ? rel(o.gap) : '<資料夾>'}${o.steps ? ' --steps ' + rel(o.steps) : ''} --out ${o.out ? rel(o.out) : '<md>'}\``);
   L.push(`- 錄音原始輸出在 \`tools/playtest-recorder/out/\`，不進 git；程式玩家 JSON 在 ${o.sim ? '`' + rel(o.sim) + '`' : '—'}（同樣不進 git）。`, '');
@@ -128,7 +128,7 @@ export function buildReport(o) {
     L.push(formatTable(sim.results), '');
     L.push(`規則常數：${Object.entries(sim.constants || {}).map(([k, v]) => '`' + k + '` ' + v).join('、')}。`, '');
     L.push('- N1＝主動時間比例（玩家至少有一個會改變狀態的合法動作的時間 ÷ 遊玩時間），每局平均。表裡兩個數字：「自己規則」＝各版照自己的規則量（舊版沒有踩拍走）；「同一把尺」＝兩版都用新版量法（設計席 7.6、7.8：簡報要對比只能用這個，並註明是程式玩家）。');
-    L.push('- 玩家定義：`tools/telemetry/troy-bots.js`，`makeBot` 與 `activeNow` 逐字照搬規則角色的 `risset.test.js`（提交 11b1944），數字和規則角色的測試同一套模型。「完美踩拍」＝固定策略＋踩拍走；舊版沒有踩拍走，同一個玩家就是完美時機的固定策略。');
+    L.push('- 玩家定義：`tools/telemetry/troy-bots.js`，`makeBot` 與 `activeNow` 逐字照搬規則角色的 `risset.test.js`（提交 0f21bf8：路線點不停、起步判定涵蓋 1/144～1/30 秒的幀率抖動），數字和規則角色的測試同一套模型。「完美踩拍」＝固定策略＋踩拍走；舊版沒有踩拍走，同一個玩家就是完美時機的固定策略。');
     L.push('- 「σ 0.12／0.25 起步誤差」（規則角色的模型）：每次從停下到起步抽一個 e ~ N(0, σ)，用「t − e 那一刻」的狀態（在不在掩護窗、會不會踩在鼓點上、相位）決定要不要起步，e < 0 太早、e > 0 太晚；走著、停下、衝刺、暗殺、城門都用真實狀態；起步後重抽。');
     L.push('- 「每局進高度警覺」＝規則發出 `alerted` 音效的次數（衛兵從巡邏轉高度警覺），全部局平均（含沒過的局）。通關時間中位只算通關局。');
     L.push('- 死因代號是規則的 `failCode`（`belly_*`＝木馬腹中、`caught_*`＝其他區；`move_high`＝節奏快時腳步露聲、`seen`＝被看見、`loud`＝聲音太大）；`timeout`＝420 秒沒過。', '');
@@ -160,7 +160,7 @@ function main(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--sim') o.sim = argv[++i]; else if (a === '--cover') o.cover = argv[++i]; else if (a === '--gap') o.gap = argv[++i]; else if (a === '--steps') o.steps = argv[++i];
-    else if (a === '--out') o.out = argv[++i]; else if (a === '--date') o.date = argv[++i];
+    else if (a === '--out') o.out = argv[++i]; else if (a === '--date') o.date = argv[++i]; else if (a === '--rec-rev') o.recRev = argv[++i];
     else if (a === '-h' || a === '--help') { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]); return 0; }
   }
   const r = buildReport(o);
