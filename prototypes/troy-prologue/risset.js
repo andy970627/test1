@@ -77,6 +77,7 @@
     //   2. p > HIGH_P 時，踩在可聽拍上的腳步（step_masked）不算被聽見，出聲的腳步（step_loud）才進高度警覺；被看見照舊；
     //   3. 掩護窗內感知仍為 0（和盲區一樣）。另外火光改讀實際速度 danger，FIRE_BLIND 不用。
     COVER_MODE: true,
+    COVER_EAR_P: 0,       // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
     CYCLE_FAR: 12,        // 附近沒有衛兵時的目標循環長度
@@ -463,10 +464,11 @@
   const num = (v) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
   function hintsFor(K) {
     K = K || T;
-    const cover = !!K.COVER_MODE;   // 殘響掩護版：鼓聲不斷，時機改說「最響的那一擊」（11/10 甲；文字待設計席潤稿）
+    const cover = !!K.COVER_MODE;   // 殘響掩護版：鼓聲不斷，時機改說「最響的那一擊」（文字照設計席 7.4）
     return {
-      breath: '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
-      blind: cover ? '每一輪最後，所有鼓同時落下最響的一擊，餘韻約 ' + num(K.BLIND_LEN) + ' 秒蓋住一切，衛兵什麼都察覺不到——趁這時移動。'
+      breath: cover ? '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。'
+        : '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
+      blind: cover ? '所有的鼓同時落下的那一擊最響，餘韻約 ' + num(K.BLIND_LEN) + ' 秒。這段時間衛兵什麼都察覺不到——趁這時移動。'
         : '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
       trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
@@ -479,9 +481,10 @@
         : '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
       gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
       lockedExit: '還在被追，先甩掉追兵才能往前走。',
-      step: cover ? '起步踩在鼓點上，之後腳步會自己跟著鼓走、被蓋過；節奏最快時踩著鼓點走，衛兵聽不出來，但看得見你。離拍起步、或鼓很稀疏時走，身邊的衛兵聽得到。'
+      step: cover ? '踩著鼓點走，腳步聲會被鼓聲蓋過，衛兵聽不出來——但他看得見你。起步要踩在鼓點上，之後腳步會自己跟著鼓走；離拍起步、或鼓很稀疏時，身邊的衛兵聽得到。'
         : '起步踩在鼓點上，之後腳步會自己跟著鼓走、被蓋過；離拍起步、或鼓很稀疏時走，身邊的衛兵聽得到。',
-      alertBlind: '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
+      alertBlind: cover ? '衛兵起疑時，兩聲低音正中間會有一記較輕的重擊，那時可以移動。'
+        : '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
       fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
     };
   }
@@ -493,15 +496,18 @@
     K = K || T;
     const cover = !!K.COVER_MODE;
     return {
-      breath: { name: '屏息', text: '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
+      breath: { name: '屏息', text: cover ? '「來不及躲開時，按住空白鍵屏住呼吸，站著別動。」' : '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
         keys: '按住 空白鍵 屏息，放開就換氣；最多撐約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來就放開。' },
       blind: cover
-        ? { name: '重擊掩護', text: '「最響的那一擊落下，就是你移動的時候。」',
-          keys: '所有鼓同時落下的那一擊和它的餘韻約 ' + num(K.BLIND_LEN) + ' 秒，這時才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' }
+        ? { name: '最響的一擊', text: '「最響的那一擊落下，就是你移動的時候。」',
+          keys: '所有鼓同時落下的那一擊和它的餘韻，約 ' + num(K.BLIND_LEN) + ' 秒；這時按 W A S D 走，按 Shift 可以多衝一段。' }
         : { name: '驟降（盲區）', text: '「鼓聲一斷，就是你移動的時候。」',
           keys: '鼓聲斷掉的那 ' + num(K.BLIND_LEN) + ' 秒才按 W A S D 走；那一瞬間按 Shift 可以多衝一段。' },
-      radius: { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他聽得到的範圍。」',
-        keys: '火光圈外才按 W A S D 移動；被照到時停下，或按住 空白鍵。' },
+      radius: cover
+        ? { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他察覺得到的範圍。」',
+          keys: '在火光圈裡要踩著鼓點走，別走到他面前；被盯上就停下，或按住 空白鍵。' }
+        : { name: '衛兵感知範圍', text: '「火光照到的範圍，就是他聽得到的範圍。」',
+          keys: '火光圈外才按 W A S D 移動；被照到時停下，或按住 空白鍵。' },
       step: { name: '腳步合拍', text: '「踩著鼓點走，腳步聲會被蓋過。」',
         keys: '起步踩在鼓點上，然後按住 W A S D 不放、跟著鼓走，腳步會自己落在鼓點上；離拍起步或鼓很稀疏時才會出聲。' },
       calm: { name: '警戒與安撫', text: '「別跟著亂掉的鼓聲快。聽最低的那個聲音，跟著它按 Q。」',
@@ -529,14 +535,18 @@
   }
 
   // 失敗原因（g.failReason 是一句完整的話，畫面層直接顯示；g.failCode 是代號）
-  const CAUSES = {
-    move_high: '節奏最快時你動了，衛兵聽見了',
+  function causesFor(K) {
+    K = K || T;
+    return {
+    move_high: K.COVER_MODE ? '節奏最快時，你的腳步沒踩在鼓點上，衛兵聽見了' : '節奏最快時你動了，衛兵聽見了',
     loud: '你發出的聲音太大，衛兵聽見了',
     calm_fast: '安撫時按得太急',
     calm_off: '安撫時沒對準那聲慢慢的低音',
     calm_slow: '安撫得太慢，衛兵喊了人',
     seen: '衛兵發現了你'
-  };
+    };
+  }
+  const CAUSES = causesFor(T);
   const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
 
   // ---------- 關卡資料：木馬之夜（整關 60 × 30 m） ----------
@@ -718,6 +728,8 @@
     // 提示文字：沒改常數就用共用的 HINTS／HINT_LADDER（畫面層可覆寫按鍵說法）；改了常數就照改過的數字重新生成
     const HTXT = opts.T ? hintsFor(K) : HINTS;
     const LADDER = opts.T ? hintLadderFor(K) : HINT_LADDER;
+    const CZ = opts.T ? causesFor(K) : CAUSES;
+    const MOVE_HIGH_MSG = K.COVER_MODE ? '節奏最快的時候腳步露了聲——被發現了！' : '節奏最快的時候亂動——被發現了！';
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HTXT[key]); } };
     /** 暗示階梯：key 這件事失敗一次（HINT_FAIL_GAP 秒內重複的只算一次）。第 2 次起發 hint {key, level}。 */
@@ -839,7 +851,6 @@
       q.calm = g.panic.count;
       hint('panic');
     }
-    let alertedMsgShown = false;
     function makeAlerted(q, t, cause) {
       if (!q || q.state !== 'patrol') return;
       if (cause === 'move_high') hintFail('blind');
@@ -848,10 +859,9 @@
       q.alertUntil = t + K.ALERTED_DURATION;
       q.lookAt = { x: g.player.x, z: g.player.z };
       emit('sfx', 'alerted');
-      if (!alertedMsgShown) {
-        alertedMsgShown = true;
-        emit('msg', HTXT.alerted);
-      }
+      // 11/10 複審：之前 msg 和 hint 都發 HTXT.alerted，同一句出現兩次。改成 msg 說「發生了什麼」（每次進入都發，
+      // 只有腳步露聲才有；大聲沒有另外的訊息），hint 說「接下來怎麼辦」（第一次）。
+      if (cause === 'move_high') emit('msg', MOVE_HIGH_MSG);
       hint('alerted');
     }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
@@ -861,7 +871,7 @@
       if (cause === 'move_high') hintFail('blind');
       else if (/^calm_/.test(cause)) hintFail('calm');
       if (q && behindPlayer(q)) hintFail('listen');
-      if (g.player.inBelly) { fail(CAUSES[cause] + '——你在木馬裡被發現了。', 'belly_' + cause); return; }
+      if (g.player.inBelly) { fail(CZ[cause] + '——你在木馬裡被發現了。', 'belly_' + cause); return; }
       if (!g.hunted) huntCause = cause;
       const pl = g.player;
       const wasHunted = g.hunted;
@@ -1217,10 +1227,11 @@
         const seen = !pl.hidden && d <= r && inFov;
         const mv = moved && !lead;   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
         // 4A 的 M7 只改 R_BASE／R_GAIN，不做感知分級：移動聲、呼吸聲仍以整個 r(p) 判定（分級是 4B 的事）
-        // 殘響掩護（COVER_MODE）第 2 條：p > HIGH_P 時耳朵可以用鼓聲騙——踩在可聽拍上的腳步不算被聽見，
-        // 只有這一幀出聲的腳步（step_loud）才算；被看見（seen）照舊。p ≤ HIGH_P 時兩版相同。
-        const coverEar = !!K.COVER_MODE && p > K.HIGH_P;
-        const heardMove = mv && d <= r && (!coverEar || stepLoud);
+        // 殘響掩護（COVER_MODE）第 2 條（設計席 7.1：p > COVER_EAR_P，預設全程）：耳朵可以用鼓聲騙——
+        // 踩在可聽拍上的腳步（step_masked）聽不見；出聲的腳步（step_loud）才算，後果和舊版一樣：
+        // p ≤ HIGH_P 時是 STEP_R 內加 SUSP_STEP（heardStep 那一行），p > HIGH_P 時 r(p) 內進高度警覺。被看見（seen）照舊。
+        const coverEar = !!K.COVER_MODE && p > K.COVER_EAR_P;
+        const heardMove = mv && d <= r && (!coverEar || (stepLoud && p > K.HIGH_P));
         const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
         const heardStep = stepLoud && d < K.STEP_R;
@@ -1233,13 +1244,16 @@
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
           const moveHigh = p > K.HIGH_P && mv && (heardMove || seen);
           if (heardLoud || moveHigh) {
-            const msg = heardLoud ? '那聲音太大了——衛兵衝過來！' : '節奏最快的時候亂動——被發現了！';
+            const msg = heardLoud ? '那聲音太大了——衛兵衝過來！' : MOVE_HIGH_MSG;
             startHunt(q, heardLoud ? 'loud' : 'move_high', msg);
             continue;
           }
           if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
-          if (mv && (heardMove || seen) && q.grace <= 0) q.susp += K.SUSP_MOVE * dt;
-          if (!mv && !heardStep && !heardLoud) {
+          if (mv && (heardMove || seen)) { if (q.grace <= 0) q.susp += K.SUSP_MOVE * dt; }
+          else if (seen || heardBreath) {
+            // 11/10 複審：站著被看見（或聽到呼吸）和巡邏時一樣累積疑心；之前高度警覺的衛兵反而看著你也不加
+            if (q.grace <= 0) q.susp += (p > K.HIGH_P ? K.SUSP_SEEN_HIGH : K.SUSP_SEEN_LOW) * dt;
+          } else if (!heardStep && !heardLoud) {
             q.susp = Math.max(K.ALERTED_SUSP, q.susp - K.SUSP_DECAY * dt);
           }
           q.susp = Math.max(K.ALERTED_SUSP, Math.min(1, q.susp));
@@ -1263,7 +1277,7 @@
         if (mv && (heardMove || seen)) {
           if (p > K.HIGH_P) {
             if (q.state === 'patrol') makeAlerted(q, t, 'move_high');
-            else startHunt(q, 'move_high', '節奏最快的時候亂動——被發現了！');
+            else startHunt(q, 'move_high', MOVE_HIGH_MSG);
             continue;
           }
           // 假驟降的頭 BLIND_LEN 秒裡動了，被聽見 → 算「假驟降」；平常 → 算「感知範圍」
@@ -1324,7 +1338,7 @@
           const hs = t < g.huntSlowUntil ? K.HUNT_SPEED * K.HUNT_SLOW_MUL : K.HUNT_SPEED;
           if (Math.hypot(L.x - q.x, L.z - q.z) > 0.3) moveToward(q, L.x, L.z, hs, dt);
           else q.yaw += K.SEARCH_TURN * dt;
-          if (dist2(q, pl) < K.CATCH_R) { fail(CAUSES[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
+          if (dist2(q, pl) < K.CATCH_R) { fail(CZ[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
         }
       }
 
@@ -1404,7 +1418,7 @@
   }
 
   return {
-    T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES,
+    T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES, causesFor,
     createLevel, buildLevel,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,

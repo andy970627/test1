@@ -233,12 +233,40 @@ test('11/10 4A 複審：起疑（安撫中）的衛兵在節奏最快時聽到�
   assert.ok(ev.includes('hunt') && !ev.includes('alerted'), '起疑中喘氣 → 追殺，不是高度警覺');
 });
 
+test('11/10 複審：高度警覺中站著被看見會累積疑心（和巡邏一樣），撐到 1 就追殺；只發一次提示、訊息說發生了什麼', () => {
+  for (const cover of [true, false]) {
+    const g = cover ? cvr({ startZone: 2 }) : lvl({ startZone: 2, T: { FAKE: false } });
+    const q = solo(g, 'g2a', 25, 22, 0);                 // 面向 −z，看著玩家
+    place(g, 25, 19);
+    let t = 7; g.step(t, { breath: true }); g.drain();
+    // 讓他進高度警覺：被看見時移動（兩版都算）
+    t += DT; g.step(t, { mx: 1 });                       // 憋氣時不能走，這一幀放開
+    assert.equal(q.state, 'alerted');
+    const out = g.drain();
+    const alertedText = (cover ? R.hintsFor(g.T) : OH).alerted;
+    const same = out.filter((e) => (e.type === 'msg' || e.type === 'hint') && e.a === alertedText);
+    assert.equal(same.length, 1, '提示只出一次（之前 msg 和 hint 都發同一句）');
+    const msg = out.find((e) => e.type === 'msg');
+    assert.ok(msg && msg.a !== alertedText && /被發現了/.test(msg.a), `訊息說發生了什麼：${msg && msg.a}`);
+    if (cover) assert.ok(msg.a.includes('腳步露了聲') && !/亂動/.test(msg.a));
+    // 站著不動、屏息（不出聲），但他看得見你
+    const s0 = q.susp;
+    t = run(g, t, t + 0.5, () => ({ breath: true }));
+    assert.ok(q.susp > s0, `看得見就累積：${s0} → ${q.susp}`);
+    run(g, t, t + 6, () => ({ breath: true }));
+    assert.ok(g.hunted, '一直站在他眼前 → 疑心到 1 → 追殺');
+  }
+});
+
 test('11/09 4A：高度警覺持續時間到期會回巡邏，並發 alert_over', () => {
   const g = lvl({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 22, 0);
   place(g, 25, 19);
   g.step(7, {});
   g.step(7 + DT, { mx: 1 });
+  assert.equal(q.state, 'alerted');
+  // 11/10 複審起，站在高度警覺的衛兵眼前會累積疑心（和巡邏一樣）；要測「沒再犯就到期」，觸發後就退到他察覺不到的地方
+  place(g, 25 - (R.radiusAt(1, true, g.T) + 0.5), 22);
   const out = [];
   run(g, 7 + DT, 17.2, (gg, t) => { if (Math.abs(t - (7 + DT)) > 1e-9) out.push(...gg.drain()); return {}; });
   out.push(...g.drain());
@@ -1355,8 +1383,11 @@ test('8.2 visualAid：區 0、1 = 1，區 2 = 0.5，其後 0；opts.visualAid �
  *   窄巷：先摸到站崗衛兵背後，等盲區走近按 takedown。
  *   城門：低頻而且附近沒人時按住 interact，高頻時放手、需要就屏息。
  *   被追殺時躲進最近的陰影深處不動。
- *   opts.cover（11/10 甲）：COVER_MODE 下多一條路——p > HIGH_P 時，只要範圍內沒有衛兵看得到下一步的位置，
+ *   opts.cover（11/10 甲）：COVER_MODE 下多一條路——p > COVER_EAR_P 時，只要範圍內沒有衛兵看得到下一步的位置，
  *   就踩著鼓點走（起步只在可聽拍上；之後腳步自己跟著鼓走）。
+ *   opts.sigma（11/10 設計席 7.1）：起步誤差。每次從停下到起步抽一個 e ~ N(0, sigma)，用「t − e 那一刻」的狀態
+ *   （在不在掩護窗、那時起步會不會踩在鼓點上、相位）決定要不要起步：e < 0 太早、e > 0 太晚。走著的時候、停下、
+ *   衝刺與暗殺都用真實狀態（只模擬「起步」這一下的手誤）。opts.seed 決定誤差序列。
  */
 function makeBot(opts = {}) {
   const WP = {
@@ -1366,9 +1397,17 @@ function makeBot(opts = {}) {
     4: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.5 }]
   };
   let zone = -1, wi = 0, calmBeat = null, walkingPrev = false;
+  const erng = R.mulberry32((opts.seed || 1) * 97 + 13);
+  const gauss = () => { let u = 0, v = 0; while (u === 0) u = erng(); v = erng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  let curErr = opts.sigma ? gauss() * opts.sigma : 0;
   const inner = function (g) {
     const K = g.T, t = g.time, pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
     const inp = { mx: 0, mz: 0 };
+    // 起步誤差：停著的時候，用 t − e 那一刻的狀態判斷「現在起步可不可以」
+    const err = (walkingPrev || !opts.sigma) ? 0 : curErr;
+    const tv = t - err;
+    const pV = err === 0 ? p : (((p + (tv - t) / c.T) % 1) + 1) % 1;
+    const blindV = err === 0 ? blind : R.blindWindows(tv - 1e-6, tv + 1e-6, g).some((w) => tv >= w.from && tv < w.to);
     if (g.zone !== zone) { zone = g.zone; wi = 0; }
     const act = g.guards.filter(q => q.active);
     const r = (q, pp = p) => R.radiusAt(pp, q.state !== 'patrol', K);
@@ -1422,9 +1461,9 @@ function makeBot(opts = {}) {
       const f = R.forward(q.yaw);
       return R.angDiff(Math.atan2(nx - q.x, nz - q.z), Math.atan2(f.x, f.z)) > K.FOV + 0.2;
     });
-    const coverStep = !!opts.cover && K.COVER_MODE && p > K.HIGH_P + 0.01 && unseen &&
-      (walkingPrev || R.stepMasked(t + 1 / 60, g)) && act.every((q) => Math.hypot(q.x - nx, q.z - nz) > K.STEP_R);
-    const canMove = blind || (p <= 0.57 && safe) || coverStep;
+    const coverStep = !!opts.cover && K.COVER_MODE && pV > K.COVER_EAR_P + 0.01 && unseen &&
+      (walkingPrev || R.stepMasked(tv + 1 / 60, g)) && act.every((q) => Math.hypot(q.x - nx, q.z - nz) > K.STEP_R);
+    const canMove = blindV || (pV <= 0.57 && safe) || coverStep;
     if (canMove) {
       inp.mx = ux; inp.mz = uz;
       if (blind && dw > 1.5 && !(tgt && g.zone === 3)) inp.dash = true;
@@ -1433,7 +1472,13 @@ function makeBot(opts = {}) {
     }
     return inp;
   };
-  return function (g) { const out = inner(g); walkingPrev = !!(out.mx || out.mz); return out; };
+  return function (g) {
+    const out = inner(g);
+    const moving = !!(out.mx || out.mz);
+    if (moving && !walkingPrev && opts.sigma) curErr = gauss() * opts.sigma;   // 起步了：下一次起步重新抽誤差
+    walkingPrev = moving;
+    return out;
+  };
 }
 
 function playthrough(seed, t0, jitter) {
@@ -2081,7 +2126,7 @@ test('11/10 甲 第 2 條：節奏最快時離拍起步（step_loud）→ 高度
   assert.equal(q2.state, 'alerted', '眼睛不能用鼓聲騙');
 });
 
-test('11/10 甲 第 3 條：掩護窗內感知仍為 0、衝刺有效；p ≤ HIGH_P 時和舊版相同（範圍內移動累積疑心）', () => {
+test('11/10 甲 第 3 條：掩護窗內感知仍為 0、衝刺有效', () => {
   const g = cvr({ startZone: 2 });
   const q = solo(g, 'g2a', 25, 20.5, 0);              // 面對玩家 1.5 m
   place(g, 25, 19);
@@ -2090,13 +2135,69 @@ test('11/10 甲 第 3 條：掩護窗內感知仍為 0、衝刺有效；p ≤ HI
   assert.equal(q.susp, 0, '掩護窗裡在他眼前走也沒事');
   g.step(10.4 + DT, { dash: true, mx: 1 });
   assert.ok(sfx(g).includes('dash'), '掩護窗裡可以衝刺');
-  // 慢的時候
+});
+
+test('11/10 設計席 7.1：COVER_EAR_P = 0，慢的時候踩著鼓點走也聽不見；出聲的腳步只在 STEP_R 內加 SUSP_STEP；設 0.6 回到舊行為', () => {
+  assert.equal(K.COVER_EAR_P, 0);
+  /** 慢的時候（p 0.1～0.5）在背對的衛兵身後來回走；回傳 {susp, ev}。 */
+  const walk = (T, dz) => {
+    const g = R.createLevel({ startZone: 2, T: Object.assign({ DYNAMIC: false, FAKE: false }, T) });
+    const q = solo(g, 'g2a', 25, 19 + dz, R.yawTo(0, 1));
+    place(g, 25, 19);
+    g.step(1, {}); g.drain();
+    let t = 1; const ev = [];
+    while (t < 5) {
+      if (dz <= K.STEP_R) q.susp = 0;                  // 每幀歸零，才看得出這一幀加了多少
+      t += DT; g.step(t, { mx: g.player.x > 25.4 ? -1 : (g.player.x < 24.6 ? 1 : (g.player.x >= 25 ? 1 : -1)) });
+      const e = sfx(g); ev.push(...e);
+      if (dz <= K.STEP_R) {
+        if (e.includes('step_loud')) assert.ok(near(q.susp, K.SUSP_STEP - K.SUSP_DECAY * DT, 0.01), `出聲的腳步只加 SUSP_STEP：${q.susp}`);
+        else assert.equal(q.susp, 0, `t=${t.toFixed(2)} 沒出聲就沒加：${q.susp}`);
+      }
+      assert.notEqual(q.state, 'alerted', '慢的時候不會進高度警覺');
+    }
+    return { susp: g.guards.find((x) => x.id === 'g2a').susp, ev };
+  };
+  // 3 m：在 r(p) 內、STEP_R 外——新版怎麼走都聽不見（出聲的腳步傳不到 3 m）；舊版範圍內移動會累積
+  assert.ok(R.radiusAt(0.1, false, K) > 3);
+  const a = walk({ COVER_MODE: true }, 3);
+  assert.ok(a.ev.includes('step_masked'), '有踩在鼓點上的腳步');
+  assert.equal(a.susp, 0, '新版：慢的時候踩著鼓點走，衛兵聽不見');
+  assert.ok(walk({ COVER_MODE: false }, 3).susp > 0, '舊版：範圍內移動累積疑心');
+  assert.ok(walk({ COVER_MODE: true, COVER_EAR_P: 0.6 }, 3).susp > 0, 'COVER_EAR_P = 0.6 回到 11/10 晚的行為');
+  // 2 m：STEP_R 內——出聲的腳步加 SUSP_STEP（逐幀檢查在 walk 裡）
+  walk({ COVER_MODE: true }, 2);                     // 踩拍的步：逐幀檢查都沒加
+  // 離拍起步（出聲）：STEP_R 內加 SUSP_STEP，不進高度警覺
   const h = cvr({ startZone: 2 });
-  const q2 = solo(h, 'g2a', 25, 21, R.yawTo(0, 1));
+  const q = solo(h, 'g2a', 25, 21, R.yawTo(0, 1));
   place(h, 25, 19);
-  h.step(2, {}); h.drain();
-  run(h, 2, 2.5, (gg) => ({ mx: gg.player.x > 25.4 ? -1 : 1 }));
-  assert.ok(q2.susp > 0, 'p ≤ HIGH_P 在範圍內走動照舊累積疑心');
+  let t = 1; h.step(t, {});
+  t = idleUntil(h, t, (gg, tt) => gg.cycle.p < K.HIGH_P && !R.stepMasked(tt, gg), 5);
+  h.drain(); q.susp = 0;
+  t += DT; h.step(t, { mx: 1 });
+  assert.ok(sfx(h).includes('step_loud'));
+  assert.ok(near(q.susp, K.SUSP_STEP - K.SUSP_DECAY * DT, 1e-9), `加 SUSP_STEP、同一幀照常退 SUSP_DECAY：${q.susp}`);
+  assert.equal(q.state, 'patrol');
+});
+
+test('11/10 設計席 7.4：殘響掩護版的提示文字表（數字由常數生成）；舊版不變', () => {
+  const H = R.hintsFor(K), L = R.hintLadderFor(K), C = R.causesFor(K);
+  const n = (v) => String(v);
+  assert.equal(H.blind, '所有的鼓同時落下的那一擊最響，餘韻約 ' + n(K.BLIND_LEN) + ' 秒。這段時間衛兵什麼都察覺不到——趁這時移動。');
+  assert.equal(H.step, '踩著鼓點走，腳步聲會被鼓聲蓋過，衛兵聽不出來——但他看得見你。起步要踩在鼓點上，之後腳步會自己跟著鼓走；離拍起步、或鼓很稀疏時，身邊的衛兵聽得到。');
+  assert.equal(H.breath, '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。');
+  assert.equal(H.alertBlind, '衛兵起疑時，兩聲低音正中間會有一記較輕的重擊，那時可以移動。');
+  assert.equal(L.blind.name, '最響的一擊');
+  assert.equal(L.blind.keys, '所有鼓同時落下的那一擊和它的餘韻，約 ' + n(K.BLIND_LEN) + ' 秒；這時按 W A S D 走，按 Shift 可以多衝一段。');
+  assert.equal(L.radius.text, '「火光照到的範圍，就是他察覺得到的範圍。」');
+  assert.equal(L.radius.keys, '在火光圈裡要踩著鼓點走，別走到他面前；被盯上就停下，或按住 空白鍵。');
+  assert.equal(L.breath.text, '「來不及躲開時，按住空白鍵屏住呼吸，站著別動。」');
+  assert.equal(C.move_high, '節奏最快時，你的腳步沒踩在鼓點上，衛兵聽見了');
+  assert.equal(R.CAUSES.move_high, C.move_high, '預設常數就是新版');
+  // 舊版保留原文
+  assert.equal(R.causesFor(Object.assign({}, K, OLD)).move_high, '節奏最快時你動了，衛兵聽見了');
+  assert.equal(OL.radius.text, '「火光照到的範圍，就是他聽得到的範圍。」');
+  assert.ok(/斷/.test(OH.blind));
 });
 
 test('11/10 甲：火光跟實際速度走，掩護窗不壓暗；提示文字不再說「斷掉」，數字由常數生成', () => {
@@ -2130,20 +2231,25 @@ test('11/10 甲：火光跟實際速度走，掩護窗不壓暗；提示文字�
 /*
  * N1（總綱第 7 節）：玩家「至少有一個會改變狀態的合法動作」的時間 ÷ 總時間。每幀照程式玩家當下的位置查，算主動的情況：
  *   掩護窗（盲區）裡；p ≤ HIGH_P 而且不在任何衛兵的 r(p) 內；城門區站在門閂旁而且 p ≤ GATE_LOW_P；
- *   COVER_MODE 另加：p > HIGH_P 而且 r(p) 內的衛兵都看不到你（在陰影裡或在視野外）——這時踩著鼓點走是合法動作。
+ *   踩拍走：p > COVER_EAR_P 而且 r(p) 內的衛兵都看不到你（在陰影裡或在視野外）——這時踩著鼓點走是合法動作。
  *   起疑（安撫）、只能屏息或等待都算被動；只算 phase = 'play' 的幀。
+ * ruler：'own' ＝各版照自己的規則量（舊版沒有踩拍走這條）；'cover' ＝新版量法（設計席 7.6：舊版也照算踩拍走，
+ *   COVER_EAR_P 取 0），兩版用同一把尺才能比。
  */
-function activeNow(g) {
+function activeNow(g, ruler = 'own') {
   const K = g.T, pl = g.player, p = g.cycle.p;
   if (g.cycle.blind) return true;
-  const act = g.guards.filter((q) => q.active);
   if (g.panic.active) return false;
+  const act = g.guards.filter((q) => q.active);
   const rq = (q) => R.radiusAt(p, q.state !== 'patrol', K);
   const d = (q) => Math.hypot(q.x - pl.x, q.z - pl.z, pl.y || 0);
-  if (g.zone === 4 && g.level.gate && Math.hypot(g.level.gate.latch ? g.level.gate.latch.x - pl.x : 1e9, g.level.gate.latch ? g.level.gate.latch.z - pl.z : 1e9) <= K.LATCH_R && p <= K.GATE_LOW_P) return true;
-  if (p <= K.HIGH_P) return act.every((q) => d(q) > rq(q));
-  if (!K.COVER_MODE) return false;
+  const L = g.level.gate && g.level.gate.latch;
+  if (g.zone === 4 && L && Math.hypot(L.x - pl.x, L.z - pl.z) <= K.LATCH_R && p <= K.GATE_LOW_P) return true;
+  const stepRule = ruler === 'cover' || !!K.COVER_MODE;
+  const earP = (ruler === 'own' && K.COVER_MODE) ? K.COVER_EAR_P : 0;
   return act.every((q) => {
+    if (p <= K.HIGH_P && d(q) > rq(q)) return true;
+    if (!stepRule || p <= earP) return false;
     if (d(q) > rq(q) || pl.hidden) return true;
     const f = R.forward(q.yaw);
     return R.angDiff(Math.atan2(pl.x - q.x, pl.z - q.z), Math.atan2(f.x, f.z)) > K.FOV;
@@ -2174,7 +2280,7 @@ function runGame(cover, seed, botMaker, maxT = 420) {
   const g = R.createLevel({ t0, seed, T: { COVER_MODE: cover } });
   const bot = botMaker();
   const jr = R.mulberry32(seed * 7 + 3);
-  let t = 2, act = 0, all = 0;
+  let t = 2, act = 0, actC = 0, all = 0;
   g.step(t, {}); g.step(t, { start: true });
   while (g.phase === 'play' || g.phase === 'intro') {
     if (t > maxT) break;
@@ -2182,34 +2288,42 @@ function runGame(cover, seed, botMaker, maxT = 420) {
     t += dt;
     g.step(t, bot(g));
     g.drain();
-    if (g.phase === 'play') { all += dt; if (activeNow(g)) act += dt; }
+    if (g.phase === 'play') { all += dt; if (activeNow(g)) act += dt; if (activeNow(g, 'cover')) actC += dt; }
   }
-  return { win: g.phase === 'win', t, n1: all > 0 ? act / all : 0, zone: g.zone, why: g.failReason };
+  return { win: g.phase === 'win', t, n1: all > 0 ? act / all : 0, n1c: all > 0 ? actC / all : 0, zone: g.zone, why: g.failReason };
 }
 function stats(cover, botMaker, n) {
   const rs = [];
-  for (let seed = 1; seed <= n; seed++) rs.push(runGame(cover, seed, botMaker));
+  for (let seed = 1; seed <= n; seed++) rs.push(runGame(cover, seed, () => botMaker(seed)));
   const wins = rs.filter((r) => r.win);
   const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
   const stuck = {};
   for (const r of rs) if (!r.win) stuck[r.zone] = (stuck[r.zone] || 0) + 1;
-  return { n, winRate: wins.length / n, reachGate: rs.filter((r) => r.win || r.zone >= 4).length / n, reach3: rs.filter((r) => r.win || r.zone >= 3).length / n, n1: mean(rs.map((r) => r.n1)), n1Win: mean(wins.map((r) => r.n1)), tWin: mean(wins.map((r) => r.t - 2)), stuck };
+  return { n, winRate: wins.length / n, reachGate: rs.filter((r) => r.win || r.zone >= 4).length / n, reach3: rs.filter((r) => r.win || r.zone >= 3).length / n, n1: mean(rs.map((r) => r.n1)), n1c: mean(rs.map((r) => r.n1c)), n1Win: mean(wins.map((r) => r.n1)), tWin: mean(wins.map((r) => r.t - 2)), stuck };
 }
 
-test('11/10 甲：程式玩家兩種模式各 50 局的 N1 與通關率；COVER_MODE 下「只按前進鍵」通關率 ≤ 30%（印出數字給設計文件用）', () => {
+test('11/10 甲：程式玩家兩種模式各 50 局的 N1 與通關率、起步誤差 σ 0.12 秒的通關率；只按前進鍵 ≤ 30%（印出數字給設計文件用）', () => {
   const N = 50;
-  const fmt = (s) => `通關 ${(s.winRate * 100).toFixed(0)}%（走到窄巷 ${(s.reach3 * 100).toFixed(0)}%、城門 ${(s.reachGate * 100).toFixed(0)}%）、N1 ${(s.n1 * 100).toFixed(1)}%（通關局 ${(s.n1Win * 100).toFixed(1)}%）、通關平均 ${s.tWin.toFixed(0)} 秒、卡關區 ${JSON.stringify(s.stuck)}`;
+  const pct = (v) => (v * 100).toFixed(0) + '%';
+  const fmt = (s) => `通關 ${pct(s.winRate)}（走到窄巷 ${pct(s.reach3)}、城門 ${pct(s.reachGate)}）、N1 ${(s.n1 * 100).toFixed(1)}%（新版量法 ${(s.n1c * 100).toFixed(1)}%）、通關平均 ${s.tWin.toFixed(0)} 秒、卡關區 ${JSON.stringify(s.stuck)}`;
   const oldBot = stats(false, () => makeBot(), N);
   const coverBot = stats(true, () => makeBot({ cover: true }), N);
+  const coverSigma = stats(true, (seed) => makeBot({ cover: true, sigma: 0.12, seed }), N);
+  const oldSigma = stats(false, (seed) => makeBot({ sigma: 0.12, seed }), N);
   const coverSafe = stats(true, () => makeBot(), N);
   const fwdCover = stats(true, makeForwardBot, N);
   const fwdOld = stats(false, makeForwardBot, N);
-  console.log('[11/10 甲 程式玩家，各 ' + N + ' 局，一條命]');
-  console.log('  舊盲區版   固定策略：' + fmt(oldBot));
-  console.log('  殘響掩護版 固定策略＋踩拍走：' + fmt(coverBot));
-  console.log('  殘響掩護版 固定策略（不用踩拍走）：' + fmt(coverSafe));
+  console.log('[11/10 程式玩家，各 ' + N + ' 局，一條命；COVER_EAR_P = ' + K.COVER_EAR_P + '、R_GAIN = ' + K.R_GAIN + ']');
+  console.log('  舊盲區版   完美起步：' + fmt(oldBot));
+  console.log('  舊盲區版   起步誤差 σ 0.12：' + fmt(oldSigma));
+  console.log('  殘響掩護版 完美踩拍：' + fmt(coverBot));
+  console.log('  殘響掩護版 起步誤差 σ 0.12：' + fmt(coverSigma));
+  console.log('  殘響掩護版 不用踩拍走：' + fmt(coverSafe));
   console.log('  殘響掩護版 只按前進鍵：' + fmt(fwdCover));
   console.log('  舊盲區版   只按前進鍵：' + fmt(fwdOld));
   assert.ok(fwdCover.winRate <= 0.3, `只按前進鍵通關率 ${fwdCover.winRate} 要 ≤ 30%`);
-  for (const s of [oldBot, coverBot, coverSafe, fwdCover, fwdOld]) assert.ok(s.n1 >= 0 && s.n1 <= 1);
+  // 設計席 7.1 的目標是 50～85%。11/10 夜實測 92%，R_GAIN 10 → 12 → 14 都是 92%／92%／90%（程式玩家讀得到精確的 r，
+  // 半徑放大它就跟著繞遠）；會動的是 COVER_EAR_P（0.6 時 66%），但 7.1 指定不動聽覺。待設計席裁決，先印出、不擋測試。
+  if (coverSigma.winRate < 0.5 || coverSigma.winRate > 0.85) console.log(`  ⚠ 起步誤差 σ 0.12 通關率 ${pct(coverSigma.winRate)} 不在設計席 7.1 的 50～85%（待裁決，見 docs/process/approvals.md）`);
+  for (const s of [oldBot, oldSigma, coverBot, coverSigma, coverSafe, fwdCover, fwdOld]) assert.ok(s.n1 >= 0 && s.n1 <= 1 && s.n1c >= s.n1 - 1e-9);
 });
