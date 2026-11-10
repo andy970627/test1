@@ -24,7 +24,7 @@
 | # | id | 量什麼 | 門檻（預設） |
 |---|---|---|---|
 | 1 | `blind`（舊盲區版 `COVER_MODE = false`） | 盲區時整體音量比前後低多少 dB。盲區內取 [+0.10, 結束−0.03] 秒，前取 −1.0～−0.15 秒、後取 +0.25～+1.0 秒平均。盲區內有玩家動作音（`blindConfoundCues`）的那次照列、不計 | 中位 ≥ 10 dB 且每次 ≥ 6 dB |
-| 1' | `blind`（殘響掩護版 `COVER_MODE = true`） | 一般掩護窗：①突出＝窗開頭 [−0.01, +0.15] 秒 300～1200 Hz 峰值 − 窗前 1.0～0.15 秒平均；②殘響＝從峰值後到全頻 50 ms 包絡回到「窗前包絡中位 + 3 dB」，自窗開始算；③窗內整體比前後。警戒時低音拍之間的窗只列不判 | 突出中位 ≥ 8、每次 ≥ 6 dB；殘響中位 ≥ 0.12 秒；整體中位 ≥ −3 dB（`TH.cover*`） |
+| 1' | `blind`（殘響掩護版 `COVER_MODE = true`） | 一般掩護窗：①突出＝窗開頭 [−0.01, +0.15] 秒 300～1200 Hz 峰值 − 窗前 1.0～0.15 秒平均；②餘韻＝從峰值後到全頻 50 ms 包絡回到「窗前包絡中位數 + 3 dB」，自窗開始算（`TH.coverTailBase` 可改 'mean'；另一種背景列在 `tailAltSec`）；③窗內整體比前後。警戒窗（低音拍之間）另判輕版突出 | 設計席 7.5：突出中位 ≥ 12、每次 ≥ 6 dB；餘韻中位 0.5～0.8 秒；警戒輕版 ≥ 8 dB；防呆：整體中位 ≥ −3 dB（`TH.cover*`；11/11 改） |
 | 1b | `fireSync` | 每幀 `game.fire` vs `FIRE_BASE + FIRE_P_GAIN × game.danger`（舊模式盲區幀＝`FIRE_BLIND`）；相鄰兩幀 fire 掉 > 0.05 而 danger 沒掉＝掉回；列 fire×danger、fire×p 相關係數 | 誤差 > 0.02 的幀 ≤ 1%，掉回 0 次 |
 | 2 | `onset` | 偵測到的起音 vs 規則拍點（`expectedBeats`，沒有就用 `start(when)` 排程）的誤差，正號＝聲音晚 | 中位 \|誤差\| ≤ 15 ms 且顯著拍（w ≥ 0.5）±30 ms 命中 ≥ 80% |
 | 3 | `alertLow` | 警戒時段三頻帶（低 20–250、中 250–2000、高 2–10k Hz）總功率，4096 點 FFT | 低頻帶最強；沒有警戒區段＝無資料 |
@@ -44,6 +44,12 @@
 - 輸出**每局**：每區用時與失敗（含失敗代碼）、盲區行動 成功/嘗試（成功率、第一次成功秒數）、安撫對拍成功率與完成次數、腳步合拍率、主動時間比例 N1（含各狀態秒數）、提示次數與階數、按鍵偏移（`bass`／`blind`／`beat` 各 n、平均、σ、中位，正＝晚按）、主觀三題（驟降、難度、好玩）與留言、幀率中位。
 - **依原型＋裝置合併**（喇叭／有線／藍牙分開）：上述各項合併（N1 時間加權）、每區平均用時、失敗原因、提示總數、主觀平均，加按鍵偏移直方圖文字版（預設每格 50 ms）。參考門檻：耳機 σ ≤ 80 ms、喇叭 σ ≤ 120 ms（`docs/design/2026-11-08-expert-lens.md`）。
 - `telemetry.test.js`：7 個測試，手算假資料。
+- **整夜驗證（11/10 夜加）**：
+  - `troy-bots.js`：木馬之夜程式玩家。`makeBot`（含 `opts.sigma` 起步誤差）與 `activeNow`（含 `ruler`）**逐字照搬** `risset.test.js`（提交 11b1944），只多死因、各區時間、高度警覺次數、兩把尺 N1。玩家：`forward` 只按前進、`perfect` 完美踩拍（舊版＝完美時機）、`sigma12`、`sigma25`。50 局對過規則角色的數字（σ 0.12 新 92%／舊 62%；同一把尺 N1 舊 77%／新 96%）。
+  - `overnight-sim.mjs`：`node tools/telemetry/overnight-sim.mjs [--n 500] [--modes cover,gap] [--bots forward,perfect,sigma] [--out x.json]`，每局約 0.1～0.3 秒，500 局 × 6 組約 10 分鐘。
+  - `overnight-report.mjs`：`--sim <json> --cover <錄音資料夾> --gap <錄音資料夾> --out <md>`，照設計席第 7 節門檻判過／不過，每個數字附來源指令。
+  - `overnight-run.sh`：一鍵跑上面三步＋兩版錄音（預設 500 局、錄 90 秒，`N=`、`DUR=`、`TAG=`、`REPORT=` 可改），輸出 `tools/playtest-recorder/out/overnight-*-<TAG>`。
+  - `overnight.test.js`：5 個測試（彙整手算、同 seed 同局、σ 抽樣、報告判定照 7.5／7.8、表格）。
 
 ### 打包 `tools/build-itch.sh`＋`build-itch.mjs`
 - `bash tools/build-itch.sh` → 站台 `dist/odyssey-series/`（結構同 `prototypes/`，不含 `*.test.js`）＋ `dist/odyssey-series.zip`（`index.html` 在 zip 根）。`dist/` 不進 git。
@@ -70,6 +76,7 @@
 - **cue 名稱**：盲區干擾音清單 `blindConfoundCues`、腳步 `^step_?loud$`／`^step_?masked$` 對的是聲音層發的 cue 名。聲音角色改 cue 名要通知。
 - **期望拍**：`profiles/troy-prologue.mjs` 的 `expectedBeats` 自己抄了一份拍點公式（常數來自聲音層），規則改拍點公式要同步（稽核 P1、P2）。
 - **遙測**：`summarize.mjs` 依賴 `prototypes/telemetry.js` 匯出 `summarizeRun`、`stats`、`histogram`（畫面角色的檔）。事件名 `calm_ok`、`calm_bad`、`calm_done`、`tele_ok`、`tele_miss`、`step_masked`、`step_loud`、`hint`、`hunt`、`caught`；裝置代碼 `speaker`／`wired`／`bt`／`unknown`。新原型要在 `PROTO_NAMES`、`ZONE_NAMES` 加名稱。
+- **程式玩家**：`troy-bots.js` 的 `makeBot`／`activeNow` 是 `risset.test.js` 的逐字複本（11b1944）。規則角色改了那邊，要重新照搬（用 node 從測試檔擷取 `function makeBot(` 到 `function playthrough(`、`function activeNow(` 到 `/** 只按住前進鍵`）。最好請規則角色把玩家搬進可匯出的模組，兩邊共用。
 - **打包**：新原型資料夾要加進 `build-itch.sh` 的 `PROTOS` 和總首頁 `prototypes/index.html`（畫面角色）。
 
 ## 3. 陷阱
@@ -90,7 +97,11 @@
 - **2026-11-10 本機錄製三條鐵則**（使用者 11/09 晚～11/10 一直被鎖滑鼠、喇叭一直響的原因）：
   1. 無頭 Chromium 在 Windows 上，遊戲呼叫 `requestPointerLock` 會對**實體滑鼠**做 ClipCursor，把滑鼠鎖在左上角錄影視窗大小（640×360）。`record.mjs` 開頁一律加 `nolock=1`（第 167 行）。**不要加 `mute=1`**：它把總閘音量設 0，會錄到靜音。
   2. `LAUNCH_ARGS` 預設加 `--mute-audio`（第 134 行；要聽才加 `--audible`）。已驗證不影響錄音：分接點在 `destination` 前，11/10 兩份 60 秒錄音峰值 −0.9 dBFS、檢查照常。
-  3. 錄完確認沒有殘留程式：`tasklist | grep -i headless` 應該沒有結果（`chrome-native-host.exe` 是 Chrome 擴充功能的，不是錄影留下的）。
+  3. 錄完確認沒有殘留程式：`tasklist | grep -i headless` 應該沒有結果（`chrome-native-host.exe` 是 Chrome 擴充功能的，不是錄影留下的）。**錄完隔 5 秒再數**：11/10 夜錄完立刻數到 4 個，是瀏覽器正在關；幾秒後就 0。
+- 2026-11-10 夜 派工說「遊戲頁一律 `?mute=1&nolock=1`」：錄音工具**不加 `mute=1`**（會錄到靜音），用瀏覽器 `--mute-audio` 取代。其他角色在內建瀏覽器開頁照派工規矩。
+- 2026-11-10 夜 11/10 白天的兩份錄音（`cover-*-1110`）是聲音層讀不到規則掩護窗 `{from, to}` 的版本：掩護版重合擊沒排上（突出 +12.6 只是鼓點）、舊版靜音錯位 0.3 秒，都是那個 bug。聲音角色 11/10 晚修好後重合擊 +23.9 dB。拿數字比較時別用那兩份。
+- 2026-11-10 夜 餘韻的「背景」用中位數或平均差很多（同一窗 1.0 秒 vs 0.4 秒）。**總控 11/10 夜決定主判定用中位數**（和量出 1.3 秒、訂門檻同一把尺），平均並列當參考。
+- 2026-11-10 夜 σ 玩家改用規則角色的模型（t − e、起步時重抽、城門用真相位）。自己寫時踩過：停著每幀重抽誤差會系統性提早起步；城門用帶誤差的相位會卡死到逾時。
 - 2026-11-09 本角色在 worktree `C:\Users\恩\test1\.claude\worktrees\openrouter-api-key-setup-383957`（分支 `claude/gracious-bardeen-vwo4rr`）工作；不要寫 `C:\Users\恩\test1` 主資料夾，hook 會擋。
 
 ## 4. 驗證方式
@@ -129,3 +140,11 @@
   - 舊盲區版：fireSync 通過（2383 幀、掉回 0）；第 1 項不通過——中位 30.1 dB，但 33.3、40.5、53.0 秒三個盲區聲音只靜約 0.3 秒或晚 0.3 秒才靜，都碰上循環長度 T 正在變，疑似聲音層的靜音和規則盲區對不上（已回報總控，不是本角色的檔）。
   - 對照：舊版錄音用掩護量法跑 → 不通過（突出 +5.2、殘響 0、整體 −24.9 dB），門檻分得開。
 - 未完成：殘響門檻 0.12 秒只根據一次 60 秒錄音、6 個窗，下次多錄幾段再調；腳步檢查樣本太少時應判「無資料」而不是不通過（舊版 1 步就判了）。
+
+**2026-11-10 夜 第三輪：整夜自動驗證（新總控派工第 4 項）——腳本寫好、小樣本試跑過，等總控通知正式跑**
+- 新檔：`tools/telemetry/troy-bots.js`、`overnight-sim.mjs`、`overnight-report.mjs`、`overnight-run.sh`、`overnight.test.js`；改 `analyze.mjs`（掩護版門檻改設計席 7.5：突出 ≥ 12、餘韻 0.5～0.8 秒、警戒輕版 ≥ 8 dB；餘韻背景可選）。
+- 試跑（各 20 局、錄音各 20 秒，目前工作樹的規則與聲音）：只按前進 0%（過）；σ 0.12 100%（不過，上限 85%）；完美踩拍 100%、N1 88.6%；重合擊 +23.9 dB（過）；餘韻中位 1.0 秒（不過，上限 0.8；平均背景 0.4 秒）；喇叭模擬餘韻 0.5 秒；腳步差 17.3 dB（過）；20 秒錄不到警戒窗。
+- 全套測試 257 項全過（含新加 5 項）。
+- 正式跑：總控傳訊後 `bash tools/telemetry/overnight-run.sh`（背景，約 15 分鐘），報告寫 `docs/process/overnight-validation-2026-11-11.md`。
+- 11/10 夜（續）門檻改設計席 7.8：σ0.12 通關率 50～85% 作廢、只列不判；改判「σ0.12 通關時間中位 ≥ 完美 1.2 倍且每局高度警覺 ≥ 1 次」「σ0.25 比 σ0.12 通關率低 ≥ 10 個百分點或時間中位 ≥ 1.2 倍」。50 局初步：兩條都不過（1.01 倍、0.46 次；低 6 點、1.00 倍）。全套測試 260 項全過。
+- 等聲音角色殘響修改提交後，總控傳訊再正式跑 `bash tools/telemetry/overnight-run.sh`。

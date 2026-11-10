@@ -44,9 +44,12 @@ const TH = Object.assign({
   clipSamples: 0,         // 允許的削峰樣本數
   // 殘響掩護版（COVER_MODE = true，11/10 核心方向甲）第 1 項改量重合擊與殘響；門檻依 11/10 兩模式各 60 秒實錄定（見 report 說明）
   coverBand: [300, 1200], // 重合擊的厚擊頻帶（聲音層實作 420～1100 Hz，留邊）
-  coverRiseMedianDb: 8,   // 窗開頭 [−0.01, +0.15] 秒頻帶峰值比窗前 1 秒平均高：中位下限（11/10 實錄 掩護版 +12.6、舊版同量法 +6.6 且峰值在窗前）
-  coverRiseMinDb: 6,      // 每一次下限（掩護版最小 +10.9）
-  coverTailSec: 0.12,     // 殘響（從窗開始到全頻 50 ms 包絡回到窗前中位 + coverTailAboveDb）中位下限（掩護版 0.18、舊版 0.05 秒）
+  coverRiseMedianDb: 12,  // 重合擊突出中位下限（設計席 7.5）；11/10 第一次實錄 +12.6
+  coverRiseMinDb: 6,      // 每一次下限（錄音檢查一貫的「有訊號」門檻）
+  coverTailMinSec: 0.5,   // 餘韻中位：0.5～0.8 秒（設計席 7.5：聽到的長度要等於判定的長度，窗 0.6 秒）
+  coverTailMaxSec: 0.8,
+  coverTailBase: 'median', // 餘韻的背景：'median'＝窗前包絡中位數（11/10 第一版量法；設計席 7.5 的 1.3 秒與 0.5～0.8 秒門檻就是用它量的）｜'mean'＝窗前平均（設計文字的字面定義）
+  coverAlertRiseDb: 8,    // 警戒時的輕版重擊突出中位下限（設計席 7.5）
   coverLouderDb: -3,      // 窗內整體音量比前後：中位下限（掩護版 −0.5、舊版 −24.9 dB）——窗內不能變安靜
   coverTailAboveDb: 3,
   fireTol: 0.02,          // fireSync：game.fire 與 FIRE_BASE + FIRE_P_GAIN × danger 的容許誤差
@@ -243,7 +246,7 @@ const RULE_COVER = PREP.coverMode != null ? !!PREP.coverMode : !!((PREP.rulesT |
 // 環境變數 ANALYZE_COVER=1｜0 可強制第 1 項用某一種量法（對照用：拿舊盲區版錄音跑掩護量法，看門檻分不分得開）
 const COVER = process.env.ANALYZE_COVER != null ? process.env.ANALYZE_COVER === '1' : RULE_COVER;
 // 1'. 殘響掩護版：掩護窗開頭的重合擊在 coverBand 比窗前突出多少、殘響尾巴多長；並列整體音量比前後「響」多少（只列不判）
-const coverRows = [];
+const coverRows = [], coverSub = [];
 if (COVER) {
   const band = TH.coverBand, CS = bandSeries([band]), arr = CS.p[0];
   const fI = (t) => Math.round((t - CS.t[0]) / CS.hop);
@@ -255,36 +258,46 @@ if (COVER) {
     let pk = 0, pkF = -1;
     for (let f = Math.max(0, fI(a - 0.01)); f <= Math.min(arr.length - 1, fI(a + 0.15)); f++) if (!gapAt(f) && arr[f] > pk) { pk = arr[f]; pkF = f; }
     if (base == null || pkF < 0) continue;
-    // 殘響尾巴量全頻（50 ms RMS 包絡）：11/10 實錄看到重合擊在 300～1200 Hz 50 ms 內就掉回背景，餘韻在全頻（殘響送量推高的整條節奏線）。
-    // 背景取窗前 1.0～0.15 秒包絡的中位數（拍與拍之間的底），不用平均——平均會被窗前的鼓點拉高。
+    // 餘韻（設計席 7.5）：重合擊後，全頻 50 ms RMS 包絡落回「窗前背景 + coverTailAboveDb」以內的時間，自窗開始算。
+    // 窗前 1 秒取 [−1.0, −0.15] 秒（和突出的背景同一段，避開窗前 0.15 秒的「變亮」與預告）。
+    // 背景預設取窗前包絡的中位數（TH.coverTailBase；拍與拍之間的底）。另一種背景（平均，會被窗前鼓點拉高、餘韻量得短）列在 tailAltSec 對照。
     const pre = env.filter(e => e.t >= a - 1.0 && e.t <= a - 0.15).map(e => e.db);
-    const envBase = median(pre);
+    const before = powerIn(a - 1.0, a - 0.15), envMean = before != null ? db(before) : null, envMed = median(pre);
     const tPk = CS.t[pkF];
-    let endT = null;
-    if (envBase != null) for (const e of env) { if (e.t <= tPk + 0.025) continue; if (e.t > a + 1.5) break; if (e.db <= envBase + TH.coverTailAboveDb) { endT = e.t; break; } }
-    const tail = endT == null ? 1.5 : endT - a;        // 1.5 秒內沒回到背景：記 1.5（上限）
+    const tailTo = (bdb) => { if (bdb == null) return null; for (const e of env) { if (e.t <= tPk + 0.025) continue; if (e.t > a + 1.5) break; if (e.db <= bdb + TH.coverTailAboveDb) return e.t - a; } return 1.5; };
+    const tailMean = tailTo(envMean), tailMed = tailTo(envMed);   // 1.5 秒內沒回到背景：記 1.5（上限）
+    const tail = TH.coverTailBase === 'mean' ? tailMean : tailMed, tailAlt = TH.coverTailBase === 'mean' ? tailMed : tailMean;
     const alertWin = IV.normalBlind ? !IV.normalBlind.some(([x]) => Math.abs(x - a) < 1e-3) : false;   // 警戒時低音拍之間的窗（聲音層只打較輕的重合擊）
-    const inside = powerIn(a + 0.02, b - 0.03), before = powerIn(a - 1.0, a - 0.15), after = powerIn(b + 0.25, b + 1.0);
+    const inside = powerIn(a + 0.02, b - 0.03), after = powerIn(b + 0.25, b + 1.0);
     const conf = EV.filter(e => e.type === 'cue' && (e.at || e.t) >= a - 0.05 && (e.at || e.t) < b && new RegExp(TH.blindConfoundCues, 'i').test(e.name)).map(e => e.name);
-    coverRows.push({ t: +a.toFixed(3), len: +(b - a).toFixed(3), alertWin, confound: conf, envBaseDb: r1(envBase), baseDb: r1(db(base)), peakDb: r1(db(pk)), riseDb: r1(db(pk) - db(base)), peakAt: +(CS.t[pkF] - a).toFixed(3),
-      tailSec: +tail.toFixed(3), louderDb: inside != null && before != null && after != null ? r1(db(inside) - (db(before) + db(after)) / 2) : null });
+    coverRows.push({ t: +a.toFixed(3), len: +(b - a).toFixed(3), alertWin, confound: conf, envMeanDb: r1(envMean), envMedDb: r1(envMed), baseDb: r1(db(base)), peakDb: r1(db(pk)), riseDb: r1(db(pk) - db(base)), peakAt: +(CS.t[pkF] - a).toFixed(3),
+      tailSec: tail == null ? null : +tail.toFixed(3), tailAltSec: tailAlt == null ? null : +tailAlt.toFixed(3), louderDb: inside != null && before != null && after != null ? r1(db(inside) - (db(before) + db(after)) / 2) : null });
   }
   const clean = coverRows.filter(x => !x.confound.length && !x.alertWin), conf = coverRows.filter(x => x.confound.length), aw = coverRows.filter(x => x.alertWin && !x.confound.length);
-  const rs = clean.map(x => x.riseDb), ts = clean.map(x => x.tailSec), ld = clean.map(x => x.louderDb).filter(v => v != null);
-  const mdR = median(rs), mnR = rs.length ? Math.min(...rs) : null, mdT = median(ts);
-  const awTxt = aw.length ? `；警戒時低音拍之間的窗 ${aw.length} 次（只列：突出中位 ${median(aw.map(x => x.riseDb))} dB、殘響中位 ${r1(median(aw.map(x => x.tailSec)))} 秒）` : '';
-  add('blind', `掩護窗開頭的重合擊在 ${band[0]}～${band[1]} Hz 突出、殘響撐得夠久（殘響掩護版）`,
-    rs.length ? mdR >= TH.coverRiseMedianDb && mnR >= TH.coverRiseMinDb && mdT >= TH.coverTailSec && (median(ld) == null || median(ld) >= TH.coverLouderDb) : null,
-    (rs.length ? `突出：中位 +${mdR} dB、最小 +${mnR} dB；殘響：中位 ${r1(mdT)} 秒、最短 ${r1(Math.min(...ts))} 秒（${rs.length} 次掩護窗）；整體音量比前後：中位 ${median(ld) >= 0 ? '+' : ''}${median(ld)} dB` : '沒有可量的一般掩護窗') + awTxt +
+  const rs = clean.map(x => x.riseDb), ts = clean.map(x => x.tailSec).filter(v => v != null), tsM = clean.map(x => x.tailAltSec).filter(v => v != null), ld = clean.map(x => x.louderDb).filter(v => v != null);
+  const mdR = median(rs), mnR = rs.length ? Math.min(...rs) : null, mdT = median(ts), mdL = median(ld);
+  const awR = median(aw.map(x => x.riseDb));
+  const okRise = rs.length ? mdR >= TH.coverRiseMedianDb && mnR >= TH.coverRiseMinDb : null;
+  const okTail = mdT == null ? null : mdT >= TH.coverTailMinSec && mdT <= TH.coverTailMaxSec;
+  const okLoud = mdL == null ? null : mdL >= TH.coverLouderDb;
+  const okAlert = aw.length ? awR >= TH.coverAlertRiseDb : null;   // 這次錄製沒有警戒窗：不判
+  coverSub.push({ key: 'rise', ok: okRise }, { key: 'tail', ok: okTail }, { key: 'louder', ok: okLoud }, { key: 'alert', ok: okAlert });
+  const parts = [okRise, okTail, okLoud, okAlert].filter(v => v != null);
+  const mk = (v) => v == null ? '（無資料）' : v ? '（過）' : '（不過）';
+  add('blind', `掩護窗：重合擊在 ${band[0]}～${band[1]} Hz 突出、餘韻長度、警戒輕版（殘響掩護版）`,
+    rs.length ? parts.every(Boolean) : null,
+    (rs.length ? `突出：中位 +${mdR} dB、最小 +${mnR} dB${mk(okRise)}；餘韻：中位 ${r1(mdT)} 秒（${r1(Math.min(...ts))}～${r1(Math.max(...ts))}）${mk(okTail)}，背景改用${TH.coverTailBase === 'mean' ? '中位數' : '平均'}時 ${r1(median(tsM))} 秒；` +
+      `整體比前後：中位 ${mdL >= 0 ? '+' : ''}${mdL} dB${mk(okLoud)}（${rs.length} 次一般窗）` : '沒有可量的一般掩護窗') +
+    (aw.length ? `；警戒輕版 ${aw.length} 次：突出中位 ${awR >= 0 ? '+' : ''}${awR} dB${mk(okAlert)}` : '；這次沒有警戒窗（輕版不判）') +
     (conf.length ? `；另 ${conf.length} 次窗內有玩家自己的動作音，照列不計` : ''),
-    `模式：規則 T.COVER_MODE = true（鼓聲不中斷）。門檻：突出中位 ≥ ${TH.coverRiseMedianDb} dB、每次 ≥ ${TH.coverRiseMinDb} dB，、殘響中位 ≥ ${TH.coverTailSec} 秒，且窗內整體音量比前後的中位 ≥ ${TH.coverLouderDb} dB（窗內不能變安靜）。` +
-    `突出＝窗開頭 [−0.01, +0.15] 秒內 ${band[0]}～${band[1]} Hz 頻帶（短時 FFT 1024 點）的峰值，減去窗前 1.0～0.15 秒的平均；` +
-    `殘響＝從窗開始到全頻 50 ms RMS 包絡回到「窗前 1.0～0.15 秒包絡的中位數 + ${TH.coverTailAboveDb} dB」的時間（從峰值後算起；1.5 秒內沒回到記 1.5）。` +
-    `只判一般掩護窗；警戒時低音拍之間的窗聲音層只打較輕的重合擊（上半層 × 0.6），只列不判。` +
-    `門檻依據（11/10 木馬之夜兩模式各 60 秒實錄，6 個一般窗 vs 舊版 10 個窗，用同一量法）：突出 掩護版中位 +12.6、最小 +10.9 dB；舊版中位約 +6 dB，峰值都在窗開始前（窗前最後一拍漏進來，起點改 −0.01 秒後再降）→ 中位 8、每次 6。` +
-    `殘響 掩護版中位 0.18 秒（0.10～0.52）、舊版 0.05 秒（0.02～0.10）→ 0.12 秒。整體比前後 掩護版中位 −0.5 dB（−2.9～+3.0）、舊版 −24.9 dB → −3 dB。` +
-    `聲音角色量到窗內 −15.5、窗前 −27.9 dB（差 12.4 dB），和這裡的突出 +12.6 dB 一致。` +
-    `注意：設計寫「0.6 秒可聽的餘韻」，但實測重合擊在 300～1200 Hz 50 ms 內就掉回背景，全頻餘韻多半 0.1～0.25 秒就沒入持續的鼓聲；殘響門檻照實測定，餘韻夠不夠要真耳朵判。`);
+    `模式：規則 T.COVER_MODE = true（鼓聲不停）。門檻（設計席 docs/design/2026-11-10-core-direction-illusion.md 第 7.5 節）：` +
+    `重合擊突出中位 ≥ ${TH.coverRiseMedianDb} dB（每次 ≥ ${TH.coverRiseMinDb} dB）；餘韻中位在 ${TH.coverTailMinSec}～${TH.coverTailMaxSec} 秒；警戒時的輕版重擊突出中位 ≥ ${TH.coverAlertRiseDb} dB；` +
+    `另加本工具的防呆：窗內整體音量比前後的中位 ≥ ${TH.coverLouderDb} dB（窗內不能變安靜，舊盲區版約 −25 dB）。` +
+    `突出＝窗開頭 [−0.01, +0.15] 秒內 ${band[0]}～${band[1]} Hz 頻帶（短時 FFT 1024 點）的峰值，減去窗前 1.0～0.15 秒的平均。` +
+    `餘韻＝重合擊後全頻 50 ms RMS 包絡落回「窗前 1.0～0.15 秒包絡的${TH.coverTailBase === 'mean' ? '平均' : '中位數'} + ${TH.coverTailAboveDb} dB」以內的時間，自窗開始算（1.5 秒內沒回到記 1.5）。` +
+    `設計文字寫「窗前 1 秒平均」，但 7.5 的 1.3 秒與門檻是用中位數背景量的（11/10 聲音角色），所以預設用中位數；平均背景的數字一起列出，請設計席確認用哪一把尺。` +
+    `一般窗與警戒窗分開判：警戒窗落在兩個低音拍正中間，聲音層打的是輕版重擊。` +
+    `11/10 第一次實錄（聲音層讀不到掩護窗、重合擊沒排上的版本）：突出中位 +12.6 dB、餘韻（中位數背景）0.18 秒、警戒輕版 −0.8 dB。`);
 } else {
   const clean = dips.filter(x => !x.confound.length), conf = dips.filter(x => x.confound.length);
   const d = clean.map(x => x.dipDb), md = median(d), mn = d.length ? Math.min(...d) : null;
@@ -584,7 +597,7 @@ let SUM = null;
 if (profile && profile.summary) { try { SUM = profile.summary(TL, meta, EV, IV); } catch (e) { log('summary 失敗', e.message); } }
 
 // ---------- 輸出 ----------
-const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, coverMode: COVER, coverRows, fire: fireInfo, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
+const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, coverMode: COVER, coverRows, coverSub, fire: fireInfo, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
   intervals: { blind: IV.blind.length, blindList: IV.blind.map(x => x.map(v => +v.toFixed(3))), fake: (IV.fake || []).map(x => x.map(v => +v.toFixed(3))), alert: IV.alert.map(x => x.map(v => +v.toFixed(2))), hunted: IV.hunted.map(x => x.map(v => +v.toFixed(2))) },
   checks, dips, beatStats, silences, cueCount, fails, gaps: meta.audio.gapList, frames: meta.frames };
 fs.writeFileSync(path.join(dir, SPK ? 'analysis-speaker.json' : 'analysis.json'), JSON.stringify(analysis, null, 2));
