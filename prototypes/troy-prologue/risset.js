@@ -430,11 +430,18 @@
     for (const b of bs) if (Math.abs(b.t - t) < Math.abs(best.t - t)) best = b;
     return best.t;
   }
-  /** 視覺輔助強度：'on' = 1，'off' = 0，數字照用，'auto'：區 0、1 = 1，區 2 = 0.5，其後 0。 */
-  function visualAidFor(zone, mode) {
+  /**
+   * 視覺輔助強度（畫面的輔助與聲音的木魚預告都讀它）：'on' = 1，'off' = 0，數字照用；'auto' 依區：
+   *   舊盲區版：區 0、1 = 1，區 2 = 0.5，其後 0。
+   *   殘響掩護版（設計席 7.9：教完的下一區才開始拿掉；最響的一擊在區 2 才教）：區 0～2 = 1，區 3 = 0.5，區 4 = 0。
+   * K 不給時用預設常數（COVER_MODE = true）。
+   */
+  function visualAidFor(zone, mode, K) {
+    K = K || T;
     if (mode === 'on') return 1;
     if (mode === 'off') return 0;
     if (typeof mode === 'number' && Number.isFinite(mode)) return Math.max(0, Math.min(1, mode));
+    if (K.COVER_MODE) return zone <= 2 ? 1 : zone === 3 ? 0.5 : 0;
     return zone <= 1 ? 1 : zone === 2 ? 0.5 : 0;
   }
 
@@ -711,7 +718,7 @@
       visualAidMode: opts.visualAid == null ? 'auto' : opts.visualAid, // 畫面層可隨時改：'auto'|'on'|'off'|數字
       visualAid: 1
     };
-    g.visualAid = visualAidFor(g.zone, g.visualAidMode);
+    g.visualAid = visualAidFor(g.zone, g.visualAidMode, K);
     for (const k of Object.keys(HINT_LADDER)) g.hints[k] = { fails: 0, level: 1, lastFail: -1e9 };
     let last = null;
     let latchNoiseAt = -1e9;
@@ -788,7 +795,7 @@
       setActive();
       clearPanic();
       g.player.inBelly = !!level.zones[z].belly;
-      g.visualAid = visualAidFor(z, g.visualAidMode);
+      g.visualAid = visualAidFor(z, g.visualAidMode, K);
       walking = false; lastStepT = -1e9;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
       // 教學順序（M9）。一區只主動教一件新事；起疑、高度警覺、追殺、腳步太吵是「第一次發生時」才教（要馬上會解）。
@@ -994,7 +1001,7 @@
       c.anchor = { t, p: c.p, T: c.T, index: c.index, start: c.start };
       g.danger = dangerOf(g);
       g.fire = fireBrightness(g);
-      g.visualAid = visualAidFor(g.zone, g.visualAidMode);
+      g.visualAid = visualAidFor(g.zone, g.visualAidMode, K);
       refreshBass(t);
     }
 

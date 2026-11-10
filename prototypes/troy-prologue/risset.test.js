@@ -1370,7 +1370,30 @@ test('8.2 visualAid：區 0、1 = 1，區 2 = 0.5，其後 0；opts.visualAid �
   assert.equal(g.zone, 3); assert.equal(g.visualAid, 0, '進下一區跟著變');
   g.visualAidMode = 'on'; g.step(0.1, {});
   assert.equal(g.visualAid, 1);
-  assert.equal(R.visualAidFor(2, 'auto'), 0.5);
+  assert.equal(R.visualAidFor(2, 'auto', Object.assign({}, K, OLD)), 0.5);
+});
+
+test('11/10 設計席 7.9：殘響掩護版的視覺輔助與木魚晚一區淡出——區 0～2 = 1、區 3 = 0.5、區 4 = 0；舊版不變；on／off／數字照舊', () => {
+  const want = { 0: 1, 1: 1, 2: 1, 3: 0.5, 4: 0 };
+  for (const z of [0, 1, 2, 3, 4]) {
+    assert.equal(R.visualAidFor(z, 'auto'), want[z], '預設（殘響掩護）區 ' + z);
+    assert.equal(R.visualAidFor(z, 'on'), 1);
+    assert.equal(R.visualAidFor(z, 'off'), 0);
+    assert.equal(R.visualAidFor(z, 0.3), 0.3);
+  }
+  for (const z of [1, 2, 3, 4]) {
+    const g = R.createLevel({ startZone: z });
+    g.step(0, {});
+    assert.equal(g.visualAid, want[z], '關卡裡區 ' + z);
+  }
+  assert.equal(R.createLevel({ startZone: 0 }).visualAid, 1, '開場');
+  // 進下一區跟著變：區 2 → 3 從 1 變 0.5
+  const g = R.createLevel({ startZone: 2 });
+  g.step(0, {}); place(g, 30.5, 22); g.step(0.05, {});
+  assert.equal(g.zone, 3); assert.equal(g.visualAid, 0.5);
+  // 舊版維持原表
+  const old = { 1: 1, 2: 0.5, 3: 0, 4: 0 };
+  for (const z of [1, 2, 3, 4]) assert.equal(R.visualAidFor(z, 'auto', Object.assign({}, K, OLD)), old[z]);
 });
 
 // ---------------- 程式玩家通關 ----------------
