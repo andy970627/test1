@@ -148,6 +148,7 @@
     // 殘響掩護（11/10，核心方向甲；規則 T.COVER_MODE 為真時才用）
     COVER_HIT_GAIN: 0.9,       // 交接重合擊的厚擊（300～1200 Hz）音量
     COVER_LAYER_GAIN: 0.55,    // 重合擊裡各層第一拍的音量（不照鐘形曲線，全部同時落下）
+    COVER_TAIL_GAIN: 0.12,     // 重合擊後的中頻餘韻（850／1700 Hz 帶通雜訊，約 0.6 秒收掉）：喇叭上也聽得到尾巴
     COVER_VERB_SEND: 0.85,     // 掩護窗內節奏殘響送量（平時 0.28）
     COVER_VERB_OUT: 1.1,       // 掩護窗內殘響輸出（平時 0.6）
     COVER_VERB_LEAD: 0.02,     // 窗開始前多久推上去（秒）：重合擊一落下就進殘響
@@ -681,10 +682,14 @@
           if (r && r.length != null) {
             for (i = 0; i < r.length; i++) {
               var w = r[i]; if (!w) continue;
-              var s0 = w.s != null ? w.s : (w.start != null ? w.start : w[0]), e0 = w.e != null ? w.e : (w.end != null ? w.end : w[1]);
-              if (isFinite(s0) && isFinite(e0) && e0 > s0) out.push({ s: +s0, e: +e0 });
+              // 規則的格式是 {from, to, kind}（11/10 才匯出）；以前只認 s/e、start/end、陣列，from/to 全被丟掉，
+              // 結果整份清單是空的：舊版的靜音只能等 cycle.blind 連兩幀不一致才強制（晚、T 在變時還會漏），掩護版的重合擊與殘響從沒排上。
+              var s0 = w.from != null ? w.from : (w.s != null ? w.s : (w.start != null ? w.start : w[0]));
+              var e0 = w.to != null ? w.to : (w.e != null ? w.e : (w.end != null ? w.end : w[1]));
+              if (isFinite(s0) && isFinite(e0) && e0 > s0) out.push({ s: +s0, e: +e0, kind: w.kind || null });
             }
-            return filterSup(out);
+            if (out.length || !r.length) return filterSup(out);
+            // 規則回了東西但一筆都讀不懂：退回本檔自己的預測，不要變成「沒有盲區」
           }
         } catch (e) {}
       }
@@ -777,11 +782,15 @@
       noise(out, t, 'bandpass', 700, 0.9, 0.45 * G, 0.002, 0.18);       // 皮面拍擊的寬頻成分
       noise(out, t, 'bandpass', 1100, 1.2, 0.2 * G, 0.001, 0.06);
       tone(out, t, 'sine', 95, 60, 0.15, 0.35 * G, 0.002, 0.4);          // 低頻身體（喇叭聽不到，耳機補厚度）
+      // 中頻餘韻（11/10 錄音工具回報：殘響多在 200 Hz 以下，喇叭模擬下只剩 0.10 秒）：寬帶通雜訊慢慢收掉，像大廳牆面的回聲，
+      // 撐滿 0.6 秒的窗；之後還有推高的殘響接著。走節奏匯流排，所以也會進殘響。
+      var TG = C.COVER_TAIL_GAIN;
+      noise(out, t + 0.015, 'bandpass', 850, 0.6, TG, 0.04, 0.6);
+      noise(out, t + 0.02, 'bandpass', 1700, 0.8, TG * 0.5, 0.05, 0.45);
     }
     function scheduleCoverHits(from, end, ws) {
-      var aw = !!bassMode;               // 警戒的掩護窗（在兩個低音拍正中央）
       for (var i = 0; i < ws.length; i++) {
-        var t = ws[i].s;
+        var t = ws[i].s, aw = ws[i].kind ? ws[i].kind === 'alert' : !!bassMode;   // 警戒的掩護窗（在兩個低音拍正中央）：規則有標 kind 就照它
         if (t < from || t >= end) continue;
         var P = Pof(t), key = 'cov' + Math.round(P * 1000);
         if (evs[key]) continue;
