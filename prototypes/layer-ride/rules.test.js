@@ -237,33 +237,33 @@ test('A9: 太晚換 (kind: late) - 每局出聲 >= 2 次；過關率 <= 30%', ()
 // A10: 手不準（kind: 'noisy'）
 // 門檻：sigma 0.08 秒過關率 60～100%；sigma 0.25 秒比 0.08 秒低至少 20 個百分點
 // ==========================================
-test('A10（待設計席）: 手不準 (kind: noisy) - sigma 0.08 勝率 60~100%（斷言）；sigma 0.25 降至少 20 個百分點（只印數字）', () => {
-  let wins08 = 0;
-  let wins25 = 0;
-  let offs25 = 0;
-
+// 規格第 10 節（設計席 11/10 夜）：原本「σ0.25 過關率比 σ0.08 低 20 個百分點」作廢——按歪只響一聲、一局只換 3 次，
+// 再歪也不可能失敗。改量「手不準有沒有付出代價」（A10a，要過）與「路一長準度才有分別」（A10b，只印）。
+/** 跑 20 局手不準的玩家；回傳 {winRate, offMean, maxSuspMean}。 */
+function noisyStats(sigma, T) {
+  let wins = 0, offs = 0, maxSusp = 0;
   for (let seed = 1; seed <= 20; seed++) {
-    const bot08 = { kind: 'noisy', sigma: 0.08, seed };
-    const res08 = runSimulation(bot08, seed);
-    if (res08.win) wins08++;
-
-    const bot25 = { kind: 'noisy', sigma: 0.25, seed };
-    const res25 = runSimulation(bot25, seed);
-    if (res25.win) wins25++;
-    offs25 += res25.game.stats.switchOff;
+    const r = runSimulation({ kind: 'noisy', sigma, seed }, seed, T ? { T } : {});
+    if (r.win) wins++;
+    offs += r.game.stats.switchOff;
+    maxSusp += r.events.filter((e) => e.type === 'guard_hear').reduce((m, e) => Math.max(m, e.susp), 0);
   }
+  return { winRate: wins / 20, offMean: offs / 20, maxSuspMean: maxSusp / 20 };
+}
 
-  const rate08 = wins08 / 20;
-  const rate25 = wins25 / 20;
+test('A10a: 手不準要付得出代價——預設巷長下每局平均按歪次數 σ0.08 ≤ 0.5、σ0.25 ≥ 1.2（理論約 0.18 與 1.65）', () => {
+  const a = noisyStats(0.08), b = noisyStats(0.25);
+  console.log(`  [A10a] 每局平均按歪：σ0.08 ${a.offMean.toFixed(2)} 次、σ0.25 ${b.offMean.toFixed(2)} 次；過關率 ${(a.winRate * 100).toFixed(0)}% ／ ${(b.winRate * 100).toFixed(0)}%`);
+  assert.ok(a.offMean <= 0.5, `σ0.08 每局平均按歪 ${a.offMean} 要 ≤ 0.5`);
+  assert.ok(b.offMean >= 1.2, `σ0.25 每局平均按歪 ${b.offMean} 要 ≥ 1.2`);
+  assert.ok(a.winRate >= 0.6, 'σ0.08 過關率仍要 ≥ 60%（原 A10 前半）');
+});
 
-  assert.ok(
-    rate08 >= 0.60 && rate08 <= 1.00,
-    `sigma 0.08 勝率不在 60%~100% 範圍內：實測 ${(rate08 * 100).toFixed(1)}%`
-  );
-  // 規則角色 11/10：在規格准許的 SUSP_LOUD 0.2～0.4 × SUSP_DECAY 0.02～0.05 四個角落都量過，σ0.25 一律 100%；
-  // 18 公尺只換 3 次，就算 3 次都按歪，疑心最高 0.4 → 0.6 → 0.8，到不了 1。依第 7 節保留失敗、交設計席，只印數字不擋 CI。
-  const drop = rate08 - rate25;
-  console.log(`  [A10 待設計席] σ0.08 過關 ${(rate08 * 100).toFixed(0)}%、σ0.25 過關 ${(rate25 * 100).toFixed(0)}%（每局按歪 ${(offs25 / 20).toFixed(2)} 次），降幅 ${(drop * 100).toFixed(0)} 個百分點（要 ≥ 20）${drop >= 0.2 ? '' : ' ⚠ 沒過'}`);
+test('A10b（只印不擋）: LANE 60 公尺（約換 10 次層）時，σ0.08 與 σ0.25 的過關率與平均最高疑心', () => {
+  const T = { LANE: 60 };
+  const a = noisyStats(0.08, T), b = noisyStats(0.25, T);
+  console.log(`  [A10b LANE 60] σ0.08：過關 ${(a.winRate * 100).toFixed(0)}%、按歪 ${a.offMean.toFixed(2)} 次、平均最高疑心 ${a.maxSuspMean.toFixed(2)}；σ0.25：過關 ${(b.winRate * 100).toFixed(0)}%、按歪 ${b.offMean.toFixed(2)} 次、平均最高疑心 ${b.maxSuspMean.toFixed(2)}`);
+  for (const x of [a, b]) assert.ok(x.winRate >= 0 && x.winRate <= 1 && x.maxSuspMean >= 0);
 });
 
 // ==========================================
