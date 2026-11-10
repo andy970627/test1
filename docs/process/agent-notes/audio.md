@@ -80,7 +80,10 @@
 - 音樂層要避開功能層頻段：高通 130 Hz、1200 Hz 挖 −8 dB；新加的音樂元素別放進低音拍（43～128 Hz、中頻敲擊 200～600 Hz）與手拍／金屬主頻。
 - 三個檔的打擊、里拉琴、Worker 是**複製**不是共用，修一邊的 bug 要記得看另外兩邊要不要跟。
 - 衛兵 HRTF PannerNode 最多 6 名；超過要改 `updateGuards`。
-- 2026-11-09：本機 Node 找不到 `playwright` 模組，錄音工具在這台跑不起來（見第 4 節），聲音改動的錄音驗證目前要靠雲端。
+- 2026-11-10（4A 審查）：**持續音不能走 `cueBus`**：`cueBus` 沒有盲區 gate，草稿的嗡鳴把盲區從 −82 灌到 −21 dB。持續音一律走 `hintBus`（或 `guardOut`），單發音也要想會不會落在盲區。
+- 2026-11-10：存節點時要分清 GainNode 和它的 `.gain`（AudioParam）。草稿把 GainNode 存成 `gain`、停止時呼叫 `.cancelScheduledValues` 丟錯，被 `try {}` 吞掉，嗡鳴從來停不掉。**`try` 包住整段淡出時，至少要有一個能看到它失敗的測試**（第 4 節的離線渲染）。
+- 2026-11-10：持續狀態音（嗡鳴之類）的開關要跟著**規則狀態**（`state.alerted` 等），不能只靠開始／結束兩個 cue：多名衛兵輪流警覺（第一名的 `alert_over` 會把第二名的也停掉）、重開局、失敗畫面都會漏。
+- 2026-11-10：音效只加 200 Hz 以下的成分（例如草稿 takedown 的 58 Hz 悶擊），筆電喇叭聽不到，只會把峰值推高。加東西先量「喇叭模擬峰值」有沒有變。
 - 2026-11-09（規則角色發現）：木馬之夜 `audio.js` 會找 `RissetRules.blindWindows(a, b, game)`（約 650 行），但 `risset.js` 沒匯出，所以盲區時段其實是聲音層用 anchor 外推**自己預測**（`windowsBetween`），只在 `cycle.blind` 連續兩幀不一致時才強制修正。警戒時「盲區改在兩個低音拍正中央」也是本檔自己算的。規則改盲區邏輯時聲音層不會跟，預告音、變亮、gate 可能和判定差一點。要根治請規則匯出 `blindWindows`（audio.js 已有分支，匯出後自動改用）。
 - 2026-11-09：工作資料夾是 worktree `C:\Users\恩\test1\.claude\worktrees\openrouter-api-key-setup-383957`（分支 `claude/gracious-bardeen-vwo4rr`），不要寫主資料夾 `C:\Users\恩\test1`（會被擋）。
 
@@ -106,7 +109,13 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
   7. `bassMid` 警戒時低音拍在 200～600 Hz 聽得出（11/08 +13 dB）。
   8. `stepBand` 不合拍腳步比合拍腳步在 1～4 kHz 突出（11/08 差 28 dB）。
 - **喇叭模擬**：分析會自動把 wav 過 200 Hz 高通（`audio-speaker.wav`），以 `--speaker` 子行程重跑全部檢查，報告多一節「原始 vs 喇叭模擬」。預期喇叭模擬下只有第 3 項「低頻最突出」不通過，其他 7 項要過。
-- **本機狀態（11/09）**：待裝 `npx playwright install chromium`。實況：`~/AppData/Local/ms-playwright/` 已有 Chromium 1248、1254，但 Node 找不到 `playwright` 套件（專案沒有 `node_modules`，`record.mjs` 只試 `playwright`、`/opt/node-tools/...` 與 `NODE_PATH`；`NODE_PATH` 用 `:` 切，Windows 要用 `;`）。所以要先讓 Node 找得到 playwright 套件。**現在不裝**，要裝時由主對話決定。雲端環境可直接跑。
+- **本機跑法（11/10 可用）**：PowerShell：`$env:NODE_PATH="$env:LOCALAPPDATA\test1-node-tools\node_modules"; $env:FFMPEG=(Get-Command ffmpeg).Source; $env:FFPROBE=(Get-Command ffprobe).Source;` 再接上面的指令（細節見 `tools.md`）。60 秒錄音加分析約 2 分鐘。
+- 錄音的程式玩家很少觸發高度警覺、追殺、暗殺，而且要工作分支的 `risset.js` 已經會發那些事件才錄得到。新音效改用下面的離線渲染驗。
+
+### 離線渲染（新音效、狀態開關）
+- 在無頭 Chromium 裡用 `OfflineAudioContext` 建 `RissetAudio.createAudio(ctx, { T: 10, t0: 0, blind: 0.6, mute: { rhythm, bass, ambient } })`，`a.update(假 state)`、`a.cue(...)`、`a.scheduleUntil(秒)`，再 `startRendering()` 量 RMS／峰值。中途改狀態用 `ctx.suspend(t).then(...)`。
+- 喇叭模擬：把渲染結果再過兩級 200 Hz 高通量峰值。
+- 11/10 的兩支腳本放在工作階段暫存區，沒進 repo：`drone-check.mjs` 量盲區與各狀態切換時的音量，`cue-bands.mjs` 量各音效的峰值與喇叭模擬峰值。要常用就請「錄音與工具」收進 `tools/`。
 - 錄音只代表喇叭前的數位訊號，不含作業系統混音、喇叭與房間；聽感一律交真耳朵（寫進 `docs/process/approvals.md` 待核准）。
 
 ### 本機真耳朵
@@ -123,7 +132,20 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
   - 請規則匯出 `RissetRules.blindWindows`，聲音層就會自動改用（不用改 audio.js）。
   - 大廳復仇改讀規則常數（層數、M、σ、最小增益），拿掉 `TENSION_LO/HI` 隨 p 漲的匯流排；需要規則檔匯出常數或畫面層傳入。
   - 比箭、大廳復仇的錄音設定檔沒有喇叭三項，要請「錄音與工具」補 `analysis.speaker`（比箭：起鬨預告 `knock`；大廳復仇：`attack_warn`、低音舉盾）。
-  - 本機錄音工具的 playwright 套件與 `NODE_PATH` 分隔符（`tools/` 的事，轉「錄音與工具」）。
   - 大廳復仇合成版第一批（11/12 報告後）：先讀這份第 2 節的約定，新事件先和「規則」對好名稱再接。
 
-- 11/09 晚（總控）4A 聲音草稿已由 agy 寫進 `audio.js`（提交 511b817）：alerted 嗡鳴、alert_over、hunt_step、hunt_slip、追殺 dash 風切、takedown 悶擊。接手：審程式與人耳確認（音量平衡、嗡鳴淡出無爆音）。
+- 11/09 晚（總控）4A 聲音草稿已由 agy 寫進 `audio.js`（提交 511b817）：alerted 嗡鳴、alert_over、hunt_step、hunt_slip、追殺 dash 風切、takedown 悶擊。
+- **11/10 審完 4A 草稿**（未提交，改 `audio.js`、`audio-test.html`）：
+  - 嗡鳴停不掉（存了 GainNode 而不是 `.gain`，錯誤被 `try` 吞掉）→ 改存 `g.gain`。草稿 alert_over 後照響到 15 秒（−19.7 dB），修後停乾淨（−28.4，等於沒嗡鳴）。
+  - 嗡鳴走 `cueBus` 灌進盲區（−20.7 dB）→ 改走 `hintBus`，盲區 −77 dB（沒嗡鳴是 −84）。
+  - 嗡鳴 0.18 比整組鼓聲還響 9 dB → 新常數 `ALERTED_DRONE_GAIN` 0.04（整體只多 1.4 dB）。
+  - 開關改跟規則狀態：`update` 讀 `state.alerted`，追殺、警戒（panic，讓出低音拍的 200～600 Hz）、非 play 階段都停；`alert_over` 時還有別的衛兵在警覺就不停、不放鬆口氣的兩音；規則沒有 `alerted` 欄位時照舊只靠 cue。
+  - `hunt_step` 第 4 步以後繞回低音 → 改成停在最高音（規則第 3 步就歸零，實際碰不到）。
+  - `takedown` 悶擊全在 200 Hz 以下、峰值 −0.9 dB → 低頻 0.75 降到 0.22，加一層 320 Hz 帶通雜訊；喇叭模擬比一般倒地多 2.3 dB。
+  - 試驗場 `audio-test.html` 補 5 個新按鈕：高度警覺嗡鳴、警覺結束、暗殺成功、追殺合拍一步、甩開一段。
+  - 驗證：`node --test prototypes/*/*.test.js` 227 過；錄音 60 秒 8 項全過（`out/audio-4a-review`），但工作分支的規則還沒有 PR #10，沒錄到 4A 事件；4A 改用離線渲染量。
+- **4A 待人耳確認**（喇叭與耳機）：
+  - 嗡鳴 0.04 夠不夠當警告：太小聲就往 0.06 調；警戒時嗡鳴停掉會不會讓人以為警覺結束。
+  - `hunt_slip` 和 `step_loud` 一樣響（峰值 −7.5 對 −6.9），金屬「鏗」會不會被誤認成「踩出聲」。
+  - 追殺 `dash` 風切在盲區裡響（是玩家自己的動作，和原本 dash 一樣），聽起來會不會像盲區沒空掉。
+- 草稿沒動但記一筆：追殺 `dash`、`hunt_slip` 有送殘響（`cueSend`），尾巴可能拖進盲區幾十毫秒。

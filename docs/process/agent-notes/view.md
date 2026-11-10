@@ -77,6 +77,12 @@
 - （11/09）`telemetry.js` 的盲區鍵 `BLIND_KEYS` 與安撫事件正規式是寫死的；大廳復仇合成版的鍵或事件名不同時要更新，否則盲區行動、對拍率會算成 0。
 - （11/09）所有遙測呼叫要包 try/catch、先檢查 `TEL && TEL.active()`；沒載到 telemetry 時遊戲必須照玩。
 - （11/09）畫面工作階段在 worktree `.claude/worktrees/openrouter-api-key-setup-383957` 工作（已切到 `claude/gracious-bardeen-vwo4rr`）；不要寫主資料夾 `C:\Users\恩\test1`，會被 hook 擋。
+- （11/10）一次性特效（殘影、白環）不要每次觸發都 `new` 幾何與材質：`world.remove` 不會釋放 GPU 記憶體。木馬之夜改成 `ensureFxMeshes()` 每個場景建一次、重複用，`build()` 換場景時 `disposeFxMeshes()` 釋放。
+- （11/10）放在玩家位置的 3D 物件會和鏡頭重疊，變成橫跨畫面的一條色帶。追殺殘影改放在衝刺前的位置（`prePos`），衝刺距離不到 1.5 公尺就不放。
+- （11/10）`spawnPrint` 在視覺輔助 0 的區域會直接 return；`hunt_step` 跟在 `step_masked` 後面改「最新腳印」，沒先清 `S.lastPrint` 就會改到舊腳印。追殺中的腳印不受 visualAid 影響。
+- （11/10）`hud()` 只在遊玩中跑，暫停或回開場時 HUD 的 opacity 會停在當下的值（靠 `body:not(.playing) .hud` 藏起來）；所以重開局要 `resetActionFx()` 歸零，不能等 hud 自己衰減。
+- （11/10）內建瀏覽器面板隱藏時，背景分頁的 requestAnimationFrame 不跑，從 console 推事件不會被取走；要靠截圖推進幀數。短暫特效要截圖可以凍結 `performance.now`（例：`const t=performance.now(); performance.now=()=>t`）。
+- （11/10）木馬之夜在 claude.ai 預覽以 `file://` 開時，`../nav.js`、`../telemetry.js` 都載不到；本機測試用暫存站台：複製 `nav.js`、`telemetry.js` 到根目錄，原型放子資料夾，index 包外殼，`python -m http.server 8781`（8765 埠被別的程式佔用）。
 
 ## 4. 驗證方式
 - **本機開原型（有外殼）**：
@@ -97,4 +103,13 @@
   - 版本號都是 `dev`：要錄音與工具角色讓打包工具寫入 `<meta name="odyssey-build">`。
   - 11/12 期中報告錄影要「視覺輔助全開」：開場把 `#oAid` 設成 on 就行，不用改程式；需要的話可以加網址參數 `?aid=on` 方便錄影。
 
-- 11/09 晚（總控）4A 畫面草稿已由 agy 寫進 `index.html`（提交 511b817）：game.fire 火光、火把隨疑心變色、高度警覺邊緣暈、追殺速度線與殘影、合拍腳印分階、hunt_slip 白環、暗殺短白閃。接手：審程式與人眼確認。
+- 11/09 晚（總控）4A 畫面草稿已由 agy 寫進 `index.html`（提交 511b817）：game.fire 火光、火把隨疑心變色、高度警覺邊緣暈、追殺速度線與殘影、合拍腳印分階、hunt_slip 白環、暗殺短白閃。
+- 11/10（畫面）審完並修好 4A 草稿（只改 `troy-prologue/index.html`，未提交）：
+  - 殘影、白環改成重複使用（不洩漏）；換場景時釋放，重開局與回開場歸零（`resetActionFx`）。
+  - 追殺殘影留在衝刺前的位置、0.5 秒（規格 M2）；衝刺距離太短不放。螢幕上的硬邊藍灰橢圓改成柔邊淡漸層。
+  - 追殺合拍腳印照規格「紅轉藍」：第 1／2／3 步紅、紫、藍（`PRINT_COL`），視覺輔助 0 的區域也看得到。
+  - 暗殺白閃從整片全白改成畫面邊緣白閃（規格 M3），先顯示再衰減，低幀率也看得到。
+  - 高度警覺邊緣暈只讀 `game.alerted`／衛兵 `state === 'alerted'`，拿掉多餘的 `alertedBySfx`。
+  - 驗證：PR #10 規則檔與目前規則檔都在瀏覽器實開，console 沒有錯誤；全套 `node --test` 234 項通過。截圖在畫面工作階段的暫存資料夾 `shots-4A/`。
+- 未做（規格有、草稿沒有，等派工）：M3「安撫每對拍 → 衛兵火焰收一格」、M4「p → 1 火光泛紅」。
+- 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
