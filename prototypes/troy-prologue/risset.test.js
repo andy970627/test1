@@ -628,7 +628,7 @@ test('11/09 4A：追殺中 step_loud 會把 huntSteps 歸零', () => {
   g.huntSteps = 2;
   const loud = R.beatsBetween(2, 5, g, { minGain: K.MASK_GAIN });
   let t0 = null;
-  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > 0.3) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
+  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > K.STEP_WIN * 2 + 0.02) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
   assert.ok(t0 != null);
   g.step(t0 - DT, {});
   g.step(t0, { mx: 0.15 });
@@ -1870,7 +1870,7 @@ test('暗示階梯：不合拍的腳步被聽到算腳步；假驟降時動了�
   const loud = R.beatsBetween(1, 4, g, { minGain: K.MASK_GAIN });
   g.step(1.2, {});
   let t0 = null;
-  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > 0.3) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
+  for (let i = 1; i < loud.length; i++) if (loud[i].t - loud[i - 1].t > K.STEP_WIN * 2 + 0.02) { t0 = (loud[i].t + loud[i - 1].t) / 2; break; }
   assert.ok(t0 != null && t0 > 1.2);
   g.step(t0 - DT, {});
   g.step(t0, { mx: 0.15 });
