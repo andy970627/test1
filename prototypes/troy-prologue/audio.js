@@ -58,8 +58,15 @@
  *   - 腳步：step_loud 多一聲 1～4 kHz 的碎石「喀嚓」（STEP_CRUNCH_GAIN），最近 8 公尺內的衛兵短促吸一口氣（被聽到的回饋）；
  *     step_masked 維持極輕、極悶。
  *
+ * 殘響掩護（11/10，核心方向甲，docs/design/2026-11-10-core-direction-illusion.md 第 1 節）【改編】：規則 T.COVER_MODE === true 時，
+ *   掩護窗（時段＝原本的盲區，規則判定不變）不再壓低節奏、音樂、衛兵、暗示、失控層、低音；拍子照排，鼓聲永不斷。
+ *   窗開頭加一記交接重合擊（coverHit：各層第一拍同落＋300～1200 Hz 厚擊），窗內把節奏殘響送量與輸出推高（gateVS、gateVO），
+ *   窗結束 COVER_VERB_RELEASE 秒內收回，聽起來是「最響的一下＋0.6 秒餘韻」。木魚預告乘規則的 visualAid（第 0、1 區有）；
+ *   「盲區提示」那一下不響。規則沒有 COVER_MODE 或為 false：完全照現行盲區版。
+ *
  * 4A 事件聲音（11/09）：
- *   - alerted：衛兵高度警覺嗡鳴（200～400 Hz，持續至 alert_over、hunt 或 caught）。
+ *   - alerted：衛兵高度警覺嗡鳴（200～400 Hz，持續至 alert_over、hunt 或 caught）。走暗示匯流排（盲區壓到約 −46 dB）；
+ *     開關以規則的 state.alerted 為準，追殺、警戒（panic，讓出低音拍的中頻）、非 play 階段都不響。
  *   - alert_over：高度警覺結束，停掉嗡鳴並奏輕柔下行兩音（440→330 Hz 陶木管＋吐氣）。
  *   - hunt_step：追殺合拍腳步，短確認音隨 index 升高（587→698→880 Hz 硬木/青銅）。
  *   - hunt_slip：連續合拍甩開一段，金屬交擊「鏗」（2.4～4 kHz，短而亮）。
@@ -136,9 +143,17 @@
     LATCH_VEL: 0.17,           // 門閂的里拉琴音量
     STEP_MASKED_GAIN: 0.05,    // 被鼓聲蓋過的腳步
     STEP_LOUD_GAIN: 0.55,      // 清楚的腳步
+    ALERTED_DRONE_GAIN: 0.04,  // 高度警覺嗡鳴峰值（11/10 從草稿的 0.18 降下來：0.18 時整體比鼓聲還響約 10 dB）
     STEP_CRUNCH_GAIN: 0.6,     // 不合拍腳步的碎石「喀嚓」（1～4 kHz，喇叭也清楚；單獨量 1～4 kHz 峰值約 −25 dB，和一下鼓點相當或更亮）
+    // 殘響掩護（11/10，核心方向甲；規則 T.COVER_MODE 為真時才用）
+    COVER_HIT_GAIN: 0.9,       // 交接重合擊的厚擊（300～1200 Hz）音量
+    COVER_LAYER_GAIN: 0.55,    // 重合擊裡各層第一拍的音量（不照鐘形曲線，全部同時落下）
+    COVER_VERB_SEND: 0.85,     // 掩護窗內節奏殘響送量（平時 0.28）
+    COVER_VERB_OUT: 1.1,       // 掩護窗內殘響輸出（平時 0.6）
+    COVER_VERB_LEAD: 0.02,     // 窗開始前多久推上去（秒）：重合擊一落下就進殘響
+    COVER_VERB_RELEASE: 0.3,   // 窗結束後多久收回（秒）
     // 喇叭可聽度（11/08）
-    PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量
+    PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
     BRIGHT_HZ: 1800,           // 盲區前節奏匯流排高架濾波的轉折頻率（Hz）：主要碰到手拍、金屬（k = 2、3）
     BRIGHT_DB: 4,              // 盲區前最後 BRIGHT_LEAD 秒亮多少（dB）
     BRIGHT_LEAD: 0.3,          // 盲區前多久開始變亮（秒）
@@ -586,6 +601,9 @@
     function getRules() { if (!R && typeof self !== 'undefined' && self.RissetRules) R = self.RissetRules; return R; }
     // 規則常數：優先用 update(state) 傳進來的 state.T，其次全域 RissetRules.T，都沒有才用本檔備援（A2）
     function RK() { var Rr = getRules(); return (lastState && lastState.T && typeof lastState.T === 'object') ? lastState.T : (Rr && Rr.T) || null; }
+    // 殘響掩護（核心方向甲，docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：規則 T.COVER_MODE === true 才開；
+    // 規則沒有這個常數＝現行盲區版。開著時掩護窗（＝盲區時段）不壓低任何線，改成交接重合擊＋0.6 秒殘響尾巴。
+    function coverMode() { var K = RK(); return !!(K && K.COVER_MODE === true); }
     // 層數：規則的 layerCount(hunted)（巡邏 4、追殺 5；追殺層數是 T.HUNT_LAYERS），都沒有才用備援
     function layerCount(hunted) {
       var Rr = getRules(), K = RK();
@@ -735,6 +753,43 @@
     var gateR = new Gate(gate.gain, C.GATE_FLOOR, C.GATE_FALL, C.GATE_RISE);
     // 盲區前的亮度（11/08）：和 gateR 同一份預測時段，所以假驟降（沒有盲區）不會變亮；盲區結束後 10 ms 內回 0 dB
     var gateB = new Gate(bright.gain, C.BRIGHT_DB, C.BRIGHT_LEAD, 0.01, 0);
+    // 殘響掩護（11/10）：同一個 Gate，只是「窗內值」比平時高——掩護窗內把節奏殘響的送量與輸出推上去，窗結束 COVER_VERB_RELEASE 秒內收回。
+    // 現行盲區版傳空時段，兩個都停在平時值。
+    var gateVS = new Gate(verbSend.gain, C.COVER_VERB_SEND, C.COVER_VERB_LEAD, C.COVER_VERB_RELEASE, verbSend.gain.value);
+    var gateVO = new Gate(verbOut.gain, C.COVER_VERB_OUT, C.COVER_VERB_LEAD, C.COVER_VERB_RELEASE, verbOut.gain.value);
+    var lastCover = false;
+    // 交接重合擊：各層第一拍同時落下（不照鐘形曲線）＋一聲 300～1200 Hz 的厚擊（筆電喇叭聽得到）＋一點低頻身體（耳機）。
+    // 走節奏匯流排，所以吃得到窗內推高的殘響，接成 0.6 秒的尾巴。
+    function coverHit(out, t, alertWin) {
+      var nL = layerCount(st.hunted), G = C.COVER_HIT_GAIN, k;
+      if (alertWin) {
+        // 警戒時（掩護窗夾在兩個低音拍中間）：厚擊往上移到 0.9～1.4 kHz、不加低頻與 300～600 Hz，200～600 Hz 讓給要跟的低音拍
+        // （11/10 錄音：照一般版打，警戒低音拍相對背景從 +14 掉到 +8.6 dB）
+        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN * 0.6);
+        tone(out, t, 'triangle', 980, 820, 0.08, 0.22 * G, 0.002, 0.2);
+        tone(out, t, 'sine', 1380, 1300, 0.05, 0.12 * G, 0.002, 0.14);
+        noise(out, t, 'bandpass', 1200, 1.2, 0.3 * G, 0.001, 0.08);
+        return;
+      }
+      for (k = 0; k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN);
+      tone(out, t, 'triangle', 420, 260, 0.12, 0.32 * G, 0.002, 0.35);   // 鼓皮的「咚」：中頻主體
+      tone(out, t, 'sine', 640, 520, 0.08, 0.18 * G, 0.002, 0.25);
+      noise(out, t, 'bandpass', 700, 0.9, 0.45 * G, 0.002, 0.18);       // 皮面拍擊的寬頻成分
+      noise(out, t, 'bandpass', 1100, 1.2, 0.2 * G, 0.001, 0.06);
+      tone(out, t, 'sine', 95, 60, 0.15, 0.35 * G, 0.002, 0.4);          // 低頻身體（喇叭聽不到，耳機補厚度）
+    }
+    function scheduleCoverHits(from, end, ws) {
+      var aw = !!bassMode;               // 警戒的掩護窗（在兩個低音拍正中央）
+      for (var i = 0; i < ws.length; i++) {
+        var t = ws[i].s;
+        if (t < from || t >= end) continue;
+        var P = Pof(t), key = 'cov' + Math.round(P * 1000);
+        if (evs[key]) continue;
+        var le = log ? { type: 'coverHit', t: t, p: frac(P), alert: aw } : null;
+        if (le) log.push(le);
+        (function (aw) { addEvent(key, P, rhythmBus, function (tt, out) { coverHit(out, tt, aw); }, false, le); })(aw);
+      }
+    }
 
     // ---------- 預排事件：以累計相位定位，可取消重排 ----------
     // 每一拍（以及跟著拍點的主題音）是一筆 rec = {key, P, t, dest, play, gated}；play(t, out) 把聲音接到 out。
@@ -764,7 +819,7 @@
         var r = pending[i];
         if (r.t < now - 0.05) continue;                       // 已響過：不再追蹤（evs 留著做去重）
         if (r.t < now + C.RESCHED_MARGIN) { keep.push(r); continue; }
-        var t2 = tAt(r.P), blocked = r.gated && (inWins(t2, ws) || gateR.forced);
+        var t2 = tAt(r.P), blocked = r.gated && !coverMode() && (inWins(t2, ws) || gateR.forced);
         if (Math.abs(t2 - r.t) <= C.RESCHED_TOL && !blocked) { keep.push(r); continue; }
         kill(r, now);
         if (!blocked && t2 > now + 0.004) { r.t = t2; fire(r); keep.push(r); stats.resched++; }
@@ -1127,14 +1182,24 @@
     function scheduleTo(end, now) {
       if (dead) return;
       var ws = windowsBetween(now - 1, end + C.BASS_TAIL + 0.2);
-      gateR.plan(ws, now); gateM.plan(ws, now); gateG.plan(ws, now); gateH.plan(ws, now); gateB.plan(ws, now);
+      // 殘響掩護：靜音用的時段傳空（節奏、音樂、衛兵、暗示、失控層、低音都照常），殘響 gate 改用這份時段在窗內推高
+      var cov = coverMode(), wq = cov ? [] : ws;
+      if (cov !== lastCover) {          // 模式切換：已排的靜音全部收回、殘響回平時
+        lastCover = cov;
+        if (cov) { gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); }
+        replan(now);
+      }
+      gateR.plan(wq, now); gateM.plan(wq, now); gateG.plan(wq, now); gateH.plan(wq, now); gateB.plan(ws, now);
+      var wv = (cov && !bassMode) ? ws : [];   // 警戒窗不推殘響：尾巴會墊高下一個低音拍前的背景
+      gateVS.plan(wv, now); gateVO.plan(wv, now);
       var from = now + 0.004;
-      scheduleBeats(from, end, ws);
+      if (cov) scheduleCoverHits(from, end, ws);
+      scheduleBeats(from, end, wq);
       scheduleMusic(from, end);
       planShep(end, now);
       // 落後太久（分頁休眠）就不回頭補，直接從現在接上；已經過的拍各自跳過，不累積誤差
       if (linEnd < now - C.CATCHUP_MAX) linEnd = now - C.CATCHUP_MAX;
-      if (end > linEnd) { scheduleLinear(linEnd, end, ws); linEnd = end; }
+      if (end > linEnd) { scheduleLinear(linEnd, end, wq); linEnd = end; }
       // 去重表清理
       if (pending.length > 400 || Math.random() < 0.05) {
         for (var key in evs) if (evs[key].t < now - 2) delete evs[key];
@@ -1371,7 +1436,17 @@
     }
 
     // ---------- 高度警覺嗡鳴（alerted，持續至 alert_over / hunt / caught）----------
+    // 11/10 審查修正：
+    //   - 走 hintBus（盲區 gate 壓到約 −46 dB），不走 cueBus：持續音走 cueBus 會整段灌進盲區，盲區就不是空檔。
+    //   - 開關以規則狀態為準（update 讀 state.alerted、hunted、panic.active、phase），cue 只是提早觸發：
+    //     多名衛兵輪流警覺、重開局、失敗畫面都不會留下嗡鳴。
+    //   - 警戒（panic，要跟慢低音按 Q）時先停：嗡鳴 220～330 Hz 會蓋住低音拍 200～600 Hz 的中頻敲擊。
     var alertedDrone = null;
+    function droneWanted(s) {
+      if (!s) return false;
+      var pa = !!(s.panic && typeof s.panic === 'object' && s.panic.active);
+      return !!s.alerted && !s.hunted && !pa && (s.phase == null || s.phase === 'play');
+    }
     function stopAlertedDrone(t) {
       if (!alertedDrone) return;
       var d = alertedDrone;
@@ -1380,17 +1455,18 @@
       var fade = 0.15;
       try {
         d.gain.cancelScheduledValues(now);
-        d.gain.setValueAtTime(d.gain.value, now);
+        d.gain.setValueAtTime(Math.max(0.0001, d.gain.value), now);
         d.gain.exponentialRampToValueAtTime(0.0001, now + fade);
         d.nodes.forEach(function (n) { try { n.stop(now + fade + 0.05); } catch (e) {} });
       } catch (e) {}
     }
     function startAlertedDrone(t) {
-      stopAlertedDrone(t);
       var now = t != null ? t : ctx.currentTime;
+      if (alertedDrone && alertedDrone.until > now + 2) return;   // 已經在響（另一名衛兵也警覺了）：不重來，免得音量掉一下
+      stopAlertedDrone(t);
       var g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, now);
-      g.gain.exponentialRampToValueAtTime(0.18, now + 0.35);
+      g.gain.exponentialRampToValueAtTime(C.ALERTED_DRONE_GAIN, now + 0.35);
       var o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
       o1.type = 'triangle'; o1.frequency.setValueAtTime(220, now);
       o2.type = 'sine'; o2.frequency.setValueAtTime(223, now);
@@ -1401,10 +1477,11 @@
       g3.gain.value = 0.25;
       o3.connect(g3); g3.connect(f);
       o1.connect(f); o2.connect(f);
-      f.connect(g); g.connect(cueBus);
+      f.connect(g); g.connect(hintBus);
+      var until = now + 60;   // 保險上限；正常由 update 依規則狀態停掉，快到上限還在警覺就重開一條
       o1.start(now); o2.start(now); o3.start(now);
-      o1.stop(now + 15); o2.stop(now + 15); o3.stop(now + 15);
-      alertedDrone = { gain: g, nodes: [o1, o2, o3] };
+      o1.stop(until); o2.stop(until); o3.stop(until);
+      alertedDrone = { gain: g.gain, nodes: [o1, o2, o3], until: until };
     }
 
     // ---------- 音效 ----------
@@ -1515,9 +1592,13 @@
           tone(cueBus, tt, 'sine', 2780, 0, 0, 0.16 * g, 0.001, 0.045);
           noise(cueBus, tt, 'bandpass', 1900, 1.4, 0.5 * g, 0.001, 0.02);
         }
-        tok(t, C.PRE_BLIND_GAIN); tok(t + 0.095, C.PRE_BLIND_GAIN * 0.7);   // 兩聲在 0.2 秒內結束，離盲區還有 0.2 秒
+        // 殘響掩護：木魚降為教學輔助，跟規則的 visualAid 一起淡出（第 0、1 區有，之後沒有）
+        var va = 1;
+        if (coverMode()) { va = lastState && isFinite(lastState.visualAid) ? clamp(+lastState.visualAid, 0, 1) : 1; if (va < 0.02) return; }
+        tok(t, C.PRE_BLIND_GAIN * va); tok(t + 0.095, C.PRE_BLIND_GAIN * 0.7 * va);   // 兩聲在 0.2 秒內結束，離盲區還有 0.2 秒
       },
-      blind: function (t) {               // 盲區提示：很輕、很悶的一下
+      blind: function (t) {               // 盲區提示：很輕、很悶的一下（殘響掩護下由重合擊取代，不另外響）
+        if (coverMode()) return;
         tone(cueBus, t, 'sine', 300, 220, 0.06, 0.05, 0.003, 0.12);
         noise(cueBus, t, 'lowpass', 700, 0.7, 0.03, 0.01, 0.15);
       },
@@ -1535,9 +1616,12 @@
         tone(cueBus, t + 0.02, 'sine', 1050, 1240, 0.3, 0.04, 0.01, 0.4);   // 兩條略不和諧
       },
       alerted: function (t) {             // 衛兵進入高度警覺（10 秒）：低沉嗡鳴 200～400 Hz，持續到 alert_over 或 hunt 為止
+        if (st.hunted || st.panicOn) return;   // 追殺、警戒中不響（update 會在條件解除後依規則狀態補開）
         startAlertedDrone(t);
       },
       alertOver: function (t) {           // 高度警覺結束：停掉嗡鳴，輕的下行兩音表示鬆口氣
+        // 還有別的衛兵在警覺（lastState 是規則的同一個 game 物件，送音效時已是這一幀的結果）：不停、不放鬆口氣的音
+        if (lastState && lastState.guards && lastState.guards.some(function (q) { return q && q.active !== false && q.state === 'alerted'; })) return;
         stopAlertedDrone(t);
         tone(cueBus, t, 'triangle', 440, 415, 0.12, 0.08, 0.01, 0.22);
         tone(cueBus, t, 'sine', 880, 0, 0, 0.02, 0.01, 0.15);
@@ -1553,8 +1637,9 @@
       },
       takedown: function (t) {            // 暗殺成功：保留原本倒地聲，疊加短的低頻悶擊
         CUES.down(t);
-        tone(cueBus, t, 'sine', 58, 32, 0.1, 0.75, 0.002, 0.15);
-        noise(cueBus, t, 'lowpass', 140, 1.2, 0.45, 0.002, 0.09);
+        // 11/10：草稿 0.75／低通 140 Hz 讓峰值到 −0.9 dB，卻全在 200 Hz 以下（筆電喇叭聽不到）；低頻降到 0.22、雜訊層改 320 Hz 帶通（喇叭聽得到的一聲悶「噗」）
+        tone(cueBus, t, 'sine', 58, 32, 0.1, 0.22, 0.002, 0.15);
+        noise(cueBus, t + 0.003, 'bandpass', 320, 1.1, 0.3, 0.002, 0.07);
       },
       takedownFail: function (t) {        // 暗殺失手：扭打、青銅碰撞
         noise(cueBus, t, 'bandpass', 700, 1, 0.4, 0.01, 0.2);
@@ -1602,7 +1687,7 @@
       huntStep: function (t, d) {         // 追殺中合拍踩一步：短確認音，音高隨 index 上升
         var idx = (d && d.index) ? d.index : 1;
         var stepFreqs = [587.3, 698.5, 880.0];
-        var f0 = stepFreqs[(idx - 1) % stepFreqs.length] || (587.3 * Math.pow(1.2, idx - 1));
+        var f0 = stepFreqs[clamp(idx, 1, stepFreqs.length) - 1];   // 規則 HUNT_STEP_ESCAPE = 3，第 3 步後歸零；超過就停在最高音，不繞回低音
         tone(cueBus, t, 'triangle', f0, f0 * 0.96, 0.02, 0.16, 0.001, 0.07);
         tone(cueBus, t, 'sine', f0 * 2.75, 0, 0, 0.05, 0.001, 0.04);
         noise(cueBus, t, 'bandpass', f0 * 1.5, 2.5, 0.12, 0.001, 0.025);
@@ -1703,7 +1788,8 @@
           else if (mis && !gateR.forced) {
             if (++mismN >= 2) {
               mismN = 0;
-              if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); gateH.force(true, now); gateB.force(true, now); replan(now); }
+              if (sb && coverMode()) { /* 殘響掩護：掩護窗不靜音，只記錄 */ }
+              else if (sb) { gateR.force(true, now); gateM.force(true, now); gateG.force(true, now); gateH.force(true, now); gateB.force(true, now); replan(now); }
               else if (w) {
                 suppress.push({ s: w.s, e: w.e });
                 gateR.force(false, now); gateM.force(false, now); gateG.force(false, now); gateH.force(false, now); gateB.force(false, now);
@@ -1752,6 +1838,11 @@
             dg.linearRampToValueAtTime(1, tEnd + 0.6);
             if (log) log.push({ type: 'alertDuck', t: now, until: tEnd });
           } else dg.linearRampToValueAtTime(1, now + 0.3);
+        }
+        // 高度警覺嗡鳴：規則有 alerted 欄位就以它為準（沒有的舊規則只靠 cue）
+        if (s.alerted != null) {
+          if (droneWanted(s)) { if (!alertedDrone || alertedDrone.until <= now + 2) startAlertedDrone(now); }
+          else if (alertedDrone) stopAlertedDrone(now);
         }
         // 暗示：規則的 hintSignals（可暗殺的衛兵、離盲區幾秒）；路線的風、號角、門外低語
         hintSig = null;
