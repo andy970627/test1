@@ -54,6 +54,11 @@ const TH = Object.assign({
   coverTailAboveDb: 3,
   fireTol: 0.02,          // fireSync：game.fire 與 FIRE_BASE + FIRE_P_GAIN × danger 的容許誤差
   stepMinN: 3,            // stepBand：不合拍、合拍腳步各至少幾步才判定
+  horseBand: [300, 1200], // 木馬共鳴（C2）量的頻帶
+  horseNearM: 6,          // 貼近：離木馬中心幾公尺內
+  horseFarM: 25,          // 遠處：幾公尺外（聲音層 HORSE_BOOM_R 25 m 外共鳴為 0）
+  horseDiffDb: 3,         // 貼近比遠處厚幾 dB（設計 C2）
+  horseBoomOverHitDb: 0,  // 貼近時共鳴峰值最多比重合擊峰值高幾 dB（0＝不能比重擊響）
   fireDrop: 0.05,         // fireSync：相鄰兩幀 fire 掉超過這個量、而 danger 沒掉（< 0.01）＝「火光掉回」
   // 玩家自己的動作音（走提示音匯流排，盲區不壓）：盲區內有這些 cue 時，那次盲區照列但不計入盲區檢查
   blindConfoundCues: '^(dash|trapdoor|checkpoint|step_loud|gasp|takedown|takedown_fail|latch|latch_step|calm_ok|calm_bad|calm_done|alert|caught|hunt|escape|gate_open)$'
@@ -339,6 +344,43 @@ const fireInfo = {};
   }
 }
 
+// 1c. 木馬共鳴（C2，HORSE_MODE；docs/design/2026-11-11-trojan-horse-directions.md 第 3 節）：時間軸有 hd（離木馬中心距離）而且貼近、遠處都有掩護窗才跑。
+// 量法：每個一般掩護窗，那一擊後 [+0.05, +0.55] 秒 300～1200 Hz 的平均能量，減去窗前 1.0～0.15 秒同頻帶平均（不用峰值：峰值永遠是重合擊本身）。
+// 貼近（hd ≤ horseNearM）與遠處（hd ≥ horseFarM）各取中位，差 ≥ horseDiffDb 才過。剛換位置的那個窗（窗前 1 秒內換過位置）不算。
+const horseInfo = {};
+{
+  const hasHd = TL.some(s => s.hd != null);
+  if (hasHd) {
+    const band = TH.horseBand, HS = bandSeries([band]), arr = HS.p[0];
+    const fI = (t) => Math.round((t - HS.t[0]) / HS.hop);
+    const meanP = (a, b) => { let s = 0, n = 0; for (let f = Math.max(0, fI(a)); f <= Math.min(arr.length - 1, fI(b)); f++) { if (gapMask[Math.min(wav.n - 1, Math.max(0, Math.round((HS.t[f] - T0) * SR)))]) continue; s += arr[f]; n++; } return n ? s / n : null; };
+    const hdAt = (t) => { let best = null; for (const s of TL) { if (s.t > t) break; best = s; } return best ? best.hd : null; };
+    const rows = [];
+    for (const [a] of (IV.normalBlind && IV.normalBlind.length ? IV.normalBlind : IV.blind)) {
+      if (a - 1.0 < T0 || a + 0.6 > T0 + DUR) continue;
+      const d0 = hdAt(a - 1.0), d1 = hdAt(a + 0.55);
+      if (d0 == null || d1 == null || Math.abs(d0 - d1) > 0.5) continue;   // 窗前到窗後位置要一樣
+      const pre = meanP(a - 1.0, a - 0.15), post = meanP(a + 0.05, a + 0.55);
+      if (pre == null || post == null) continue;
+      // 共鳴不能比重擊還響（聲音角色 11/11 的設計約束）：重合擊峰值取 [−0.01, +0.05] 秒，共鳴峰值取 [+0.05, +0.25] 秒（共鳴晚 HORSE_BOOM_DELAY 0.07 秒）
+      const pk = (x, y) => { let m = 0; for (let f = Math.max(0, fI(x)); f <= Math.min(arr.length - 1, fI(y)); f++) if (arr[f] > m) m = arr[f]; return m; };
+      const hitPk = pk(a - 0.01, a + 0.05), boomPk = pk(a + 0.05, a + 0.25);
+      rows.push({ t: +a.toFixed(3), dist: d1, postDb: r1(db(post)), preDb: r1(db(pre)), riseDb: r1(db(post) - db(pre)), hitPeakDb: r1(db(hitPk)), boomPeakDb: r1(db(boomPk)), boomOverHitDb: r1(db(boomPk) - db(hitPk)) });
+    }
+    const near = rows.filter(r => r.dist <= TH.horseNearM), far = rows.filter(r => r.dist >= TH.horseFarM);
+    const mN = median(near.map(r => r.riseDb)), mF = median(far.map(r => r.riseDb));
+    const aN = median(near.map(r => r.postDb)), aF = median(far.map(r => r.postDb));
+    const overN = median(near.map(r => r.boomOverHitDb));
+    Object.assign(horseInfo, { rows, near: near.length, far: far.length, nearRiseDb: mN, farRiseDb: mF, diffDb: mN != null && mF != null ? r1(mN - mF) : null, nearPostDb: aN, farPostDb: aF, nearBoomOverHitDb: overN });
+    add('horseBoom', `木馬共鳴：貼近比 ${TH.horseFarM} 公尺外，那一擊後 0.5 秒 ${band[0]}～${band[1]} Hz 厚 ≥ ${TH.horseDiffDb} dB，且共鳴不比重擊響`,
+      near.length && far.length ? mN - mF >= TH.horseDiffDb && overN <= TH.horseBoomOverHitDb : null,
+      near.length && far.length ? `貼近（≤ ${TH.horseNearM} m，${near.length} 窗）相對窗前中位 ${mN >= 0 ? '+' : ''}${mN} dB；遠處（≥ ${TH.horseFarM} m，${far.length} 窗）${mF >= 0 ? '+' : ''}${mF} dB；差 ${r1(mN - mF)} dB（絕對能量差 ${r1(aN - aF)} dB）；貼近時共鳴峰值比重合擊峰值 ${overN >= 0 ? '高' : '低'} ${r1(Math.abs(overN))} dB（上限：高 ${TH.horseBoomOverHitDb} dB）`
+        : `貼近 ${near.length} 窗、遠處 ${far.length} 窗，兩邊都要有才判（錄音要用 --horse-test 與 --page "index.html?lab=horse"）`,
+      `量法：每個一般掩護窗，那一擊後 [+0.05, +0.55] 秒 ${band[0]}～${band[1]} Hz 平均能量減去窗前 1.0～0.15 秒同頻帶平均（不用峰值：峰值永遠是重合擊本身，聲音角色 11/11）。` +
+      `距離用聲音層 horseInfo().dist（離木馬中心）。貼近 ≤ ${TH.horseNearM} m、遠處 ≥ ${TH.horseFarM} m 各取中位，差 ≥ ${TH.horseDiffDb} dB（設計 C2），而且貼近時共鳴峰值（[+0.05, +0.25] 秒）不比重合擊峰值（[−0.01, +0.05] 秒）高超過 ${TH.horseBoomOverHitDb} dB（共鳴比重擊還響就違反設計，聲音角色 11/11）才過。窗前到窗後位置有變的窗不算。`);
+  }
+}
+
 // 2. 起音與規則拍點
 const beatStats = {};
 function matchBeats(list, label) {
@@ -599,7 +641,7 @@ let SUM = null;
 if (profile && profile.summary) { try { SUM = profile.summary(TL, meta, EV, IV); } catch (e) { log('summary 失敗', e.message); } }
 
 // ---------- 輸出 ----------
-const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, coverMode: COVER, coverRows, coverSub, fire: fireInfo, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
+const analysis = { speakerSim: SPK ? { highpassHz: SPEAKER_HP, wav: path.basename(wavFile) } : null, speaker, summary: SUM ? SUM.data : null, coverMode: COVER, coverRows, coverSub, fire: fireInfo, horse: horseInfo, fakeDips, thresholds: TH, durationSec: DUR, startAudioTime: T0, onsets: onsets.length, expectedBeats: expected.length,
   intervals: { blind: IV.blind.length, blindList: IV.blind.map(x => x.map(v => +v.toFixed(3))), fake: (IV.fake || []).map(x => x.map(v => +v.toFixed(3))), alert: IV.alert.map(x => x.map(v => +v.toFixed(2))), hunted: IV.hunted.map(x => x.map(v => +v.toFixed(2))) },
   checks, dips, beatStats, silences, cueCount, fails, gaps: meta.audio.gapList, frames: meta.frames };
 fs.writeFileSync(path.join(dir, SPK ? 'analysis-speaker.json' : 'analysis.json'), JSON.stringify(analysis, null, 2));

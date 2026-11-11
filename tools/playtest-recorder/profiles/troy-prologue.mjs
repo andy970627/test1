@@ -44,8 +44,10 @@ export default {
     const cycle = o.cycle ? +o.cycle : null;
     // 鼓聲模式（核心方向甲，11/10）：--cover cover｜gap 設定開場選單 #oCover（規則 T.COVER_MODE）；不給就用頁面預設（cover）
     const cover = o.cover === 'gap' || o.cover === 'false' ? 'gap' : (o.cover === 'cover' || o.cover === true || o.cover === 'true') ? 'cover' : null;
-    await page.evaluate(({ cycle, phaseBar, cover, stepTest }) => {
+    await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse }) => {
       window.__recStepTest = !!stepTest;   // --step-test：第 1 區改成離拍起步累積腳步樣本（不喘氣引起注意）
+      // --horse-test（11/11，木馬共鳴 C2）：頁面要用 ?lab=horse 開（record.mjs 的 --page）；前半段站在木馬旁、後半段站到 30 公尺外
+      window.__recHorse = horse;
       const cv = document.getElementById('oCover');
       if (cover && cv && !cv.disabled) { cv.value = cover; cv.dispatchEvent(new Event('change', { bubbles: true })); }
       const sel = document.getElementById('oT');
@@ -57,7 +59,8 @@ export default {
       }
       const ph = document.getElementById('oPhase');
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, { cycle, phaseBar: o.phaseBar !== false, cover, stepTest: !!o.stepTest });
+    }, { cycle, phaseBar: o.phaseBar !== false, cover, stepTest: !!o.stepTest,
+      horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
     await page.click('#btnStart');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
     return page.evaluate(() => {
@@ -118,6 +121,9 @@ export default {
       bid: g.cycle.blindId || null, ab: !!g.cycle.alertBlind, fake: !!g.cycle.fake, nfake: !!g.cycle.nextFake,
       // 火光與危險度（11/10 甲：fire 跟 danger＝實際速度走，給 fireSync 檢查）；舊規則檔沒有就是 null
       fire: Number.isFinite(g.fire) ? +g.fire.toFixed(4) : null, dg: Number.isFinite(g.danger) ? +g.danger.toFixed(4) : null,
+      // 木馬共鳴（HORSE_MODE）：聲音層算的離木馬中心距離；沒開就是 null
+      // horseInfo 在 TroyDebug.audio.raw 上（畫面層包了一層）；兩處都找
+      hd: (() => { const r = (a.raw && a.raw.horseInfo) ? a.raw : a; try { const h = r.horseInfo && r.horseInfo(); return h && isFinite(h.dist) ? +h.dist.toFixed(2) : null; } catch (e) { return null; } })(),
       events: evs
     };
   },
@@ -131,6 +137,19 @@ export default {
   bot: function (api, s, st) {
     const D = window.TroyDebug, g = D.game;
     if (!g) return;
+    // --horse-test：不玩，只把玩家擺到固定位置（試驗場沒有衛兵）。前半段 near、後半段 far；面向木馬。
+    // 直接設定位置是量測用的擺放，不是遊戲操作；?lab=horse 不會因為走到出口而換區。
+    if (window.__recHorse) {
+      const H = window.__recHorse;
+      api.releaseAll();
+      if (g.phase !== 'play') return;
+      if (st.h0 == null) st.h0 = s.t;
+      const far = s.t - st.h0 > H.half, pos = far ? H.far : H.near;
+      if (st.hFar !== far) { st.hFar = far; api.log('horse_pos', { far, x: pos.x, z: pos.z }); }
+      g.player.x = pos.x; g.player.z = pos.z;
+      D.V.yaw = Math.atan2(8.5 - pos.x, 15 - pos.z);
+      return;
+    }
     const t = s.t, p = s.p, P = g.player;
     const fdt = Math.min(0.12, Math.max(0.008, (s.fdt || 16) / 1000));
     st.fd = st.fd ? st.fd * 0.8 + fdt * 0.2 : fdt;     // 平滑後的幀間隔，預測「下一幀」的音訊時間
