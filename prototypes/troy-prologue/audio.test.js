@@ -70,3 +70,14 @@ test('跑：被蓋住的那一步比沒被蓋住的輕很多（≤ −15 dB）�
   assert.ok(20 * Math.log10(C.RUN_MASKED_GAIN / loud) <= -15);
   assert.ok(C.RUN_LOUD_MUL > 1);
 });
+
+// 查看與追殺重做（MOVES_MODE）：docs/design/2026-11-11-companion-mechanics.md 第 12、13 節
+test('查看／追殺中的衛兵比巡邏的更清楚，巡邏的也比開關關著時大', () => {
+  assert.ok(C.MOVES_GUARD_STEP_ALERT_MUL > C.MOVES_GUARD_STEP_MUL && C.MOVES_GUARD_STEP_MUL >= 1);
+  assert.ok(C.MOVES_VOICE_ALERT_MUL > C.MOVES_VOICE_MUL && C.MOVES_VOICE_MUL >= 1);
+});
+
+test('慢低音只當氣氛：查看中的衛兵貼近時比平時重，但不超過 1', () => {
+  assert.ok(C.CHECK_BASS_MAX > C.BASS_BASE && C.CHECK_BASS_MAX <= 1);
+  assert.ok(C.CHECK_BASS_R > 0);
+});

@@ -155,6 +155,16 @@
     RUN_PANT_GAP: 0.5,         // 跑的時候每幾秒喘一口
     RUN_PANT_GAIN: 0.05,       // 喘氣音量（輕，不蓋鼓）
     CROUCH_STEP_MUL: 0.5,      // 蹲走腳步的音量倍數（−6 dB）
+    // 追殺重做＋查看（MOVES_MODE；docs/design/2026-11-11-companion-mechanics.md 第 12、13 節）：總綱規則 13 不適用，衛兵腳步要聽得清楚
+    MOVES_GUARD_STEP_MUL: 1.3,       // 開關開著時，巡邏衛兵的腳步加大幾倍
+    MOVES_GUARD_STEP_ALERT_MUL: 2,   // 查看、追殺、搜索中的衛兵腳步加大幾倍（他走過來、走進影子，你要聽得出在哪）
+    MOVES_VOICE_MUL: 1.8,            // 開關開著時，巡邏衛兵整條聲音（腳步、呼吸）再乘幾倍（11/11 量：3 公尺外腳步峰值 −33 dB、鼓 −9 dB，聽不清楚）
+    MOVES_VOICE_ALERT_MUL: 4,        // 查看、追殺、搜索中的衛兵整條聲音乘幾倍（合腳步加大，3 公尺外腳步峰值約 −16 dB）
+    CHECK_BASS_R: 12,                // 查看中的衛兵在這個距離內，慢低音隨距離加重（只是氣氛，不對拍）
+    CHECK_BASS_MAX: 1,               // 貼近時低音音量（平時 BASS_BASE）
+    PANT_GAP: 0.42,                  // 跑完喘氣（pant_start）：每口間隔
+    PANT_GAIN: 0.09,                 // 喘氣第一口的音量，之後越來越輕
+    SHOUT_GAIN: 0.32,                // hunt_call 喊一聲
     CROUCH_STARTLE_R: 1.2,     // 蹲走離拍時，衛兵「被聽到」的吸氣只在這個距離內（規則 CROUCH_R；規則有就用規則的）
     STEP_CRUNCH_GAIN: 0.6,     // 不合拍腳步的碎石「喀嚓」（1～4 kHz，喇叭也清楚；單獨量 1～4 kHz 峰值約 −25 dB，和一下鼓點相當或更亮）
     // 殘響掩護（11/10，核心方向甲；規則 T.COVER_MODE 為真時才用）
@@ -302,6 +312,8 @@
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
     bellyhush: 'bellyHush', bellyready: 'bellyReady', trapdooropen: 'trapdoorOpen', horsesignal: 'horseSignal',
     runstart: 'runStart', runstep: 'runStep', runstop: 'runStop', crouchon: 'crouchOn', crouchoff: 'crouchOff',
+    checkstart: 'checkStart', checkarrive: 'checkArrive', checkover: 'checkOver', huntcall: 'huntCall',
+    searchstart: 'searchStart', searchdone: 'searchDone', huntheard: 'huntHeard', pantstart: 'pantStart', pantend: 'pantEnd',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
   // risset.js 的 game.out sfx 名稱：alert alerted alert_over breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
@@ -1637,8 +1649,8 @@
       voices.push(v);
       return v;
     }
-    function guardStep(v, t, heavy) {       // 衛兵的皮靴踩石板＋青銅脛甲輕碰
-      var k = heavy ? 1.4 : 1;
+    function guardStep(v, t, heavy, mk) {   // 衛兵的皮靴踩石板＋青銅脛甲輕碰（mk：MOVES_MODE 的加大倍數，沒給＝1）
+      var k = (heavy ? 1.4 : 1) * (mk || 1);
       noise(v.input, t, 'lowpass', 320 + Math.random() * 120, 1, 0.5 * k, 0.003, 0.09);
       noise(v.input, t + 0.006, 'bandpass', 1800, 1.5, 0.08 * k, 0.002, 0.04);
       if (Math.random() < 0.6) tone(v.input, t + 0.01, 'sine', 2350 + Math.random() * 300, 0, 0, 0.018 * k, 0.001, 0.12);
@@ -1693,14 +1705,16 @@
         // 越快越近，衛兵的呼吸與腳步越清楚；背對你、可暗殺的衛兵在盲區前呼吸特別清楚（2.1 節）
         var kill = hintSig && hintSig.kill && hintSig.kill[c.id];
         var gk = (1 - C.GUARD_P_GAIN / 2 + C.GUARD_P_GAIN * guardP) * (kill ? C.KILL_BREATH_MUL : 1);
-        v.input.gain.setTargetAtTime(clamp((C.GUARD_FAR - c.d) / 8, 0, 1) * gk, now, 0.2);
+        var vm = movesOn() ? ((c.q.state === 'hunted' || c.q.state === 'checking' || c.q.search) ? C.MOVES_VOICE_ALERT_MUL : C.MOVES_VOICE_MUL) : 1;   // 開關關著＝1，照舊
+        v.input.gain.setTargetAtTime(clamp((C.GUARD_FAR - c.d) / 8, 0, 1) * gk * vm, now, 0.2);
         var alert = c.q.state === 'hunted' || c.q.state === 'suspicious';
         // 可暗殺：盲區前 0.7 秒內吸一口氣，吐氣正好蓋過盲區開頭（衛兵聲在盲區照樣被 gateG 壓低）
         if (kill && hintSig.blindIn != null && hintSig.blindIn < 0.7 && hintSig.blindIn > 0.2 && now >= v.nextBreath - 1.2) v.nextBreath = now;
         if (v.speed > 0.25) {
           if (now >= v.nextStep - 0.05) {
             var ts = Math.max(now + 0.01, v.nextStep);
-            guardStep(v, ts, c.q.state === 'hunted');
+            var mk = movesOn() ? ((c.q.state === 'hunted' || c.q.state === 'checking' || c.q.search) ? C.MOVES_GUARD_STEP_ALERT_MUL : C.MOVES_GUARD_STEP_MUL) : 1;
+            guardStep(v, ts, c.q.state === 'hunted', mk);
             if (movesOn()) { stepMarks.push({ x: c.q.x, z: c.q.z, t: ts, id: c.id }); if (stepMarks.length > 64) stepMarks.shift(); }   // 給畫面的淡圈（屏息聽）
             v.nextStep = ts + clamp(0.7 / v.speed, 0.26, 0.8) * (0.95 + Math.random() * 0.1);
           }
@@ -1713,6 +1727,18 @@
     }
     // 不合拍的腳步被聽到（11/08）：最近 8 公尺內出聲中的衛兵短促吸一口氣、喉嚨「嗯？」，呼吸與腳步節奏被打斷；
     // 走衛兵自己的 3D 聲道（有方向、隨距離變小，盲區照 gateG 壓低）
+    function guardVoiceAt(id, x, z) {
+      for (var i = 0; i < voices.length; i++) if (voices[i].id != null && id != null && voices[i].id === String(id)) return voices[i].input;
+      if (!isFinite(x) || !isFinite(z)) return guardListen;
+      var pn = makePanner(); setPos(pn, +x, 1, +z, ctx.currentTime, true); pn.connect(movesOn() ? guardListen : guardOut);
+      var g = ctx.createGain(); g.gain.value = C.MOVES_VOICE_ALERT_MUL; g.connect(pn); return g;   // 和查看中的衛兵同樣大
+    }
+    function guardHuh(out, t, k, rise) {   // 喉嚨裡短促的「嗯？」（尾音上揚 rise 倍）
+      var f = noise(out, t, 'bandpass', 700, 1.6, 0.14 * k, 0.04, 0.12); f.frequency.exponentialRampToValueAtTime(1500, t + 0.15);
+      tone(out, t + 0.03, 'sawtooth', 112, 112 * rise, 0.2, 0.03 * k, 0.03, 0.18);
+      tone(out, t + 0.03, 'sine', 330, 330 * rise, 0.2, 0.05 * k, 0.03, 0.16);   // 鼻音的共振（喇叭聽得到）
+    }
+    var pantBus = ctx.createGain(); pantBus.gain.value = 1; pantBus.connect(cueBus);
     function guardStartle(t, maxD) {
       var best = null, bd = maxD > 0 ? maxD : 8;
       for (var i = 0; i < voices.length; i++) {
@@ -1936,6 +1962,64 @@
         noise(cueBus, t + 0.004, 'bandpass', 1800, 0.8, cg * 2.2, 0.001, 0.05);
         noise(cueBus, t + 0.012, 'bandpass', 2800, 1.0, cg * 1.8, 0.001, 0.07);
         guardStartle(t + 0.12);
+      },
+      // ---------- 查看（第 13 節）與追殺重做（第 12 節），只在 MOVES_MODE ----------
+      checkStart: function (t, d) {       // 衛兵聽到或看到了：一聲疑問的「嗯？」＋轉身時皮甲與青銅脛甲的聲音（從衛兵的位置）
+        if (!movesOn()) return;
+        var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
+        guardHuh(out, t, 1.3, 1.25);
+        noise(out, t + 0.2, 'bandpass', 1400, 1.2, 0.08, 0.02, 0.18);
+        tone(out, t + 0.28, 'sine', 2600, 0, 0, 0.02, 0.001, 0.15);
+      },
+      checkArrive: function (t, d) {      // 走到了：停下來，屏住一口氣聽（短吸氣）＋盔甲靜下來的一聲輕碰
+        if (!movesOn()) return;
+        var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
+        var f = noise(out, t, 'bandpass', 500, 1.3, 0.27, 0.08, 0.25); f.frequency.exponentialRampToValueAtTime(900, t + 0.3);
+        tone(out, t + 0.35, 'sine', 2350, 0, 0, 0.045, 0.001, 0.1);
+      },
+      checkOver: function (t, d) {        // 沒找到：放鬆的長呼氣，轉身走回去
+        if (!movesOn()) return;
+        var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
+        var f = noise(out, t, 'lowpass', 900, 0.8, 0.12, 0.06, 0.7); f.frequency.exponentialRampToValueAtTime(300, t + 0.75);
+        tone(out, t + 0.05, 'sawtooth', 100, 80, 0.6, 0.012, 0.08, 0.6);
+      },
+      huntCall: function (t, d) {         // 發現你的那一名喊一聲（「嘿！」）：鋸齒聲帶＋三個共振峰，從他的位置，夠響讓 12 公尺內的人聽到
+        if (!movesOn()) return;
+        var out = guardVoiceAt(d && d.id, d && d.x, d && d.z), G = C.SHOUT_GAIN;
+        var src = ctx.createGain(); src.gain.setValueAtTime(0, t); src.gain.linearRampToValueAtTime(1, t + 0.03); src.gain.setValueAtTime(1, t + 0.32); src.gain.linearRampToValueAtTime(0, t + 0.5);
+        [[700, 6, 1], [1150, 8, 0.6], [2500, 10, 0.25]].forEach(function (fm) { var bp = ctx.createBiquadFilter(), g = ctx.createGain(); bp.type = 'bandpass'; bp.frequency.value = fm[0]; bp.Q.value = fm[1]; g.gain.value = fm[2] * G * 4; src.connect(bp); bp.connect(g); g.connect(out); });
+        var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(190, t); o.frequency.linearRampToValueAtTime(240, t + 0.12); o.frequency.linearRampToValueAtTime(170, t + 0.5);
+        o.connect(src); o.start(t); o.stop(t + 0.55);
+        noise(out, t, 'highpass', 2500, 0.7, 0.1 * G, 0.005, 0.06);   // 開頭的氣聲
+      },
+      searchStart: function (t, d) {      // 追兵走進影子開始搜：吸鼻子聞兩下＋一聲低低的悶哼
+        if (!movesOn()) return;
+        var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
+        for (var i = 0; i < 2; i++) noise(out, t + i * 0.18, 'bandpass', 1600, 2, 0.24, 0.02, 0.08);
+        tone(out, t + 0.45, 'sawtooth', 95, 85, 0.3, 0.06, 0.04, 0.3);
+      },
+      searchDone: function (t, d) {       // 搜完了沒找到：不甘心的吐氣
+        if (!movesOn()) return;
+        var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
+        var f = noise(out, t, 'bandpass', 700, 1, 0.36, 0.03, 0.4); f.frequency.exponentialRampToValueAtTime(350, t + 0.4);
+      },
+      huntHeard: function (t, d) {        // 追兵聽到你（呼吸或踩歪的腳步）：短促上揚的「嗯？」，比查看開始那一聲急
+        if (!movesOn()) return;
+        guardHuh(guardVoiceAt(d && d.id, d && d.x, d && d.z), t, 1.5, 1.4);
+      },
+      pantStart: function (t, d) {        // 跑完喘：dur 秒內每 PANT_GAP 秒一口（吸＋吐），越喘越輕；pant_end 提早收掉
+        if (!movesOn()) return;
+        var dur = d && isFinite(d.dur) ? +d.dur : 2.5, n = Math.max(1, Math.round(dur / C.PANT_GAP));
+        pantBus.gain.cancelScheduledValues(t); pantBus.gain.setValueAtTime(1, t);
+        for (var i = 0; i < n; i++) {
+          var ti = t + i * C.PANT_GAP, k = C.PANT_GAIN * (1 - 0.6 * i / n);
+          var f = noise(pantBus, ti, 'bandpass', 1100, 1, k, 0.03, 0.14); f.frequency.exponentialRampToValueAtTime(1600, ti + 0.15);
+          var f2 = noise(pantBus, ti + 0.18, 'bandpass', 850, 0.9, k * 0.9, 0.02, 0.18); f2.frequency.exponentialRampToValueAtTime(500, ti + 0.36);
+        }
+      },
+      pantEnd: function (t) {
+        if (!movesOn()) return;
+        var now = ctx.currentTime; pantBus.gain.cancelScheduledValues(now); pantBus.gain.setValueAtTime(pantBus.gain.value, now); pantBus.gain.linearRampToValueAtTime(0, now + 0.15);
       },
       runStart: function (t) {            // 開始跑：短促用力吸一口氣＋衣擺甩動
         if (!movesOn()) return;
@@ -2328,6 +2412,11 @@
           var pf = noise(cueBus, now + 0.02, 'bandpass', 800, 1.1, C.RUN_PANT_GAIN, 0.03, 0.18); pf.frequency.exponentialRampToValueAtTime(500, now + 0.2);
           run.nextPant = now + C.RUN_PANT_GAP * (0.9 + Math.random() * 0.2);
         }
+        if (mv && s.guards && s.guards.length != null && !hu) {   // 查看（第 13 節）：慢低音當氣氛，查看中的衛兵越近越重（不對拍）
+          var near = 0;
+          s.guards.forEach(function (q) { if (q && q.active !== false && q.state === 'checking' && isFinite(q.x) && pl) near = Math.max(near, clamp(1 - Math.sqrt((q.x - pl.x) * (q.x - pl.x) + (q.z - pl.z) * (q.z - pl.z)) / C.CHECK_BASS_R, 0, 1)); });
+          bassGain.gain.setTargetAtTime(Math.max(C.BASS_BASE + (1 - C.BASS_BASE) * al, C.BASS_BASE + (C.CHECK_BASS_MAX - C.BASS_BASE) * near), now, 0.3);
+        }
         if (s.guards && s.guards.length != null) updateGuards(s.guards, now);
         horseUpdate(s, now);   // 木馬：開關關著時只把 dist 設成無限大，什麼都不改
         // 立刻補排一次（新外推、新盲區），不等下一個 tick
@@ -2363,7 +2452,7 @@
       cue: function (name, arg) {
         if (dead || !name) return false;
         var data = {}, when = null;
-        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost', 'delay', 'masked', 'crouch'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
+        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost', 'delay', 'masked', 'crouch', 'id', 'why', 'dur', 'cause'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
         if (typeof name === 'object') {
           var ev = name; take(ev); take(ev.data);
           name = ev.a != null ? ev.a : (ev.name || ev.sfx || ev.cue);
@@ -2381,6 +2470,7 @@
       cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
                  'alert', 'alerted', 'alertOver', 'caught', 'takedown', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
                  'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen', 'horseSignal', 'runStart', 'runStep', 'runStop', 'crouchOn', 'crouchOff',
+                 'checkStart', 'checkArrive', 'checkOver', 'huntCall', 'searchStart', 'searchDone', 'huntHeard', 'pantStart', 'pantEnd',
                  'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
