@@ -2259,7 +2259,8 @@ function cinBuild() {
 }
 function cinFinish(skip) {
   if (CIN.done) return;
-  if (skip) { const a = audio && audio.raw; try { if (a && typeof a.stopHorseSignal === 'function') a.stopHorseSignal(); } catch (e) {} }   // 跳過：結尾的落地聲與主題 0.3 秒收掉
+  // 演出結束（跳過或自然演完）：結尾的共鳴、落地聲、主題 0.3 秒收掉（聲音層的 stopHorseSignal 在模組本體 audio.raw 上）
+  { const a = audio && audio.raw; try { if (a && typeof a.stopHorseSignal === 'function') a.stopHorseSignal(); } catch (e) {} }
   CIN.done = true; CIN.active = false; CIN.pending = false;
   if (game && game.phase === 'win') $('win').classList.add('dark');
 }
