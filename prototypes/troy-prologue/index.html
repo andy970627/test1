@@ -156,6 +156,7 @@ button:hover { filter: brightness(1.12); }
 /* 腹中練習試驗場（?lab=belly）的判定數字面板 */
 #labBtns { left: calc(18px + var(--sl)); top: 300px; pointer-events: auto; display: flex; gap: 6px; }
 #labBtns button { font: 12px/1.4 inherit; padding: 4px 8px; background: var(--panel); color: #e8e0d0; border: 1px solid #6b5a33; border-radius: 3px; cursor: pointer; }
+#stepRing { left: 50%; top: 58%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; font: 12px/1.4 ui-monospace, monospace; color: var(--ash, #d6cfc2); text-shadow: 0 1px 3px #000, 0 0 8px #000; }   /* 走法試驗場：下一步什麼時候 */
 #labPanel { left: calc(18px + var(--sl)); top: 70px; width: 300px; font: 12px/1.55 ui-monospace, monospace; color: #e8e0d0; background: var(--panel); padding: 8px 10px; white-space: pre; }
 #telHud { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 230px; font: 11px/1.5 ui-monospace, monospace; color: var(--dim); background: var(--panel); padding: 6px 8px; white-space: pre; }
 </style>
@@ -183,6 +184,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="hint" aria-live="polite"></div>
 <div class="hud" id="telHud" hidden></div>
 <div class="hud" id="labPanel" hidden></div>
+<div class="hud" id="stepRing" hidden><canvas width="64" height="64"></canvas><span></span></div>
 <div class="hud" id="labBtns" hidden><button type="button" id="btnLabNotice">製造聲響（N）</button> <button type="button" id="btnLabNoticeSide">在旁邊 3 公尺（M）</button></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
 <div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
@@ -261,7 +263,7 @@ button:hover { filter: brightness(1.12); }
   <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
   <label>鼓聲 <select id="oCover"><option value="cover">不停（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
   <!-- 試驗場入口（專案規則：每個機制都要有試驗場）：木馬第 1 批，docs/design/2026-11-11-trojan-horse-directions.md 方向 A -->
-  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）<span id="labMoves" hidden>・<a href="?lab=run" id="labRunLink">跑</a>（第 2 區）・<a href="?lab=crouch" id="labCrouchLink">蹲走與矮掩體</a>（第 3 區）・<a href="?lab=listen" id="labListenLink">屏息聽衛兵</a>（第 3 區）・<a href="?lab=hunt" id="labHuntLink">追殺</a>（第 2 區，追兵從背後追）・<a href="?lab=check" id="labCheckLink">查看</a>（第 2 區，按 N 製造聲響）</span></div>
+  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）<span id="labMoves" hidden>・<a href="?lab=run" id="labRunLink">跑</a>（第 2 區）・<a href="?lab=crouch" id="labCrouchLink">蹲走與矮掩體</a>（第 3 區）・<a href="?lab=listen" id="labListenLink">屏息聽衛兵</a>（第 3 區）・<a href="?lab=hunt" id="labHuntLink">追殺</a>（第 2 區，追兵從背後追）・<a href="?lab=check" id="labCheckLink">查看</a>（第 2 區，按 N 製造聲響）・走法 <a href="?lab=walk&amp;step=glide" id="labWalk0Link">P0</a>／<a href="?lab=walk&amp;step=stride" id="labWalk1Link">P1</a>／<a href="?lab=walk&amp;step=manual" id="labWalk2Link">P2</a>（第 2 區）</span></div>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -368,7 +370,9 @@ if (MUTE && window.AudioNode && window.AudioDestinationNode) {
 // 木馬第 1 批（docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C1）：?horse=1 開規則的 T.HORSE_MODE；
 // ?lab=belly 腹中練習試驗場（規則自己開 HORSE_MODE、固定循環、只有腹中）。兩個都沒帶時畫面和報告版完全一樣
 // 搭配動作（docs/design/2026-11-11-companion-mechanics.md 第 7 節）：規則 T.MOVES_MODE 預設開；?moves=0 退回報告版；?lab=run|crouch|listen 試驗場
-const MOVES_LABS = ['run', 'crouch', 'listen', 'hunt', 'check'];
+const MOVES_LABS = ['run', 'crouch', 'listen', 'hunt', 'check', 'walk'];
+// 走法試驗場（第 11.4、16.3、16.4 節）：?lab=walk&step=glide|stride|manual（P0 現狀／P1 步子跟著鼓／P1＋P2 圈內自己踩）；沒帶 step 規則預設 stride
+const STEP_Q = ['glide', 'stride', 'manual'].includes(URLQ.get('step')) ? URLQ.get('step') : null;
 // 試驗場的說明側欄內容（共用 ../nav.js 的 OdysseyNav.mount 畫）：這頁在試什麼、注意聽看什麼、面板數字、試玩題目、出處。
 // 面板的字改了這裡要一起改；內容取自各設計文件（出處列在 src）
 const LAB_HELP = {
@@ -696,7 +700,7 @@ $('oCover').addEventListener('change', coverText); coverText();
   $('kCrouch').textContent = '蹲走，速度' + mul(num(T.CROUCH_SPEED_MUL, .5)) + '；起步不必那麼準，離拍的腳步聲傳得近。蹲著時水缸、貨堆這類矮東西擋得住視線。要暗殺、推門閂得先站起來。';
 })();
 $('labMoves').hidden = !MOVES_SUPPORTED;
-for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink'], ['run', 'labRunLink'], ['crouch', 'labCrouchLink'], ['listen', 'labListenLink'], ['hunt', 'labHuntLink'], ['check', 'labCheckLink']]) { const q = new URLSearchParams(); q.set('lab', lab); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
+for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink'], ['run', 'labRunLink'], ['crouch', 'labCrouchLink'], ['listen', 'labListenLink'], ['hunt', 'labHuntLink'], ['check', 'labCheckLink'], ['walk:glide', 'labWalk0Link'], ['walk:stride', 'labWalk1Link'], ['walk:manual', 'labWalk2Link']]) { const q = new URLSearchParams(); const [lb, st] = lab.split(':'); q.set('lab', lb); if (st) q.set('step', st); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
 
 // ============================================================
 // three.js 場景
@@ -1487,6 +1491,55 @@ $('btnTrackClear').onclick = () => {
   $('trackName').textContent = '尚未載入（「自備音檔」「混合」要先載入）'; $('trackName').classList.remove('ok');
   musicUI();
 };
+LAB_HELP.walk = {
+  "title": "走法（P0／P1／P2）",
+  "what": [
+    "比三種走法：P0 現狀（按住滑著走）、P1 步子跟著鼓（按住，人一步一段落在鼓點上）、P2 靠近衛兵時自己踩。",
+    "場景固定：從起點往東走到巷口，非得穿過衛兵的圈。"
+  ],
+  "watch": [
+    "P1：鼓快步子就密、走得快；看得出每一步落在鼓點上嗎？畫面一頓一頓會不會不舒服？",
+    "P2：地上的圈是他聽得到你腳步的範圍（巡邏 4 公尺）；進圈後一步按一下方向鍵，不按就站著，站著是安全的。",
+    "準星下的小圈：圈外是倒數到下一步；圈內跟著鼓點收縮，縮到底變亮就是該按的時候。",
+    "他起疑來查看或追殺時，圈變大到 5 公尺並變紅；圈內不能跑。"
+  ],
+  "panel": [
+    [
+      "走法",
+      "現在用哪一種：P0、P1、P1＋P2"
+    ],
+    [
+      "衛兵",
+      "狀態與離你多遠；P2 時列出圈的半徑"
+    ],
+    [
+      "你",
+      "在圈內（一步按一下）或圈外（按住走），和進圈幾次"
+    ],
+    [
+      "下一步",
+      "圈外按住時還有幾秒走下一步；圈內等你按"
+    ],
+    [
+      "按住走的步",
+      "圈外自動對拍的步：踩準幾步、出聲幾步"
+    ],
+    [
+      "圈內自己踩的步",
+      "圈內你按的步：踩準幾步、出聲幾步"
+    ]
+  ],
+  "questions": [
+    "「步子跟著鼓」走起來，感覺得到鼓在變快嗎？畫面一頓一頓會不會不舒服？",
+    "走進圈內要一步按一下，是緊張還是煩？知不知道什麼時候進了圈？",
+    "如果正式採用，圈內自己踩要全程都有，還是只在後面的區才有？"
+  ],
+  "src": [
+    "2026-11-11-companion-mechanics.md 第 11.3、11.4、16.3、16.4 節"
+  ]
+};
+// 第 15 節：查看這版偏兇（驗收沒過），在說明裡註明
+LAB_HELP.check.what.push('（調整中）這版的查看偏兇，驗收還沒過，數字會再改。');
 // ============================================================
 // 設定存檔（使用者 11/11 要求「首頁配置儲存上一次的」）：實驗開關與音樂選項改了就存進 localStorage，下次打開帶回
 //   沒有存檔時完全照 HTML 預設；讀寫都包 try/catch（私密視窗、被擋時照常用預設）；網址參數優先於存檔；
@@ -1551,7 +1604,8 @@ function newGame() {
   const opts = { t0, startZone: qz >= 1 && qz <= 4 ? qz | 0 : 0, T: { CYCLE: curT } };
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
-  if (MOVES_OFF_Q) opts.T.MOVES_MODE = false;                         // ?moves=0：報告版（沒帶參數就交給規則的預設：開）
+  if (MOVES_OFF_Q) opts.T.MOVES_MODE = false;
+  if (LAB === 'walk' && STEP_Q) opts.T.STEP_MODE = STEP_Q;              // 走法試驗場：P0／P1／P2                         // ?moves=0：報告版（沒帶參數就交給規則的預設：開）
   if (HORSE_Q) opts.T.HORSE_MODE = true;                               // 木馬第 1 批（沒帶參數就不碰，規則走報告版的路）
   if (LAB) opts.lab = LAB;
   if (LAB === 'horse') { opts.T.HORSE_MODE = true; opts.startZone = 2; }   // 規則的 lab: 'horse' 也會這樣設；先寫上，規則還沒支援時一樣能看共鳴
@@ -1601,6 +1655,7 @@ function retryZone() {
   if (L && performance.now() - L.at < 15000) { clearHints(); queueHint(L.a); }
   overShown = false; winT = 0; $('fail').hidden = true;
   V.yaw = num(game.player.yaw, V.yaw); V.pitch = -.1; V.snap = true;   // 重來：鏡頭直接回到區域開頭，不滑過去
+  resetMovesFx();                                // 重來：試驗場面板的計數、波紋、走法圈一起歸零
   resume();
 }
 
@@ -1916,7 +1971,7 @@ function sync(dt, now) {
   const shake = g.hunted ? .02 : 0;
   // 重合擊震波：鏡頭往下一沉再彈回（只有鼓聲不中斷模式，× visualAid）
   const thump = VIS.shock > 0 ? -Math.sin((1 - VIS.shock) * Math.PI * 3) * VIS.shock * .05 * VIS.aid : 0;
-  camera.position.set(V.dx + rand(-shake, shake), V.eye + bob + thump, V.dz);
+  camera.position.set(V.dx + rand(-shake, shake), V.eye + bob + thump - .035 * Math.sin(Math.PI * clamp(num(V.dip, 0), 0, 1)), V.dz);   // V.dip：走法 P1／P2 每一步落下
   const roll = g.phase === 'play' && !REDUCED_MOTION ? Math.sin(now * 2.6) * DESYNC_ROLL * desyncAmt() : 0;   // p>0.8 耳鳴般搖晃
   camera.rotation.set(V.pitch - RUN_LEAN * V.lean, V.yaw, roll);
 
@@ -1983,9 +2038,12 @@ function sync(dt, now) {
     if (!on && G.susp > 0) { F.glow.material.color.setHex(0xe0b04a); F.glow.material.opacity = Math.max(F.glow.material.opacity, clamp(G.susp, 0, 1) * .35); }
     // 第 13 節：查看中（checking）火把與頭上微光變橘；轉向由規則的 q.yaw（朝 lookAt）帶。報告版沒有這個狀態
     if (G.state === 'checking' && !down) {
-      F.glow.material.color.setHex(HUNT_FX.alertCol); F.glow.material.opacity = Math.max(F.glow.material.opacity, .85);
-      F.light.color.setHex(HUNT_FX.alertCol);
-      if (F.torchMats) F.torchMats.forEach(tm => { tm.mat.color.copy(tm.orig).lerp(TORCH_COL_ALERT, .7); });
+      // 第 15 節：疑心慢慢滿 → 火把由橘（剛開始查看）轉紅（快要追殺）；疑心照規則的 q.susp（0～1）
+      const cs = clamp(num(G.susp, 0), 0, 1);
+      tmpTorchCol.setHex(HUNT_FX.alertCol).lerp(CHECK_RED, cs);
+      F.glow.material.color.copy(tmpTorchCol); F.glow.material.opacity = Math.max(F.glow.material.opacity, .85);
+      F.light.color.copy(tmpTorchCol);
+      if (F.torchMats) F.torchMats.forEach(tm => { tm.mat.color.copy(tm.orig).lerp(tmpTorchCol, .7); });
     }
     // 除錯圈：感知範圍 r(p)
     const dbg = $('oPhase').checked && !down;
@@ -2513,7 +2571,7 @@ function movesEvent(e) {
     ripple(x, z, R, heard ? RUN_RIP.col : RUN_RIP.quietCol, heard ? RUN_RIP.op : RUN_RIP.quietOp, RUN_RIP.dur);
   } else if ((e.a === 'step_masked' || e.a === 'step_loud') && e.crouch) {
     if (e.a === 'step_masked') MV.crouch.masked++; else MV.crouch.loud++;
-  } else huntEvent(e);
+  } else { huntEvent(e); walkEvent(e); }
 }
 /** 屏息時衛兵腳步落地：聲音層有 guardStepsSince(t) → [{x, z, t, id}] 就照它；沒有就用聲音層同一個步頻（0.7 ÷ 速度，0.26～0.8 秒）估。
  *  聲音層的 t 是那一步實際響起的音訊時間（可能比現在晚 10～50 毫秒）：每幀只拿「上次拿到的最晚 t」之後的新步，排隊，音訊時間到 t 才畫；
@@ -2583,6 +2641,7 @@ function movesFrame(dt) {
   }
   if (on) guardStepRipples(dt);
   huntFrame(dt, on);
+  walkFrame(dt, on);
 }
 // ============================================================
 // 追殺重做的畫面（docs/design/2026-11-11-companion-mechanics.md 第 12 節；規則 697da85）。只在 T.MOVES_MODE 開著時
@@ -2592,6 +2651,7 @@ function movesFrame(dt) {
 //   聽到你 hunt_heard：短訊息＋那名衛兵側頭
 //   喘 pant：畫面邊緣跟著喘息起伏（讀 player.panting）
 // ============================================================
+const CHECK_RED = new THREE.Color(0xd23a2a);   // 查看中疑心滿時的火把色（和追殺同一個紅）
 const HUNT_FX = { alertCol: 0xff8a3a, callCol: 0xff8a3a, routeCol: 0xd8624a, routeOp: .38, earCol: 0xb8c8ee, earHotCol: 0xff4a3a, pantHz: 1.7 };
 const HV = { routes: new Map(), ears: new Map(), pantV: 0, heardAt: -1e9,
   marks: new Map(), n: null };
@@ -2599,6 +2659,7 @@ function resetHuntFx() {
   HV.n = { calls: 0, called: 0, searches: 0, searchDone: 0, heardBreath: 0, heardStep: 0, pants: 0, alerted: {},
     checks: 0, checkArrive: 0, checkOver: 0, checkToHunt: 0, huntStarts: 0, inCheck: 0, checkCause: {}, lastCheck: '' };
   for (const o of HV.marks.values()) o.m.visible = false;
+  try { resetWalkFx(); } catch (e) {}   // 頁面載入時第一次呼叫在走法區塊之前（WK 還沒建），那時跳過；走法區塊自己會初始化
   HV.heardAt = -1e9;
   for (const o of HV.routes.values()) o.obj.visible = false;
   for (const o of HV.ears.values()) o.m.visible = false;
@@ -2757,6 +2818,108 @@ window.addEventListener('keydown', e => {
   if (LAB !== 'check' || e.repeat) return;
   if (e.code === 'KeyN') labNoticeAt(false); else if (e.code === 'KeyM') labNoticeAt(true);
 });
+// ============================================================
+// 走法試驗場的畫面（第 11.4、16.3、16.4 節；規則 6150e72）：只在 STEP_MODE 不是 glide 時
+//   P2（manual）：衛兵周圍畫「聽得到你腳步」的圈（巡邏 MANUAL_STEP_R，沒有就 STEP_R；查看、追殺時 SEARCH_STEP_R 並變紅）；你在圈裡，那圈變橘
+//   每一步：腳下一個小波紋（踩準淡、出聲橘），鏡頭往下沉一點（V.dip）
+//   準星下方的小圈：圈外按住時倒數到下一步；圈內隨鼓點收縮，縮到底（踩得準的時候）變亮＝這時按一下
+// ============================================================
+const WALK_FX = { ringCol: 0x9fb0d8, ringOp: .3, inCol: 0xf0a85a, inOp: .6, hotCol: 0xd8624a, hotOp: .55 };
+const WK = { rings: new Map(), n: null };
+function resetWalkFx() {
+  WK.n = { masked: 0, loud: 0, manualMasked: 0, manualLoud: 0, enter: 0 };
+  for (const o of WK.rings.values()) o.m.visible = false;
+}
+resetWalkFx();
+const stepMode = () => String(K().STEP_MODE || 'glide');
+function walkEvent(e) {
+  if (e.a === 'manual_on') WK.n.enter++;
+  if ((e.a === 'step_masked' || e.a === 'step_loud') && e.stride) {
+    const ok = e.a === 'step_masked';
+    if (e.manual) { if (ok) WK.n.manualMasked++; else WK.n.manualLoud++; } else if (ok) WK.n.masked++; else WK.n.loud++;
+    V.dip = 1;
+    const P = game && game.player, x = num(e.x, P && P.x), z = num(e.z, P && P.z);
+    ripple(x, z, ok ? .55 : 1.3, ok ? WALK_FX.ringCol : 0xff8a3a, ok ? .22 : .55, ok ? .45 : .7);
+  }
+}
+/** 衛兵聽得到你踩歪腳步的半徑（manual 走法，第 16.4 節）：巡邏 MANUAL_STEP_R（沒有就 STEP_R），查看、追殺 SEARCH_STEP_R */
+function walkR(q) {
+  const T = K(), hot = q.state === 'checking' || q.state === 'hunted';
+  return hot ? num(T.SEARCH_STEP_R, 5) : num(T.MANUAL_STEP_R, num(T.STEP_R, 2.5));
+}
+function walkRingObj(key) {
+  let o = WK.rings.get(key);
+  if (!o) {
+    const geo = new THREE.RingGeometry(.97, 1, 72); geo.rotateX(-Math.PI / 2);
+    o = { m: new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: WALK_FX.ringCol, transparent: true, opacity: 0, depthWrite: false })) };
+    o.m.visible = false; WK.rings.set(key, o);
+  }
+  if (o.m.parent !== world) world.add(o.m);
+  return o;
+}
+function walkFrame(dt, on) {
+  V.dip = Math.max(0, num(V.dip, 0) - dt / num(K().STRIDE_SLIDE, .18));
+  const g = game, P = g && g.player, mode = stepMode();
+  const used = new Set();
+  if (on && mode === 'manual') for (const q of arr(g.guards)) {
+    if (!q || q.active === false || q.state === 'down' || !Number.isFinite(q.x)) continue;
+    const r = walkR(q), o = walkRingObj(q.id); used.add(q.id);
+    const hot = q.state === 'checking' || q.state === 'hunted', inside = P && Math.hypot(q.x - P.x, q.z - P.z) <= r;
+    o.m.scale.set(r, 1, r); o.m.position.set(q.x, .045, q.z);
+    o.m.material.color.setHex(hot ? WALK_FX.hotCol : inside ? WALK_FX.inCol : WALK_FX.ringCol);
+    o.m.material.opacity = hot ? WALK_FX.hotOp : inside ? WALK_FX.inOp : WALK_FX.ringOp;
+    o.m.visible = true;
+  }
+  for (const [k, o] of WK.rings) if (!used.has(k)) o.m.visible = false;
+  stepRingFrame(on && mode !== 'glide' && P);
+}
+// 準星下方的小圈
+function stepRingFrame(show) {
+  const box = $('stepRing'); if (!box) return;
+  box.hidden = !show; if (!show) return;
+  const g = game, P = g.player, T = K(), t = num(g.time, audio ? audio.now() : 0);
+  const cv = box.firstChild, c2 = cv.getContext('2d'), lab = box.lastChild;
+  c2.clearRect(0, 0, 64, 64);
+  let u = 0, hit = false, text = '';
+  if (P.inCircle) {
+    // 圈內：隨下一個聽得到的鼓點收縮，縮到底就是該按的時候（判定窗：±STEP_WIN，蹲著 ±CROUCH_STEP_WIN）
+    const win = P.crouching ? num(T.CROUCH_STEP_WIN, .16) : num(T.STEP_WIN, .08);
+    let bs = [];
+    try { bs = Rules.beatsBetween(t - win, t + 1.6, g, { minGain: num(T.MASK_GAIN, 0) }); } catch (e) { bs = []; }
+    const near = bs.find(b => Math.abs(b.t - t) <= win), nx = bs.find(b => b.t > t);
+    hit = !!near;
+    if (nx) { const span = Math.max(.15, Math.min(1.2, nx.t - t + .25)); u = clamp(1 - (nx.t - t) / span, 0, 1); }
+    text = hit ? '現在按一下' : '圈內：一步按一下';
+  } else if (P.dirHeld || P.slide) {
+    // 圈外按住：倒數到下一步（P1 步子跟著鼓）
+    const a = num(P.lastStrideT, t), b = num(P.nextStrideT, t);
+    u = b > a ? clamp((t - a) / (b - a), 0, 1) : 1;
+    text = '下一步 ' + Math.max(0, b - t).toFixed(2) + ' 秒';
+  } else { box.hidden = true; return; }
+  const R = 26 - 18 * u;                              // 外圈固定、內圈往裡縮
+  c2.lineWidth = 2; c2.strokeStyle = 'rgba(159,176,216,.45)'; c2.beginPath(); c2.arc(32, 32, 26, 0, Math.PI * 2); c2.stroke();
+  c2.lineWidth = hit ? 4 : 2.5; c2.strokeStyle = hit ? '#f0a85a' : P.inCircle ? 'rgba(240,168,90,.8)' : 'rgba(214,207,194,.8)';
+  c2.beginPath(); c2.arc(32, 32, Math.max(4, R), 0, Math.PI * 2); c2.stroke();
+  lab.textContent = text;
+}
+function walkLabLines() {
+  const g = game, P = g.player || {}, T = K(), t = num(g.time, audio ? audio.now() : 0), n = WK.n, mode = stepMode();
+  const NAME = { glide: 'P0 現狀（按住滑著走）', stride: 'P1 步子跟著鼓（按住，一步一段）', manual: 'P1＋P2 圈內自己踩（圈內一步按一下）' };
+  const lines = ['走法試驗場（?lab=walk，第 2 區）', '走法：' + (NAME[mode] || mode)];
+  const q = arr(g.guards).find(o => o && o.id === 'g2b') || arr(g.guards).find(o => o && o.active !== false);
+  if (q && q.state !== 'down') {
+    const d = Math.hypot(q.x - P.x, q.z - P.z), st = { patrol: '巡邏', checking: '查看', hunted: '追殺' }[q.state] || q.state;
+    lines.push('衛兵：' + st + '・離你 ' + d.toFixed(1) + ' 公尺' + (mode === 'manual' ? '・圈半徑 ' + walkR(q) + ' 公尺' : ''));
+  }
+  if (mode === 'manual') lines.push('你：' + (P.inCircle ? '在圈內（一步按一下方向鍵，不能跑）' : '在圈外（按住走）') + '・進圈 ' + n.enter + ' 次');
+  if (mode !== 'glide') {
+    lines.push('下一步：' + (P.slide ? '正在滑' : P.inCircle ? '等你按' : P.dirHeld ? Math.max(0, num(P.nextStrideT, t) - t).toFixed(2) + ' 秒後' : '—'));
+    lines.push('按住走的步：踩準 ' + n.masked + '・出聲 ' + n.loud);
+    if (mode === 'manual') lines.push('圈內自己踩的步：踩準 ' + n.manualMasked + '・出聲 ' + n.manualLoud);
+  } else lines.push('P0 沒有分步：腳步照原本的方式自動對拍');
+  lines.push('', '從這裡往東走到巷口，非得穿過衛兵的圈', '切換：網址 &step=glide｜stride｜manual，或開場右邊的連結');
+  return lines;
+}
 function huntLabLines() {
   const g = game, P = g.player || {}, T = K(), t = num(g.time, audio ? audio.now() : 0), n = HV.n;
   const hs = arr(g.guards).filter(q => q && q.active !== false && q.state === 'hunted');
@@ -2799,6 +2962,7 @@ function movesLabLines(lab) {
   const lines = [];
   if (lab === 'hunt') return huntLabLines();
   if (lab === 'check') return checkLabLines();
+  if (lab === 'walk') return walkLabLines();
   if (lab === 'run') {
     const R = num(T.RUN_R, 8);
     lines.push('跑試驗場（?lab=run，第 2 區）');
