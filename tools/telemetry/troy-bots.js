@@ -61,8 +61,16 @@ function makeBot(opts = {}) {
         }
       }
       const hx = hideAt.x - pl.x, hz = hideAt.z - pl.z, hd = Math.hypot(hx, hz);
-      if (hd > 0.3) { inp.mx = hx / hd; inp.mz = hz / hd; if (blind && hd > K.DASH_HUNT) inp.dash = true; }
-      else if (pl.breathT < K.BREATH_MAX - 0.2 && g.guards.some((q) => q.active && q.state === 'hunted' && Math.hypot(q.x - pl.x, q.z - pl.z) <= 3)) inp.breath = true;
+      // 第 17.4 節：追兵在 4 公尺內先跑、拉開後改用走的進影子；在影子裡追兵進到 3 公尺內就停下屏息，等他走遠再挪
+      let qd = 1e9;
+      for (const q of g.guards) if (q.active && q.state === 'hunted') qd = Math.min(qd, Math.hypot(q.x - pl.x, q.z - pl.z));
+      const holdOk = pl.breathT < K.BREATH_MAX - 0.2;
+      if (pl.hidden && qd <= 3 && holdOk && (hd <= 0.3 || pl.breathing || qd <= 3)) { inp.breath = true; return inp; }
+      if (hd > 0.3) {
+        inp.mx = hx / hd; inp.mz = hz / hd;
+        if (!pl.hidden && qd <= 4) inp.run = true;
+        else if (blind && hd > K.DASH_HUNT) inp.dash = true;
+      }
       return inp;
     }
     if (g.hunted) {

@@ -1457,8 +1457,16 @@ function makeBot(opts = {}) {
         }
       }
       const hx = hideAt.x - pl.x, hz = hideAt.z - pl.z, hd = Math.hypot(hx, hz);
-      if (hd > 0.3) { inp.mx = hx / hd; inp.mz = hz / hd; if (blind && hd > K.DASH_HUNT) inp.dash = true; }
-      else if (pl.breathT < K.BREATH_MAX - 0.2 && g.guards.some((q) => q.active && q.state === 'hunted' && Math.hypot(q.x - pl.x, q.z - pl.z) <= 3)) inp.breath = true;
+      // 第 17.4 節：追兵在 4 公尺內先跑、拉開後改用走的進影子；在影子裡追兵進到 3 公尺內就停下屏息，等他走遠再挪
+      let qd = 1e9;
+      for (const q of g.guards) if (q.active && q.state === 'hunted') qd = Math.min(qd, Math.hypot(q.x - pl.x, q.z - pl.z));
+      const holdOk = pl.breathT < K.BREATH_MAX - 0.2;
+      if (pl.hidden && qd <= 3 && holdOk && (hd <= 0.3 || pl.breathing || qd <= 3)) { inp.breath = true; return inp; }
+      if (hd > 0.3) {
+        inp.mx = hx / hd; inp.mz = hz / hd;
+        if (!pl.hidden && qd <= 4) inp.run = true;
+        else if (blind && hd > K.DASH_HUNT) inp.dash = true;
+      }
       return inp;
     }
     if (g.hunted) {
@@ -3330,9 +3338,12 @@ test('11/11 第 12 節：常數與預設；hunted、安撫提示照 12.2 改（�
   assert.equal(K.HUNT_CALL_R, 12); assert.equal(K.CALM_MEMORY, 30); assert.equal(K.CALM_MEMORY_N, 3);
   assert.equal(K.ESCAPE_STILL, 6); assert.equal(K.HUNT_SPEED, 3); assert.equal(K.CATCH_R, 1); assert.equal(K.DASH_HUNT, 6); assert.equal(K.HUNT_STEP_ESCAPE, 3);
   const H = R.hintsFor(K);
-  assert.ok(/躲進陰影/.test(H.hunted) && /聽他的腳步/.test(H.hunted) && /屏住呼吸/.test(H.hunted) && /踩著鼓點挪開/.test(H.hunted), H.hunted);
+  assert.ok(/跑開/.test(H.hunted) && /躲進陰影/.test(H.hunted) && /往旁邊躲開/.test(H.huntSearch) && /屏息/.test(H.huntSearch), H.hunted + H.huntSearch);
   assert.ok(!/不動 6 秒/.test(H.hunted), '不再說站著不動 6 秒');
   assert.ok(!/連續/.test(H.hunted), '第 16.2 節：開關開著時沒有「踩三步讓他慢下來」');
+  assert.equal(H.hunted, '被發現了！按住 Shift 跑開，躲進陰影。', '第 17.4 節：第一次被追殺');
+  assert.equal(H.huntSearch, '他順著你進來的方向搜過來了：往旁邊躲開，他走近就按住空白鍵屏息。', '第 17.4 節：第一次躲進陰影、追兵開始搜');
+  assert.ok(!R.hintsFor(Object.assign({}, K, { MOVES_MODE: false })).huntSearch, '報告版沒有第二句');
   assert.ok(H.panic.includes(`${K.CALM_MEMORY} 秒內騙不了第三次`), H.panic);
   assert.ok(R.hintsFor(Object.assign({}, K, { CALM_MEMORY: 20, CALM_MEMORY_N: 4 })).panic.includes('20 秒內騙不了第四次'));
   assert.equal(OH.hunted, '被發現了！躲進陰影不動 6 秒，或連續 3 步踩在鼓點上甩開他。', '報告版不變');
@@ -4088,4 +4099,22 @@ test('11/11 第 16.4 節：STEP_MODE manual 時踩歪腳步一律固定半徑—
   assert.ok(near.state === 'checking', 'manual：4 公尺內、快的時候踩歪 → 查看');
   assert.ok(near.inCircle, '3.5 公尺在 P2 圈內');
   assert.equal(R.createLevel({ startZone: 2 }).T.STEP_MODE, 'glide');
+});
+
+test('11/11 第 17.4 節：被追殺的提示分兩次——追殺一開始講「跑開，躲進陰影」；第一次躲進陰影、追兵開始搜時才講「他順著你進來的方向搜過來了」；之後不再重複', () => {
+  const g = R.createLevel({ lab: 'hunt' });
+  const H = R.hintsFor(g.T);
+  const bot = huntSceneBot('listen');
+  let t = 0;
+  const hints = [];
+  g.step(t, {});
+  for (const e of g.drain()) if (e.type === 'hint') hints.push({ t, a: e.a, hidden: g.player.hidden });
+  while (t < 40 && g.hunted && g.phase === 'play') {
+    t += DT; g.step(t, bot(g));
+    for (const e of g.drain()) if (e.type === 'hint') hints.push({ t, a: e.a, hidden: g.player.hidden });
+  }
+  const i1 = hints.findIndex((h) => h.a === H.hunted), i2 = hints.findIndex((h) => h.a === H.huntSearch);
+  assert.ok(i1 >= 0 && i2 > i1, JSON.stringify(hints.map((h) => h.a)));
+  assert.ok(hints[i2].hidden, '第二句在已經躲進陰影時才出');
+  assert.equal(hints.filter((h) => h.a === H.huntSearch).length, 1, '只出一次');
 });

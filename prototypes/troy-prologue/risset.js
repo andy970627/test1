@@ -542,7 +542,7 @@
       panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。' +
         (moves ? '同一個人 ' + num(K.CALM_MEMORY) + ' 秒內騙不了第' + cnNum(K.CALM_MEMORY_N) + '次。' : ''),
       alerted: '衛兵高度警覺了！' + num(K.ALERTED_DURATION) + ' 秒內別再動、別出聲，否則就會被追殺。',
-      hunted: moves ? '被發現了！躲進陰影，聽他的腳步：他走近就屏住呼吸，或踩著鼓點挪開；他搜完影子找不到你就會走。'
+      hunted: moves ? '被發現了！按住 Shift 跑開，躲進陰影。'   // 第 17.4 節：分兩次出現，這是第一次被追殺（畫面角色定稿）
         : '被發現了！躲進陰影不動 ' + num(K.ESCAPE_STILL) + ' 秒，或連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上甩開他。',
       takedown: cover ? '最響的那一擊落下時，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。'
         : '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
@@ -556,6 +556,8 @@
     };
     // 蹲走（只有開關開時才有這一則；關著時提示表和報告版一模一樣）
     // 第 13 節：查看（開關開著時取代安撫；字句待畫面角色照 7.4 格式定稿）
+    // 第 17.4 節：第一次躲進陰影、追兵開始搜時的第二句（畫面角色定稿）
+    if (moves) H.huntSearch = '他順著你進來的方向搜過來了：往旁邊躲開，他走近就按住空白鍵屏息。';
     if (moves) H.check = '他聽到了，正走過來查看：踩著鼓點退開，或躲進陰影；他走近時按住空白鍵屏息。';   // 畫面角色定稿
     if (moves) H.crouch = '按住 C 蹲著走，速度' + speedText(K.CROUCH_SPEED_MUL) + '；起步不必那麼準（鼓點前後 ' + num(K.CROUCH_STEP_WIN) +
       ' 秒內都算），離拍的腳步聲也只傳約 ' + num(K.CROUCH_R) + ' 公尺。蹲著時，水缸、貨堆這類矮東西擋得住衛兵的視線。要暗殺、推門閂得先站起來。';
@@ -1880,6 +1882,7 @@
               q.search = { route: searchRoute(L), i: 0, pause: K.SEARCH_PAUSE, done: false };
               q.stuckT = 0;
               emit('sfx', 'search_start', { id: q.id, route: q.search.route.map((w) => ({ x: w.x, z: w.z })) });
+              if (pl.hidden) hint('huntSearch');   // 第 17.4 節：第一次躲進陰影、追兵開始搜時才講怎麼躲
             }
           } else if (!q.search.done) {
             const S = q.search, w = S.route[S.i];
