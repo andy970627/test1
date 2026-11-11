@@ -1,26 +1,27 @@
 <title>特洛伊聲音試聽</title>
 <style>
 /* 人工試聽頁：只測 audio.js（RissetAudio），不含規則與畫面。單一夜色主題。 */
-:root { --night:#110d0a; --panel:#1b1510; --line:#3a2d22; --ash:#d8cbb6; --dim:#8f8270; --fire:#f2b866; --alarm:#e0663f; }
+/* 顏色照設計系統「Odyssey 音樂系列」tokens（night、ash、dim、fire、line；panel 用不透明的 control 色，頁面不疊在遊戲上） */
+:root { --night:#07080c; --panel:#0e0f15; --control:#12131a; --on-fire:#1a1008; --line:#2a2c38; --ash:#d6cfc2; --dim:#8a8478; --fire:#f0a85a; --alarm:#c23a2c; --moon:#9fb0d8; }
 body { margin:0; background:var(--night); color:var(--ash); font:15px/1.6 "Noto Sans TC", system-ui, sans-serif; }
 main { max-width:640px; margin:0 auto; padding:20px 16px 40px; }
 h1 { font-size:20px; margin:0 0 4px; color:var(--fire); }
 p.note { color:var(--dim); margin:0 0 16px; font-size:13px; }
-section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:12px; }
-button { background:#2a2018; color:var(--ash); border:1px solid var(--line); border-radius:6px; padding:7px 12px; margin:3px 2px; font:inherit; cursor:pointer; }
+section { background:var(--panel); border:1px solid var(--line); border-radius:0; padding:12px 14px; margin-bottom:12px; }
+button { background:var(--control); color:var(--ash); border:1px solid var(--line); border-radius:0; padding:7px 12px; margin:3px 2px; font:inherit; cursor:pointer; }
 button:hover { border-color:var(--fire); }
-button.on { background:var(--alarm); color:#140d08; }
+button.on { background:var(--alarm); color:var(--on-fire); }
 label { display:flex; align-items:center; gap:10px; margin:6px 0; }
 input[type=range] { flex:1; }
 #readout { font:600 22px/1.4 ui-monospace, monospace; }
-#bar { height:10px; background:#2a2018; border-radius:5px; overflow:hidden; margin-top:6px; }
+#bar { height:10px; background:var(--control); border-radius:0; overflow:hidden; margin-top:6px; }
 #bar i { display:block; height:100%; width:0; background:var(--fire); }
-#blind { display:inline-block; min-width:5em; padding:0 8px; border-radius:4px; }
-#blind.yes { background:var(--fire); color:#140d08; }
+#blind { display:inline-block; min-width:5em; padding:0 8px; border-radius:0; }
+#blind.yes { background:var(--fire); color:var(--on-fire); }
 </style>
 <main>
   <h1>特洛伊的迴響・聲音試聽</h1>
-  <p class="note">Risset 節奏：一直加速卻不會變快；每 10 秒「斷掉」0.5 秒是盲區。低音每 2.4 秒一拍。</p>
+  <p class="note">Risset 節奏（好幾條鼓各自一直加速、太快的淡出、新的慢鼓淡入，所以聽起來一直在加速卻不會真的變快）。一圈的長度看下面的「循環」；低音每 2.4 秒一拍。右邊「說明」有這頁在試什麼和試聽題目。</p>
   <section>
     <button id="start">開始</button>
     <button id="stop">暫停</button>
@@ -58,6 +59,7 @@ input[type=range] { flex:1; }
   <section id="cues"></section>
 </main>
 <script src="audio.js"></script>
+<script src="../nav.js"></script>
 <script>
 (function () {
   var ctx = null, audio = null, hunted = false;
@@ -167,5 +169,74 @@ input[type=range] { flex:1; }
     }
     requestAnimationFrame(frame);
   }
+})();
+</script>
+<script>
+// 共用導覽：回試玩切換台（放在標題上面）＋說明側欄（預設收起，按 H 開關）
+(function () {
+  var N = window.OdysseyNav; if (!N || !N.mount) return;
+  N.mount({ switchInto: document.querySelector('main'), key: 'KeyH', id: 'audio-test', help: {
+    "title": "聲音試聽",
+    "what": [
+      "只測聲音，沒有規則、衛兵、判定；比較「鼓一直在變快、卻聽不出重來」的幾種做法。",
+      "也能單獨聽木馬腹中的悶鼓和木馬共鳴。"
+    ],
+    "watch": [
+      "聽不聽得出鼓聲在哪裡接回去重來（一圈的結尾接下一圈的開頭）。",
+      "最響的一擊（所有鼓同時落下的那一下）好不好認。",
+      "V2 的真與假：越打越密之後，有沒有真的落下那一擊。",
+      "層（一條持續加速的鼓）數 8 比 6、循環 20 秒比 12 秒，哪個比較自然。"
+    ],
+    "panel": [
+      [
+        "p = 0.000",
+        "目前在一圈裡走到哪（0 到 1）；旁邊亮「盲區」是最響一擊後那 0.6 秒"
+      ],
+      [
+        "進度條",
+        "同一個 p 的長條"
+      ],
+      [
+        "音訊時間 n 循環",
+        "目前第幾圈，和下一次慢低音還有幾秒"
+      ],
+      [
+        "最大聲那一層／聽得到的最快",
+        "最響那條鼓、聽得到的最快那條鼓，每分鐘幾拍"
+      ],
+      [
+        "現在聽得到 n 條鼓",
+        "同時聽得到幾條（共幾層）；各層音量用 dB（音量單位，越小越輕）"
+      ],
+      [
+        "離下一次 x 秒",
+        "勾選才顯示；試聽時先關著"
+      ],
+      [
+        "下一次是真的／假的",
+        "勾選才顯示；試聽時先關著"
+      ],
+      [
+        "那一擊比前後一秒高 x dB",
+        "最響一擊比前後一秒響多少，越大越好認"
+      ],
+      [
+        "木馬區塊",
+        "離木馬距離、共鳴音量、腹中低通設定"
+      ]
+    ],
+    "questions": [
+      "V0（什麼記號都沒有）聽不聽得出「又從頭來了」？靠什麼聽出來？",
+      "V1 聽不聽得出一圈在哪裡接回去？",
+      "V1 猜不猜得到下一次最響的一擊？聽到越打越密時來得及反應嗎？",
+      "V2 分不分得出真的和假的？上當過幾次？",
+      "最響的一擊在 V1 和 V3 哪一版好認？V3 會不會打斷「一直變快」的感覺？",
+      "V4 和 V1 比，哪一個比較難抓到「一圈」？哪一個比較像一直在變快？",
+      "層數 8 和 6、循環 20 秒和 12 秒，哪一個變化大、哪一個自然？（各聽 V1 就好）"
+    ],
+    "src": [
+      "2026-11-11-illusion-not-heard.md 第 10.1、11.3、12 節"
+    ]
+  } });
 })();
 </script>

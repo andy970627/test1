@@ -1,14 +1,14 @@
 <title>換層試驗場：特洛伊之夜</title>
 <style>
   :root {
-    --bg-dark: #0a0b10;
-    --panel-bg: rgba(18, 20, 32, 0.88);
-    --border-color: #2e3448;
-    --text-main: #d8dde8;
-    --text-dim: #7a849e;
-    --accent-gold: #e2b764;
-    --accent-blue: #4aa8d8;
-    --accent-red: #d94a4a;
+    --bg-dark: #07080c;      /* 設計系統 night */
+    --panel-bg: rgba(8, 9, 14, .82);   /* panel */
+    --border-color: #2a2c38;  /* line */
+    --text-main: #d6cfc2;     /* ash */
+    --text-dim: #8a8478;      /* dim */
+    --accent-gold: #f0a85a;   /* fire */
+    --accent-blue: #9fb0d8;   /* moon */
+    --accent-red: #c23a2c;    /* blood */
     --accent-torch: #ff9d3b;
     --touch-h: 0px;   /* 觸控按鈕列的高度（觸控模式時由 .touch 設定），頁面底部留空給它 */
   }
@@ -20,7 +20,7 @@
   body {
     background: var(--bg-dark);
     color: var(--text-main);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;   /* 設計系統 text */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -39,10 +39,10 @@
 
   /* 提示標語條 */
   .hint-banner {
-    background: linear-gradient(90deg, rgba(226, 183, 100, 0.12), rgba(18, 20, 32, 0.85));
+    background: linear-gradient(90deg, rgba(240, 168, 90, 0.12), rgba(18, 20, 32, 0.85));
     border-left: 4px solid var(--accent-gold);
     padding: 10px 16px;
-    border-radius: 4px;
+    border-radius: 0;
     font-size: 15px;
     line-height: 1.5;
     color: #f0e6cf;
@@ -56,7 +56,7 @@
   .canvas-card {
     background: var(--panel-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 0;
     overflow: hidden;
     position: relative;
     box-shadow: 0 8px 24px rgba(0,0,0,0.6);
@@ -82,7 +82,7 @@
   .panel-box {
     background: var(--panel-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 0;
     padding: 14px 18px;
     font-size: 13px;
   }
@@ -140,7 +140,7 @@
     color: var(--text-main);
     border: 1px solid #3d4563;
     padding: 6px 16px;
-    border-radius: 4px;
+    border-radius: 0;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
@@ -169,7 +169,7 @@
   .overlay-stats {
     background: rgba(255,255,255,0.04);
     padding: 12px 24px;
-    border-radius: 6px;
+    border-radius: 0;
     font-size: 14px;
     line-height: 1.8;
   }
@@ -178,7 +178,7 @@
     display: inline-block;
     background: #1c2133;
     border: 1px solid #434c6e;
-    border-radius: 3px;
+    border-radius: 0;
     padding: 1px 6px;
     font-family: monospace;
     font-size: 12px;
@@ -192,7 +192,7 @@
     background: rgba(10, 11, 16, 0.86); text-align: center; padding: 16px;
   }
   .start-gate[hidden] { display: none; }
-  .start-gate .btn-big { font-size: 20px; padding: 14px 32px; border-radius: 8px; background: #3a3220; border-color: var(--accent-gold); color: #fff3d6; }
+  .start-gate .btn-big { font-size: 20px; padding: 14px 32px; border-radius: 0; background: var(--accent-gold); border-color: var(--accent-gold); color: #1a1008; }
   .start-gate small { color: var(--text-dim); font-size: 13px; line-height: 1.6; }
 
   /* 觸控按鈕列：固定在畫面底部，左「前進（按住）」、右「換層」，上排小按鈕「重來」「聲部譜」 */
@@ -211,16 +211,16 @@
   .touch-bar button {
     touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
-    border-radius: 10px; border: 1px solid #3d4563; background: #1c2133; color: var(--text-main);
+    border-radius: 6px; border: 1px solid #3a3c48; background: #12131a; color: var(--text-main);
     font-family: inherit;
   }
   .touch-bar .row-small button { flex: 1; height: 44px; font-size: 15px; }
   .touch-bar .row-small button[aria-pressed="false"] { color: var(--text-dim); }
   .touch-bar .pad { height: 104px; font-size: 22px; font-weight: 700; line-height: 1.25; }
   .touch-bar .pad small { display: block; font-size: 12px; font-weight: 400; color: var(--text-dim); }
-  .touch-bar #tWalk.on { background: #24304a; border-color: var(--accent-blue); }
-  .touch-bar #tSwitch { background: #2a2416; border-color: #6b5a33; }
-  .touch-bar #tSwitch.flash { background: #5a4a22; border-color: var(--accent-gold); }
+  .touch-bar #tWalk.on { background: #1c2230; border-color: var(--accent-blue); }
+  .touch-bar #tSwitch { background: #1f170e; border-color: #7a5a30; }
+  .touch-bar #tSwitch.flash { background: #5a3f1e; border-color: var(--accent-gold); }
 
   @media (max-width: 600px) {
     body { padding: 8px; }
@@ -755,7 +755,7 @@
       var age = nowT - fp.t;
       var alpha = Math.max(0.1, 1 - age / 12);
       ctx2d.fillStyle = (fp.type === 'masked')
-        ? 'rgba(74, 168, 216, ' + alpha + ')'
+        ? 'rgba(159, 176, 216, ' + alpha + ')'
         : 'rgba(255, 120, 40, ' + alpha + ')';
       ctx2d.beginPath();
       ctx2d.ellipse(fpx, groundY + 8 + (f % 2) * 5, 4, 2, 0, 0, Math.PI * 2);
@@ -773,14 +773,14 @@
 
     // 巷弄終點標記（東側出口）
     var endX = worldToScreenX(laneLen);
-    ctx2d.strokeStyle = 'rgba(226, 183, 100, 0.4)';
+    ctx2d.strokeStyle = 'rgba(240, 168, 90, 0.4)';
     ctx2d.setLineDash([4, 4]);
     ctx2d.beginPath();
     ctx2d.moveTo(endX, groundY - 80);
     ctx2d.lineTo(endX, groundY);
     ctx2d.stroke();
     ctx2d.setLineDash([]);
-    ctx2d.fillStyle = 'rgba(226, 183, 100, 0.6)';
+    ctx2d.fillStyle = 'rgba(240, 168, 90, 0.6)';
     ctx2d.font = '11px sans-serif';
     ctx2d.fillText('東端脫離點', endX - 28, groundY - 88);
 
@@ -839,7 +839,7 @@
       var canRide = v ? v.rideable : false;
       var rowAlpha = Math.max(0.04, baseGain * 0.18);
       ctx2d.fillStyle = canRide
-        ? 'rgba(74, 168, 216, ' + rowAlpha + ')'
+        ? 'rgba(159, 176, 216, ' + rowAlpha + ')'
         : 'rgba(20, 22, 30, 0.6)';
       ctx2d.fillRect(0, rowY, w, rowH - 4);
 
@@ -857,13 +857,13 @@
 
       // 現在騎的聲部外框加亮
       if (isRidden) {
-        ctx2d.strokeStyle = '#e2b764';   // 畫布不認 CSS 變數，直接寫色碼
+        ctx2d.strokeStyle = '#f0a85a';   // 畫布不認 CSS 變數，直接寫色碼
         ctx2d.lineWidth = 2;
         ctx2d.strokeRect(1, rowY, w - 2, rowH - 4);
       }
 
       // 聲部名稱與音量標籤
-      ctx2d.fillStyle = isRidden ? '#e2b764' : '#7a849e';
+      ctx2d.fillStyle = isRidden ? '#f0a85a' : '#8a8478';
       ctx2d.font = '11px monospace';
       var vLabel = v
         ? ('聲部 #' + v.id + ' (u=' + v.u.toFixed(2) + ' / 音量=' + v.gain.toFixed(2) + (isRidden ? ' [目前踩著]' : '') + ')')
@@ -890,9 +890,9 @@
         var drawX2 = Math.min(w, winX2);
 
         if (drawX2 > drawX1) {
-          ctx2d.fillStyle = 'rgba(226, 183, 100, 0.14)';
+          ctx2d.fillStyle = 'rgba(240, 168, 90, 0.14)';
           ctx2d.fillRect(drawX1, topRowY, drawX2 - drawX1, bottomRowY - topRowY);
-          ctx2d.strokeStyle = 'rgba(226, 183, 100, 0.4)';
+          ctx2d.strokeStyle = 'rgba(240, 168, 90, 0.4)';
           ctx2d.strokeRect(drawX1, topRowY, drawX2 - drawX1, bottomRowY - topRowY);
         }
 
@@ -901,7 +901,7 @@
           var bt = win.beats[bi];
           var bx = nowLineX + ((bt - nowT) / futureSec) * (w - nowLineX);
           if (bx >= 0 && bx <= w) {
-            ctx2d.strokeStyle = '#e2b764';
+            ctx2d.strokeStyle = '#f0a85a';
             ctx2d.lineWidth = 3;
             ctx2d.beginPath();
             ctx2d.moveTo(bx, topRowY);
@@ -927,7 +927,7 @@
 
       var bRowY = specTop + (3 - bTrack) * rowH;
       var bSize = 6 + beat.gain * 12;
-      ctx2d.fillStyle = (beat.id === rideId) ? '#e2b764' : '#4aa8d8';
+      ctx2d.fillStyle = (beat.id === rideId) ? '#f0a85a' : '#9fb0d8';
       ctx2d.globalAlpha = Math.max(0.2, beat.gain);
       ctx2d.fillRect(bx - bSize / 2, bRowY + (rowH - 4) / 2 - bSize / 2, bSize, bSize);
       ctx2d.globalAlpha = 1.0;
@@ -1034,5 +1034,73 @@
   applyUrlParams();
   restartGame();
   requestAnimationFrame(mainLoop);
+})();
+</script>
+<script>
+// 共用導覽（回試玩切換台、說明側欄）：先找 ../nav.js（repo、本機伺服器），找不到再找同一層的 nav.js（發布成試玩頁時可一起帶上）；
+// 兩個都沒有就不掛，遊戲照常能玩。手機版說明鈕往上讓開底部的觸控按鈕列。
+(function () {
+  var HELP = {
+    "title": "換層試驗場",
+    "what": [
+      "按住前進，腳步落在你踩的那條鼓上；它會越來越快，跟不上前要在對的那一拍換到底下的慢鼓（換層）。",
+      "真正要回答的是：只靠耳朵，聽不聽得出慢鼓進來了。"
+    ],
+    "watch": [
+      "太早換，新鼓太小聲蓋不住腳步；太晚換，腳跟不上會踩亂出聲。",
+      "只有兩條鼓同時落下的那一拍換得乾淨；底下那條很輕，要仔細聽。",
+      "出聲會讓衛兵疑心升高，火把由黃轉紅，滿了就被發現。",
+      "先看著聲部譜（畫面下半的鼓點列）玩一次，再用 ?aid=0 關掉它只靠耳朵。",
+      "手機：左下按住「前進」、右下按「換層」；鍵盤：W 前進、Q 換層、R 重來。"
+    ],
+    "panel": [
+      [
+        "目前聲部年齡 u / 音量 / 拍距",
+        "你踩的那條鼓：進場後過了幾圈（0 剛進、4 淡出）、音量（0～1）、兩拍隔幾秒"
+      ],
+      [
+        "底層慢鼓年齡 u / 音量",
+        "底下那條慢鼓的同樣數字；還沒進場顯示「尚未進場」"
+      ],
+      [
+        "換層窗狀態",
+        "開啟中（剩幾秒）＝現在可以換層"
+      ],
+      [
+        "最近換層偏差",
+        "上次換層離最佳時機幾毫秒；正數是按晚"
+      ],
+      [
+        "衛兵警戒疑心",
+        "疑心百分比，超過 60% 變紅"
+      ],
+      [
+        "步數 / 露餡出聲 / 換層次數",
+        "累計走幾步、幾步出聲、換了幾次"
+      ],
+      [
+        "（聲部譜關閉）",
+        "?aid=0 時前三列藏起來，因為它們會直接說出換層時機"
+      ]
+    ],
+    "questions": [
+      "關掉聲部譜，只靠耳朵，聽不聽得出底下那條慢鼓進來了？",
+      "換層那一下，有沒有「我跟著音樂換手、它卻一直在加速」的感覺？",
+      "太早、太晚、按歪三種錯，分不分得出自己錯在哪？",
+      "每個循環換一次，會不會太忙或太單調？",
+      "如果潛行時走路就是這樣「踩在一條鼓上、太快就換到慢的那條」，你會想要嗎？還是只想在某些時候換？"
+    ],
+    "src": [
+      "2026-11-10-direction-b-layer-sandbox.md 第 1、2、6、9 節",
+      "2026-11-11-companion-mechanics.md 第 11.6 節"
+    ]
+  };
+  function mount() {
+    var N = window.OdysseyNav; if (!N || !N.mount) return;
+    N.mount({ help: HELP, switchInto: document.querySelector('.sandbox-container'), key: 'KeyH', id: 'layer-ride',
+      mobileBottom: document.body.classList.contains('touch') ? 186 : 0 });
+  }
+  function load(src, next) { var s = document.createElement('script'); s.src = src; s.onload = mount; s.onerror = next; document.body.appendChild(s); }
+  load('../nav.js', function () { load('nav.js', function () {}); });
 })();
 </script>

@@ -230,7 +230,7 @@ button:hover { filter: brightness(1.12); }
     <div id="optSlotIntro"></div>
    </div>
     <div class="surveySlot" id="surveySlotIntro" style="grid-column:1 / -1"></div>
-    <div class="row start"><button class="primary" id="btnStart">點一下開始</button></div>
+    <div class="row start"><button class="primary" id="btnStart">點一下開始</button> <button type="button" class="btnSwitch">回試玩切換台</button></div>
   </div>
 </div>
 
@@ -245,7 +245,7 @@ button:hover { filter: brightness(1.12); }
       <button id="btnRetryP">從這一區重來</button>
       <button id="btnFromTop">從頭開始</button>
       <button type="button" class="btnIntro">回到開場</button>
-      <button type="button" class="btnHub">回總首頁</button>
+      <button type="button" class="btnHub">回總首頁</button><button type="button" class="btnSwitch">回試玩切換台</button>
       <button type="button" class="btnExport">匯出數據</button>
     </div>
   </div>
@@ -303,7 +303,7 @@ button:hover { filter: brightness(1.12); }
     <h2 id="failWhy">你被發現了。</h2>
     <p id="failHint" hidden></p>
     <p class="dim">按 R 從這一區重來</p>
-    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="row"><button class="primary" id="btnRetry">從這一區重來（R）</button><button id="btnFromTop2">從頭開始</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button><button type="button" class="btnSwitch">回試玩切換台</button></div>
     <div class="surveySlot"></div>
     <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
@@ -315,7 +315,7 @@ button:hover { filter: brightness(1.12); }
     <h2 id="winTitle">城門開了</h2>
     <p id="winText">希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
     <p class="later">十年後……</p>
-    <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button><button type="button" class="btnSwitch">回試玩切換台</button></div>
     <div class="surveySlot"></div>
     <div class="row" style="justify-content:center"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
@@ -369,6 +369,307 @@ if (MUTE && window.AudioNode && window.AudioDestinationNode) {
 // ?lab=belly 腹中練習試驗場（規則自己開 HORSE_MODE、固定循環、只有腹中）。兩個都沒帶時畫面和報告版完全一樣
 // 搭配動作（docs/design/2026-11-11-companion-mechanics.md 第 7 節）：規則 T.MOVES_MODE 預設開；?moves=0 退回報告版；?lab=run|crouch|listen 試驗場
 const MOVES_LABS = ['run', 'crouch', 'listen', 'hunt', 'check'];
+// 試驗場的說明側欄內容（共用 ../nav.js 的 OdysseyNav.mount 畫）：這頁在試什麼、注意聽看什麼、面板數字、試玩題目、出處。
+// 面板的字改了這裡要一起改；內容取自各設計文件（出處列在 src）
+const LAB_HELP = {
+    "belly": {
+      "title": "腹中練習",
+      "what": [
+        "只有木馬肚子、沒有衛兵、鼓聲循環固定，練「停下、等鼓點、再踏出去」。",
+        "只有站定後的第一步（起步）算數，踩準亮一格，亮滿四格同伴才替你開暗門。"
+      ],
+      "watch": [
+        "站定後等一個鼓點再起步，一直按著前進不會多亮格。",
+        "鼓聲是悶的，像隔著木板聽（低通：只留低頻、削掉高音）。",
+        "起步踩歪不會被發現，同伴只會按住你的肩、熄掉一格。",
+        "格子亮滿後，同伴會趁下一個最響的一擊（所有鼓同時落下的那一下）拉開木栓。"
+      ],
+      "panel": [
+        [
+          "踩準 n / 4  ■■□□",
+          "起步踩準幾次、總共要幾次；實心方塊是亮的格子"
+        ],
+        [
+          "狀態",
+          "停下等鼓點／刻痕滿了等最響一擊／暗門開了"
+        ],
+        [
+          "最近的步",
+          "最近 6 步各離最近鼓點幾毫秒；正數是早踩、負數是晚踩"
+        ],
+        [
+          "踩準（起步）",
+          "算數的起步，亮一格"
+        ],
+        [
+          "踩準（續步）",
+          "走起來後自動對拍的步，不亮格也不扣格"
+        ],
+        [
+          "續步出聲（不扣格）",
+          "後續步沒蓋住、出了聲，但不扣格"
+        ],
+        [
+          "起步踩歪（熄 n 格）",
+          "起步沒踩準，扣掉幾格"
+        ],
+        [
+          "低通：開（1200 Hz）",
+          "悶鼓聲開著；只留 1200 Hz 以下的聲音"
+        ],
+        [
+          "按 L 切換",
+          "自動（在腹中開）／強制開／強制關，可拿來對比聽"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-trojan-horse-directions.md 第 1、1.1 節"
+      ]
+    },
+    "horse": {
+      "title": "木馬共鳴",
+      "what": [
+        "第 2 區自由走、沒有衛兵，聽木馬跟著最響的一擊「轟」一聲，音量隨距離變小。",
+        "也用來確認木馬旁那塊影子躲不躲得進去。"
+      ],
+      "watch": [
+        "貼著木馬和走遠後，各聽那一聲共鳴有多厚，越遠越薄。",
+        "戴耳機時共鳴從木馬的方向來；喇叭聽不出方向，只是那一擊比較響。",
+        "那一擊落下時木馬輪廓上的灰塵一抖，離得越遠抖得越小。",
+        "走進木馬影子，面板會顯示「在木馬陰影內：是」。"
+      ],
+      "panel": [
+        [
+          "離木馬 n 公尺",
+          "你到木馬的距離；括號是共鳴聽得到的最遠距離（25 公尺）"
+        ],
+        [
+          "這一擊的共鳴音量 x / 0.5",
+          "現在的共鳴音量，貼著木馬時最大 0.5"
+        ],
+        [
+          "上一聲共鳴",
+          "上一次共鳴的音量和當時的距離"
+        ],
+        [
+          "在木馬陰影內",
+          "你是否站在木馬那塊能躲的影子裡"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-trojan-horse-directions.md 第 3 節（C1、C2）"
+      ]
+    },
+    "run": {
+      "title": "跑",
+      "what": [
+        "試按住 Shift 跑：跑很吵，只有最響的一擊（所有鼓同時落下的那一下）蓋得住。",
+        "鼓慢、附近 8 公尺內沒有衛兵時，跑也沒人聽見；波紋告訴你這一步有沒有被聽到。"
+      ],
+      "watch": [
+        "按住 Shift 超過 0.2 秒才開始跑；只點一下是原本的衝刺。",
+        "腳下波紋：淡色是沒人聽到，橘色是有衛兵聽到。",
+        "鼓越慢代表最近的衛兵越遠，比較能跑；鼓變快就改用走的。",
+        "最響的一擊落下後 0.6 秒內（掩護窗：衛兵什麼都察覺不到的時段）跑的步不算出聲。"
+      ],
+      "panel": [
+        [
+          "現在",
+          "你目前的動作：跑、蹲、屏息、走、站著"
+        ],
+        [
+          "按住 Shift x / 0.2 秒起跑",
+          "Shift 按住多久了，滿 0.2 秒開始跑"
+        ],
+        [
+          "鼓：一圈 n 秒",
+          "鼓聲一整圈的秒數，越慢代表衛兵越遠"
+        ],
+        [
+          "最近的衛兵",
+          "到最近衛兵的距離；8 公尺內聽得到跑步"
+        ],
+        [
+          "跑的步",
+          "累計：蓋住・沒人聽到・被聽到"
+        ],
+        [
+          "最後一步",
+          "最近一步跑的結果"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-companion-mechanics.md 第 7.3、7.4、9.2 節"
+      ]
+    },
+    "crouch": {
+      "title": "蹲走與矮掩體",
+      "what": [
+        "試按住 C 蹲走：慢，但腳步輕、起步判定比較寬。",
+        "第 3 區窄巷有水缸、貨堆，蹲著時這些矮東西擋得住視線。"
+      ],
+      "watch": [
+        "蹲走速度是走路的一半，起步判定寬一倍，手不準的人比較穩。",
+        "沒踩準時，蹲著的腳步聲只傳 1.2 公尺，站著傳 2.5 公尺。",
+        "矮掩體旁地上有一圈淡框，蹲著時變清楚。",
+        "蹲在矮掩體後衛兵看不到你；站起來就擋不住。"
+      ],
+      "panel": [
+        [
+          "現在",
+          "你目前的動作"
+        ],
+        [
+          "速度",
+          "相對走路的倍率：蹲 ×0.5、跑 ×2"
+        ],
+        [
+          "起步判定",
+          "起步那一步離鼓點多近算踩準（判定窗：按鍵算對的時間範圍）"
+        ],
+        [
+          "離拍聲音傳",
+          "起步沒踩準時腳步聲傳多遠"
+        ],
+        [
+          "蹲走的步",
+          "累計：被鼓聲蓋住的步・出聲的步"
+        ],
+        [
+          "矮掩體",
+          "15 公尺內的衛兵有幾名、其中幾名的視線被矮掩體擋住"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-companion-mechanics.md 第 7.3、7.4 節"
+      ]
+    },
+    "listen": {
+      "title": "屏息聽衛兵",
+      "what": [
+        "試按住空白鍵屏息：鼓聲退後、衛兵腳步變清楚，聽得出他從哪個方向來。",
+        "最響的一擊（所有鼓同時落下的那一下）不會退後，屏息不會害你錯過時機。"
+      ],
+      "watch": [
+        "屏息時鼓聲小一截，衛兵的腳步變清楚、左右拉開。",
+        "地上會出現腳步落地處的淡圈，看得出聲音從哪來。",
+        "屏息最多 6 秒，超過會喘出聲；屏息時不能動。",
+        "先閉眼聽，說出衛兵在前後左右哪邊，再對照面板。"
+      ],
+      "panel": [
+        [
+          "屏息 n / 6 秒",
+          "是否正在屏息、已經憋了幾秒"
+        ],
+        [
+          "最近的衛兵",
+          "最近衛兵的距離和方向（前、後、左、右）"
+        ],
+        [
+          "衛兵腳步波紋",
+          "畫了幾圈腳步淡圈；來源「聲音層」表示和聽到的那一步同時"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-companion-mechanics.md 第 7.3（C1）、7.4 節"
+      ]
+    },
+    "hunt": {
+      "title": "追殺",
+      "what": [
+        "一名追兵從背後 6 公尺追你；他會進影子搜人，你要聽著他的腳步躲。",
+        "試躲進影子後屏息，或踩著鼓點挪開，看他搜完會不會走。"
+      ],
+      "watch": [
+        "追兵走到你消失的點後，照紅線走進影子搜，每點停一下環顧。",
+        "他腳下的圈是聽得到你呼吸的範圍；你沒屏息又在圈裡，圈變紅，他就走過來。",
+        "一路跑進影子會喘：喘的時候不能屏息，呼吸聲傳更遠。",
+        "他搜完、而且 6 秒以上沒看到或聽到你，才算甩掉。"
+      ],
+      "panel": [
+        [
+          "追兵",
+          "追你／搜影子第幾點（停頓環顧）／搜完；還沒追時顯示衛兵原本的狀態"
+        ],
+        [
+          "離你 n 公尺",
+          "追兵到你的距離；1 公尺內算被抓"
+        ],
+        [
+          "呼吸範圍",
+          "追兵聽得到你沒屏住呼吸的距離（喘時 ×1.6），和你有沒有被聽到"
+        ],
+        [
+          "最後一次知道你在哪",
+          "他上次確定你位置到現在幾秒；6 秒以上＋搜完＝甩掉"
+        ],
+        [
+          "你",
+          "在影子或亮處、在喘或屏息"
+        ],
+        [
+          "被聽到",
+          "累計：呼吸、踩歪被聽到幾次；喊人幾次、叫到幾名；喘幾次"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-companion-mechanics.md 第 12.2、12.3 節"
+      ]
+    },
+    "check": {
+      "title": "查看",
+      "what": [
+        "衛兵聽到聲音會先走過來查看，不是直接追殺；試退開、躲影子、屏息，讓他走回去巡邏。",
+        "按 N（在你腳下）或 M（在你右邊 3 公尺）自己製造聲響，叫他過來。"
+      ],
+      "watch": [
+        "查看分四段：轉頭（這 0.5 秒不判定，是你的反應時間）、走過來、停下來聽、走回去。",
+        "橘圈是他要走去的點，不是你的位置；淡圈是聽得到你呼吸的範圍。",
+        "他看到或聽到你，疑心慢慢升，滿了才轉成追殺。",
+        "好的做法：踩著鼓點退開或躲進影子，他靠近時屏息。"
+      ],
+      "panel": [
+        [
+          "衛兵：查看・階段",
+          "轉頭／走過來／停下來聽（剩幾秒，共 4 秒）／走回去"
+        ],
+        [
+          "離你 n 公尺",
+          "衛兵到你的距離"
+        ],
+        [
+          "要走去的點",
+          "他要走去的位置離你多遠；最多走 5 公尺"
+        ],
+        [
+          "疑心",
+          "查看中看到或聽到你會升，滿了就追殺"
+        ],
+        [
+          "呼吸範圍",
+          "他聽得到你沒屏住呼吸的距離，和你有沒有被聽到"
+        ],
+        [
+          "你",
+          "在影子或亮處、在喘或屏息"
+        ],
+        [
+          "查看 a 次",
+          "累計：查看幾次、走到點幾次、走完幾次、轉成追殺幾次，和上次的原因"
+        ]
+      ],
+      "questions": [],
+      "src": [
+        "2026-11-11-companion-mechanics.md 第 13.6、15.2 節"
+      ]
+    }
+  };
 const HORSE_Q = URLQ.get('horse') === '1', LAB = ['belly', 'horse', ...MOVES_LABS].includes(URLQ.get('lab')) ? URLQ.get('lab') : null;
 const MOVES_OFF_Q = URLQ.get('moves') === '0';
 const MOVES_SUPPORTED = !!(Rules.T && 'MOVES_MODE' in Rules.T);
@@ -2436,6 +2737,7 @@ function checkLabLines() {
     const w = q.check.walkTo;
     lines.push('　要走去的點離你 ' + Math.hypot(w.x - P.x, w.z - P.z).toFixed(1) + ' 公尺（最多走 ' + num(T.CHECK_WALK, 5) + ' 公尺）');
   }
+  if (q.state === 'checking') lines.push('疑心 ' + Math.round(clamp(num(q.susp, 0), 0, 1) * 100) + '%（滿了就追殺）');
   const r = huntBreathR(P);
   lines.push('呼吸範圍 ' + r.toFixed(1) + ' 公尺：' + (d <= r ? (P.breathing ? '在範圍內，屏住了' : '在範圍內，聽得到！') : '不在範圍內'));
   lines.push('你：' + (P.hidden ? '在影子裡' : '在亮處') + '・' + (P.panting ? '在喘（不能屏息）' : P.breathing ? '屏息中' : '呼吸'));
@@ -2977,6 +3279,14 @@ document.querySelectorAll('.btnHub').forEach(b => {
   b.hidden = !hasHub;
   b.onclick = () => { try { NAV.goHub(); } catch (e) { console.warn('無法前往總首頁', e); } };
 });
+// 回試玩切換台（本機的 ../switch.html；claude.ai 試玩頁沒有就隱藏）
+const hasSwitch = !!(NAV && typeof NAV.hasSwitch === 'function' && NAV.hasSwitch());
+document.querySelectorAll('.btnSwitch').forEach(b => {
+  b.hidden = !hasSwitch;
+  b.onclick = () => { try { NAV.goSwitch(); } catch (e) { console.warn('無法前往試玩切換台', e); } };
+});
+// 試驗場的說明側欄（預設收起；按 H 或右邊的「說明」開關）：內容在 LAB_HELP，整關（沒有 ?lab）不掛
+if (LAB && NAV && typeof NAV.mount === 'function' && LAB_HELP[LAB]) { try { NAV.mount({ switchLink: false, help: LAB_HELP[LAB], key: 'KeyH', id: 'troy-lab-' + LAB }); } catch (e) { console.warn('說明側欄掛不上', e); } }
 
 // 開場前先建好場景當背景（看得到木馬腹中）
 try {
