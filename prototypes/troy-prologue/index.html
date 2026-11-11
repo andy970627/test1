@@ -252,7 +252,7 @@ button:hover { filter: brightness(1.12); }
   <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
   <label>鼓聲 <select id="oCover"><option value="cover">不停（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
   <!-- 試驗場入口（專案規則：每個機制都要有試驗場）：木馬第 1 批，docs/design/2026-11-11-trojan-horse-directions.md 方向 A -->
-  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）</div>
+  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）</div>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -357,7 +357,7 @@ if (MUTE && window.AudioNode && window.AudioDestinationNode) {
 // 規則檔還沒有這個常數時一律當舊版（聲音也還在靜音），選單停用並說明
 // 木馬第 1 批（docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C1）：?horse=1 開規則的 T.HORSE_MODE；
 // ?lab=belly 腹中練習試驗場（規則自己開 HORSE_MODE、固定循環、只有腹中）。兩個都沒帶時畫面和報告版完全一樣
-const HORSE_Q = URLQ.get('horse') === '1', LAB = URLQ.get('lab') === 'belly' ? 'belly' : null;
+const HORSE_Q = URLQ.get('horse') === '1', LAB = ['belly', 'horse'].includes(URLQ.get('lab')) ? URLQ.get('lab') : null;
 const horseOn = () => !!K().HORSE_MODE;
 const WIN_TEXT0 = $('winText').textContent;   // 正常過關畫面的原文（試驗場過關時換字，回來要還原）
 const COVER_SUPPORTED = !!(Rules.T && 'COVER_MODE' in Rules.T);
@@ -369,7 +369,7 @@ function coverText() {                            // 開場說明跟著選單換
   document.querySelectorAll('.modeGap').forEach(el => { el.hidden = cv; });
 }
 $('oCover').addEventListener('change', coverText); coverText();
-{ const q = new URLSearchParams(); q.set('lab', 'belly'); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $('labBellyLink').href = '?' + q.toString(); }
+for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink']]) { const q = new URLSearchParams(); q.set('lab', lab); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
 
 // ============================================================
 // three.js 場景
@@ -585,7 +585,7 @@ function build(L) {
     const l1 = new THREE.PointLight(0xff8030, 0, 30, 2); l1.position.set(gx + 4, 3, gzc); world.add(l1);
     S.invaders = { g: out, list, light: l1, gx };
   }
-  if (L.horse) { buildHorse(L.horse, L); if (horseOn()) buildBellyPractice(); }
+  if (L.horse) { buildHorse(L.horse, L); if (horseOn()) { buildBellyPractice(); buildHorseDust(); } }
   if (gate) buildGate(L.gate, gate);
   buildRouteHints(L, gate, walls);
 }
@@ -1167,6 +1167,7 @@ function newGame() {
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
   if (HORSE_Q) opts.T.HORSE_MODE = true;                               // 木馬第 1 批（沒帶參數就不碰，規則走報告版的路）
   if (LAB) opts.lab = LAB;
+  if (LAB === 'horse') { opts.T.HORSE_MODE = true; opts.startZone = 2; }   // 規則的 lab: 'horse' 也會這樣設；先寫上，規則還沒支援時一樣能看共鳴
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
@@ -1175,7 +1176,7 @@ function newGame() {
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
-  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.hushKick = 0; LABS.steps.length = 0; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
+  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.hushKick = 0; LABS.steps.length = 0; bellyLpI = 0; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
   resetActionFx(); S.lastPrint = null;
   for (const P of S.prints) { P.life = 0; P.tier = 0; P.m.visible = false; }
   $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
@@ -1962,10 +1963,78 @@ const LABS = {
     return '踩準 ' + offs.length + ' 次、踩歪 ' + miss + ' 次' + (med != null ? '、離鼓點中位 ' + med.toFixed(0) + ' 毫秒' : '');
   },
 };
+// 木馬第 2 批（設計文件方向 C2）：聲音層的木馬介面。setBellyLowpass(true｜false｜null＝照規則自動)、horseInfo()
+const horseInfoOf = () => { const a = audio && audio.raw; try { return a && typeof a.horseInfo === 'function' ? a.horseInfo() : null; } catch (e) { return null; } };
+const BELLY_LP_MODES = [{ v: null, label: '自動（跟著規則：腹中開、暗門開了就關）' }, { v: true, label: '強制開' }, { v: false, label: '強制關' }];
+let bellyLpI = 0;
+function cycleBellyLowpass() {
+  bellyLpI = (bellyLpI + 1) % BELLY_LP_MODES.length;
+  const a = audio && audio.raw;
+  try { if (a && typeof a.setBellyLowpass === 'function') a.setBellyLowpass(BELLY_LP_MODES[bellyLpI].v); } catch (e) {}
+}
+// 木馬共鳴的畫面（C2）：那一擊落下時，木馬輪廓上的灰塵一抖，強度＝這一擊的共鳴音量 ÷ 貼著木馬時的音量（隨距離變小）
+const HDUST_N = 160;
+function buildHorseDust() {
+  const G = S.bellyGeom; if (!G) return;
+  const pos = new Float32Array(HDUST_N * 3), home = new Float32Array(HDUST_N * 3), vel = new Float32Array(HDUST_N * 3);
+  for (let i = 0; i < HDUST_N; i++) {
+    // 灰塵落在木馬背上與兩側上緣（輪廓線），從遠處看得到一圈揚起
+    const onTop = i % 3 !== 0;
+    const x = rand(G.bx0, G.bx1), z = onTop ? rand(G.bz0, G.bz1) : (Math.random() < .5 ? G.bz0 : G.bz1), y = onTop ? G.top + .06 : rand(G.top - .6, G.top);
+    home[i * 3] = pos[i * 3] = x; home[i * 3 + 1] = pos[i * 3 + 1] = y; home[i * 3 + 2] = pos[i * 3 + 2] = z;
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ map: dotTex, color: 0xd8c09a, size: .09, transparent: true, opacity: 0, depthWrite: false });
+  const pts = new THREE.Points(geo, mat); pts.frustumCulled = false; pts.visible = false; G.g.add(pts);
+  S.horseDust = { pts, geo, mat, pos, home, vel, v: 0, lastT: null };
+}
+function horseDustFrame(dt) {
+  const D = S && S.horseDust; if (!D || !audio) return;
+  const hi = horseInfoOf(), lb = hi && hi.lastBoom, now = audio.now();
+  // 聲音層排好的共鳴時間到了才抖（lastBoom.t 是那一聲真正響的音訊時間）
+  if (lb && Number.isFinite(lb.t) && lb.t !== D.lastT && now >= lb.t) {
+    D.lastT = lb.t;
+    const amp = clamp(lb.gain / num(K().HORSE_BOOM_GAIN, .5), 0, 1);
+    if (amp > .01) {
+      D.v = amp;
+      for (let i = 0; i < HDUST_N; i++) {
+        D.pos[i * 3] = D.home[i * 3]; D.pos[i * 3 + 1] = D.home[i * 3 + 1]; D.pos[i * 3 + 2] = D.home[i * 3 + 2];
+        D.vel[i * 3] = rand(-.4, .4) * amp; D.vel[i * 3 + 1] = rand(.4, 1.4) * amp; D.vel[i * 3 + 2] = rand(-.4, .4) * amp;
+      }
+      D.pts.visible = true;
+    }
+  }
+  if (!D.pts.visible) return;
+  D.v = Math.max(0, D.v - dt / 1.1);
+  for (let i = 0; i < HDUST_N; i++) {
+    D.vel[i * 3 + 1] -= 3 * dt;
+    D.pos[i * 3] += D.vel[i * 3] * dt; D.pos[i * 3 + 1] += D.vel[i * 3 + 1] * dt; D.pos[i * 3 + 2] += D.vel[i * 3 + 2] * dt;
+  }
+  D.geo.attributes.position.needsUpdate = true;
+  D.mat.opacity = D.v * .9;
+  if (S.horsePlanks) S.horsePlanks.position.y += Math.sin(performance.now() / 18) * .012 * D.v;   // 木板跟著一震
+  if (D.v <= 0) D.pts.visible = false;
+}
+// 木馬共鳴試驗場（?lab=horse）面板：離木馬幾公尺、這一擊的共鳴音量、是不是在木馬陰影內
+function horseLabLines() {
+  const g = game, P = g && g.player, hi = horseInfoOf();
+  const inShadow = !!(P && arr(g.level && g.level.shadows).some(r => r && typeof r.name === 'string' && r.name.includes('木馬') && P.x >= r.x0 && P.x <= r.x1 && P.z >= r.z0 && P.z <= r.z1));
+  const lines = ['木馬共鳴試驗場（?lab=horse）'];
+  if (!hi) { lines.push('聲音層沒有木馬介面（horseInfo）'); return lines; }
+  const R = num(hi.boomR, K().HORSE_BOOM_R, 25);
+  lines.push('離木馬：' + (hi.dist == null ? '—' : hi.dist.toFixed(1) + ' 公尺') + '（' + R + ' 公尺外聽不到）');
+  lines.push('這一擊的共鳴音量：' + (Number.isFinite(hi.boomGain) ? hi.boomGain.toFixed(2) : '—') + ' / ' + num(K().HORSE_BOOM_GAIN, .5));
+  const lb = hi.lastBoom;
+  lines.push('上一聲共鳴：' + (lb ? lb.gain.toFixed(2) + '（' + lb.dist.toFixed(1) + ' 公尺）' : '還沒有'));
+  lines.push('在木馬陰影內：' + (inShadow ? '是' : '否'));
+  if (!g.lab) lines.push('', '（規則還沒有 lab: horse：目前是一般第 2 區，衛兵照常）');
+  return lines;
+}
 function labHud() {
   const el = $('labPanel'), g = game;
-  const on = !!(g && g.lab);
-  el.hidden = !on; if (!on) return;
+  const lab = (g && g.lab) || (g ? LAB : null);
+  el.hidden = !lab; if (!lab) return;
+  if (lab === 'horse') { el.textContent = horseLabLines().join('\n'); return; }
   const Bs = g.belly || {}, need = num(Bs.need, 4), n = num(Bs.n, 0);
   const bar = Array.from({ length: need }, (_, i) => (Bs.ready || i < n ? '■' : '□')).join('');
   const state = Bs.open ? '暗門開了：走過去爬下' : Bs.ready ? '刻痕滿了：等下一個最響的一擊' : '停下，等鼓點，再踏出去';
@@ -1978,7 +2047,10 @@ function labHud() {
     const off = Number.isFinite(r.off) ? (r.off >= 0 ? '+' : '') + r.off.toFixed(0) + ' 毫秒' : '—';
     lines.push('  ' + off.padStart(9) + '  踩準' + (r.start === true ? '（起步）' : r.start === false ? '（續步）' : ''));
   }
-  lines.push('', '低通（隔著木板聽鼓）：尚未提供（聲音第 2 批）');
+  const hi = horseInfoOf();
+  const lpMode = BELLY_LP_MODES[bellyLpI];
+  lines.push('', '低通（隔著木板聽鼓）：' + (hi ? (hi.lowpass ? '開' : '關') + (hi.lowpassHz ? '（' + hi.lowpassHz + ' Hz）' : '') : '聲音層沒有這個功能') +
+    '\n  按 L 切換：' + lpMode.label);
   el.textContent = lines.join('\n');
 }
 function hintVisuals(dt) {
@@ -2016,6 +2088,7 @@ function hintVisuals(dt) {
     }
   }
   bellyFrame(dt);
+  horseDustFrame(dt);
   // 門閂鐵環：低頻映著月光（銀白），高頻沒入陰影（暗）；visualAid = 0 時固定中間色
   if (S && S.latchRings) {
     const low = curP() <= num(K().GATE_LOW_P, .5);
@@ -2163,6 +2236,7 @@ window.addEventListener('mousemove', e => {
 });
 const MOVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 window.addEventListener('keydown', e => {
+  if (LAB === 'belly' && e.code === 'KeyL' && !e.repeat) { cycleBellyLowpass(); return; }   // 腹中練習試驗場：L 切換低通（自動→開→關）
   if (e.target && e.target.closest && e.target.closest('#survey')) return;   // 在快問裡打字，不當遊戲按鍵
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   const was = keys[e.code]; keys[e.code] = true;
