@@ -2691,3 +2691,36 @@ test('11/11 木馬 ?lab=horse（第 3 節 C2 試驗場）：開關自己開、�
   off.step(0, {}); place(off, (ex.x0 + ex.x1) / 2, (ex.z0 + ex.z1) / 2); off.step(DT, { mx: 1 });
   assert.equal(off.zone, 3);
 });
+
+test('11/11 木馬 C3：開關開時，城門開了（當下就是 win）之後的下一個掩護窗開頭發一次 horse_signal {x, z}（木馬中心）；開關關著不發', () => {
+  for (const tOpen of [3.3, 9.95, 10.2]) {               // 慢的時候、掩護窗前一刻、掩護窗裡開門
+    const g = hrs({ startZone: 4 });
+    for (const q of g.guards) { q.state = 'down'; q.active = false; }
+    let t = 0; g.step(t, {});
+    t = runEv(g, t, tOpen, () => ({})).t;
+    g.gate.progress = K.GATE_NEED;
+    t += DT; g.step(t, {});
+    const atOpen = g.drain();
+    assert.equal(g.phase, 'win', '開城門那一幀就是 win（時機不變）');
+    assert.ok(atOpen.some((e) => e.a === 'gate_open'));
+    assert.ok(!atOpen.some((e) => e.a === 'horse_signal'), '不和 gate_open 同一幀發（等下一個掩護窗）');
+    const tGate = t;
+    // win 之後畫面繼續呼叫 step：推到下一個掩護窗之後
+    const sig = [];
+    while (t < tGate + 25) { t += DT; g.step(t, {}); for (const e of g.drain()) if (e.a === 'horse_signal') sig.push(Object.assign({ t }, e)); }
+    assert.equal(sig.length, 1, '只發一次');
+    const L = g.level.horse;
+    assert.deepEqual([sig[0].x, sig[0].z], [(L.x0 + L.x1) / 2, (L.z0 + L.z1) / 2]);
+    const next = R.blindWindows(tGate + 1e-6, tGate + 25, g).find((w) => w.from > tGate);
+    assert.ok(Math.abs(sig[0].t - next.from) <= DT + 1e-9, `在開門後的下一個掩護窗開頭：${sig[0].t} vs ${next.from}`);
+    assert.equal(g.phase, 'win');
+  }
+  // 開關關著：不發
+  const off = R.createLevel({ startZone: 4, T: { DYNAMIC: false } });
+  for (const q of off.guards) { q.state = 'down'; q.active = false; }
+  let u = 0; off.step(u, {}); off.gate.progress = K.GATE_NEED; u += DT; off.step(u, {});
+  assert.equal(off.phase, 'win');
+  const ev = [];
+  while (u < 30) { u += DT; off.step(u, {}); ev.push(...off.drain()); }
+  assert.ok(!ev.some((e) => e.a === 'horse_signal'));
+});

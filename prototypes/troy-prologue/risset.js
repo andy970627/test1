@@ -751,6 +751,7 @@
     let preBlindCycle = null; // 每個循環只預告一次
     let blindHintGate = null; // {i, t}：進教盲區那一區時的循環與時間；盲區提示要等到下一個循環以後
     let dashHintGate = null;  // 殘響掩護教學：最響的一擊提示出過之後的循環；衝刺提示等到下一個掩護窗
+    let horseSignalSent = false; // C3：城門開了之後，下一個掩護窗開頭發一次 horse_signal
     let horsePrevBlind = true; // 木馬腹中練習：上一幀是否在掩護窗（偵測「窗剛開」那一幀；開局當作在窗裡，不會一開局就開門）
     let breathHintAt = null;  // 殘響掩護教學：第 3 區暗殺提示出現的時間；屏息提示至少隔 HINT_GAP 秒、等節奏快起來
     let huntCause = null;
@@ -1037,7 +1038,21 @@
       last = t; g.time = t;
       updateClock(t);
       if (g.phase === 'intro') { if (inp.start) g.start(); return g; }
-      if (g.phase !== 'play') { g.alarm = g.phase === 'fail' ? 1 : 0; return g; }
+      if (g.phase !== 'play') {
+        // C3 結尾鏡頭（HORSE_MODE，第 3 節）：城門開了（phase 已是 win、通關時間算到開門那一刻），循環時鐘照走；
+        // 下一個掩護窗一開始，發 horse_signal {x, z}（木馬中心），畫面趁這一擊演同伴從暗門落地。畫面要在 win 之後繼續呼叫 step。
+        if (K.HORSE_MODE && g.phase === 'win' && g.gate.open && !horseSignalSent) {
+          const b = !!g.cycle.blind;
+          if (b && !horsePrevBlind) {
+            horseSignalSent = true;
+            const h = level.horse;
+            emit('sfx', 'horse_signal', { x: (h.x0 + h.x1) / 2, z: (h.z0 + h.z1) / 2 });
+          }
+          horsePrevBlind = b;
+        }
+        g.alarm = g.phase === 'fail' ? 1 : 0;
+        return g;
+      }
 
       const pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
       if (inp.yaw != null) pl.yaw = inp.yaw;
