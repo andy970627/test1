@@ -1407,7 +1407,7 @@ function drain() {
   telOut(evs);                                   // 試玩數據：規則事件原樣記
   for (const e of evs) {
     if (!e) continue;
-    if (e.type === 'sfx' && e.a === 'horse_signal') cinSignal(e);           // 木馬第 3 批：同伴落地的時機
+    if (e.type === 'sfx' && e.a === 'horse_signal') cinSignal();           // 木馬第 3 批：同伴落地的時機
     if (e.type === 'sfx' && horseOn()) bellyEvent(e);                     // 木馬第 1 批：腹中練習的畫面
     if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) { VIS.stepFlash = 1; tiltGuards(e.x, e.z); }   // 這一步被聽到了
     if (e.type === 'sfx' && e.a === 'step_masked') spawnPrint(e.x, e.z);                // 合拍：腳印發亮
@@ -2178,80 +2178,135 @@ function hud(dt) {
 }
 
 // ============================================================
-// 木馬第 3 批（設計文件方向 C3）：城門打開後回頭看木馬。只在 T.HORSE_MODE 開著、不是試驗場時執行
-//   火把湧進城門後（winT ≥ CIN_START），視角轉回西邊，霧變淡讓遠處的木馬看得見，木馬下亮起一盞火；
-//   同伴趁最後一次最響的一擊，一個接一個從暗門落地。純演出：不加按鍵、不動通關時間與過關畫面的數字，任意鍵跳過。
-//   時機：規則的 sfx 'horse_signal'（可帶 delay 秒數＝還要等多久到那一擊）；沒收到就在轉完頭後自己排。
+// 木馬第 3 批（設計文件方向 C3 與「C3 補充裁決」）：城門打開後回頭看木馬。只在 T.HORSE_MODE 開著、不是試驗場時執行
+//   1. 鏡頭升高、拉到暗門東邊 16 公尺高 8 公尺（城門口直接回頭會被牆擋住），木馬旁的衛兵面朝東邊城門
+//   2. 等那一擊的期間慢慢前推下降，在那一擊前 CIN_SETTLE 秒停在暗門東邊 9 公尺、高 5 公尺（越過雕像台座），之後鏡頭不動
+//   3. 那一擊落下的同時：同伴從暗門落地；離暗門 HORSE_SIGNAL_R 內的衛兵約 0.3 秒倒下（不打鬥、不見血）；範圍外不動
+//   那一擊＝節奏裡真的掩護窗（規則 blindWindows 預先算出時間），不加假的重擊。規則在同一個窗發 horse_signal；
+//   若那個窗太快、鏡頭來不及就位，就改等下一個真的窗（規則的 horse_signal 只發一次，屆時不再等它）。
+//   純演出：不加按鍵、不動通關時間與過關畫面的數字，任意鍵跳過。
 // ============================================================
-const CIN_WAIT = 10;   // 轉完頭後最多等規則的 horse_signal 幾秒（下一個掩護窗最晚約一個循環），等不到才自己落
-const CIN_START = 2.6, CIN_TURN = 1.6, CIN_GAP = .45, CIN_FALL = .4, CIN_HOLD = 1.6, CIN_N = 4, CIN_FOG = .012;
-const CIN = { pending: false, active: false, done: false, t: 0, dropAt: null, yaw0: 0, figs: [], light: null, fog0: .045,
-              camTo: new THREE.Vector3(), look0: new THREE.Vector3(), lookTo: new THREE.Vector3(), tmpP: new THREE.Vector3(), tmpL: new THREE.Vector3() };
-// 從城門口往西看，中間的牆和屋子會擋住木馬，所以鏡頭升高並往木馬拉近：停在暗門東邊 CIN_CAM_DX 公尺、高 CIN_CAM_Y 公尺
-const CIN_CAM_DX = 16, CIN_CAM_DZ = 5, CIN_CAM_Y = 8, CIN_MOVE = 2.6;
+const HORSE_SIGNAL_R = 8;                       // 那一擊落下時，離暗門這麼多公尺內的衛兵倒下【假設】
+const CIN_START = 2.6;                          // 火把湧入後最晚幾秒開始回頭
+const CIN_MOVE = 2.6;                           // 從玩家眼睛升到第一個機位的秒數
+const CIN_PUSH_MIN = 1.2;                       // 第一個機位推到停點至少要幾秒（太快就改等下一個窗）
+const CIN_SETTLE = .3;                          // 那一擊前多久停穩
+// 聲音層 audio.test.js 會讀下一行（落地聲要和畫面對時），常數順序別改
+const CIN_GAP = .45, CIN_FALL = .4, CIN_HOLD = 2.2, CIN_N = 4, CIN_FOG = .012, CIN_GUARD_FALL = .3;
+const CIN_CAM_A = { dx: 16, y: 8, dz: 5 }, CIN_CAM_B = { dx: 9, y: 5, dz: 3 };
+const CIN_SAFE = 30;                            // 保險：音訊時間過了開始後這麼多秒一定轉黑（牆上時鐘另有 60 秒保險，防音訊停住）
+const CIN = { pending: false, active: false, done: false, cs: null, hitT: null, predT: null, sigT: null, tReady: null, figs: [], guards: [], light: null, fog0: .045,
+              camA: new THREE.Vector3(), camB: new THREE.Vector3(), look0: new THREE.Vector3(), lookTo: new THREE.Vector3(),
+              tmpP: new THREE.Vector3(), tmpL: new THREE.Vector3() };
 function cinReset() {
   if (CIN.light && CIN.light.parent) CIN.light.parent.remove(CIN.light);
   for (const f of CIN.figs) if (f.g.parent) f.g.parent.remove(f.g);
-  Object.assign(CIN, { pending: false, active: false, done: false, t: 0, dropAt: null, figs: [], light: null });
+  Object.assign(CIN, { pending: false, active: false, done: false, cs: null, hitT: null, predT: null, sigT: null, tReady: null, figs: [], guards: [], light: null });
   if (scene.fog) scene.fog.density = CIN.fog0;
 }
 const cinWanted = () => !!(game && horseOn() && !game.lab && S && S.bellyGeom && S.bellyGeom.td);
-function cinSignal(e) {                          // 規則說「那一擊在 delay 秒後」：同伴照這個時間落地
+/** 過關當下排時間：挑第一個來得及讓鏡頭就位的真掩護窗當「那一擊」，再倒推鏡頭何時開始動。 */
+function cinPlan() {
+  CIN.pending = true;
+  const now = audio ? audio.now() : 0;
+  const need = CIN_MOVE + CIN_PUSH_MIN + CIN_SETTLE;
+  const w0 = cinNextWindow(now);                 // 規則的 horse_signal 會在這個窗發
+  // 來得及就讓鏡頭剛好在這個窗前就位；來不及就馬上開始，那一擊改等下一個真的窗
+  CIN.cs = now + (w0 != null ? Math.max(0, Math.min(CIN_START, w0 - now - need)) : CIN_START);
+  CIN.tReady = CIN.cs + need;
+}
+/** 規則預測的下一個掩護窗開頭（> t）；沒有 blindWindows 就回 null。 */
+function cinNextWindow(t) {
+  try {
+    if (typeof Rules.blindWindows !== 'function') return null;
+    const w = Rules.blindWindows(t, t + 40, game).find(x => x && x.from > t);
+    return w ? w.from : null;
+  } catch (e) { return null; }
+}
+function cinSignal() {                           // 規則的 horse_signal＝那一擊真的落下（鏡頭來不及就位時不採用，改等下一個窗）
   if (!cinWanted() || !audio) return;
-  CIN.dropAt = audio.now() + (Number.isFinite(e.delay) ? Math.max(0, e.delay) : 0);
+  CIN.sigT = audio.now();
+}
+// 站著的同伴（約 1.75 公尺，和衛兵同比例；腹中坐著的剪影太矮）
+function cinFigure() {
+  const g = new THREE.Group(), sil = M(0x1a1612), helm = M(0x6a5230);
+  for (const s of [-1, 1]) box(.13, .8, .16, 0, s * .1, .4, 0, g, sil);         // 腿
+  box(.44, .72, .28, 0, 0, 1.16, 0, g, sil);                                    // 身體
+  const hd = new THREE.Mesh(new THREE.SphereGeometry(.15, 8, 6), helm); hd.position.y = 1.64; g.add(hd);
+  box(.04, .14, .3, 0, 0, 1.8, 0, g, helm);                                     // 頭盔的冠
+  const sp = cyl(.02, .02, 2, 0x5a5040, .26, 1.1, 0, g, 4); sp.rotation.z = .1;
+  return g;
 }
 function cinBuild() {
   const G = S.bellyGeom, td = G.td;
-  // 木馬下的一盞火：遠處的木馬和落地的同伴才看得見（純演出，不影響規則）
   CIN.light = new THREE.PointLight(0xff9a50, 0, 14, 2); CIN.light.position.set(td.x + 2, 1.6, td.z); world.add(CIN.light);
-  const sil = M(0x1a1612), helm = M(0x5a4628);
   for (let i = 0; i < CIN_N; i++) {
-    const g = new THREE.Group(); g.visible = false; world.add(g);
-    box(.4, .75, .3, 0, 0, .4, 0, g, sil);
-    const hd = new THREE.Mesh(new THREE.SphereGeometry(.15, 8, 6), helm); hd.position.y = .95; g.add(hd);
-    const sp = cyl(.02, .02, 1.8, 0x5a5040, .22, .9, 0, g, 4); sp.rotation.z = .12;
-    // 落地後往東散開，面向城門
+    const g = cinFigure(); g.visible = false; world.add(g);
     const side = i % 2 ? 1 : -1;
     CIN.figs.push({ g, x0: td.x, z0: td.z, x1: td.x + 1 + i * .7, z1: td.z + side * (.5 + .3 * i), y0: G.fy - .2 });
   }
+  // 離暗門 HORSE_SIGNAL_R 內的衛兵（只動畫面，不改規則的狀態）
+  CIN.guards = [];
+  for (const q of arr(game.guards)) {
+    if (!q || q.state === 'down' || !Number.isFinite(q.x)) continue;
+    const F = S.guards.get(q.id);
+    if (F && Math.hypot(q.x - td.x, q.z - td.z) <= HORSE_SIGNAL_R) CIN.guards.push({ F, q });
+  }
+  CIN.camA.set(td.x + CIN_CAM_A.dx, CIN_CAM_A.y, td.z + CIN_CAM_A.dz);
+  CIN.camB.set(td.x + CIN_CAM_B.dx, CIN_CAM_B.y, td.z + CIN_CAM_B.dz);
+  CIN.lookTo.set(td.x + .6, .9, td.z);
+  CIN.look0.set(-Math.sin(V.yaw), 0, -Math.cos(V.yaw)).multiplyScalar(10).add(camera.position);
 }
-function cinFinish() {
+function cinFinish(skip) {
   if (CIN.done) return;
+  if (skip) { const a = audio && audio.raw; try { if (a && typeof a.stopHorseSignal === 'function') a.stopHorseSignal(); } catch (e) {} }   // 跳過：結尾的落地聲與主題 0.3 秒收掉
   CIN.done = true; CIN.active = false; CIN.pending = false;
   if (game && game.phase === 'win') $('win').classList.add('dark');
 }
 function cinFrame(dt) {
-  if (!CIN.pending || CIN.done || !cinWanted()) return;
-  if (!CIN.active) {
-    if (winT < CIN_START) return;
-    CIN.active = true; CIN.t = 0; CIN.yaw0 = V.yaw; cinBuild();
-    const td0 = S.bellyGeom.td;
-    CIN.camTo.set(td0.x + CIN_CAM_DX, CIN_CAM_Y, td0.z + CIN_CAM_DZ);
-    CIN.lookTo.set(td0.x, 1, td0.z);
-    CIN.look0.set(-Math.sin(V.yaw), 0, -Math.cos(V.yaw)).multiplyScalar(10).add(camera.position);   // 原本看的方向前方 10 公尺
+  if (!CIN.pending || CIN.done || !cinWanted() || !audio) return;
+  const now = audio.now();
+  if (!CIN.active) { if (now < CIN.cs) return; CIN.active = true; cinBuild(); }
+  const G = S.bellyGeom, td = G.td;
+  if (now > CIN.cs + CIN_SAFE) { cinFinish(); return; }
+  if (CIN.hitT == null) {
+    if (CIN.sigT != null && CIN.sigT >= CIN.tReady - .05) CIN.hitT = CIN.sigT;          // 規則的那一擊，鏡頭已就位
+    else {
+      { const p = cinNextWindow(Math.max(now - .2, CIN.tReady)); if (p != null) CIN.predT = p; }   // 節奏會變：每幀重算下一個真的窗（已進窗 0.2 秒內仍算這一個）
+      if (CIN.sigT != null && CIN.predT != null && now >= CIN.predT) CIN.hitT = CIN.predT;   // 訊號太早被跳過：用下一個真的窗
+      if (CIN.predT == null && now >= CIN.tReady + 12) CIN.hitT = now;                     // 預測不到又等不到：保底
+    }
   }
-  CIN.t += dt;
-  const G = S.bellyGeom, td = G.td, P = game.player;
-  const k = smooth(0, 1, Math.min(1, CIN.t / CIN_MOVE));
-  CIN.tmpP.copy(camera.position).lerp(CIN.camTo, k);
-  CIN.tmpL.copy(CIN.look0).lerp(CIN.lookTo, smooth(0, 1, Math.min(1, CIN.t / CIN_TURN)));
+  // 鏡頭：升到 A → 慢慢推到 B，那一擊前 CIN_SETTLE 秒停穩，之後不動（sync 已依玩家擺好鏡頭，這裡在算圖前覆寫）
+  const target = CIN.hitT != null ? CIN.hitT : CIN.predT;
+  const tA = CIN.cs + CIN_MOVE, tB = Math.max(tA + CIN_PUSH_MIN, (target != null ? target : CIN.tReady) - CIN_SETTLE);
+  if (now < tA) { const k = smooth(0, 1, (now - CIN.cs) / CIN_MOVE); CIN.tmpP.copy(camera.position).lerp(CIN.camA, k); }
+  else { const k = smooth(0, 1, Math.min(1, (now - tA) / Math.max(.1, tB - tA))); CIN.tmpP.copy(CIN.camA).lerp(CIN.camB, k); }
+  CIN.tmpL.copy(CIN.look0).lerp(CIN.lookTo, smooth(0, 1, Math.min(1, (now - CIN.cs) / 1.6)));
   camera.position.copy(CIN.tmpP); camera.lookAt(CIN.tmpL);
-  if (scene.fog) scene.fog.density = CIN.fog0 + (CIN_FOG - CIN.fog0) * k;
-  CIN.light.intensity = 3 * k;
-  if (S.belly && S.belly.lid) S.belly.lid.rotation.z = -1.9;          // 暗門掀開（腹中練習若沒開過也照開）
-  const now = audio ? audio.now() : 0;
-  if (CIN.dropAt == null && CIN.t >= CIN_MOVE + CIN_WAIT) CIN.dropAt = now;  // 規則一直沒給 horse_signal：自己落
-  if (CIN.dropAt == null) return;
-  let last = 0;
+  const kf = smooth(0, 1, Math.min(1, (now - CIN.cs) / CIN_MOVE));
+  if (scene.fog) scene.fog.density = CIN.fog0 + (CIN_FOG - CIN.fog0) * kf;
+  CIN.light.intensity = 3 * kf;
+  if (S.belly && S.belly.lid) S.belly.lid.rotation.z = -1.9;
+  // 衛兵：面朝東邊的城門（被開門與火把引開視線）；那一擊落下時傾倒 CIN_GUARD_FALL 秒
+  const hit = CIN.hitT != null && now >= CIN.hitT;
+  for (const { F } of CIN.guards) {
+    F.g.rotation.y = Math.PI / 2;                                           // 模型的臉朝 +z，轉 +90° 朝 +x（東）
+    const u = hit ? clamp((now - CIN.hitT) / CIN_GUARD_FALL, 0, 1) : 0;
+    F.up.rotation.z = u * 1.5; F.up.position.y -= u * .2;
+  }
+  if (!hit) return;
+  // 同伴：那一擊落下時一個接一個從暗門落地，往東散開
+  let last = CIN.hitT;
   CIN.figs.forEach((f, i) => {
-    const t0 = CIN.dropAt + i * CIN_GAP, u = now - t0;
+    const t0 = CIN.hitT + i * CIN_GAP, u = now - t0;
     last = t0;
     if (u < 0) { f.g.visible = false; return; }
     f.g.visible = true;
-    if (u < CIN_FALL) { const q = u / CIN_FALL; f.g.position.set(f.x0, f.y0 * (1 - q * q), f.z0); return; }   // 從暗門垂直落下
+    f.g.rotation.y = Math.PI / 2;
+    if (u < CIN_FALL) { const q = u / CIN_FALL; f.g.position.set(f.x0, f.y0 * (1 - q * q), f.z0); return; }
     const q = Math.min(1, (u - CIN_FALL) / .8);
     f.g.position.set(f.x0 + (f.x1 - f.x0) * q, 0, f.z0 + (f.z1 - f.z0) * q);
-    f.g.rotation.y = -Math.PI / 2;
   });
   if (now > last + CIN_FALL + CIN_HOLD) cinFinish();
 }
@@ -2274,7 +2329,7 @@ function showOver() {
     telSurveyShow('win');
     // 先看城門打開、火把湧入，再轉黑畫面
     // 木馬開關開著：先演回頭看木馬，演完（或任意鍵跳過）才轉黑；保險 20 秒一定轉黑。開關關著照舊 5.5 秒
-    if (cinWanted()) { CIN.pending = true; setTimeout(cinFinish, 20000); }
+    if (cinWanted()) { cinPlan(); setTimeout(cinFinish, 60000); }
     else setTimeout(() => { if (game && game.phase === 'win') $('win').classList.add('dark'); }, 5500);
   }
 }
@@ -2326,7 +2381,7 @@ window.addEventListener('keydown', e => {
   const was = keys[e.code]; keys[e.code] = true;
   if (!e.repeat && !was && !MOVE_KEYS.has(e.code)) skipHint();   // 走路鍵一直在按，不拿來換提示
   if (!game) return;
-  if (game.phase === 'win' && CIN.pending && !CIN.done) { cinFinish(); return; }   // 回頭看木馬：任意鍵跳過
+  if (game.phase === 'win' && CIN.pending && !CIN.done) { cinFinish(true); return; }   // 回頭看木馬：任意鍵跳過
   if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
   if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
   if (paused || e.repeat || was) return;
@@ -2402,7 +2457,7 @@ try {
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL };   // collectBeats 給自動驗證用
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN };   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>
