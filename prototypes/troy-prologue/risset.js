@@ -1361,8 +1361,11 @@
       pl.panting = panting;
       // 跑超過 RUN_PANT_AFTER 之後，停下那一幀就算喘（不能趁那一幀屏息）
       const noBreath = panting || (K.MOVES_MODE && pl.running && pl.runT > K.RUN_PANT_AFTER + 1e-9);
+      // 11/12 使用者回報：開關開著時可以「邊走邊先按住空白鍵」——有移動輸入時先不進屏息（照常走），
+      // 一停下（沒有移動輸入）的那一幀立刻進屏息，不用放開再按。已經在屏息中就照舊（按方向鍵也不會動）。報告版照舊（一按就停下屏息）。
+      const breathWait = K.MOVES_MODE && !pl.breathing && Math.hypot(inp.mx, inp.mz) > 1e-6;
       // 屏息
-      if (inp.breath && !pl.breathLock && !noBreath) {
+      if (inp.breath && !pl.breathLock && !noBreath && !breathWait) {
         if (!pl.breathing) { emit('sfx', 'breath_in'); pl.breathSaved = false; }
         pl.breathing = true;
         pl.breathT += dt;

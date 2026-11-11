@@ -2885,7 +2885,10 @@ test('11/11 A1 跑：點一下 Shift 仍是衝刺；按住超過 RUN_HOLD 才跑
   r = runAll(g2, t, t + DT, () => ({ mx: 1 }));
   t = r.t;
   assert.ok(r.ev.some((e) => e.a === 'run_stop') && !g2.player.running, '放開 Shift → run_stop');
-  // 屏息時不能跑
+  // 屏息時不能跑（先站著屏住，再按方向鍵和 Shift；11/12 起移動中按住空白鍵是「停下才屏息」，所以要先停下）
+  r = runAll(g2, t, t + DT, () => ({ breath: true }));
+  t = r.t;
+  assert.ok(g2.player.breathing);
   r = runAll(g2, t, t + 0.5, () => ({ mx: 1, run: true, breath: true }));
   t = r.t;
   assert.ok(!r.ev.some((e) => e.a === 'run_start') && !g2.player.running, '屏息不能跑');
@@ -4154,4 +4157,41 @@ test('11/12 第 18.7 節：新鼓聲時，逃（追殺中、不在影子裡）�
   // 報告版（開關關著）不受影響
   const off = run({ MOVES_MODE: false }, false).filter((s) => !s.blind && !s.hidden && !s.start);
   assert.ok(off.filter((s) => s.a === 'step_masked').length >= off.length - 1, '報告版照舊');
+});
+
+test('11/12 使用者回報：移動中先按住空白鍵——照常走，不屏息；一停下（沒有移動輸入）的那一幀立刻進屏息，不用放開再按；放開照常結束；喘的時候照舊不能屏息；報告版照舊一按就停下屏息', () => {
+  const g = allDown(mvs({ startZone: 2 }));
+  let t = 0; g.step(t, {}); place(g, 14, 22);
+  for (let k = 0; k < 20; k++) { t += DT; g.step(t, { mx: 1 }); }
+  const x0 = g.player.x;
+  for (let k = 0; k < 20; k++) { t += DT; g.step(t, { mx: 1, breath: true }); }
+  assert.ok(!g.player.breathing && g.player.x > x0 + 0.5, '移動中按住空白鍵：照常走、不屏息');
+  g.drain();
+  t += DT; g.step(t, { breath: true });   // 一停下
+  assert.ok(g.player.breathing, '停下那一幀立刻屏息');
+  assert.ok(g.drain().some((e) => e.a === 'breath_in'));
+  const x1 = g.player.x;
+  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: 1, breath: true }); }
+  assert.ok(g.player.breathing && Math.abs(g.player.x - x1) < 1e-9, '已經在屏息中：按方向鍵也不動（照舊）');
+  t += DT; g.step(t, {});
+  assert.ok(!g.player.breathing, '放開照常結束');
+  // 蹲著走也一樣
+  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: 1, crouch: true, breath: true }); }
+  assert.ok(!g.player.breathing && g.player.crouching);
+  t += DT; g.step(t, { crouch: true, breath: true });
+  assert.ok(g.player.breathing, '蹲著停下那一幀也進屏息');
+  t += DT; g.step(t, {});
+  // 跑超過 RUN_PANT_AFTER 後停下：喘，照舊不能屏息；喘完（空白鍵一直按著）就進屏息
+  for (let k = 0; k * DT < K.RUN_HOLD + K.RUN_PANT_AFTER + 0.3; k++) { t += DT; g.step(t, { mx: -1, run: true, breath: true }); }
+  t += DT; g.step(t, { breath: true });
+  assert.ok(g.player.panting && !g.player.breathing, '喘的時候不能屏息');
+  const until = g.player.pantUntil;
+  while (t < until + 0.1) { t += DT; g.step(t, { breath: true }); }
+  assert.ok(g.player.breathing, '喘完、空白鍵還按著 → 進屏息');
+  // 報告版：移動中一按空白鍵就停下屏息（照舊）
+  const o = allDown(mvOff({ startZone: 2 }));
+  let u = 0; o.step(u, {}); place(o, 14, 22);
+  for (let k = 0; k < 5; k++) { u += DT; o.step(u, { mx: 1 }); }
+  u += DT; o.step(u, { mx: 1, breath: true });
+  assert.ok(o.player.breathing, '報告版照舊');
 });
