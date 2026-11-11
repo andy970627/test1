@@ -28,7 +28,8 @@ body:not(.playing) .hud { display: none !important; }
 #stage { position: fixed; inset: 0; }
 canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .hud { position: fixed; pointer-events: none; }
-#noise { inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: 0; mix-blend-mode: screen; }
+/* p > 0.8 視聽不協調：重影（延遲一點的畫面，模糊、錯開疊上），不用數位雜訊（設計 2026-11-06 第 94 行） */
+#noise { inset: 0; width: 100%; height: 100%; opacity: 0; mix-blend-mode: screen; filter: blur(1.2px); }
 #edge { inset: 0; box-shadow: inset 0 0 140px 30px var(--warn); opacity: 0; }
 /* 盲區凝結：冷灰偏藍的色罩（強度由程式依 visualAid 設定） */
 #chill { inset: 0; background: #4f6ea8; mix-blend-mode: color; opacity: 0; }
@@ -58,7 +59,8 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #breath.on span { color: var(--moon); }
 #breath.low i b { background: var(--blood); }
 #shade { color: var(--moon); font-size: 12px; }
-#hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 17px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(760px, calc(100vw - 32px)); transition: opacity .6s; }
+#hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 17px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(760px, calc(100vw - 432px - 2 * var(--sl))); transition: opacity .6s; }
+@media (max-width: 840px) { #hint { width: calc(100vw - 32px); bottom: calc(84px + var(--sb)); } }
 #hint .k { display: inline-block; border: 1px solid var(--dim); padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: 14px; }
 #msgs { left: 50%; top: calc(18px + var(--st)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(640px, calc(100vw - 32px)); }
 #msgs div { background: var(--panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 5s forwards; }
@@ -133,7 +135,7 @@ button:hover { filter: brightness(1.12); }
   #whisper { bottom: calc(118px + var(--sb)); font-size: 14px; }
   #breath { width: 140px; }
   #phase { width: 150px; }
-  #hint { font-size: 15px; bottom: calc(60px + var(--sb)); }
+  #hint { font-size: 15px; bottom: calc(84px + var(--sb)); }
 }
 @media (prefers-reduced-motion: reduce) { #msgs div { animation: none; } }
 /* 試玩數據（遙測，docs/design/2026-11-08-telemetry.md）：裝置選擇、告知、快問、匯出、即時摘要 */
@@ -156,7 +158,7 @@ button:hover { filter: brightness(1.12); }
 </style>
 
 <div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
-<canvas class="hud" id="noise" width="160" height="90" aria-hidden="true"></canvas>
+<canvas class="hud" id="noise" width="240" height="135" aria-hidden="true"></canvas>
 <div class="hud" id="chill"></div>
 <div class="hud" id="stepEdge"></div>
 <div class="hud" id="alertedEdge"></div>
@@ -789,6 +791,7 @@ function buildHorse(H, L) {
   });
 }
 
+const BEAM_TMP = new THREE.Vector3(), BEAM_NEAR = .6, BEAM_FAR = 2.4;   // 月光斜光：鏡頭離那片光 BEAM_NEAR 公尺內全透明，BEAM_FAR 以外照原樣
 function buildGate(G, gr) {
   // 門在 x = gate.x 那面牆上，沿 z 展開；城內在門閂那一側
   const alongZ = (gr.x1 - gr.x0) < (gr.z1 - gr.z0);
@@ -822,7 +825,7 @@ function buildGate(G, gr) {
   const beam = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 9), lm(.07)); beam.position.set(-1.4, 4.4, 1.6); beam.rotation.set(0, .3, .22); root.add(beam);
   const pool = new THREE.Mesh(new THREE.CircleGeometry(1.3, 24), lm(.22)); pool.rotation.x = -Math.PI / 2; pool.position.set(-1.2, .04, 1.5); root.add(pool);
   const ml = new THREE.PointLight(0xa8bce8, .8, 6, 2); ml.position.set(-1, 3.2, 1.4); root.add(ml);
-  S.gate = { doors, bar, gw, open: 0 };
+  S.gate = { doors, bar, gw, open: 0, beam, beamOp: beam.material.opacity };
 }
 
 // ---------- 衛兵 ----------
@@ -1246,6 +1249,7 @@ function showHint(text) {
   // 把「按 Q」「按住 E」裡的鍵名框起來
   keyText(h, text);
   h.style.opacity = 1;
+  placeWhisper();
   clearTimeout(hintTimer);
   hintTimer = setTimeout(nextHint, hintQ.length ? HINT_MIN : HINT_LAST);   // 沒有下一則就留久一點再淡出
 }
@@ -1476,13 +1480,14 @@ function loop() {
     audio.update(game);
     if (!overShown) showOver();
   }
-  if (game && S) { sync(dt, nowMs / 1000); renderer.render(scene, camera); renderDashFx(dt); if (playing) hud(dt); }
+  if (game && S) { sync(dt, nowMs / 1000); renderer.render(scene, camera); ghostFrame(dt); renderDashFx(dt); if (playing) hud(dt); }
   telHud(nowMs);
   requestAnimationFrame(loop);
 }
 
 // ---------- 畫面同步 ----------
 function guardColor(state) { return state === 'hunted' ? 0xd23a2a : 0xe0b04a; }
+const REDUCED_MOTION = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 function sync(dt, now) {
   const g = game, P = g.player, L = g.level;
   const p = curP(), blind = g.cycle && g.cycle.blind;
@@ -1499,7 +1504,8 @@ function sync(dt, now) {
   // 重合擊震波：鏡頭往下一沉再彈回（只有鼓聲不中斷模式，× visualAid）
   const thump = VIS.shock > 0 ? -Math.sin((1 - VIS.shock) * Math.PI * 3) * VIS.shock * .05 * VIS.aid : 0;
   camera.position.set(P.x + rand(-shake, shake), V.eye + bob + thump, P.z);
-  camera.rotation.set(V.pitch, V.yaw, 0);
+  const roll = g.phase === 'play' && !REDUCED_MOTION ? Math.sin(now * 2.6) * DESYNC_ROLL * desyncAmt() : 0;   // p>0.8 耳鳴般搖晃
+  camera.rotation.set(V.pitch, V.yaw, roll);
 
   // 視覺輔助：凝結（火焰停住）、拍點（火焰縮放）、月亮
   const playingNow = g.phase === 'play' && !paused;
@@ -1835,10 +1841,20 @@ function visFrame(dt, floorY, playing) {
 // ============================================================
 const HW = { sig: null, sigBy: {}, gaspAt: -1e9, nowN: 0, nowCycle: null, susp: {}, growlAt: {}, clickCycle: null,
              hand: 0, handKick: 0, back: 0, backSide: 0, blade: 0, lastLadder: null, capTimer: null };
+/** 同伴低聲的字放在提示字幕上方：字幕有字時，底邊至少高過字幕頂 8 px；沒字時回到 CSS 預設位置。 */
+function placeWhisper() {
+  const w = $('whisper'), h = $('hint');
+  w.style.bottom = '';
+  if (hintCur == null || !h.textContent) return;
+  const top = h.getBoundingClientRect().top, base = parseFloat(getComputedStyle(w).bottom) || 0;
+  const need = innerHeight - top + 8;
+  if (need > base) w.style.bottom = need.toFixed(0) + 'px';
+}
 function caption(who, text, ms) {
   const el = $('whisper');
   el.innerHTML = ''; const i = document.createElement('i'); i.textContent = who; el.appendChild(i); el.appendChild(document.createTextNode('「' + text + '」'));
   el.style.opacity = 1;
+  placeWhisper();
   clearTimeout(HW.capTimer); HW.capTimer = setTimeout(() => { el.style.opacity = 0; }, ms || 1800);
 }
 // 同伴教學在哪一區（M9 教學重排；對照 risset.js enterZone 的教學順序）：
@@ -2099,6 +2115,13 @@ function hintVisuals(dt) {
     tmpC.setHex(0x55555a).lerp(low ? RING_MOON : RING_DARK, aid);
     S.latchRings.color.copy(tmpC);
   }
+  // 門閂旁的月光斜光：鏡頭貼近那片光時淡掉（站在門閂邊時會整片糊在臉上，看起來像穿進一面半透明的牆）
+  if (S && S.gate && S.gate.beam) {
+    const b = S.gate.beam, q = b.worldToLocal(BEAM_TMP.copy(camera.position));
+    const d = Math.hypot(Math.max(0, Math.abs(q.x) - 1.1), Math.max(0, Math.abs(q.y) - 4.5), q.z);
+    const op = S.gate.beamOp * smooth(BEAM_NEAR, BEAM_FAR, d);
+    b.material.opacity = op; b.visible = op > .002;
+  }
   // 腳印：慢慢暗掉。追殺中合拍（hunt_step）每步一階，紅 → 紫 → 藍（規格 M2「合拍腳印紅轉藍」），不受 visualAid 影響
   if (S) for (const P of S.prints) if (P.life > 0) {
     P.life = Math.max(0, P.life - dt / 2.2);
@@ -2111,8 +2134,21 @@ function hintVisuals(dt) {
 
 // ---------- 介面 ----------
 const gateProg = g => g.gate ? clamp(num(g.gate.progress, 0) / num(g.gate.need, K().GATE_NEED, 15), 0, 1) : 0;
-let noiseT = 0;
-const nctx = $('noise').getContext('2d'), nimg = nctx.createImageData(160, 90);
+// p > 0.8 視聽不協調（設計 2026-11-06 第 94 行、音樂核心概念第 289 行）：重影＋耳鳴般搖晃，不用數位雜訊
+//   重影＝每 GHOST_EVERY 秒拍一張目前畫面，模糊、錯開幾個像素疊上（看起來慢半拍）；搖晃＝鏡頭輕微左右傾（sync 裡）
+const GHOST_EVERY = .12, GHOST_ALPHA = .38, GHOST_PX = 5, DESYNC_ROLL = .018;
+let ghostT = 0;
+const gctx = $('noise').getContext('2d');
+/** 視聽不協調強度 0～1：p 超過 DESYNC_P 後線性變大（最少 0.15），沒進入時 0。 */
+function desyncAmt() { const dp = num(K().DESYNC_P, .8); return desync() ? clamp((curP() - dp) / (1 - dp), .15, 1) : 0; }
+function ghostFrame(dt) {                        // 要在 renderer.render 之後同一幀呼叫，才拍得到畫面
+  const el = $('noise'), nz = game && game.phase === 'play' && !paused ? desyncAmt() : 0;
+  if (nz <= 0) { if (el.style.opacity !== '0') el.style.opacity = '0'; ghostT = 0; return; }
+  if ((ghostT -= dt) <= 0) { ghostT = GHOST_EVERY; try { gctx.drawImage(renderer.domElement, 0, 0, el.width, el.height); } catch (e) {} }
+  const t = performance.now() / 1000;
+  el.style.opacity = (nz * GHOST_ALPHA).toFixed(3);
+  el.style.transform = `translate(${((Math.sin(t * 2.3) + 1) * GHOST_PX * nz).toFixed(1)}px, ${(Math.cos(t * 1.7) * GHOST_PX * .5 * nz).toFixed(1)}px)`;
+}
 function hud(dt) {
   labHud();
   const g = game, P = g.player, p = curP();
@@ -2157,14 +2193,7 @@ function hud(dt) {
   } else {
     const wf = $('whiteFlash'); if (wf && wf.style.opacity !== '0') wf.style.opacity = '0';
   }
-  // p>0.8：畫面雜訊
-  const dp = num(K().DESYNC_P, .8), nz = desync() ? clamp((p - dp) / (1 - dp), .15, 1) : 0;
-  $('noise').style.opacity = (nz * .22).toFixed(3);
-  if (nz > 0 && (noiseT += dt) > .04) {
-    noiseT = 0; const d = nimg.data;
-    for (let i = 0; i < d.length; i += 4) { const v = Math.random() < .5 ? 0 : Math.random() * 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
-    nctx.putImageData(nimg, 0, 0);
-  }
+  // p>0.8 的重影在 loop 裡算圖後畫（ghostFrame）
   // 相位條（除錯）
   const showPhase = $('oPhase').checked; $('phase').hidden = !showPhase;
   if (showPhase && g.cycle) {
@@ -2272,6 +2301,7 @@ function cinFrame(dt) {
   if (now > CIN.cs + CIN_SAFE) { cinFinish(); return; }
   if (CIN.hitT == null) {
     if (CIN.sigT != null && CIN.sigT >= CIN.tReady - .05) CIN.hitT = CIN.sigT;          // 規則的那一擊，鏡頭已就位
+    else if (CIN.sigT != null && CIN.predT != null && now >= CIN.predT) CIN.hitT = CIN.predT;   // 上一幀預測的窗已經到了（幀率很低、一幀跨過整個窗時也接得住）
     else {
       { const p = cinNextWindow(Math.max(now - .2, CIN.tReady)); if (p != null) CIN.predT = p; }   // 節奏會變：每幀重算下一個真的窗（已進窗 0.2 秒內仍算這一個）
       if (CIN.sigT != null && CIN.predT != null && now >= CIN.predT) CIN.hitT = CIN.predT;   // 訊號太早被跳過：用下一個真的窗
