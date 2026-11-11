@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>試玩切換台</title>
+<style>
+/* 本機試玩用：一頁切換木馬之夜各版本、試驗場、試聽頁、換層試驗場。只產生連結，不改遊戲。 */
+:root { --night:#0d0b09; --panel:#1a1511; --line:#3a2d22; --ash:#d8cbb6; --dim:#8f8270; --fire:#f2b866; }
+body { margin:0; background:var(--night); color:var(--ash); font:15px/1.6 "Noto Sans TC", system-ui, sans-serif; }
+main { max-width:760px; margin:0 auto; padding:20px 16px 48px; }
+h1 { color:var(--fire); font-size:22px; margin:0 0 4px; }
+h2 { font-size:16px; margin:0 0 8px; color:var(--fire); }
+p.note { color:var(--dim); font-size:13px; margin:0 0 16px; }
+section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:12px; }
+label { display:inline-flex; align-items:center; gap:6px; margin:4px 14px 4px 0; }
+select { background:#2a2018; color:var(--ash); border:1px solid var(--line); border-radius:4px; padding:3px 6px; font:inherit; }
+a.btn { display:inline-block; background:#2a2018; color:var(--ash); border:1px solid var(--line); border-radius:6px; padding:7px 12px; margin:4px 6px 4px 0; text-decoration:none; }
+a.btn:hover { border-color:var(--fire); }
+a.go { background:var(--fire); color:#140d08; font-weight:600; }
+code { color:var(--dim); font-size:12px; word-break:break-all; }
+small { color:var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>試玩切換台</h1>
+  <p class="note">本機用（要先開本機伺服器）。每個按鈕都在新分頁打開；遊戲裡的實驗開關（相位條、試玩數據摘要等）仍在開場字卡右邊。</p>
+
+  <section>
+    <h2>木馬之夜：整關</h2>
+    <label><select id="moves"><option value="">跑蹲版（預設，按住 Shift 跑、C 蹲）</option><option value="0">報告版（?moves=0，報告數字用這個）</option></select></label><br>
+    <label><input type="checkbox" id="horse"> 木馬新內容（腹中練習、木馬陰影、共鳴、結尾回頭）</label><br>
+    <label>從第 <select id="zone"><option value="">0（開場）</option><option>1</option><option>2</option><option>3</option><option>4</option></select> 區開始</label>
+    <label><input type="checkbox" id="tel"> 記錄試玩數據</label>
+    <label><input type="checkbox" id="mute"> 靜音</label><br>
+    <a class="btn go" id="play" target="_blank">開始玩</a> <code id="url"></code>
+  </section>
+
+  <section>
+    <h2>木馬之夜：試驗場</h2>
+    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=belly">腹中練習</a>
+    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=horse">木馬共鳴</a>
+    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=run">跑</a>
+    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=crouch">蹲</a>
+    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=listen">屏息聽</a>
+    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=hunt">追殺</a>
+    <br><small>「追殺」試驗場在規則角色做完追殺重做前還打不開或是舊行為。</small>
+  </section>
+
+  <section>
+    <h2>加速感試聽</h2>
+    <label>版本 <select id="ill">
+      <option value="now">現行</option><option value="s1">S1 同一種鼓</option><option value="s2">S2 鐘形偏快</option><option value="s3">S3 兩個都改</option>
+      <option value="u1">U1 六層</option><option value="u2">U2 ＋音高</option><option value="u3">U3 ＋上升</option><option value="u4">U4 ＋衝進最響一擊</option>
+      <option value="v1">V1 最響一擊不固定</option><option value="v2">V2 ＋假的</option><option value="v3">V3 ＋更響</option><option value="v4">V4 ＋三對二</option>
+    </select></label>
+    <label>一圈 <select id="cyc"><option value="12">12 秒</option><option value="6">6 秒</option><option value="20">20 秒</option></select></label>
+    <a class="btn go" id="listen" target="_blank">打開試聽頁</a>
+    <br><small>V1～V4、20 秒要等聲音角色交卷後才有；選了還沒做好的版本，頁面會停在現行。</small>
+  </section>
+
+  <section>
+    <h2>換層試驗場</h2>
+    <a class="btn" target="_blank" href="layer-ride/index.html">有聲部譜（先玩這個）</a>
+    <a class="btn" target="_blank" href="layer-ride/index.html?aid=0">沒有聲部譜（真正考耳朵）</a>
+  </section>
+
+  <section>
+    <h2>其他</h2>
+    <a class="btn" target="_blank" href="index.html">原本的總首頁</a>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function gameUrl() {
+  const q = new URLSearchParams();
+  if ($('moves').value) q.set('moves', $('moves').value);
+  if ($('horse').checked) q.set('horse', '1');
+  if ($('zone').value) q.set('startZone', $('zone').value);
+  if ($('tel').checked) q.set('telemetry', '1');
+  if ($('mute').checked) q.set('mute', '1');
+  const s = q.toString();
+  return 'troy-prologue/index.html' + (s ? '?' + s : '');
+}
+function refresh() {
+  const u = gameUrl(); $('play').href = u; $('url').textContent = u;
+  $('listen').href = 'troy-prologue/audio-test.html?ill=' + $('ill').value + '&cycle=' + $('cyc').value;
+}
+// 記住上次的選擇（只存在這台電腦的瀏覽器；存不了就用預設）
+const KEYS = ['moves', 'horse', 'zone', 'tel', 'mute', 'ill', 'cyc'];
+try { const s = JSON.parse(localStorage.getItem('switch-board') || '{}'); KEYS.forEach(k => { if (k in s) { const el = $(k); if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; } }); } catch (e) {}
+document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', () => {
+  refresh();
+  try { const s = {}; KEYS.forEach(k => { const el = $(k); s[k] = el.type === 'checkbox' ? el.checked : el.value; }); localStorage.setItem('switch-board', JSON.stringify(s)); } catch (e) {}
+}));
+refresh();
+</script>
+</body>
+</html>
