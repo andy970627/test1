@@ -1,4 +1,4 @@
-/* playtest-recorder 設定檔：序章《特洛伊的迴響》木馬之夜（prototypes/troy-prologue/）
+﻿/* playtest-recorder 設定檔：序章《特洛伊的迴響》木馬之夜（prototypes/troy-prologue/）
  *
  * 設定檔介面（其他原型照抄這個形狀即可）：
  *   dir / page        要服務的資料夾（相對本檔）與入口頁
@@ -53,15 +53,15 @@ export default {
       }, src);
     }
     // --listen-test（11/11，屏息聽 C1）：頁面用 ?lab=listen 開。聲音層建立前掛分接點，量衛兵線（guardListen）與一般鼓拍線（beatBus）進出的音量差與左右，
-    // 不受「衛兵聲在總輸出裡太小」影響。找法：audio.js 連續建立 guardOut、beatBus、guardListen，guardListen 一建立就接往前第 2 個 GainNode（guardOut），中間那個＝beatBus；候選裡第一個被衛兵 PannerNode 接上的才算。
+    // 不受「衛兵聲在總輸出裡太小」影響。找法：衛兵 PannerNode 接上、而且往下 guardOut → master 都是 GainNode 的那條＝guardListen；guardOut 之後建立的第一個 GainNode＝beatBus。
     if (o.listenTest || o.labBot) await page.evaluate(() => {
       const AP = AudioNode.prototype, oc = AP.connect, BC = BaseAudioContext.prototype, ocg = BC.createGain;
       const M = window.__recListen = { gains: [], ok: false };
-      BC.createGain = function () { const g = ocg.apply(this, arguments); if (!M.ok && M.gains.length < 400) M.gains.push(g); return g; };
+      BC.createGain = function () { const g = ocg.apply(this, arguments); if (!M.ok && M.gains.length < 5000) M.gains.push(g); return g; };
       const an = (ctx) => { const a = ctx.createAnalyser(); a.fftSize = 2048; return a; };
       const stereo = (ctx, src) => { const sp = ctx.createChannelSplitter(2), L = an(ctx), R = an(ctx); oc.call(src, sp); oc.call(sp, L, 0); oc.call(sp, R, 1); return [L, R]; };
       function setup(gl) {
-        const ctx = gl.context, i = M.gains.indexOf(gl), bb = M.gains[i - 1];
+        const ctx = gl.context, bb = M.gains[M.gains.indexOf(M.first.get(gl)) + 1];
         M.ok = true; M.gl = gl; M.bb = bb;
         M.gIn = ocg.call(ctx); M.bIn = ocg.call(ctx);
         M.aGI = stereo(ctx, M.gIn); M.aGO = stereo(ctx, gl);
@@ -73,17 +73,18 @@ export default {
         M.bass = [];
         for (let j = 1; j < M.gains.length; j++) { const x = M.gains[j]; if (x !== M.gOut && M.first.get(x) === M.master && M.first.get(M.gains[j - 1]) === x) { const a = an(ctx); oc.call(x, a); M.bass.push({ j, a }); } }
       }
-      M.first = new Map(); M.cand = 0;
+      M.first = new Map();
       AP.connect = function (dest) {
         const r = oc.apply(this, arguments);
-        // audio.js 連續建立 guardOut → beatBus → guardListen，guardListen 一建立就接 guardOut（往前數第 2 個 GainNode）
-        if (!M.ok && this instanceof GainNode && !M.first.has(this)) {
-          M.first.set(this, dest);
-          const i = M.gains.indexOf(this);
-          if (i >= 2 && dest === M.gains[i - 2] && M.first.get(M.gains[i - 1]) !== dest) { M.cand++; (M.cands || (M.cands = new Set())).add(this); }
+        if (!M.ok && !M.first.has(this)) M.first.set(this, dest);
+        // 11/11 晚（聲音層在 beatBus 與 guardListen 之間加了「躲」的節點，舊的建立順序規則失效）：
+        // 衛兵 PannerNode 接上的 GainNode X，若 X → guardOut → master 三層都是 GainNode，X＝guardListen；beatBus＝guardOut 之後建立的第一個 GainNode。
+        if (!M.ok && this instanceof PannerNode && dest instanceof GainNode) {
+          const G = M.first.get(dest), Mm = G && M.first.get(G);
+          const gi = M.gains.indexOf(G), B = M.gains[gi + 1];
+          // 提示聲的 PannerNode 也會先接到三層 GainNode；guardOut 的特徵：下一個建立的 GainNode（beatBus）第一條線接它自己的下一個（hideSplit）
+          if (G instanceof GainNode && Mm instanceof GainNode && B && M.first.get(B) === M.gains[gi + 2]) setup(dest);
         }
-        // 候選裡第一個被 PannerNode（衛兵 3D 聲）接上的才是 guardListen（beatBus 也符合上面的建立順序）
-        if (!M.ok && this instanceof PannerNode && M.cands && M.cands.has(dest)) setup(dest);
         if (M.ok && dest === M.gl && this !== M.gIn) oc.call(this, M.gIn);
         if (M.ok && dest === M.bb && this !== M.bIn) oc.call(this, M.bIn);
         return r;
@@ -178,6 +179,10 @@ export default {
         return { iL: pw(M.aGI[0]), iR: pw(M.aGI[1]), oL: pw(M.aGO[0]), oR: pw(M.aGO[1]), bi: pw(M.aBI), bo: pw(M.aBO),
           gp: M.aGT ? dB(pk(M.aGT) * mg) : null, mp: M.aM ? dB(pk(M.aM)) : null, bp: (M.bass || []).map(b => dB(pk(b.a) * mg)), bg: (M.bass || []).map(b => +M.gains[b.j].gain.value.toFixed(3)) }; })(),
       ls: (() => { try { const r = a.raw && a.raw.listenInfo ? a.raw : a; return r.listenInfo ? !!r.listenInfo().on : null; } catch (e) { return null; } })(),
+      // hm（第 18 節，11/11）：追殺聲音模式，照 audio.js huntUpdate 的判法自己算：沒被追＝none、被追而且有人在搜影子、你躲在暗處＝hide、其他＝escape
+      hm: (() => { if (!g.hunted) return 'none'; const sr = (g.guards || []).some(q => q && q.active !== false && q.search && !q.search.done); return sr && g.player && g.player.hidden ? 'hide' : 'escape'; })(),
+      // sm：這一刻起步踩不踩得上鼓點（規則 stepMasked）
+      sm: (() => { try { const R = window.RissetRules; return R && R.stepMasked ? !!R.stepMasked(g.time, g) : null; } catch (e) { return null; } })(),
       // va：視覺輔助強度（殘響掩護版的木魚預告音量也乘它；第 4 區自動模式為 0，見設計 7.9）
       va: (() => { try { const R = window.RissetRules; return R && R.visualAidFor ? R.visualAidFor(g.zone, g.visualAidMode, g.T) : null; } catch (e) { return null; } })(),
       hd: (() => { const r = (a.raw && a.raw.horseInfo) ? a.raw : a; try { const h = r.horseInfo && r.horseInfo(); return h && isFinite(h.dist) ? +h.dist.toFixed(2) : null; } catch (e) { return null; } })(),
