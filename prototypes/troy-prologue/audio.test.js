@@ -46,3 +46,8 @@ test('C3 結尾：同伴落地時間和畫面的 CIN_FALL、CIN_GAP、CIN_N 同�
   assert.strictEqual(C.HORSE_LAND_FALL, +m[2]);
   assert.strictEqual(C.HORSE_LAND_N, +m[3]);
 });
+
+test('C3 結尾的共鳴不超過錄音驗過的貼近音量（2.5 m，那時共鳴峰值比重合擊低 1.7 dB；守「共鳴不比重擊響」）', () => {
+  assert.ok(A.horseBoomGain(C.HORSE_SIGNAL_REF_M) <= A.horseBoomGain(2.5));
+  assert.ok(C.HORSE_SIGNAL_REF_M > 0);
+});

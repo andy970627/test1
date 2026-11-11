@@ -174,14 +174,16 @@
     HORSE_BOOM_R: 25,          // 木馬共鳴：離木馬中心這麼多公尺外聽不到【假設】
     HORSE_BOOM_GAIN: 0.5,      // 木馬共鳴：貼著木馬時的音量【假設】
     HORSE_BOOM_DELAY: 0.07,    // 共鳴比那一擊晚多久（秒）
+    HORSE_BOOM_RISE: 0.08, HORSE_BOOM_HOLD: 0.35, HORSE_BOOM_END: 0.6,   // 共鳴的平包絡（秒，從共鳴開始算）
     // C3 結尾（horse_signal）：同伴從暗門落地的時間和畫面的 CIN_FALL、CIN_GAP 同值（index.html），落地聲才對得上
     HORSE_LAND_FALL: 0.4,      // 收到 horse_signal 後第一人落地（秒）
     HORSE_LAND_GAP: 0.45,      // 每人間隔（秒）
     HORSE_LAND_N: 4,           // 落地人數
     HORSE_SIGNAL_THEME_AT: 0.9,// 那一擊後多久接主題動機（里拉琴前四音，和腹中 belly_ready 同一句）
     HORSE_SIGNAL_FADE: 0.3,    // 演出被跳過時收掉的時間（秒）
+    HORSE_SIGNAL_REF_M: 3,     // C3 結尾那一次共鳴當作站在木馬旁幾公尺（音量 0.387，比錄音驗過的 2.5 m 再低 0.4 dB）
     HORSE_SIGNAL_DOWN_GAIN: 0.5, // 衛兵在那一擊同時倒下的悶響（只在 250 Hz 以下，疊在重擊裡）：離線 0.9 時那一擊前後 0.5 秒 250 Hz 以下也只多 0.2 dB，等於被蓋住，照裁決「不另外突出」
-    HORSE_BOOM_MIX: 7,         // 木馬共鳴音色內部的混音倍數（GAIN 是設計常數，這個是聲音層調成「貼著木馬那一擊後 0.5 秒 300～1200 Hz 比 30 公尺外厚 ≥ 3 dB」用的；離線 6 倍 +3.1、8 倍 +4.4）
+    HORSE_BOOM_MIX: 0.63,      // 木馬共鳴內部混音倍數。11/11 遊戲內實測：7 倍時貼近共鳴峰值比重合擊高 14.4 dB（離線只估到 6.8，離線會低估約 8 dB，以遊戲錄音為準）；改成以 --horse-test 錄音校正
     // 喇叭可聽度（11/08）
     PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
     BRIGHT_HZ: 1800,           // 盲區前節奏匯流排高架濾波的轉折頻率（Hz）：主要碰到手拍、金屬（k = 2、3）
@@ -817,13 +819,18 @@
     var horsePan = ctx.createPanner(); horsePan.panningModel = 'HRTF'; horsePan.distanceModel = 'linear'; horsePan.rolloffFactor = 0;   // 只管方向，距離衰減由 horseBoomGain 算
     horseBus.connect(horsePan); horsePan.connect(master);   // 接 master（經總輸出壓縮器，防爆音；試過繞過壓縮器，量起來沒差）
     function horseBoom(dest, t, g) {      // 空心木馬跟著那一擊「轟」：木質低鳴 180～400 Hz＋600～900 Hz 木板聲
-      g *= C.HORSE_BOOM_MIX; t += C.HORSE_BOOM_DELAY;   // 空心木箱被敲之後才共振起來：晚一點響，不和重合擊搶同一個峰值（總輸出壓縮器會把疊在峰值上的壓掉）
-      // 能量放在 300 Hz 以上（筆電喇叭聽得到、也是錄音量「那一擊多厚」的頻段）：低鳴從 330 Hz 滑到 200 Hz，仍在 180～400 Hz
-      tone(dest, t, 'sine', 330, 200, 0.3, 0.6 * g, 0.004, 0.55);
-      tone(dest, t, 'triangle', 380, 300, 0.2, 0.45 * g, 0.004, 0.45);
-      noise(dest, t, 'bandpass', 380, 1.0, 0.5 * g, 0.004, 0.35);
-      noise(dest, t + 0.005, 'bandpass', 750, 1.4, 0.6 * g, 0.002, 0.2);    // 木板 600～900 Hz
-      tone(dest, t + 0.005, 'sine', 820, 760, 0.05, 0.15 * g, 0.002, 0.15);
+      g *= C.HORSE_BOOM_MIX; t += C.HORSE_BOOM_DELAY;   // 空心木箱被敲之後才共振起來：晚一點響，不和重合擊搶同一個峰值
+      // 11/11 錄音工具實測：指數衰減的「轟」峰值高、平均低，要守「不比重擊響」就厚不起來（兩次錄音峰值差到 1.4 dB，餘裕太薄）。
+      // 改成平的包絡：HORSE_BOOM_RISE 秒推上去、維持到 HORSE_BOOM_HOLD、HORSE_BOOM_END 收掉。同樣的峰值，量「那一擊後 0.5 秒」的能量多很多。
+      var w = ctx.createGain(); w.connect(dest);
+      w.gain.setValueAtTime(0, t); w.gain.linearRampToValueAtTime(g, t + C.HORSE_BOOM_RISE);
+      w.gain.setValueAtTime(g, t + C.HORSE_BOOM_HOLD); w.gain.linearRampToValueAtTime(0, t + C.HORSE_BOOM_END);
+      var L = 3;   // 各成分自己慢慢衰減（3 秒才到 −80 dB），形狀交給外層平包絡 w 決定
+      tone(w, t, 'sine', 330, 200, 0.45, 0.6, 0.004, L);
+      tone(w, t, 'triangle', 380, 300, 0.35, 0.45, 0.004, L);
+      noise(w, t, 'bandpass', 380, 1.0, 0.5, 0.004, L);
+      noise(w, t, 'bandpass', 750, 1.4, 0.5, 0.004, L);   // 木板 600～900 Hz
+      tone(w, t, 'sine', 820, 760, 0.05, 0.12, 0.004, L);
     }
     // C3 結尾：horse_signal 的聲音（共鳴、落地、主題）全走 sigBus，演出被跳過時 stopHorseSignal() 一次收掉；那一擊本身照常走節奏線
     var sigBus = ctx.createGain(); sigBus.gain.value = 1; sigBus.connect(master);
@@ -1650,7 +1657,9 @@
         if (!horseOn()) return;
         var now = ctx.currentTime;
         sigBus.gain.cancelScheduledValues(now); sigBus.gain.setValueAtTime(1, now);   // 上一次被收掉的話重新打開
-        horseBoom(sigBus, t, C.HORSE_BOOM_GAIN);   // 玩家在城門口、遠超過 HORSE_BOOM_R，距離算出來是 0，這一次照貼著木馬發
+        // 玩家在城門口、遠超過 HORSE_BOOM_R，距離算出來是 0；這一次照「站在木馬旁 HORSE_SIGNAL_REF_M 公尺」發。
+        // 不用最大音量（貼著中心 0.5）：11/11 錄音貼近 2.5 m 時共鳴只比重擊低 1.7 dB，0.5 會反過來比重擊響（守「共鳴不比重擊響」）
+        horseBoom(sigBus, t, horseBoomGain(C.HORSE_SIGNAL_REF_M));
         // C3 補充裁決：暗門 8 公尺內的衛兵在這一擊同時倒下（畫面做）。倒地悶響和那一擊同一刻、只留 250 Hz 以下、音量小，
         // 被重擊與共鳴蓋住，不另外突出（像遠遠一聲悶倒，不是單獨的音效）
         tone(sigBus, t, 'sine', 75, 40, 0.25, C.HORSE_SIGNAL_DOWN_GAIN, 0.004, 0.35);
