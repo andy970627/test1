@@ -1522,6 +1522,7 @@
       tone(v.input, t + inh + 0.1, 'sawtooth', 96, 82, 0.8, 0.008 * k, 0.1, fast ? 0.5 : 0.9);
     }
     var guardP = 0;
+    var stepMarks = [];                     // 搭配動作：最近 64 步衛兵腳步 {x, z, t（音訊時間，聲音實際落下的時刻）, id}；只有 MOVES_MODE 開時記
     function guardPos(x, z) {               // C1 屏息聽：把衛兵相對你的側向距離放大 LISTEN_WIDEN 倍（右方向＝(cos yaw, −sin yaw)）
       if (!listen.amt) return [x, z];
       var rx = Math.cos(lis.yaw), rz = -Math.sin(lis.yaw), lat = (x - lis.x) * rx + (z - lis.z) * rz, w = (C.LISTEN_WIDEN - 1) * listen.amt;
@@ -1571,6 +1572,7 @@
           if (now >= v.nextStep - 0.05) {
             var ts = Math.max(now + 0.01, v.nextStep);
             guardStep(v, ts, c.q.state === 'hunted');
+            if (movesOn()) { stepMarks.push({ x: c.q.x, z: c.q.z, t: ts, id: c.id }); if (stepMarks.length > 64) stepMarks.shift(); }   // 給畫面的淡圈（屏息聽）
             v.nextStep = ts + clamp(0.7 / v.speed, 0.26, 0.8) * (0.95 + Math.random() * 0.1);
           }
           v.nextBreath = Math.max(v.nextBreath, now + 0.8);
@@ -2203,6 +2205,8 @@
         scheduleTo(now + C.LOOKAHEAD, now);
       },
       setListener: setListener,
+      // 搭配動作：t（音訊時間）之後的衛兵腳步 [{x, z, t, id}]，t 是那一步實際響起的時間（可能比現在晚幾十毫秒，畫面等到 t 再畫）；開關關著時是空陣列
+      guardStepsSince: function (t) { var a = +t; if (!isFinite(a)) a = -Infinity; return stepMarks.filter(function (m) { return m.t > a; }).map(function (m) { return { x: m.x, z: m.z, t: m.t, id: m.id }; }); },
       // 搭配動作 C1：屏息聽的狀態（試驗場、測試用）：on、鼓拍線音量、衛兵線音量、衛兵 panner 有幾個接在 guardListen
       listenInfo: function () { return { on: listen.on, beat: beatBus.gain.value, guard: guardListen.gain.value, voices: voices.length }; },
       // 木馬（HORSE_MODE）：試驗場面板用。setBellyLowpass(true｜false｜null＝照規則自動)；horseInfo() 讀距離、共鳴音量、低通狀態
