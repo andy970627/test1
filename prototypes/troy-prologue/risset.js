@@ -494,9 +494,10 @@
     const cover = !!K.COVER_MODE;   // 殘響掩護版：鼓聲不斷，時機改說「最響的那一擊」（文字照設計席 7.4）
     const moves = !!K.MOVES_MODE;   // 搭配動作（第 7 節）：dash 講兩種用法、breath 補一句、多一則 crouch
     const listen = moves ? '屏住時聽得到衛兵的腳步在哪。' : '';
-    // 第 9.2 節：三個檔位都由鼓決定——鼓慢、火暗、附近沒人可以跑；鼓快改用走的踩鼓點；最響的一擊再近也能衝
-    const runDash = '鼓慢、火暗、' + num(K.RUN_R) + ' 公尺內沒有衛兵時，按住 Shift 可以跑，速度' + speedText(K.RUN_SPEED_MUL) +
-      '；鼓快起來就改用走的，踩著鼓點；' + (cover ? '最響的那一擊落下時' : '節奏斷掉的瞬間') + '點一下 Shift，再近也能衝出一小段。';
+    // 第 10 節短版：跑很吵，只有最響的一擊蓋得住；被追的時候就跑。（9.2 的「鼓慢、火暗、附近沒人可以跑」先拿掉：現在的關卡幾乎做不到）
+    const beat = cover ? '最響的那一擊' : '節奏斷掉的瞬間';
+    const runDash = '按住 Shift 可以跑，速度' + speedText(K.RUN_SPEED_MUL) + '，但很吵，' + num(K.RUN_R) + ' 公尺內的衛兵都聽得到，只有' + beat +
+      '蓋得住；被追的時候就跑。' + beat + (cover ? '落下時' : '') + '點一下 Shift，再近也能衝出一小段。';
     const H = {
       breath: (cover ? '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。'
         : '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。') + listen,
@@ -967,7 +968,7 @@
         emit('sfx', 'alert');
       }
       q.calm = g.panic.count;
-      hint('panic');
+      if (!(K.MOVES_MODE && g.hunted)) hint('panic');   // 第 10 節：追殺中先不要求安撫，提示等追殺結束（endHunt）再出
     }
     function makeAlerted(q, t, cause) {
       if (!q || q.state !== 'patrol') return;
@@ -1006,10 +1007,18 @@
       if (!wasHunted) { emit('sfx', 'hunt'); if (reason) emit('msg', reason); }
       hint('hunted');
     }
-    function endHunt() {
+    function endHunt(t) {
       for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; }
       g.hunted = false; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0; huntCause = null;
       emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
+      // 搭配動作第 10 節：追殺期間起疑的衛兵，安撫倒數沒有走；追殺結束時倒數與慢低音的拍子從頭算
+      if (K.MOVES_MODE && g.panic.active) {
+        g.panic.start = t; g.panic.count = 0; g.panic.lastPress = null;
+        g.bass.anchor = t + K.BASS_LEAD;
+        refreshBass(t);
+        for (const q of g.guards) if (q.active && q.state === 'suspicious') q.calm = 0;
+        hint('panic');
+      }
     }
 
     // ----- 每幀 -----
@@ -1349,7 +1358,9 @@
       // 安撫（機制 B）
       // 判定時間：按鍵當下的音訊時間（calmAt，沒有就 actAt），再沒有才用幀時間；比起疑還早的按鍵不算
       const calmT = inp.calmAt != null ? Math.min(inp.calmAt, t) : actT;
-      if (inp.calm && g.panic.active && calmT >= g.panic.start) {
+      // 搭配動作第 10 節：有衛兵在追殺時，安撫倒數不走、也不要求安撫（按 Q 不算對也不算錯）；追殺結束才從頭算（endHunt）
+      const calmPaused = K.MOVES_MODE && g.hunted;
+      if (inp.calm && g.panic.active && !calmPaused && calmT >= g.panic.start) {
         const P = g.panic;
         const b = bassBeatNear(calmT, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN, K.LATENCY_GRACE);
         if (P.lastPress != null && calmT - P.lastPress < K.CALM_GAP) {
@@ -1370,7 +1381,7 @@
         }
       }
       if (g.phase !== 'play') return g;
-      if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
+      if (g.panic.active && !calmPaused && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
       if (g.phase !== 'play') return g;
 
       // 木馬腹中練習：達成之後的下一個掩護窗一開始，同伴趁那一擊拉開木栓（玩家什麼都不用按）
@@ -1549,7 +1560,7 @@
       // 擺脫追殺
       if (g.hunted) {
         if (pl.hidden && !moved) g.stillT += dt; else g.stillT = 0;
-        if (g.stillT >= K.ESCAPE_STILL) endHunt();
+        if (g.stillT >= K.ESCAPE_STILL) endHunt(t);
       }
 
       // 搭配動作第 8 節：站在同一塊影子裡、超過三個循環沒動（跨過 4 次交接）→ 給下一步提示；之後每再久站三個循環一次。
