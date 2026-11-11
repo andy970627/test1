@@ -103,9 +103,15 @@
     CALM_MEMORY: 30,      // 同一名衛兵幾秒內……
     CALM_MEMORY_N: 3,     // ……第幾次被注意到就不再查看，直接追殺（第 13 節；第 12 節原本是「不能安撫、直接高度警覺」）
     // 搭配動作第 13 節：拿掉安撫，改成衛兵過來查看（checking 取代起疑與高度警覺；只在 MOVES_MODE 開時）
-    CHECK_TURN: 0.5,      // 查看：先轉向引起注意的位置，幾秒
+    CHECK_TURN: 0.5,      // 查看：先轉向引起注意的位置，幾秒（這段不判定；第 15 節：規則角色可在 0.5～0.8 內調）
     CHECK_WALK: 5,        // 查看：朝那個位置最多走幾公尺（巡邏速度）
     CHECK_LISTEN: 4,      // 查看：到了停幾秒，左右轉頭聽
+    // 第 15 節：查看有一條慢慢滿的疑心（q.check.susp，同步到 q.susp 給火把顏色），滿了才追殺
+    CHECK_SUSP0: 0.4,     // 進入查看時的疑心
+    CHECK_SEE_TIME: 1.5,  // 看到你時，3 公尺內從 CHECK_SUSP0 升到滿要幾秒（8 公尺約兩倍，中間線性；規則角色可在 1.5～2.5 內調）
+    CHECK_STEP_SUSP: 0.3, // 聽到踩歪的腳步：疑心 +0.3，改朝聲音的位置走
+    CHECK_BREATH_RATE: 0.3, // 聽到沒屏住的呼吸（SEARCH_BREATH_R 內）：疑心每秒 +0.3，朝你走
+    CHECK_DECAY: 0.1,     // 沒看到、沒聽到時疑心每秒退多少
     // 走法試驗場（第 11.4 節，?lab=walk；不進預設版）：'glide' 現狀（按住就滑）｜'stride' P1 步子跟著鼓｜'manual' P1＋P2 火光圈內自己踩
     STEP_MODE: 'glide',
     STRIDE_LEN: 0.9,      // P1：每一步前進幾公尺（蹲著 × CROUCH_SPEED_MUL）
@@ -532,7 +538,7 @@
       panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。' +
         (moves ? '同一個人 ' + num(K.CALM_MEMORY) + ' 秒內騙不了第' + cnNum(K.CALM_MEMORY_N) + '次。' : ''),
       alerted: '衛兵高度警覺了！' + num(K.ALERTED_DURATION) + ' 秒內別再動、別出聲，否則就會被追殺。',
-      hunted: moves ? '被發現了！躲進陰影，聽他的腳步：他走近就屏住呼吸，或踩著鼓點挪開；他搜完影子找不到你就會走。連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上能讓他慢下來。'
+      hunted: moves ? '被發現了！躲進陰影，聽他的腳步：他走近就屏住呼吸，或踩著鼓點挪開；他搜完影子找不到你就會走。'
         : '被發現了！躲進陰影不動 ' + num(K.ESCAPE_STILL) + ' 秒，或連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上甩開他。',
       takedown: cover ? '最響的那一擊落下時，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。'
         : '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
@@ -546,7 +552,7 @@
     };
     // 蹲走（只有開關開時才有這一則；關著時提示表和報告版一模一樣）
     // 第 13 節：查看（開關開著時取代安撫；字句待畫面角色照 7.4 格式定稿）
-    if (moves) H.check = '他聽到了，正走過來查看。踩著鼓點退開，或躲進影子；他走近時屏住呼吸。';
+    if (moves) H.check = '他聽到了，正走過來查看：踩著鼓點退開，或躲進陰影；他走近時按住空白鍵屏息。';   // 畫面角色定稿
     if (moves) H.crouch = '按住 C 蹲著走，速度' + speedText(K.CROUCH_SPEED_MUL) + '；起步不必那麼準（鼓點前後 ' + num(K.CROUCH_STEP_WIN) +
       ' 秒內都算），離拍的腳步聲也只傳約 ' + num(K.CROUCH_R) + ' 公尺。蹲著時，水缸、貨堆這類矮東西擋得住衛兵的視線。要暗殺、推門閂得先站起來。';
     return H;
@@ -590,8 +596,8 @@
     // 第 13 節：開關開著時，教學那格「警戒與安撫」改教「查看」（字句待畫面角色定稿）
     if (K.MOVES_MODE) {
       delete L.calm;
-      L.check = { name: '查看', text: '「他聽到了，正走過來。踩著鼓點退開，或躲進影子。」',
-        keys: '他走近時按住 空白鍵 屏住呼吸，走遠了再放開；他走完會回原路。' };
+      L.check = { name: '查看', text: '「他聽到了，正走過來。退開，或躲進陰影。」',   // 畫面角色定稿
+        keys: '踩著鼓點按 W A S D 退開，或走進陰影；他走近時按住 空白鍵 屏住呼吸，走遠了再放開。他聽完就會走回原路。' };
     }
     return L;
   }
@@ -1089,7 +1095,7 @@
     function enterCheck(q, t, pos, cause) {
       if (!q || q.state !== 'patrol') return;
       q.suspHist = (q.suspHist || []).filter((x) => t - x < K.CALM_MEMORY);
-      q.suspHist.push(t);
+      if (cause !== 'call') q.suspHist.push(t);   // 第 15.3 節：喊聲叫來的不算「同一人第三次」
       if (q.suspHist.length >= K.CALM_MEMORY_N) {
         q.suspHist = [];
         startHunt(q, cause === 'run' || cause === 'loud' || cause === 'move_high' ? cause : 'seen', CHECK_AGAIN_MSG);
@@ -1098,13 +1104,25 @@
       const dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
       const k = d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
       const walkTo = { x: q.x + dx * k, z: q.z + dz * k };
-      q.state = 'checking'; q.susp = 0; q.calm = 0;
+      q.state = 'checking'; q.susp = K.CHECK_SUSP0; q.calm = 0;
       q.check = { target: { x: pos.x, z: pos.z }, walkTo, home: { x: q.x, z: q.z }, phase: 'turn', from: t, until: t + K.CHECK_TURN,
-        yaw0: q.yaw, yaw1: d > 1e-6 ? yawTo(dx, dz) : q.yaw, cause, stuckT: 0 };
+        yaw0: q.yaw, yaw1: d > 1e-6 ? yawTo(dx, dz) : q.yaw, cause, stuckT: 0, susp: K.CHECK_SUSP0, breathAt: -1e9 };
       q.lookAt = { x: pos.x, z: pos.z };
-      emit('sfx', 'check_start', { id: q.id, x: pos.x, z: pos.z, walkTo: { x: walkTo.x, z: walkTo.z }, cause });
+      // check_start 就是轉向開始的那一刻（聲音：短促的疑問聲）；susp＝疑心起點
+      emit('sfx', 'check_start', { id: q.id, x: pos.x, z: pos.z, walkTo: { x: walkTo.x, z: walkTo.z }, cause, susp: K.CHECK_SUSP0 });
       if (CHECK_MSG[cause]) emit('msg', CHECK_MSG[cause]);
       hint('check');
+    }
+    /** 第 15 節：查看中聽到聲音 → 改朝聲音的位置走（從他現在的位置最多 CHECK_WALK 公尺；轉向不再判定一次，直接走）。 */
+    function retargetCheck(q, t, pos, why) {
+      const C = q.check;
+      const dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
+      const k = d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
+      C.target = { x: pos.x, z: pos.z }; C.walkTo = { x: q.x + dx * k, z: q.z + dz * k };
+      if (C.phase !== 'turn') { C.phase = 'walk'; C.stuckT = 0; }
+      q.lookAt = { x: pos.x, z: pos.z };
+      if (why !== 'breath' || t - C.breathAt > 1) emit('sfx', 'check_retarget', { id: q.id, x: pos.x, z: pos.z, why, susp: C.susp });
+      if (why === 'breath') C.breathAt = t;
     }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
     function startHunt(q, cause, reason) {
@@ -1485,7 +1503,7 @@
             }
           } else
           emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', stepX(strideMode ? { x: pl.x, z: pl.z, beatT: stepNow.beatT, stride: true, manual: !!stepNow.manual } : { x: pl.x, z: pl.z, beatT: stepNow.beatT }));
-          if (g.hunted) {
+          if (g.hunted && !K.MOVES_MODE) {   // 第 16.2 節：開關開著時拿掉「連續踩準三步讓追兵減速」（走路是自動對齊鼓點的，不算玩家的技巧）
             if (stepNow.masked) {
               g.huntSteps++;
               g.huntIdleT = 0;
@@ -1677,16 +1695,29 @@
           continue;
         }
         if (q.state === 'checking') {
-          // 第 13 節：查看中看到你就追殺；耳朵用第 12 節搜索的數字（呼吸 SEARCH_BREATH_R、踩歪 SEARCH_STEP_R、跑 RUN_R、大聲照現行）
+          // 第 15 節：查看有一條慢慢滿的疑心（C.susp），滿了才追殺。耳朵用第 12 節搜索的數字。
+          //   看到你：每秒 +(1 − CHECK_SUSP0) ÷ 秒數，秒數＝3 公尺內 CHECK_SEE_TIME、8 公尺兩倍、中間線性（更遠照線性延伸）；
+          //   踩歪的腳步（SEARCH_STEP_R 內）：+CHECK_STEP_SUSP，改朝聲音的位置走；沒屏住的呼吸（SEARCH_BREATH_R 內）：每秒 +CHECK_BREATH_RATE，朝你走；
+          //   都沒有：每秒退 CHECK_DECAY。跑、大聲（喘出聲、門閂響）照舊直接追殺。最響的一擊時整段跳過（上面的 blind continue），疑心不動。
           const chkBreath = !pl.breathing && d <= K.SEARCH_BREATH_R * pantMul;
           const chkStep = stepLoud && d <= (crouching ? K.SEARCH_STEP_R * K.CROUCH_R / K.MOVES_STEP_R : K.SEARCH_STEP_R);
           // 轉向的 CHECK_TURN 秒裡他還在轉頭、不算看到或聽到（不然「被看見一陣子 → 查看」的下一幀就因為還被看見而直接追殺）
           if (q.check && q.check.phase === 'turn') continue;
-          if (seen) startHunt(q, 'seen', '他看見你了——追兵衝過來！');
-          else if (heardLoud) startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
-          else if (heardRun) startHunt(q, 'run', RUN_HUNT_MSG);
-          else if (chkStep) startHunt(q, 'step', '他聽見你的腳步——追兵衝過來！');
-          else if (chkBreath) startHunt(q, 'breath', '他聽見你的呼吸——追兵衝過來！');
+          if (heardLoud) { startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！'); continue; }
+          if (heardRun) { startHunt(q, 'run', RUN_HUNT_MSG); continue; }
+          const C = q.check;
+          let why = null;
+          if (seen) {
+            const secs = K.CHECK_SEE_TIME * (1 + Math.max(0, d - 3) / 5);
+            C.susp += (1 - K.CHECK_SUSP0) / secs * dt; why = 'seen';
+          }
+          if (chkStep) { C.susp += K.CHECK_STEP_SUSP; why = why || 'step'; retargetCheck(q, t, { x: pl.x, z: pl.z }, 'step'); }
+          if (chkBreath) { C.susp += K.CHECK_BREATH_RATE * dt; why = why || 'breath'; retargetCheck(q, t, { x: pl.x, z: pl.z }, 'breath'); }
+          if (!why) C.susp = Math.max(0, C.susp - K.CHECK_DECAY * dt);
+          C.susp = Math.min(1, C.susp); q.susp = C.susp;
+          if (C.susp >= 1 - 1e-9) {
+            startHunt(q, why || 'seen', why === 'step' ? '他聽見你的腳步——追兵衝過來！' : why === 'breath' ? '他聽見你的呼吸——追兵衝過來！' : '他看清楚是你了——追兵衝過來！');
+          }
           continue;
         }
         if (q.state === 'alerted') {
