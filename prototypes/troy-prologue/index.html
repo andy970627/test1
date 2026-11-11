@@ -1610,6 +1610,7 @@ function newGame() {
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
   if (MOVES_OFF_Q) opts.T.MOVES_MODE = false;
+  if (URLQ.get('drums') === 'old') opts.T.DRUMS = 'old';               // ?drums=old：開關開著也用舊鼓聲（新鼓聲只在 MOVES_MODE 開且 DRUMS 不是 'old' 時，?moves=0 一定舊鼓聲）
   if (LAB === 'walk' && STEP_Q) opts.T.STEP_MODE = STEP_Q;              // 走法試驗場：P0／P1／P2                         // ?moves=0：報告版（沒帶參數就交給規則的預設：開）
   if (HORSE_Q) opts.T.HORSE_MODE = true;                               // 木馬第 1 批（沒帶參數就不碰，規則走報告版的路）
   if (LAB) opts.lab = LAB;

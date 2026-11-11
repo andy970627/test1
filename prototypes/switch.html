@@ -31,6 +31,7 @@ small { color:var(--dim); }
   <section>
     <h2>木馬之夜：整關</h2>
     <label><select id="moves"><option value="">跑蹲版（預設，按住 Shift 跑、C 蹲）</option><option value="0">報告版（?moves=0，報告數字用這個）</option></select></label><br>
+    <label><input type="checkbox" id="drums"> 舊鼓聲（?drums=old；報告版本來就是舊鼓聲）</label><br>
     <label><input type="checkbox" id="horse"> 木馬新內容（腹中練習、木馬陰影、共鳴、結尾回頭）</label><br>
     <label>從第 <select id="zone"><option value="">0（開場）</option><option>1</option><option>2</option><option>3</option><option>4</option></select> 區開始</label>
     <label><input type="checkbox" id="tel"> 記錄試玩數據</label>
@@ -81,6 +82,7 @@ const $ = id => document.getElementById(id);
 function gameUrl() {
   const q = new URLSearchParams();
   if ($('moves').value) q.set('moves', $('moves').value);
+  if ($('drums').checked) q.set('drums', 'old');
   if ($('horse').checked) q.set('horse', '1');
   if ($('zone').value) q.set('startZone', $('zone').value);
   if ($('tel').checked) q.set('telemetry', '1');
@@ -94,7 +96,7 @@ function refresh() {
   $('listen').href = 'troy-prologue/audio-test.html?ill=' + $('ill').value + '&cycle=' + $('cyc').value;
 }
 // 記住上次的選擇（只存在這台電腦的瀏覽器；存不了就用預設）
-const KEYS = ['moves', 'horse', 'zone', 'tel', 'mute', 'clean', 'ill', 'cyc'];
+const KEYS = ['moves', 'drums', 'horse', 'zone', 'tel', 'mute', 'clean', 'ill', 'cyc'];
 try { const s = JSON.parse(localStorage.getItem('switch-board') || '{}'); KEYS.forEach(k => { if (k in s) { const el = $(k); if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; } }); } catch (e) {}
 document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', () => {
   refresh();
