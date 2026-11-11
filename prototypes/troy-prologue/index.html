@@ -1922,12 +1922,15 @@ function buildBellyPractice() {
 function bellyEvent(e) {
   const B = S && S.belly; if (!game) return;
   const inBelly = !!(game.player && game.player.inBelly);
-  if (e.a === 'step_masked' && inBelly && e.start !== false) {
-    if (B) { B.crackV = 1; B.crack.position.set(num(e.x, game.player.x), S.bellyGeom.fy + .05, num(e.z, game.player.z)); B.crack.visible = true; }
+  // 只算起步（設計文件 1.1 節）：起步 step_masked {start: true} 才亮縫；續步 {start: false} 不亮，但面板照樣列出
+  if (e.a === 'step_masked' && inBelly) {
+    if (B && e.start !== false) { B.crackV = 1; B.crack.position.set(num(e.x, game.player.x), S.bellyGeom.fy + .05, num(e.z, game.player.z)); B.crack.visible = true; }
     LABS.add({ ok: true, off: Number.isFinite(e.beatT) && Number.isFinite(game.time) ? (e.beatT - game.time) * 1000 : null, n: e.n, need: e.need, start: e.start });
   } else if (e.a === 'belly_hush') {
-    HW.hushKick = 1;
-    LABS.add({ ok: false, off: null, n: game.belly ? game.belly.n : null });
+    HW.hushKick = 1;                                                          // 起步踩歪：同伴按住你；刻痕熄 cost 格（畫面讀 game.belly.n，不自己扣）
+    LABS.add({ ok: false, off: null, n: num(e.n, game.belly && game.belly.n), cost: e.cost });
+  } else if (e.a === 'step_loud' && inBelly) {
+    LABS.add({ ok: false, cont: true, off: null });                            // 續步出聲：不扣格，只記下來
   }
 }
 function bellyFrame(dt) {
@@ -1967,7 +1970,8 @@ function labHud() {
   const recent = LABS.steps.slice(-6).reverse();
   if (!recent.length) lines.push('  還沒有');
   for (const r of recent) {
-    if (!r.ok) { lines.push('  踩歪，同伴按住你'); continue; }
+    if (!r.ok && r.cont) { lines.push('  續步出聲（不扣格）'); continue; }
+    if (!r.ok) { lines.push('  起步踩歪，同伴按住你' + (Number.isFinite(r.cost) ? '（熄 ' + r.cost + ' 格）' : '')); continue; }
     const off = Number.isFinite(r.off) ? (r.off >= 0 ? '+' : '') + r.off.toFixed(0) + ' 毫秒' : '—';
     lines.push('  ' + off.padStart(9) + '  踩準' + (r.start === true ? '（起步）' : r.start === false ? '（續步）' : ''));
   }
