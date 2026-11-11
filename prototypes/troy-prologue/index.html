@@ -36,6 +36,7 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 /* 不合拍的腳步被聽到：畫面邊緣極淡的暖光一閃 */
 #stepEdge { inset: 0; box-shadow: inset 0 0 120px 24px rgba(240, 150, 70, .9); opacity: 0; }
 /* 高度警覺邊緣暈：淡橘色暈，緩慢呼吸 */
+#pantEdge { inset: 0; box-shadow: inset 0 0 120px 30px rgba(200, 210, 235, .55); opacity: 0; pointer-events: none; }   /* 跑完在喘：邊緣隨喘息起伏（搭配動作第 12 節） */
 #alertedEdge { inset: 0; box-shadow: inset 0 0 160px 40px rgba(235, 120, 30, .85); opacity: 0; pointer-events: none; }
 /* 暗殺：畫面邊緣短白閃（規格 M3「畫面邊緣白閃」；只閃邊緣，不整片全白） */
 #whiteFlash { inset: 0; box-shadow: inset 0 0 180px 60px rgba(255, 255, 255, .95); opacity: 0; pointer-events: none; }
@@ -162,6 +163,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="chill"></div>
 <div class="hud" id="stepEdge"></div>
 <div class="hud" id="alertedEdge"></div>
+<div class="hud" id="pantEdge"></div>
 <div class="hud" id="edge"></div>
 <div class="hud" id="behind"></div>
 <div class="hud" id="hand" aria-hidden="true"><svg viewBox="0 0 300 220"><!-- 同伴的手從畫面左下抓住你的手臂（剪影） -->
@@ -256,7 +258,7 @@ button:hover { filter: brightness(1.12); }
   <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
   <label>鼓聲 <select id="oCover"><option value="cover">不停（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
   <!-- 試驗場入口（專案規則：每個機制都要有試驗場）：木馬第 1 批，docs/design/2026-11-11-trojan-horse-directions.md 方向 A -->
-  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）<span id="labMoves" hidden>・<a href="?lab=run" id="labRunLink">跑</a>（第 2 區）・<a href="?lab=crouch" id="labCrouchLink">蹲走與矮掩體</a>（第 3 區）・<a href="?lab=listen" id="labListenLink">屏息聽衛兵</a>（第 3 區）</span></div>
+  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）<span id="labMoves" hidden>・<a href="?lab=run" id="labRunLink">跑</a>（第 2 區）・<a href="?lab=crouch" id="labCrouchLink">蹲走與矮掩體</a>（第 3 區）・<a href="?lab=listen" id="labListenLink">屏息聽衛兵</a>（第 3 區）・<a href="?lab=hunt" id="labHuntLink">追殺</a>（第 2 區，追兵從背後追）</span></div>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -363,7 +365,7 @@ if (MUTE && window.AudioNode && window.AudioDestinationNode) {
 // 木馬第 1 批（docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C1）：?horse=1 開規則的 T.HORSE_MODE；
 // ?lab=belly 腹中練習試驗場（規則自己開 HORSE_MODE、固定循環、只有腹中）。兩個都沒帶時畫面和報告版完全一樣
 // 搭配動作（docs/design/2026-11-11-companion-mechanics.md 第 7 節）：規則 T.MOVES_MODE 預設開；?moves=0 退回報告版；?lab=run|crouch|listen 試驗場
-const MOVES_LABS = ['run', 'crouch', 'listen'];
+const MOVES_LABS = ['run', 'crouch', 'listen', 'hunt'];
 const HORSE_Q = URLQ.get('horse') === '1', LAB = ['belly', 'horse', ...MOVES_LABS].includes(URLQ.get('lab')) ? URLQ.get('lab') : null;
 const MOVES_OFF_Q = URLQ.get('moves') === '0';
 const MOVES_SUPPORTED = !!(Rules.T && 'MOVES_MODE' in Rules.T);
@@ -389,7 +391,7 @@ $('oCover').addEventListener('change', coverText); coverText();
   $('kCrouch').textContent = '蹲走，速度' + mul(num(T.CROUCH_SPEED_MUL, .5)) + '；起步不必那麼準，離拍的腳步聲傳得近。蹲著時水缸、貨堆這類矮東西擋得住視線。要暗殺、推門閂得先站起來。';
 })();
 $('labMoves').hidden = !MOVES_SUPPORTED;
-for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink'], ['run', 'labRunLink'], ['crouch', 'labCrouchLink'], ['listen', 'labListenLink']]) { const q = new URLSearchParams(); q.set('lab', lab); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
+for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink'], ['run', 'labRunLink'], ['crouch', 'labCrouchLink'], ['listen', 'labListenLink'], ['hunt', 'labHuntLink']]) { const q = new URLSearchParams(); q.set('lab', lab); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
 
 // ============================================================
 // three.js 場景
@@ -1674,6 +1676,7 @@ function sync(dt, now) {
     F.halo.material.opacity = F.glow.material.opacity * .45 * pulse;
     F.halo.scale.setScalar(1 + (1 - pulse) * .4);
     if (!on && G.susp > 0) { F.glow.material.color.setHex(0xe0b04a); F.glow.material.opacity = Math.max(F.glow.material.opacity, clamp(G.susp, 0, 1) * .35); }
+    if (G.state === 'alerted' && !down && movesOn()) { F.glow.material.color.setHex(HUNT_FX.alertCol); F.glow.material.opacity = Math.max(F.glow.material.opacity, .8); }   // 第 12 節：被喊到、第三次起疑 → 火把變橘
     // 除錯圈：感知範圍 r(p)
     const dbg = $('oPhase').checked && !down;
     F.ring.visible = dbg; if (dbg) { const r = blind ? .01 : rp * (susp || hunted ? num(KK.ALERT_MUL, 1.3) : 1); F.ring.scale.set(r, r, r * 0 + r); F.ring.position.set(G.x, .04, G.z); }
@@ -2171,7 +2174,7 @@ const LOW_MARK_OP = { stand: .1, crouch: .42 };
 const RIP = { list: [], geo: null };
 const MV = { run: { masked: 0, quiet: 0, heard: 0 }, crouch: { masked: 0, loud: 0 }, last: '', gsteps: new Map(), gripN: 0, gsrc: '', gstepQ: -Infinity, gpend: [], lowV: 0 };
 function resetMovesFx() {
-  MV.run = { masked: 0, quiet: 0, heard: 0 }; MV.crouch = { masked: 0, loud: 0 }; MV.last = ''; MV.gsteps.clear(); MV.gripN = 0; MV.gstepQ = -Infinity; MV.gpend = [];
+  MV.run = { masked: 0, quiet: 0, heard: 0 }; MV.crouch = { masked: 0, loud: 0 }; MV.last = ''; MV.gsteps.clear(); MV.gripN = 0; MV.gstepQ = -Infinity; MV.gpend = []; resetHuntFx();
   for (const r of RIP.list) { r.life = 0; r.m.visible = false; }
 }
 function ripple(x, z, r1, color, op, dur) {
@@ -2200,7 +2203,7 @@ function movesEvent(e) {
     ripple(x, z, R, heard ? RUN_RIP.col : RUN_RIP.quietCol, heard ? RUN_RIP.op : RUN_RIP.quietOp, RUN_RIP.dur);
   } else if ((e.a === 'step_masked' || e.a === 'step_loud') && e.crouch) {
     if (e.a === 'step_masked') MV.crouch.masked++; else MV.crouch.loud++;
-  }
+  } else huntEvent(e);
 }
 /** 屏息時衛兵腳步落地：聲音層有 guardStepsSince(t) → [{x, z, t, id}] 就照它；沒有就用聲音層同一個步頻（0.7 ÷ 速度，0.26～0.8 秒）估。
  *  聲音層的 t 是那一步實際響起的音訊時間（可能比現在晚 10～50 毫秒）：每幀只拿「上次拿到的最晚 t」之後的新步，排隊，音訊時間到 t 才畫；
@@ -2269,6 +2272,136 @@ function movesFrame(dt) {
     for (const l of S.lowMarks) l.visible = MV.lowV > .005;
   }
   if (on) guardStepRipples(dt);
+  huntFrame(dt, on);
+}
+// ============================================================
+// 追殺重做的畫面（docs/design/2026-11-11-companion-mechanics.md 第 12 節；規則 697da85）。只在 T.MOVES_MODE 開著時
+//   喊人 hunt_call：喊聲處一圈橘色大波紋（HUNT_CALL_R），被叫到的衛兵各一小圈；轉頭由規則的 q.yaw（lookAt）帶
+//   高度警覺：頭上微光變橘（報告版不變）
+//   搜索路線：試驗場或相位條開著時，淡淡畫出追兵要走的路線與「聽得到呼吸」的範圍（你在範圍內又沒屏住：圈變紅）
+//   聽到你 hunt_heard：短訊息＋那名衛兵側頭
+//   喘 pant：畫面邊緣跟著喘息起伏（讀 player.panting）
+// ============================================================
+const HUNT_FX = { alertCol: 0xff8a3a, callCol: 0xff8a3a, routeCol: 0xd8624a, routeOp: .38, earCol: 0xb8c8ee, earHotCol: 0xff4a3a, pantHz: 1.7 };
+const HV = { routes: new Map(), ears: new Map(), pantV: 0, heardAt: -1e9,
+  n: { calls: 0, called: 0, searches: 0, searchDone: 0, heardBreath: 0, heardStep: 0, pants: 0, alerted: {} } };
+function resetHuntFx() {
+  HV.n = { calls: 0, called: 0, searches: 0, searchDone: 0, heardBreath: 0, heardStep: 0, pants: 0, alerted: {} };
+  HV.heardAt = -1e9;
+  for (const o of HV.routes.values()) o.obj.visible = false;
+  for (const o of HV.ears.values()) o.m.visible = false;
+}
+function huntEvent(e) {
+  const n = HV.n;
+  if (e.a === 'hunt_call') {
+    const called = arr(e.called);
+    n.calls++; n.called += called.length;
+    if (Number.isFinite(e.x)) ripple(e.x, e.z, num(K().HUNT_CALL_R, 12), HUNT_FX.callCol, .32, 1.3);
+    for (const id of called) { const q = arr(game.guards).find(o => o && o.id === id); if (q) ripple(q.x, q.z, 1.4, HUNT_FX.callCol, .45, .9); }
+    if (called.length) lag(() => showMsg('追兵喊了一聲：附近 ' + called.length + ' 名衛兵轉向這裡，提高了警覺。'));
+  } else if (e.a === 'search_start') n.searches++;
+  else if (e.a === 'search_done') n.searchDone++;
+  else if (e.a === 'hunt_heard') {
+    if (e.why === 'breath') n.heardBreath++; else n.heardStep++;
+    const F = S && S.guards && S.guards.get(e.id); if (F) F.tilt = 1;   // 側頭：他聽到了
+    const now = performance.now();
+    if (now - HV.heardAt > 2500) { HV.heardAt = now; lag(() => showMsg(e.why === 'breath' ? '他聽到呼吸聲，轉過頭來。' : '他聽到那一步踩歪了，轉過頭來。')); }
+  } else if (e.a === 'pant_start') n.pants++;
+  else if (e.a === 'alerted') { const c = e.cause || '其他'; n.alerted[c] = (n.alerted[c] || 0) + 1; }
+}
+// 搜索路線：貼地的細帶子（WebGL 的線只有 1 像素，看不見）＋每個搜索點一個小圓點
+let HUNT_ROUTE_GEO = null;
+function huntRouteObj(key) {
+  let o = HV.routes.get(key);
+  if (!o) {
+    if (!HUNT_ROUTE_GEO) {
+      const seg = new THREE.PlaneGeometry(1, .09); seg.rotateX(-Math.PI / 2);
+      const dot = new THREE.CircleGeometry(.22, 20); dot.rotateX(-Math.PI / 2);
+      HUNT_ROUTE_GEO = { seg, dot };
+    }
+    const mat = new THREE.MeshBasicMaterial({ color: HUNT_FX.routeCol, transparent: true, opacity: HUNT_FX.routeOp, depthWrite: false });
+    o = { obj: new THREE.Group(), mat, segs: [], dots: [] }; o.obj.visible = false; HV.routes.set(key, o);
+  }
+  if (o.obj.parent !== world) world.add(o.obj);
+  return o;
+}
+function huntRouteSet(o, pts) {
+  const need = (arr, n, geo) => { while (arr.length < n) { const m = new THREE.Mesh(geo, o.mat); o.obj.add(m); arr.push(m); } arr.forEach((m, i) => { m.visible = i < n; }); };
+  need(o.segs, Math.max(0, pts.length - 1), HUNT_ROUTE_GEO.seg);
+  need(o.dots, Math.max(0, pts.length - 1), HUNT_ROUTE_GEO.dot);
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1], len = Math.hypot(b.x - a.x, b.z - a.z);
+    const m = o.segs[i]; m.scale.set(Math.max(.01, len), 1, 1); m.position.set((a.x + b.x) / 2, .07, (a.z + b.z) / 2); m.rotation.set(0, -Math.atan2(b.z - a.z, b.x - a.x), 0);
+    o.dots[i].position.set(b.x, .075, b.z);
+  }
+}
+function huntEarObj(key) {
+  let o = HV.ears.get(key);
+  if (!o) {
+    const geo = new THREE.RingGeometry(.96, 1, 64); geo.rotateX(-Math.PI / 2);
+    o = { m: new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: HUNT_FX.earCol, transparent: true, opacity: .25, depthWrite: false })) };
+    o.m.visible = false; HV.ears.set(key, o);
+  }
+  if (o.m.parent !== world) world.add(o.m);
+  return o;
+}
+/** 追兵聽得到你呼吸的距離（喘的時候 × RUN_PANT_MUL）。和規則同一個意思，只給畫面與面板用 */
+function huntBreathR(P) { const T = K(); return num(T.SEARCH_BREATH_R, 2.5) * (P && P.panting ? num(T.RUN_PANT_MUL, 1.6) : 1); }
+function huntFrame(dt, on) {
+  const g = game, P = g && g.player;
+  const show = on && (LAB === 'hunt' || $('oPhase').checked);
+  const used = new Set();
+  if (show) for (const q of arr(g.guards)) {
+    if (!q || q.active === false || q.state !== 'hunted') continue;
+    const key = q.id; used.add(key);
+    // 搜索路線：從追兵現在的位置連到還沒走的點
+    const R = q.search && !q.search.done ? arr(q.search.route).slice(q.search.i) : [];
+    const o = huntRouteObj(key);
+    if (R.length) {
+      huntRouteSet(o, [{ x: q.x, z: q.z }, ...R]); o.obj.visible = true;
+    } else o.obj.visible = false;
+    // 聽得到呼吸的範圍
+    const ear = huntEarObj(key), r = huntBreathR(P);
+    const inR = P && Math.hypot(q.x - P.x, q.z - P.z) <= r, hot = inR && !P.breathing;
+    ear.m.scale.set(r, 1, r); ear.m.position.set(q.x, .05, q.z);
+    ear.m.material.color.setHex(hot ? HUNT_FX.earHotCol : HUNT_FX.earCol);
+    ear.m.material.opacity = hot ? .5 : .22;
+    ear.m.visible = true;
+  }
+  for (const [k, o] of HV.routes) if (!used.has(k)) o.obj.visible = false;
+  for (const [k, o] of HV.ears) if (!used.has(k)) o.m.visible = false;
+  // 喘：畫面邊緣起伏（減少動態時不起伏，只淡淡亮著）
+  const panting = on && P && P.panting;
+  const wave = REDUCED_MOTION ? .6 : .5 + .5 * Math.sin(performance.now() / 1000 * Math.PI * 2 * HUNT_FX.pantHz);
+  const tgt = panting ? .18 + .32 * wave : 0;
+  HV.pantV += (tgt - HV.pantV) * Math.min(1, dt * 10);
+  const el = $('pantEdge'); if (el) el.style.opacity = HV.pantV > .003 ? HV.pantV.toFixed(3) : '0';
+}
+function huntLabLines() {
+  const g = game, P = g.player || {}, T = K(), t = num(g.time, audio ? audio.now() : 0), n = HV.n;
+  const hs = arr(g.guards).filter(q => q && q.active !== false && q.state === 'hunted');
+  const lines = ['追殺試驗場（?lab=hunt，第 2 區）'];
+  if (!hs.length) {
+    const q = arr(g.guards).find(o => o && o.id === 'g2b');
+    lines.push('追兵：' + (g.hunted ? '—' : q && q.state !== 'down' ? '還沒追（' + ({ patrol: '巡邏', suspicious: '起疑', alerted: '高度警覺' }[q.state] || q.state) + '）' : '沒有'));
+  }
+  for (const q of hs) {
+    const d = Math.hypot(q.x - P.x, q.z - P.z);
+    let st = '追你';
+    if (q.search) {
+      const Sx = q.search, N = arr(Sx.route).length;
+      st = Sx.done ? '搜完了，原地環顧' : '搜影子，第 ' + Math.min(N, Sx.i + 1) + ' / ' + N + ' 點' + (Sx.pause < num(T.SEARCH_PAUSE, .8) - 1e-6 ? '（停頓環顧）' : '');
+    }
+    lines.push('追兵 ' + q.id + '：' + st + '・離你 ' + d.toFixed(1) + ' 公尺');
+    const r = huntBreathR(P);
+    lines.push('　呼吸範圍 ' + r.toFixed(1) + ' 公尺：' + (d <= r ? (P.breathing ? '在範圍內，屏住了' : '在範圍內，聽得到！') : '不在範圍內'));
+  }
+  const ago = g.huntKnownAt == null ? null : t - g.huntKnownAt;
+  lines.push('最後一次知道你在哪：' + (g.hunted && ago != null ? ago.toFixed(1) + ' 秒前（' + num(T.ESCAPE_STILL, 6) + ' 秒以上＋搜完＝甩掉）' : '—'));
+  lines.push('你：' + (P.hidden ? '在影子裡' : '在亮處') + '・' + (P.panting ? '在喘（不能屏息）' : P.breathing ? '屏息中' : '呼吸'));
+  lines.push('被聽到：呼吸 ' + n.heardBreath + '・踩歪 ' + n.heardStep + '｜喊人 ' + n.calls + ' 次、叫到 ' + n.called + ' 名｜喘 ' + n.pants + ' 次');
+  lines.push('', '紅線：追兵要搜的路線；他腳下的圈：聽得到你呼吸的範圍（變紅＝聽到了）');
+  return lines;
 }
 // 試驗場面板用：衛兵到玩家的線有沒有穿過矮掩體（和規則 lowCover 同一個意思，取樣判斷，只給面板看）
 function lowBlocks(q, P) {
@@ -2284,6 +2417,7 @@ function movesLabLines(lab) {
   const near = gs.map(q => ({ q, d: Math.hypot(q.x - P.x, q.z - P.z) })).sort((a, b) => a.d - b.d)[0];
   const mode = P.running ? '跑' : P.crouching ? '蹲' : P.breathing ? '屏息' : P.moving ? '走' : '站著';
   const lines = [];
+  if (lab === 'hunt') return huntLabLines();
   if (lab === 'run') {
     const R = num(T.RUN_R, 8);
     lines.push('跑試驗場（?lab=run，第 2 區）');
