@@ -37,6 +37,14 @@ input[type=range] { flex:1; }
     <label>新訊號強調 <input id="introdb" type="range" min="0" max="8" step="0.5" value="4"> <span id="introdbv">4</span> dB（0＝關，設計 7.9）</label>
     <label>窗前變亮 <input id="bright" type="range" min="0" max="6" step="0.5" value="4"> <span id="brightv">4</span> dB（殘響掩護下；0＝關，設計 7.3）</label>
   </section>
+  <section>
+    <b>木馬（HORSE_MODE，設計 2026-11-11 方向 A、C2）</b>
+    <label><input id="horse" type="checkbox"> 開木馬</label>
+    <label><input id="belly" type="checkbox"> 在腹中</label>
+    <label>腹中低通 <select id="bellylp"><option value="auto" selected>照規則（在腹中就開）</option><option value="on">強制開</option><option value="off">強制關</option></select></label>
+    <label>離木馬 <input id="hdist" type="range" min="0" max="40" step="0.5" value="3"> <span id="hdistv">3</span> 公尺（共鳴只在殘響掩護的一般窗那一擊響）</label>
+    <div class="note" id="horseinfo">—</div>
+  </section>
   <section id="cues"></section>
 </main>
 <script src="audio.js"></script>
@@ -46,18 +54,28 @@ input[type=range] { flex:1; }
   var $ = function (id) { return document.getElementById(id); };
   var LABEL = { breathIn: '屏息吸氣', breathOut: '憋氣結束', gasp: '喘氣', step: '腳步', latch: '門閂', down: '倒地', bell: '警鐘', blind: '盲區提示', win: '勝利',
     alert: '起疑', caught: '被抓', takedownFail: '暗殺失手', calmOk: '安撫成功', calmBad: '安撫失敗', calmDone: '安撫完成', checkpoint: '檢查點', dash: '衝刺', escape: '甩掉追兵', trapdoor: '暗門',
-    alerted: '高度警覺嗡鳴', alertOver: '警覺結束', takedown: '暗殺成功', huntStep: '追殺合拍一步', huntSlip: '甩開一段' };
+    alerted: '高度警覺嗡鳴', alertOver: '警覺結束', takedown: '暗殺成功', huntStep: '追殺合拍一步', huntSlip: '甩開一段',
+    bellyHush: '腹中踩歪（同伴按肩）', bellyReady: '刻痕亮滿（主題開頭）', trapdoorOpen: '同伴拉開木栓' };
+  // 木馬試驗用的假關卡：木馬範圍和規則 buildLevel 的 level.horse 相同（只拿來算距離與方向）
+  var HORSE = { x0: 4.5, z0: 13, x1: 12.5, z1: 17 }, HX = (HORSE.x0 + HORSE.x1) / 2, HZ = (HORSE.z0 + HORSE.z1) / 2;
 
   var ST = {};   // 同一個物件每幀更新：聲音層用「state 換成新物件」判斷換了一局（新訊號強調會重來）
   function state() {
     var T = audio.T, t0 = audio.t0, now = audio.now(), per = audio.CONST.BASS_PERIOD;
-    return Object.assign(ST, {
+    Object.assign(ST, {
       cycle: { T: T, t0: t0, p: audio.phase(), blind: audio.isBlind(), index: Math.floor((now - t0) / T) },
       alarm: +$('alarm').value, hunted: hunted,
       zone: +$('zone').value,
       T: { COVER_MODE: $('cover').checked, BLIND_LEN: 0.6 },   // 聲音層讀 state.T.COVER_MODE 切殘響掩護
       bass: { period: per, nextBeat: t0 + Math.ceil((now - t0) / per) * per }
     });
+    // 木馬：開的時候才放 HORSE_MODE、玩家位置、木馬範圍（關的時候和以前一樣，不帶這些欄位）
+    if ($('horse').checked) {
+      ST.T.HORSE_MODE = true;
+      ST.player = { x: HX + (+$('hdist').value), z: HZ, inBelly: $('belly').checked };
+      ST.level = { horse: HORSE }; ST.belly = { open: false };
+    } else { delete ST.player; delete ST.level; delete ST.belly; }
+    return ST;
   }
   $('start').onclick = function () {
     if (!ctx) {
@@ -69,6 +87,8 @@ input[type=range] { flex:1; }
   };
   $('stop').onclick = function () { if (audio) audio.suspend(); };
   $('vol').oninput = function () { if (audio) audio.setMaster(+this.value); };
+  $('hdist').oninput = function () { $('hdistv').textContent = this.value; };
+  $('bellylp').onchange = function () { if (audio) audio.setBellyLowpass(this.value === 'auto' ? null : this.value === 'on'); };
   $('introdb').oninput = function () { $('introdbv').textContent = this.value; if (audio) audio.CONST.INTRO_BOOST_DB = +this.value; };
   $('bright').oninput = function () { $('brightv').textContent = this.value; if (audio) audio.CONST.COVER_BRIGHT_DB = +this.value; };
   $('alarm').oninput = function () { $('alarmv').textContent = (+this.value).toFixed(2); };
@@ -86,6 +106,12 @@ input[type=range] { flex:1; }
     $('blind').className = s.cycle.blind ? 'yes' : '';
     $('bar').firstChild.style.width = (p * 100).toFixed(1) + '%';
     $('info').textContent = '音訊時間 ' + s.cycle.index + ' 循環・下一個低音 ' + (s.bass.nextBeat - audio.now()).toFixed(2) + ' 秒後';
+    if (audio.horseInfo) {
+      var h = audio.horseInfo();
+      $('horseinfo').textContent = !h.on ? '木馬開關關著' :
+        '離木馬 ' + (h.dist == null ? '—' : h.dist.toFixed(1)) + ' 公尺・這一擊共鳴音量 ' + h.boomGain.toFixed(3) + '（' + h.boomR + ' 公尺外為 0）・腹中低通 ' +
+        (h.lowpass ? '開（' + h.lowpassHz + ' Hz 以下）' : '關') + (h.lastBoom ? '・上一聲 ' + h.lastBoom.gain + '（' + h.lastBoom.dist + ' 公尺）' : '');
+    }
     requestAnimationFrame(frame);
   }
 })();

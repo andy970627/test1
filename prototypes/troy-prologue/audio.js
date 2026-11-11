@@ -166,6 +166,15 @@
     INTRO_BOOST_DB: 4,         // 試聽頁可調到 0
     INTRO_CYCLES: 1,           // 重合擊：進區後前幾記；低音拍：整局第一次起疑後幾個循環（安撫在哪一區第一次出現都算）
     INTRO_COVER_ZONE: 2,       // 殘響掩護版第 2 區才教最響的一擊：進區後第一記重合擊
+    // 木馬（規則 T.HORSE_MODE 開時才用；docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C2）
+    BELLY_LOWPASS_HZ: 1200,    // 腹中隔著木板聽鼓：節奏線只留這以下（框鼓、木框敲擊都還在，筆電喇叭聽得到）【假設】
+    BELLY_OPEN_SEC: 0.6,       // 暗門打開時低通掃開的時間（秒），和畫面掀開同步
+    BELLY_STEP_VEL: 0.12,      // 腹中起步踩準時里拉琴音的音量
+    BELLY_STEP_NOTES: [62, 64, 67, 69],   // 第 1～4 格的里拉琴音（往上，最後落在主題第二個音 A4）
+    HORSE_BOOM_R: 25,          // 木馬共鳴：離木馬中心這麼多公尺外聽不到【假設】
+    HORSE_BOOM_GAIN: 0.5,      // 木馬共鳴：貼著木馬時的音量【假設】
+    HORSE_BOOM_DELAY: 0.07,    // 共鳴比那一擊晚多久（秒）
+    HORSE_BOOM_MIX: 7,         // 木馬共鳴音色內部的混音倍數（GAIN 是設計常數，這個是聲音層調成「貼著木馬那一擊後 0.5 秒 300～1200 Hz 比 30 公尺外厚 ≥ 3 dB」用的；離線 6 倍 +3.1、8 倍 +4.4）
     // 喇叭可聽度（11/08）
     PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
     BRIGHT_HZ: 1800,           // 盲區前節奏匯流排高架濾波的轉折頻率（Hz）：主要碰到手拍、金屬（k = 2、3）
@@ -209,6 +218,12 @@
     ]
   };
   function midiHz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  // 木馬共鳴音量（C2）：離木馬 d 公尺；R 外為 0，之內 (1 - d/R)^2 衰減（越近越厚，單調遞減）。純函式，測試直接呼叫。
+  function horseBoomGain(d, R, G) {
+    R = R == null ? C.HORSE_BOOM_R : +R; G = G == null ? C.HORSE_BOOM_GAIN : +G;
+    if (typeof d !== 'number' || !(d >= 0) || !(R > 0) || d >= R) return 0;   // null >= 0 在 JS 是真，要先擋型別
+    var u = 1 - d / R; return G * u * u;
+  }
 
   // 各 cue 名稱與別名（規則層的 sfx 名稱不確定時都接得住）
   var CUE_ALIAS = {
@@ -230,6 +245,7 @@
     gravel: 'gravel', companiongasp: 'companionGasp', whispernow: 'whisperNow', growl: 'growl', latchclick: 'latchClick',
     blind: 'blind', gap: 'blind',
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
+    bellyhush: 'bellyHush', bellyready: 'bellyReady', trapdooropen: 'trapdoorOpen',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
   // risset.js 的 game.out sfx 名稱：alert alerted alert_over breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
@@ -293,7 +309,13 @@
 
     // 節奏：rhythmBus → 高通（警戒時讓出低頻給低音）→ 乾 / 殘響 / 失真 → gate → master
     // gate 只管盲區（精準排程）；rhythmOut 是節奏匯流排的固定總增益（A1：不隨 p 變，假驟降交接才沒有接縫）
-    var rhythmOut = ctx.createGain(); rhythmOut.gain.value = C.RHYTHM_GAIN; rhythmOut.connect(master);
+    var rhythmOut = ctx.createGain(); rhythmOut.gain.value = C.RHYTHM_GAIN;
+    // 木馬腹中低通（方向 A）：並聯兩條——乾路徑（平時 1）與低通路徑（平時 0，乘出來剛好是零），開關關著時輸出和以前逐樣本相同。
+    // 腹中：乾 0、低通 1；暗門打開：低通頻率在 BELLY_OPEN_SEC 內掃到 18 kHz，再切回乾路徑。
+    var rhythmDry = ctx.createGain(); rhythmDry.gain.value = 1; rhythmOut.connect(rhythmDry); rhythmDry.connect(master);
+    var bellyLP = ctx.createBiquadFilter(); bellyLP.type = 'lowpass'; bellyLP.frequency.value = C.BELLY_LOWPASS_HZ; bellyLP.Q.value = 0.7;
+    var bellyLP2 = ctx.createBiquadFilter(); bellyLP2.type = 'lowpass'; bellyLP2.frequency.value = C.BELLY_LOWPASS_HZ; bellyLP2.Q.value = 0.7;   // 兩級串接（每八度 24 dB）：一級時 1200 Hz 以上只少 3 dB，聽不出隔著木板
+    var bellyWet = ctx.createGain(); bellyWet.gain.value = 0; rhythmOut.connect(bellyLP); bellyLP.connect(bellyLP2); bellyLP2.connect(bellyWet); bellyWet.connect(master);
     // 警戒開始時節奏＋失控層一起壓低（ALERT_DUCK_GAIN），讓低音先單獨出來一兩拍；平時 1
     var rhythmDuck = ctx.createGain(); rhythmDuck.gain.value = 1; rhythmDuck.connect(rhythmOut);
     var gate = ctx.createGain(); gate.gain.value = 1; gate.connect(rhythmDuck);
@@ -781,6 +803,48 @@
     // 新訊號強調（裁決 7.9）：區號一律讀規則的 state.zone；換了一局（state 換成新物件）就重來
     var intro = { game: null, zone: -1, hitsLeft: 0, bassDone: false, bassFrom: Infinity, bassUntil: -Infinity };
     function introGain() { return Math.pow(10, (+C.INTRO_BOOST_DB || 0) / 20); }
+    // ---------- 木馬（HORSE_MODE）：腹中低通、木馬共鳴 ----------
+    function horseOn() { var K = RK(); return !!(K && K.HORSE_MODE === true); }
+    var horse = { inBelly: false, dist: Infinity, lp: 'off', lpForce: null, lastBoom: null, posSet: false };
+    var horseBus = ctx.createGain(); horseBus.gain.value = 1;
+    var horsePan = ctx.createPanner(); horsePan.panningModel = 'HRTF'; horsePan.distanceModel = 'linear'; horsePan.rolloffFactor = 0;   // 只管方向，距離衰減由 horseBoomGain 算
+    horseBus.connect(horsePan); horsePan.connect(master);   // 接 master（經總輸出壓縮器，防爆音；試過繞過壓縮器，量起來沒差）
+    function horseBoom(dest, t, g) {      // 空心木馬跟著那一擊「轟」：木質低鳴 180～400 Hz＋600～900 Hz 木板聲
+      g *= C.HORSE_BOOM_MIX; t += C.HORSE_BOOM_DELAY;   // 空心木箱被敲之後才共振起來：晚一點響，不和重合擊搶同一個峰值（總輸出壓縮器會把疊在峰值上的壓掉）
+      // 能量放在 300 Hz 以上（筆電喇叭聽得到、也是錄音量「那一擊多厚」的頻段）：低鳴從 330 Hz 滑到 200 Hz，仍在 180～400 Hz
+      tone(dest, t, 'sine', 330, 200, 0.3, 0.6 * g, 0.004, 0.55);
+      tone(dest, t, 'triangle', 380, 300, 0.2, 0.45 * g, 0.004, 0.45);
+      noise(dest, t, 'bandpass', 380, 1.0, 0.5 * g, 0.004, 0.35);
+      noise(dest, t + 0.005, 'bandpass', 750, 1.4, 0.6 * g, 0.002, 0.2);    // 木板 600～900 Hz
+      tone(dest, t + 0.005, 'sine', 820, 760, 0.05, 0.15 * g, 0.002, 0.15);
+    }
+    function bellyLPOn(now) {
+      if (horse.lp === 'on') return;
+      horse.lp = 'on';
+      [bellyLP.frequency, bellyLP2.frequency].forEach(function (f) { f.cancelScheduledValues(now); f.setValueAtTime(C.BELLY_LOWPASS_HZ, now); });
+      rhythmDry.gain.cancelScheduledValues(now); rhythmDry.gain.setTargetAtTime(0, now, 0.02);
+      bellyWet.gain.cancelScheduledValues(now); bellyWet.gain.setTargetAtTime(1, now, 0.02);
+    }
+    function bellyLPOpen(t) {             // 暗門打開：低通在 BELLY_OPEN_SEC 內打開，全頻的鼓聲湧進來，之後切回乾路徑
+      if (horse.lp !== 'on') return;
+      horse.lp = 'off';
+      var now = ctx.currentTime, t0 = Math.max(now, t || now), te = t0 + C.BELLY_OPEN_SEC;
+      [bellyLP.frequency, bellyLP2.frequency].forEach(function (f) { f.cancelScheduledValues(now); f.setValueAtTime(C.BELLY_LOWPASS_HZ, t0); f.exponentialRampToValueAtTime(18000, te); });
+      rhythmDry.gain.cancelScheduledValues(now); rhythmDry.gain.setValueAtTime(rhythmDry.gain.value, now); rhythmDry.gain.setValueAtTime(0, te); rhythmDry.gain.linearRampToValueAtTime(1, te + 0.05);
+      bellyWet.gain.cancelScheduledValues(now); bellyWet.gain.setValueAtTime(bellyWet.gain.value, now); bellyWet.gain.setValueAtTime(1, te); bellyWet.gain.linearRampToValueAtTime(0, te + 0.05);
+      if (log) log.push({ type: 'bellyOpen', t: t0 });
+    }
+    function horseUpdate(s, now) {        // 每幀：木馬位置、玩家距離、在不在腹中、低通狀態（只讀規則的 state，不自己算）
+      var on = horseOn(), pl = s.player, H = s.level && s.level.horse;
+      horse.inBelly = !!(on && pl && pl.inBelly);
+      if (on && H && pl && isFinite(pl.x) && isFinite(pl.z)) {
+        var hx = (H.x0 + H.x1) / 2, hz = (H.z0 + H.z1) / 2;
+        horse.dist = Math.hypot(pl.x - hx, pl.z - hz);
+        if (!horse.posSet) { setPos(horsePan, hx, 1.5, hz, now, true); horse.posSet = true; }
+      } else horse.dist = Infinity;
+      var want = horse.lpForce != null ? !!horse.lpForce : (horse.inBelly && !(s.belly && s.belly.open));
+      if (want) bellyLPOn(now); else if (horse.lp === 'on') bellyLPOpen(now);
+    }
     // 交接重合擊：各層第一拍同時落下（不照鐘形曲線）＋一聲 300～1200 Hz 的厚擊（筆電喇叭聽得到）＋一點低頻身體（耳機）。
     // 走節奏匯流排：吃 gateVS（窗前半推高送量）／gateVO（窗內推高輸出）的殘響，窗結束時 gateVD 把殘響壓低，尾巴和窗一起收掉。
     function coverHit(out, t, alertWin) {
@@ -820,7 +884,11 @@
         if (le) log.push(le);
         var bst = 1;
         if (!aw && intro.hitsLeft > 0 && intro.zone === C.INTRO_COVER_ZONE) { intro.hitsLeft--; bst = introGain(); if (le) le.boost = bst; }
-        (function (aw, bst) { addEvent(key, P, rhythmBus, function (tt, out) { out.gain.value = bst; coverHit(out, tt, aw); }, false, le); })(aw, bst);
+        // 木馬共鳴（C2）：一般掩護窗那一擊，從木馬的位置發一聲（音量隨玩家距離；腹中、警戒窗不發——警戒窗讓出 200～600 Hz 給低音拍）
+        var hg = (!aw && horseOn() && !horse.inBelly) ? horseBoomGain(horse.dist) : 0;
+        if (le && hg > 0) le.boom = hg;
+        if (hg > 0) horse.lastBoom = { t: t, gain: +hg.toFixed(3), dist: +horse.dist.toFixed(2) };
+        (function (aw, bst, hg) { addEvent(key, P, rhythmBus, function (tt, out) { out.gain.value = bst; coverHit(out, tt, aw); if (hg > 0) horseBoom(horseBus, tt, hg); }, false, le); })(aw, bst, hg);
       }
     }
 
@@ -1543,8 +1611,27 @@
         }
       },
       step: function (t) { stepSound(cueBus, t, 1); },   // 腳步：赤腳／皮鞋踩石板
-      stepMasked: function (t) {          // 合拍的腳步：被鼓聲蓋過，極小聲、更悶
+      stepMasked: function (t, d) {       // 合拍的腳步：被鼓聲蓋過，極小聲、更悶
         noise(cueBus, t, 'lowpass', 260 + Math.random() * 60, 0.8, C.STEP_MASKED_GAIN, 0.003, 0.06);
+        // 木馬腹中練習（方向 A）：起步踩準亮一格（start: true、n＝第幾格），多一個往上的里拉琴音；續步不加
+        if (horseOn() && d && d.start === true && isFinite(d.n) && d.n > 0) {
+          var ns = C.BELLY_STEP_NOTES; lyre(cueBus, t + 0.01, ns[clamp(d.n | 0, 1, ns.length) - 1], C.BELLY_STEP_VEL);
+        }
+      },
+      bellyHush: function (t) {           // 腹中起步踩歪：同伴按住你——木板空心的「咚」＋短促的氣音「噓」
+        tone(cueBus, t, 'sine', 150, 110, 0.12, 0.35, 0.003, 0.25);
+        tone(cueBus, t, 'triangle', 420, 330, 0.06, 0.12, 0.002, 0.12);
+        noise(cueBus, t, 'bandpass', 600, 1.4, 0.18, 0.002, 0.08);
+        noise(cueBus, t + 0.12, 'bandpass', 2600, 0.9, 0.1, 0.03, 0.3);
+      },
+      bellyReady: function (t) {          // 刻痕亮滿：四個音連成主題動機的開頭（里拉琴）
+        for (var i = 0; i < 4; i++) lyre(cueBus, t + i * 0.2, THEME.notes[i].midi, C.LATCH_VEL);
+      },
+      trapdoorOpen: function (t) {        // 同伴趁那一擊拉開木栓：木栓滑開（摩擦往上掃）＋卡到底一聲；低通在 BELLY_OPEN_SEC 內打開
+        var f = noise(cueBus, t, 'bandpass', 500, 2, 0.25, 0.01, 0.35); f.frequency.exponentialRampToValueAtTime(1400, t + 0.35);
+        tone(cueBus, t + 0.36, 'triangle', 260, 180, 0.05, 0.3, 0.002, 0.15);
+        CUES._creak(t + 0.1, 0.18);
+        bellyLPOpen(t);
       },
       stepLoud: function (t, d) {         // 不合拍的腳步：清楚，有 {x, z} 就放在那個位置（3D）
         var dest = cueBus;
@@ -1910,16 +1997,23 @@
         updateRoute(s, now);
         // 衛兵 3D：倒下、非作用中的靜音；沒有衛兵清單就全部淡掉
         if (s.guards && s.guards.length != null) updateGuards(s.guards, now);
+        horseUpdate(s, now);   // 木馬：開關關著時只把 dist 設成無限大，什麼都不改
         // 立刻補排一次（新外推、新盲區），不等下一個 tick
         scheduleTo(now + C.LOOKAHEAD, now);
       },
       setListener: setListener,
+      // 木馬（HORSE_MODE）：試驗場面板用。setBellyLowpass(true｜false｜null＝照規則自動)；horseInfo() 讀距離、共鳴音量、低通狀態
+      setBellyLowpass: function (v) { horse.lpForce = (v == null) ? null : !!v; if (lastState) horseUpdate(lastState, ctx.currentTime); },
+      horseInfo: function () {
+        return { on: horseOn(), inBelly: horse.inBelly, lowpass: horse.lp === 'on', lowpassHz: C.BELLY_LOWPASS_HZ, lowpassForce: horse.lpForce,
+          dist: isFinite(horse.dist) ? +horse.dist.toFixed(2) : null, boomGain: +horseBoomGain(horse.dist).toFixed(3), boomR: C.HORSE_BOOM_R, lastBoom: horse.lastBoom };
+      },
       // cue(name[, when])、cue(name, data)、cue(event)：data／event 可帶 index（calm_ok、calm_bad、latch_step）與 x、z（step_loud）。
       // event 可以是 game.out 的一筆 {type:'sfx', a:'calm_ok', index}（資料也可放在 a 物件或 data 裡）
       cue: function (name, arg) {
         if (dead || !name) return false;
         var data = {}, when = null;
-        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
+        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
         if (typeof name === 'object') {
           var ev = name; take(ev); take(ev.data);
           name = ev.a != null ? ev.a : (ev.name || ev.sfx || ev.cue);
@@ -1936,7 +2030,7 @@
       },
       cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
                  'alert', 'alerted', 'alertOver', 'caught', 'takedown', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
-                 'huntStep', 'huntSlip',
+                 'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen',
                  'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
@@ -2017,5 +2111,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz };
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain };
 });

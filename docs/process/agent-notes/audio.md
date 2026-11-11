@@ -209,3 +209,27 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - `out/r1111-gap1`：留空檔版全過，警戒低音拍 +16.5 dB（整夜那次 +13.6，7.9 的起疑加強兩版都有）。
     - `node --test` 274 過。
   - 陷阱：離線量警戒窗要開音樂層、模擬 alarm 慢慢升高，否則會高估約 3 dB。
+- **11/11：木馬第 2 批（聲音）已做**（未提交；改 `audio.js`、`audio-test.html`，新增 `audio.test.js`；設計 `2026-11-11-trojan-horse-directions.md` 方向 A、C2）。全部只在規則 `T.HORSE_MODE === true` 時發生：
+  - A 腹中：
+    - 節奏線（含重合擊、殘響、失控層）並聯一條兩級低通（`BELLY_LOWPASS_HZ` 1200，每八度 24 dB）。開關關著時低通路徑音量是 0，輸出逐樣本不變。一級低通 1200 Hz 以上只少 3 dB，聽不出隔著木板，所以改兩級。
+    - 起步 `step_masked`（`start: true`、`n`）加里拉琴音 `BELLY_STEP_NOTES` 62→64→67→69。
+    - `belly_hush`：木板空心「咚」＋氣音。`belly_ready`：主題前四音。
+    - `trapdoor_open`：木栓滑開＋卡到底一聲，低通在 `BELLY_OPEN_SEC` 0.6 秒內掃到 18 kHz 再切回乾路徑。規則的 `belly.open` 也會觸發，只開一次。
+  - C2 木馬共鳴：一般掩護窗那一擊，從 `level.horse` 中心發一聲（HRTF 只管方向）。
+    - 音量 `horseBoomGain(d)`＝`HORSE_BOOM_GAIN`×(1 − d/R)²，R＝`HORSE_BOOM_R` 25 公尺外為 0。
+    - 音色：330→200 Hz 低鳴＋380 Hz、750 Hz 帶通（能量放在 300 Hz 以上）。比那一擊晚 `HORSE_BOOM_DELAY` 0.07 秒，像空心木箱被敲後才共振。`HORSE_BOOM_MIX` 7 是內部混音倍數。
+    - 腹中、警戒窗不發。警戒窗不發是我加的：低鳴會蓋到 200～600 Hz 的低音拍。
+  - 對外介面：`setBellyLowpass(true|false|null)`、`horseInfo()`（`dist`、`boomGain`、`lowpass`、`lastBoom`），模組另匯出 `horseBoomGain`。試聽頁加木馬面板：開關、在腹中、低通照規則／強制開／強制關、離木馬 0～40 公尺、讀數。
+  - 驗證：
+    - CI 全套 299 過（原 294 條＋新 `audio.test.js` 5 條：音量隨距離單調遞減、R 外為 0、壞值為 0）。新測試抓到一個錯：`null >= 0` 在 JS 是真，已改先擋型別。
+    - 開關關著，離線固定亂數比新舊版：殘響掩護版各頻段 0.000 dB；留空檔版高頻 ≤ 0.08 dB，舊版對舊版也有同樣誤差，是渲染本身的。
+    - 共鳴（離線，那一擊後 0.5 秒 300～1200 Hz 比窗前）：貼著木馬 2 公尺 +14.4、12 公尺 +11.6、30 公尺 +10.7，差 3.7 dB；峰值 −0.87 dBFS 沒變，不爆音。
+    - 腹中低通：2400 Hz 以上少 20.6 dB，1200 Hz 以下 +0.2 dB（骨幹還在）。暗門打開後 0.4 秒內回到和腹外相差 ±0.2 dB。
+    - 錄音（開關關著，殘響掩護版 90 秒）：`out/horse2-off-cover` 全過。同條件換回提交版 `audio.js` 錄 `out/horse2-head-cover` 對照，各頻段差 0～0.7 dB；同版本兩段錄音本身會差到 1.1 dB（程式玩家走法不同）。巡邏中高頻比 11/11 早上響約 2 dB，提交版也一樣，是規則與畫面第 1 批造成的，不是聲音。
+  - 陷阱：
+    - 共鳴的突出量**不能用峰值量**：峰值永遠是重合擊本身，共鳴要比重擊還響才量得到，那就違反設計。改量那一擊後 0.5 秒的能量。
+    - 繞過總輸出壓縮器試過，量起來沒差，已改回經壓縮器。
+  - 要轉別人：
+    - 畫面：`?lab=belly` 面板的低通那行接 `audio.setBellyLowpass` 與 `horseInfo()`；`?lab=horse` 面板顯示 `horseInfo().dist`、`boomGain`。
+    - 規則：還沒有 `?lab=horse` 入口（`createLevel` 只認 `lab: 'belly'`）。
+    - 錄音與工具：共鳴量測要站到木馬旁和 30 公尺外，量法用那一擊後 0.5 秒能量，不用峰值。
