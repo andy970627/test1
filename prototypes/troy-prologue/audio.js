@@ -164,7 +164,8 @@
     CHECK_BASS_MAX: 1,               // 貼近時低音音量（平時 BASS_BASE）
     PANT_GAP: 0.42,                  // 跑完喘氣（pant_start）：每口間隔
     PANT_GAIN: 0.09,                 // 喘氣第一口的音量，之後越來越輕
-    SHOUT_GAIN: 0.074,               // hunt_call 喊一聲（11/12 實錄 0.8 時追殺比鼓 +14.7 dB，撞輸出限制把鼓壓下去；調回約比鼓 −6 dB，第 18 節逃的鼓聲已經比較安靜）
+    SHOUT_GAIN: 0.295,               // hunt_call 喊一聲（11/12 實錄：0.8 時比鼓 +14.7 dB 撞限制；0.074 時比鼓 −18 dB；再加 12 dB，目標約比鼓 −6 dB）
+    SEARCH_START_MUL: 0.376,         // search_start 另外再乘（11/12 實錄比鼓 +2.5 dB，再降 8.5 dB）
     SEARCH_VOICE_MUL: 0.126,         // 搜索開始、搜完的聲音再乘幾倍（11/12 實錄搜索比鼓 +12 dB，躲的時候鼓退了 14 dB；調回約比鼓 −6 dB）
     CHECK_STEP_MUL: 2,               // 查看中的衛兵腳步再乘幾倍（11/12 錄音：走近 4～7 公尺時比鼓 −31 dB，聽不清楚；連距離補償約 +12 dB。3 倍時離線 5 公尺已比鼓大聲，先取 2）
     CHECK_STEP_DIST_REF: 2.5, CHECK_STEP_DIST_MAX: 3,   // 查看中：離你超過 2.5 公尺時腳步再按距離補回來（最多 3 倍），遠一點也聽得到他在走過來
@@ -1587,7 +1588,7 @@
       var dt = 0.004, t = Math.max(P.t, from - dt);
       while (t < end) {
         var pv = Math.min(huntPv(t), 1 - 1e-3), T = Tof(t), rate = P.M * Math.LN2 * Math.pow(2, pv) / T;   // 第 0 層每秒幾拍
-        var B0 = P.B, B1 = P.B + rate * dt, gs = null;
+        var B0 = P.B, B1 = pulseB(t + dt, t, rate * dt), gs = null;   // 18.7：加速到頂後鎖在規則的追殺循環上
         for (var kk = -1; kk <= baseLayerCount(true); kk++) {
           var sc = Math.pow(2, kk), a = Math.floor(B0 * sc + 1e-9), b = Math.floor(B1 * sc + 1e-9);
           if (b > a) {
@@ -1604,6 +1605,25 @@
         P.B = B1; t += dt;
       }
       P.t = t;
+    }
+    // 18.7：加速到頂後，脈衝把規則的追殺循環等分（第 0 層每圈 N0 下、N0 取偶數，最慢那條也對得上），最響的一擊（循環起點，規則決定）落在一下脈衝上。
+    // 到頂那一刻先用一小段把速度微調到「下一個循環起點剛好是偶數拍」，之後 B 照循環的相位走（T 變了也跟著）。
+    function pulseB(t1, t0, dB) {
+      var P = hm.pulse;
+      if (P.lock) return P.lock.B + P.N0 * (Pof(t1) - P.lock.P);
+      if (!P.seg && t0 >= P.t0 + P.dur) {
+        var c1 = Math.floor(Pof(t0)) + 1, tc = tAt(c1);
+        if (tc - t0 < 0.8 * Tof(t0)) { c1++; tc = tAt(c1); }   // 微調這一段至少 0.8 圈，速度變化才小（差最多 1 拍／約 10 拍）
+        var rate = dB / Math.max(1e-6, t1 - t0), Bc = P.B + rate * (tc - t0);
+        P.N0 = 2 * Math.max(1, Math.round(P.M * Math.LN2));   // 到頂時第 0 層每圈約 2·M·ln2 下（M = 7 → 9.7），取最近的偶數（10）
+        P.seg = { t0: t0, B0: P.B, tc: tc, Bc: 2 * Math.round(Bc / 2), c: c1 };
+        if (log) log.push({ type: 'pulseLock', t: tc, c: c1, B: P.seg.Bc, N0: P.N0 });
+      }
+      if (P.seg) {
+        if (t1 >= P.seg.tc) { P.lock = { B: P.seg.Bc, P: P.seg.c }; return P.lock.B + P.N0 * (Pof(t1) - P.lock.P); }
+        return P.seg.B0 + (P.seg.Bc - P.seg.B0) * (t1 - P.seg.t0) / (P.seg.tc - P.seg.t0);
+      }
+      return P.B + dB;
     }
     function pulseFade(t) { return hm.back ? clamp(1 - (t - hm.back.t0) / C.ESCAPED_BACK, 0, 1) : 1; }   // 甩掉：脈衝 2 秒淡出
     function rissetFade(t) { return hm.back ? clamp((t - hm.back.t0) / C.ESCAPED_BACK, 0, 1) : 1; }      // 甩掉：循環的鼓 2 秒淡入
@@ -2213,7 +2233,7 @@
       searchStart: function (t, d) {      // 追兵走進影子開始搜：吸鼻子聞兩下＋一聲低低的悶哼
         if (!movesOn()) return;
         var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
-        var sv = C.SEARCH_VOICE_MUL;
+        var sv = C.SEARCH_VOICE_MUL * C.SEARCH_START_MUL;
         for (var i = 0; i < 2; i++) noise(out, t + i * 0.18, 'bandpass', 1600, 2, 0.24 * sv, 0.02, 0.08);
         tone(out, t + 0.45, 'sawtooth', 95, 85, 0.3, 0.06 * sv, 0.04, 0.3);
       },
