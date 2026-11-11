@@ -2657,3 +2657,37 @@ test('11/11 木馬 ?lab=belly（第 1.1 節驗收量時間）：BELLY_MISS_COST 
   assert.ok(best, '三個值都過不了：回報設計席（不調 STEP_WIN）');
   assert.equal(K.BELLY_MISS_COST, best.cost, `預設 BELLY_MISS_COST 要是三條都過的最小值 ${best.cost}`);
 });
+
+test('11/11 木馬 ?lab=horse（第 3 節 C2 試驗場）：開關自己開、循環固定、從第 2 區開始、沒有衛兵、有木馬陰影；走進出口也不換區，亂走一分鐘不會過關也不會失敗', () => {
+  const g = R.createLevel({ lab: 'horse' });
+  assert.equal(g.lab, 'horse');
+  assert.equal(g.T.HORSE_MODE, true);
+  assert.equal(g.T.DYNAMIC, false);
+  assert.equal(g.zone, 2);
+  assert.equal(g.phase, 'play');
+  assert.equal(g.guards.length, 0, '沒有衛兵');
+  const hs = R.horseShadowFor(g.level);
+  assert.ok(g.level.shadows.some((s) => s.name === hs.name), '木馬陰影照開關邏輯加入');
+  let t = 0; g.step(t, {});
+  // 走進第 2 區出口：不換區
+  const ex = g.level.zones[2].exit.rect;
+  place(g, (ex.x0 + ex.x1) / 2, (ex.z0 + ex.z1) / 2);
+  t += DT; g.step(t, { mx: 1 });
+  assert.equal(g.zone, 2, '出口擋住');
+  // 在廣場裡亂走、亂衝、離拍出聲一分鐘（含節奏最快的時候）
+  place(g, 18, 20);
+  const rnd = R.mulberry32(9);
+  let mx = 1, mz = 0;
+  while (t < 60) {
+    if (rnd() < 0.02) { mx = rnd() * 2 - 1; mz = rnd() * 2 - 1; }
+    t += DT; g.step(t, { mx, mz, dash: rnd() < 0.05, breath: rnd() < 0.1 });
+    g.drain();
+    assert.equal(g.phase, 'play', `t=${t.toFixed(2)}`);
+  }
+  assert.equal(g.zone, 2);
+  assert.equal(g.hunted, false);
+  // 開關關著的一般關卡不受影響：從第 2 區走進出口照常換區
+  const off = R.createLevel({ startZone: 2, T: { DYNAMIC: false } });
+  off.step(0, {}); place(off, (ex.x0 + ex.x1) / 2, (ex.z0 + ex.z1) / 2); off.step(DT, { mx: 1 });
+  assert.equal(off.zone, 3);
+});

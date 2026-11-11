@@ -691,8 +691,10 @@
     const oT = opts.T || {};
     if (oT.BLIND_LEN == null && oT.BLIND != null) K.BLIND_LEN = oT.BLIND;
     K.BLIND = K.BLIND_LEN;
-    // 試驗場 ?lab=belly：木馬開關開、循環固定（opts.T 可再覆寫）、只有腹中、沒有衛兵；爬下暗門就算過關
-    const lab = opts.lab === 'belly' ? 'belly' : null;
+    // 試驗場（opts.T 可再覆寫）：兩個都是木馬開關開、循環固定、沒有衛兵。
+    //   ?lab=belly：只有腹中；爬下暗門就算過關。
+    //   ?lab=horse（第 3 節 C2）：從第 2 區開始自由走，不會過關也不會失敗（出口擋住、沒有衛兵）；木馬陰影照開關邏輯加入。
+    const lab = (opts.lab === 'belly' || opts.lab === 'horse') ? opts.lab : null;
     if (lab) { if (oT.HORSE_MODE == null) K.HORSE_MODE = true; if (oT.DYNAMIC == null) K.DYNAMIC = false; }
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
     let level = opts.level || buildLevel();
@@ -702,7 +704,7 @@
       if (hs && !level.shadows.some((s) => s.name === hs.name)) level = Object.assign({}, level, { shadows: level.shadows.concat([hs]) });
     }
     const t0 = opts.t0 || 0;
-    const startZone = lab ? 1 : Math.max(0, Math.min(4, opts.startZone | 0));
+    const startZone = lab === 'belly' ? 1 : lab === 'horse' ? 2 : Math.max(0, Math.min(4, opts.startZone | 0));
 
     const g = {
       T: K,
@@ -1432,6 +1434,7 @@
           if (K.HORSE_MODE && !g.belly.open) reached = false;      // 腹中練習：同伴還沒拉開木栓，暗門不開
           if (pl.x > Z.belly.x0 + 2 && (!K.HORSE_MODE || g.belly.open)) hint('trapdoor');
         } else if (Z.exit.kind === 'rect') reached = inRect(pl.x, pl.z, Z.exit.rect);
+        if (lab === 'horse') reached = false;                    // 試驗場：自由走，不離開第 2 區
         if (reached) {
           if (g.hunted) hint('lockedExit');
           else {
