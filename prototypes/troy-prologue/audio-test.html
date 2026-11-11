@@ -38,10 +38,13 @@ input[type=range] { flex:1; }
     <label>窗前變亮 <input id="bright" type="range" min="0" max="6" step="0.5" value="4"> <span id="brightv">4</span> dB（殘響掩護下；0＝關，設計 7.3）</label>
   </section>
   <section>
-    <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 7.3 節，第二輪）</b>
-    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="s3">S3 第一輪（對照）</option><option value="u1">U1 六層、淡到零</option><option value="u2">U2 每條鼓有自己的音</option><option value="u3">U3 加音高上升</option><option value="u4">U4 滾奏衝進重擊</option></select></label>
-    <label>循環 <select id="illT"><option value="10" selected>10 秒（原本）</option><option value="12">12 秒（附近沒有衛兵）</option><option value="6">6 秒（危險）</option></select></label>
-    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=s3|u1|u2|u3|u4&amp;cycle=12|6。</div>
+    <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 10.1 節，第三輪）</b>
+    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="u1">U1 六層、淡到零（對照）</option><option value="v0">V0 不放最響的一擊</option><option value="v1">V1 最響一擊不固定</option><option value="v2">V2 加假的</option><option value="v3">V3 最響一擊拉回來</option><option value="v4">V4 三對二</option></select></label>
+    <label>層數 <select id="illL"><option value="6" selected>6</option><option value="8">8</option></select></label>
+    <label>循環 <select id="illT"><option value="10" selected>10 秒（原本）</option><option value="12">12 秒（附近沒有衛兵）</option><option value="6">6 秒（危險）</option><option value="20">20 秒</option></select></label>
+    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=u1|v0|v1|v2|v3|v4&amp;cycle=12|6|20&amp;layers=6|8。</div>
+    <label><input id="vnext" type="checkbox"> 顯示離下一次最響一擊幾秒</label> <label><input id="vreal" type="checkbox"> 顯示這一次是真的還是假的</label>（試聽時先關著）
+    <div class="note" id="vinfo"></div>
     <div class="note" id="illinfo">—</div>
   </section>
   <section>
@@ -86,20 +89,35 @@ input[type=range] { flex:1; }
   }
   // 加速感試聽：版本 → 聲音層 setIllusion；循環長度換了就重建聲音層（試聽頁的循環固定，不跟規則）
   var ILL = { now: {}, s1: { timbre: true }, s2: { bell: true }, s3: { timbre: true, bell: true },   // s1、s2 只留網址相容
-    u1: { u: true }, u2: { u: true, pitch: true }, u3: { u: true, pitch: true, rise: true, shep: true }, u4: { u: true, pitch: true, roll: true } };
-  function applyIll() { if (audio && audio.setIllusion) audio.setIllusion(ILL[$('ill').value] || null); }
+    u1: { u: true }, u2: { u: true, pitch: true }, u3: { u: true, pitch: true, rise: true, shep: true }, u4: { u: true, pitch: true, roll: true },   // s3、u2～u4 只留網址相容
+    v0: { u: true, noHit: true }, v1: { u: true, v: true }, v2: { u: true, v: true, fake: true }, v3: { u: true, v: true, v3: true }, v4: { u: true, v: true, v4: true } };
+  // 那一擊比前後一秒高幾 dB：分析器每幀記輸出峰值，那一擊過後一秒算（前後一秒取最大的那一格；那一擊取落下後 0.15 秒內）
+  var tapA = null, tapBuf = null, pkLog = [], vProm = [], vDone = {};
+  function tapFrame() {
+    if (!tapA) return; tapA.getFloatTimeDomainData(tapBuf); var m = 0; for (var i = 0; i < tapBuf.length; i++) m = Math.max(m, Math.abs(tapBuf[i]));
+    var now = ctx.currentTime; pkLog.push({ t: now, pk: m }); while (pkLog.length && pkLog[0].t < now - 4) pkLog.shift();
+  }
+  function promOf(T0) {
+    var hit = 0, other = 0, dur = tapBuf.length / ctx.sampleRate;
+    pkLog.forEach(function (r) { var a = r.t - dur; if (r.t > T0 - 0.005 && a < T0 + 0.15) hit = Math.max(hit, r.pk); else if (a >= T0 - 1 && r.t <= T0 - 0.02 || a >= T0 + 0.15 && r.t <= T0 + 1) other = Math.max(other, r.pk); });
+    return hit > 0 && other > 0 ? 20 * Math.log10(hit / other) : null;
+  }
+  function applyIll() { if (!audio || !audio.setIllusion) return; var o = Object.assign({}, ILL[$('ill').value] || {}); if (o.u) o.layers = +$('illL').value; audio.setIllusion(o); }
   function build() {
     if (audio && audio.dispose) audio.dispose();
     audio = RissetAudio.createAudio(ctx, { T: +$('illT').value || 10, t0: ctx.currentTime + 0.1 });
     audio.setMaster(+$('vol').value); applyIll();
+    tapA = ctx.createAnalyser(); tapA.fftSize = 1024; tapBuf = new Float32Array(tapA.fftSize); audio.tap(tapA); vProm = []; vDone = {};
   }
-  (function () {   // 網址參數預選：?ill=s3|u1|u2|u3|u4&cycle=12|6
+  (function () {   // 網址參數預選：?ill=u1|v0|v1|v2|v3|v4&cycle=12|6|20&layers=6|8
     var q = new URLSearchParams(location.search), v = q.get('ill'), c = q.get('cycle');
     if (v && ILL[v] && $('ill').querySelector('option[value="' + v + '"]')) { $('ill').value = v; $('cover').checked = true; }
-    if (c === '12' || c === '6' || c === '10') $('illT').value = c;
+    if (c === '12' || c === '6' || c === '10' || c === '20') $('illT').value = c;
+    if (q.get('layers') === '8') $('illL').value = '8';
   })();
-  $('ill').onchange = function () { if (this.value !== 'now') $('cover').checked = true; applyIll(); };
+  $('ill').onchange = function () { if (this.value !== 'now') $('cover').checked = true; applyIll(); vProm = []; vDone = {}; };
   $('illT').onchange = function () { if (ctx) build(); };
+  $('illL').onchange = function () { applyIll(); vProm = []; vDone = {}; };
   $('start').onclick = function () {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -130,6 +148,15 @@ input[type=range] { flex:1; }
     $('info').textContent = '音訊時間 ' + s.cycle.index + ' 循環・下一個低音 ' + (s.bass.nextBeat - audio.now()).toFixed(2) + ' 秒後';
     if (audio.illusionInfo) {
       var ii = audio.illusionInfo();
+      tapFrame();
+      var vi = ii.v, vt = '';
+      if (vi) {
+        if (vi.lastT != null && vi.lastReal && !vDone[vi.lastT] && ctx.currentTime > vi.lastT + 1.05) { vDone[vi.lastT] = 1; var pr = promOf(vi.lastT); if (pr != null) { vProm.push(pr); if (vProm.length > 8) vProm.shift(); } }
+        vt = ($('vnext').checked && vi.nextIn != null ? '離下一次 ' + vi.nextIn.toFixed(1) + ' 秒（和上一次隔 ' + vi.nextDt + ' 秒、' + vi.nextGap + ' 個對齊點）・' : '') +
+          ($('vreal').checked && vi.nextReal != null ? '下一次是' + (vi.nextReal ? '真的' : '假的') + '・' : '') +
+          '那一擊比前後一秒高 ' + (vProm.length ? vProm.map(function (x) { return x.toFixed(1); }).join(' / ') + ' dB（最近幾次）' : '（等第一次）');
+      }
+      $('vinfo').textContent = vt;
       $('illinfo').textContent = '循環 ' + ii.T + ' 秒・最大聲那一層 每分鐘 ' + ii.loudBpm + ' 拍・聽得到的最快（≥ −12 dB）每分鐘 ' + ii.fastBpm + ' 拍・現在聽得到 ' + ii.audible + ' 條鼓（共 ' + ii.layers + ' 層）・結尾那一刻最快那條 ' + ii.endDb + ' dB・各層 ' + ii.layersDb.join(' / ') + ' dB';
     }
     if (audio.horseInfo) {
