@@ -38,10 +38,10 @@ input[type=range] { flex:1; }
     <label>窗前變亮 <input id="bright" type="range" min="0" max="6" step="0.5" value="4"> <span id="brightv">4</span> dB（殘響掩護下；0＝關，設計 7.3）</label>
   </section>
   <section>
-    <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 3.1、6.1 節）</b>
-    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="s1">S1 同一種鼓</option><option value="s2">S2 鐘形偏快</option><option value="s3">S3 兩個都改</option></select></label>
+    <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 7.3 節，第二輪）</b>
+    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="s3">S3 第一輪（對照）</option><option value="u1">U1 六層、淡到零</option><option value="u2">U2 每條鼓有自己的音</option><option value="u3">U3 加音高上升</option><option value="u4">U4 滾奏衝進重擊</option></select></label>
     <label>循環 <select id="illT"><option value="10" selected>10 秒（原本）</option><option value="12">12 秒（附近沒有衛兵）</option><option value="6">6 秒（危險）</option></select></label>
-    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=s1|s2|s3&amp;cycle=12|6。</div>
+    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=s3|u1|u2|u3|u4&amp;cycle=12|6。</div>
     <div class="note" id="illinfo">—</div>
   </section>
   <section>
@@ -85,16 +85,17 @@ input[type=range] { flex:1; }
     return ST;
   }
   // 加速感試聽：版本 → 聲音層 setIllusion；循環長度換了就重建聲音層（試聽頁的循環固定，不跟規則）
-  var ILL = { now: { timbre: false, bell: false }, s1: { timbre: true, bell: false }, s2: { timbre: false, bell: true }, s3: { timbre: true, bell: true } };
+  var ILL = { now: {}, s1: { timbre: true }, s2: { bell: true }, s3: { timbre: true, bell: true },   // s1、s2 只留網址相容
+    u1: { u: true }, u2: { u: true, pitch: true }, u3: { u: true, pitch: true, rise: true, shep: true }, u4: { u: true, pitch: true, roll: true } };
   function applyIll() { if (audio && audio.setIllusion) audio.setIllusion(ILL[$('ill').value] || null); }
   function build() {
     if (audio && audio.dispose) audio.dispose();
     audio = RissetAudio.createAudio(ctx, { T: +$('illT').value || 10, t0: ctx.currentTime + 0.1 });
     audio.setMaster(+$('vol').value); applyIll();
   }
-  (function () {   // 網址參數預選：?ill=s1|s2|s3&cycle=12|6
+  (function () {   // 網址參數預選：?ill=s3|u1|u2|u3|u4&cycle=12|6
     var q = new URLSearchParams(location.search), v = q.get('ill'), c = q.get('cycle');
-    if (v && ILL[v]) { $('ill').value = v; $('cover').checked = true; }
+    if (v && ILL[v] && $('ill').querySelector('option[value="' + v + '"]')) { $('ill').value = v; $('cover').checked = true; }
     if (c === '12' || c === '6' || c === '10') $('illT').value = c;
   })();
   $('ill').onchange = function () { if (this.value !== 'now') $('cover').checked = true; applyIll(); };
@@ -129,7 +130,7 @@ input[type=range] { flex:1; }
     $('info').textContent = '音訊時間 ' + s.cycle.index + ' 循環・下一個低音 ' + (s.bass.nextBeat - audio.now()).toFixed(2) + ' 秒後';
     if (audio.illusionInfo) {
       var ii = audio.illusionInfo();
-      $('illinfo').textContent = '循環 ' + ii.T + ' 秒・最大聲那一層 每分鐘 ' + ii.loudBpm + ' 拍・聽得到的最快（≥ −12 dB）每分鐘 ' + ii.fastBpm + ' 拍・各層 ' + ii.layersDb.join(' / ') + ' dB';
+      $('illinfo').textContent = '循環 ' + ii.T + ' 秒・最大聲那一層 每分鐘 ' + ii.loudBpm + ' 拍・聽得到的最快（≥ −12 dB）每分鐘 ' + ii.fastBpm + ' 拍・現在聽得到 ' + ii.audible + ' 條鼓（共 ' + ii.layers + ' 層）・結尾那一刻最快那條 ' + ii.endDb + ' dB・各層 ' + ii.layersDb.join(' / ') + ' dB';
     }
     if (audio.horseInfo) {
       var h = audio.horseInfo();

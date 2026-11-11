@@ -172,6 +172,14 @@
     ILL_SIG_FAST: 0.30,        // S2：快的那一側寬度
     ILL_SIG_SLOW: 0.16,        // S2：慢的那一側寬度
     ILL_AUDIBLE_DB: -12,       // 面板「聽得到的最快速度」：音量 ≥ 最大聲那一層 −12 dB 的最快那一層
+    // 第二輪試聽 U1～U4（同文件第 7.3 節）：U1 起點是中心 0.55、寬 0.15，離線算過後改成下面的值（理由寫在 agent-notes/audio.md）
+    ILL_U_LAYERS: 6,           // U1：層數 4 → 6
+    ILL_U_CENTER: 0.52,        // U1：鐘形中心（12 秒循環時最大聲那條每分鐘 149～298 拍，中間值約 211）
+    ILL_U_SIG: 0.21,           // U1：鐘形寬度（進場 −53 dB、結尾 −45 dB，任何時刻 −12 dB 內有 3～4 條）
+    ILL_U_MIN_GAIN: 0.003,     // U 版低於這個音量的拍不排（約 −50 dB；現行 0.02 約 −34 dB，進場會有一點斷崖）
+    ILL_PITCH: [1, 1.1225, 1.3348],   // U2：三個音高輪流（低、高一個全音、再高一個小三度），每條鼓從進場到退場固定
+    ILL_RISE_ST: 5,            // U3：每條鼓從進場到退場再升幾個半音（5＝四度；框鼓的「啪」在 900→1200 Hz，落在 800 Hz 以上）
+    ILL_ROLL_FROM: 0.75,       // U4：最快那條從循環這個位置起不淡出，漸強到和最大聲那條一樣大，最響的一擊落下時拿掉
     // 木馬（規則 T.HORSE_MODE 開時才用；docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C2）
     BELLY_LOWPASS_HZ: 1200,    // 腹中隔著木板聽鼓：節奏線只留這以下（框鼓、木框敲擊都還在，筆電喇叭聽得到）【假設】
     BELLY_OPEN_SEC: 0.6,       // 暗門打開時低通掃開的時間（秒），和畫面掀開同步
@@ -418,11 +426,12 @@
       }
     ];
     var INST_NAME = ['低鼓', '框鼓', '手拍', '金屬'];
-    function playHit(dest, x, t, g) {
+    function playHit(dest, x, t, g, pm) {          // pm：音高倍數（U2／U3 試聽用；沒給＝1）
       var pos = clamp(x, 0, 1) * 4 - 0.5;           // 0..3 之間線性交叉
       var i0 = clamp(Math.floor(pos), 0, 3), i1 = clamp(i0 + 1, 0, 3), w = clamp(pos - i0, 0, 1);
       if (pos < 0) { i0 = i1 = 0; w = 0; }
       jit = 1 + (Math.random() * 2 - 1) * C.TIMBRE_JITTER;    // 只抖音色（頻率），音量照 g
+      if (pm) jit *= pm;
       if (1 - w > 0.05) INST[i0](dest, t, g * (1 - w));
       if (w > 0.05 && i1 !== i0) INST[i1](dest, t, g * w);
       jit = 1;
@@ -553,7 +562,7 @@
       mz.zone = z; mz.mix = m;
       rampTo(chantBus.gain, layerOn.chant ? m.chant : 0, d);
       rampTo(chorusBus.gain, layerOn.chorus ? m.chorus : 0, d);
-      rampTo(shepBus.gain, layerOn.shepard ? m.shep : 0, d);
+      rampTo(shepBus.gain, layerOn.shepard ? ((ill && ill.shep) ? 1 : m.shep) : 0, d);   // U3 試聽：不分區都開
       rampTo(themeBus.gain, layerOn.theme ? 1 : 0, Math.min(d, 0.5));
       rampTo(chantLP.frequency, m.far ? 450 : 2400, d, true);
     }
@@ -657,7 +666,8 @@
     // 規則沒有這個常數＝現行盲區版。開著時掩護窗（＝盲區時段）不壓低任何線，改成交接重合擊＋0.6 秒殘響尾巴。
     function coverMode() { var K = RK(); return !!(K && K.COVER_MODE === true); }
     // 層數：規則的 layerCount(hunted)（巡邏 4、追殺 5；追殺層數是 T.HUNT_LAYERS），都沒有才用備援
-    function layerCount(hunted) {
+    function layerCount(hunted) { return (ill && ill.layers) ? ill.layers : baseLayerCount(hunted); }   // U 版試聽改層數
+    function baseLayerCount(hunted) {
       var Rr = getRules(), K = RK();
       if (Rr && typeof Rr.layerCount === 'function') { try { var n = Rr.layerCount(!!hunted, K || undefined); if (isFinite(n) && n > 0) return n | 0; } catch (e) {} }
       if (hunted && K && isFinite(K.HUNT_LAYERS) && K.HUNT_LAYERS > 0) return K.HUNT_LAYERS | 0;
@@ -669,7 +679,7 @@
     function minGain() { var K = RK(); return (K && isFinite(K.BEAT_MIN_GAIN)) ? +K.BEAT_MIN_GAIN : C.MIN_GAIN; }
     // 第 k 層在相位 p 的音量：以規則的 layerGain 為準（追殺時 5 層都走鐘形），沒有規則才用備援鐘形
     // ---------- 加速感試聽（聲音測試頁專用；ill 全為預設時，所有分支都不走，輸出和以前逐樣本相同） ----------
-    var ill = { timbre: false, bell: false };
+    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false };
     function ownBell(k, p, nL) { var K = RK(), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA; return bell((k + p) / nL, sig * nLayers() / nL); }
     function asymBell(x) { var d = x - C.ILL_CENTER, sg = d > 0 ? C.ILL_SIG_FAST : C.ILL_SIG_SLOW; return Math.exp(-(d / sg) * (d / sg)); }
     // S2：鐘形改成左右不對稱（偏快），再把每個瞬間的四層總和縮放回現行的總和——形狀照新的走，整體音量的起伏和現行一樣
@@ -679,6 +689,30 @@
       return sa > 0 ? asymBell((k + p) / nL) * sc / sa : 0;
     }
     function illTimbre(x) { return ill.timbre ? C.ILL_TIMBRE_X : x; }
+    // U1：6 層、左右對稱的鐘形，每個瞬間把總和縮放回現行（規則的 4 層）總和——整體音量和現行一樣，只是分給更多條鼓
+    function uBase(k, p, nL) { var d = ((k + p) / nL - C.ILL_U_CENTER) / C.ILL_U_SIG; return Math.exp(-d * d); }
+    function uGains(p, hunted) {
+      var nL = layerCount(hunted), nC = baseLayerCount(hunted), sc = 0, sa = 0, g = [], j;
+      for (j = 0; j < nC; j++) sc += curGain(j, p, hunted);
+      for (j = 0; j < nL; j++) { g.push(uBase(j, p, nL)); sa += g[j]; }
+      for (j = 0; j < nL; j++) g[j] = sa > 0 ? g[j] * sc / sa : 0;
+      return g;
+    }
+    function uGain(k, p, hunted) {
+      var g = uGains(p, hunted), nL = g.length;
+      if (ill.roll && k === nL - 1 && p >= C.ILL_ROLL_FROM) {   // U4：最快那條不淡出，從原本的音量依 dB 等速漸強到最大聲那條
+        var g0 = uGains(C.ILL_ROLL_FROM, hunted)[nL - 1], gm = Math.max.apply(null, g), u = (p - C.ILL_ROLL_FROM) / (1 - C.ILL_ROLL_FROM);
+        return g0 > 0 ? g0 * Math.pow(gm / g0, u) : gm * u;
+      }
+      return g[k] || 0;
+    }
+    // U2／U3：每條鼓的音高倍數。第 c 輪的第 k 層到下一輪變成第 k+1 層，所以「同一條鼓」＝ c − k 不變；新進場的那條拿下一個音高
+    function illPitch(c, k, p, nL) {
+      var m = 1;
+      if (ill.pitch) { var i = ((c - k) % 3 + 3) % 3; m *= C.ILL_PITCH[i]; }
+      if (ill.rise) m *= Math.pow(2, C.ILL_RISE_ST / 12 * (k + p) / nL);
+      return m;
+    }
     function illusionInfo(t) {           // 面板讀數：最大聲那一層、聽得到的最快那一層的速度（每分鐘幾拍），以及各層 dB
       t = t == null ? ctx.currentTime : t;
       var T = Tof(t), p = frac(Pof(t)), nL = layerCount(st.hunted), f0 = ruleM() * Math.LN2 / T, gs = [], mx = 0, iMax = 0, k;
@@ -686,16 +720,23 @@
       var thr = mx * Math.pow(10, C.ILL_AUDIBLE_DB / 20), iFast = iMax;
       for (k = 0; k < nL; k++) if (gs[k] >= thr && k > iFast) iFast = k;
       var bpm = function (kk) { return 60 * f0 * Math.pow(2, kk + p); };
-      return { T: +T.toFixed(2), p: +p.toFixed(3), loudBpm: Math.round(bpm(iMax)), fastBpm: Math.round(bpm(iFast)),
+      var nAud = 0; for (k = 0; k < nL; k++) if (gs[k] >= thr && gs[k] > 0) nAud++;
+      var pe = 1 - 1e-6, ge = [], me = 0; for (k = 0; k < nL; k++) { ge.push(beatGain(k, pe, st.hunted)); me = Math.max(me, ge[k]); }
+      var endDb = me > 0 && ge[nL - 1] > 0 ? +(20 * Math.log10(ge[nL - 1] / me)).toFixed(1) : -99;   // 循環結尾那一刻最快那條（相對最大聲那條）
+      return { T: +T.toFixed(2), p: +p.toFixed(3), loudBpm: Math.round(bpm(iMax)), fastBpm: Math.round(bpm(iFast)), audible: nAud, endDb: endDb, layers: nL,
         layersDb: gs.map(function (g) { return mx > 0 && g > 0 ? +(20 * Math.log10(g / mx)).toFixed(1) : -99; }),
         timbre: ill.timbre, bell: ill.bell };
     }
     function beatGain(k, p, hunted) {
+      if (ill.u) return uGain(k, p, hunted);         // 第二輪試聽 U1～U4（只有聲音測試頁會開）
       if (ill.bell) return illGain(k, p, hunted);   // 加速感試聽 S2／S3（只有聲音測試頁會開）
+      return curGain(k, p, hunted);
+    }
+    function curGain(k, p, hunted) {                 // 現行：規則的 layerGain，層數用規則的（不受 U 版改層數影響）
       var Rr = getRules(), K = RK();
       if (Rr && typeof Rr.layerGain === 'function') { try { var g = Rr.layerGain(k, p, hunted, K || undefined); if (isFinite(g)) return g; } catch (e) {} }
-      var nL = layerCount(hunted), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA;
-      return bell((k + p) / nL, sig * nLayers() / nL);         // 備援：層距隨層數縮，σ 同比例
+      var nL = baseLayerCount(hunted), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA;
+      return bell((k + p) / nL, sig * baseLayerCount(false) / nL);         // 備援：層距隨層數縮，σ 同比例
     }
     var tables = [], tabFromRules = false;
     function ownTable(k, M) { var Mk = (M || ruleM()) * Math.pow(2, k), a = []; for (var n = 0; n < Mk; n++) a.push(log2(1 + n / Mk)); return a; }
@@ -903,21 +944,21 @@
     // 交接重合擊：各層第一拍同時落下（不照鐘形曲線）＋一聲 300～1200 Hz 的厚擊（筆電喇叭聽得到）＋一點低頻身體（耳機）。
     // 走節奏匯流排：吃 gateVS（窗前半推高送量）／gateVO（窗內推高輸出）的殘響，窗結束時 gateVD 把殘響壓低，尾巴和窗一起收掉。
     function coverHit(out, t, alertWin) {
-      var nL = layerCount(st.hunted), G = C.COVER_HIT_GAIN, k;
+      var nL = layerCount(st.hunted), G = C.COVER_HIT_GAIN, k, cc = ill.u ? Math.round(Pof(t)) : 0;   // cc：這一擊開始的那一輪（U2 音高用）
       if (alertWin) {
         // 警戒時（掩護窗夾在兩個低音拍中間）：厚擊往上移到 0.9～1.4 kHz、不加低頻與 300～600 Hz，200～600 Hz 讓給要跟的低音拍
         // （11/10 錄音：照一般版打，警戒低音拍相對背景從 +14 掉到 +8.6 dB）
         // 11/10 晚（裁決 7.5）：係數 COVER_ALERT_GAIN 套整記輕版。只調層的係數沒用（上半層是手拍、金屬，能量多在 1200 Hz 以上，
         // 離線量 0.6→0.85 突出只從 2.8 到 3 dB），所以把 700～1200 Hz 的主體加重：在低音拍中頻（200～600 Hz）之上，不蓋低音。
         var ag = C.COVER_ALERT_GAIN;
-        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, illTimbre(k / nL), t, C.COVER_LAYER_GAIN * ag);
+        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, illTimbre(k / nL), t, C.COVER_LAYER_GAIN * ag, ill.u ? illPitch(cc, k, 0, nL) : 0);
         tone(out, t, 'triangle', 900, 760, 0.08, C.COVER_ALERT_BODY * G * ag, 0.002, 0.18);
         tone(out, t, 'sine', 1150, 1080, 0.05, 0.5 * C.COVER_ALERT_BODY * G * ag, 0.002, 0.14);
         noise(out, t, 'bandpass', 950, 1.1, 1.2 * C.COVER_ALERT_BODY * G * ag, 0.001, 0.09);
         tone(out, t, 'sine', 1380, 1300, 0.05, 0.12 * G * ag, 0.002, 0.14);
         return;
       }
-      for (k = 0; k < nL; k++) playHit(out, illTimbre(k / nL), t, C.COVER_LAYER_GAIN);
+      for (k = 0; k < nL; k++) playHit(out, illTimbre(k / nL), t, C.COVER_LAYER_GAIN, ill.u ? illPitch(cc, k, 0, nL) : 0);
       tone(out, t, 'triangle', 420, 260, 0.12, 0.32 * G, 0.002, 0.35);   // 鼓皮的「咚」：中頻主體
       tone(out, t, 'sine', 640, 520, 0.08, 0.18 * G, 0.002, 0.25);
       noise(out, t, 'bandpass', 700, 0.9, 0.45 * G, 0.002, 0.18);       // 皮面拍擊的寬頻成分
@@ -1058,7 +1099,7 @@
     }
     function planShep(end, now) {
       if (!layerOn.shepard || mute.music) return;
-      if (!(mz.mix.shep > 0 || shepBus.gain.value > 0.005)) { if (shep) shep.planned = -1; return; }
+      if (!(mz.mix.shep > 0 || shepBus.gain.value > 0.005 || ill.shep)) { if (shep) shep.planned = -1; return; }
       ensureShep();
       if (shep.planned < now) { shep.planned = now + 0.01; shepSet(shep.planned, shepValues(shep.planned), false); }
       while (shep.planned < end) { shep.planned += C.SHEP_STEP; shepSet(shep.planned, shepValues(shep.planned), true); }
@@ -1252,7 +1293,7 @@
     // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排。
     // 拍點時間用本檔的外推（tAt），音量用規則的 layerGain（A2），追殺時 5 層、音色位置 x = (k + p) ÷ 層數。
     function scheduleBeats(from, end, ws) {
-      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), gMin = minGain();   // 追殺 5 層、巡邏 4 層（規則決定）
+      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), gMin = ill.u ? C.ILL_U_MIN_GAIN : minGain();   // 追殺 5 層、巡邏 4 層（規則決定）
       if (tables.length < nL) refreshTables();
       for (var k = 0; k < nL; k++) {
         if (solo != null && k !== solo) continue;
@@ -1268,7 +1309,7 @@
             if (g < gMin) continue;                             // 音量不抖（A3）：實際響度 ∝ 規則 gain
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
             if (le) log.push(le);
-            (function (x, g) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(illTimbre(x), g);
+            (function (x, g, pm) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g, pm); }, true, le); })(illTimbre(x), g, ill.u ? illPitch(c, k, p, nL) : 0);
           }
         }
       }
@@ -2075,7 +2116,13 @@
       setListener: setListener,
       // 木馬（HORSE_MODE）：試驗場面板用。setBellyLowpass(true｜false｜null＝照規則自動)；horseInfo() 讀距離、共鳴音量、低通狀態
       // 加速感試聽（聲音測試頁）：setIllusion({ timbre: true|false, bell: true|false })；null＝回到現行。illusionInfo() 給面板讀數
-      setIllusion: function (o) { o = o || {}; ill.timbre = !!o.timbre; ill.bell = !!o.bell; replan(ctx.currentTime); },
+      // 第二輪：{ u: true, pitch, rise, roll, shep }；u 開時 6 層（ILL_U_LAYERS）、同一種鼓
+      setIllusion: function (o) {
+        o = o || {}; ill.u = !!o.u; ill.timbre = !!o.timbre || ill.u; ill.bell = !!o.bell;
+        ill.layers = ill.u ? C.ILL_U_LAYERS : 0; ill.pitch = ill.u && !!o.pitch; ill.rise = ill.u && !!o.rise; ill.roll = ill.u && !!o.roll;
+        var sh = !!o.shep; if (sh !== ill.shep) { ill.shep = sh; rampTo(shepBus.gain, layerOn.shepard ? (sh ? 1 : mz.mix.shep) : 0, 0.5); }
+        refreshTables(); replan(ctx.currentTime);
+      },
       illusionInfo: illusionInfo,
       stopHorseSignal: stopHorseSignal,   // C3 結尾演出被跳過（畫面 cinFinish）時呼叫：0.3 秒內收掉共鳴、落地、主題
       setBellyLowpass: function (v) { horse.lpForce = (v == null) ? null : !!v; if (lastState) horseUpdate(lastState, ctx.currentTime); },
