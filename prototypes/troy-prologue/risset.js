@@ -80,7 +80,8 @@
     // 11/11 木馬第 1 批（docs/design/2026-11-11-trojan-horse-directions.md 第 1、3、4.1、6 節）：木馬新內容全部藏在這個開關後面；
     // 關著時所有路徑和 11/11 報告版（c1d4aa3）完全一樣。網址 ?horse=1 開；createLevel({lab: 'belly'}) 自己開。
     HORSE_MODE: false,
-    BELLY_STEPS_NEED: 4,  // 木馬腹中練習：連續幾步踩在鼓點上（step_masked），同伴才在下一個掩護窗替你拉開暗門【假設，待量】
+    BELLY_STEPS_NEED: 4,  // 木馬腹中練習：亮滿幾格，同伴才在下一個掩護窗替你拉開暗門。只有「起步」算數（第 1.1 節）【假設，待量】
+    BELLY_MISS_COST: 1,   // 木馬腹中練習：起步踩歪扣幾格（最少扣到 0）【第 1.1 節；0、1、4 實測後取三條驗收都過的最小值】
     COVER_EAR_P: 0,       // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
@@ -482,7 +483,7 @@
       blind: cover ? '所有的鼓同時落下的那一擊最響，餘韻約 ' + num(K.BLIND_LEN) + ' 秒。這段時間衛兵什麼都察覺不到——趁這時移動。'
         : '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
       trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
-      belly: '踩著鼓點走到前面。連續 ' + num(K.BELLY_STEPS_NEED) + ' 步踩準，同伴就替你開門。',   // HORSE_MODE 的木馬腹中
+      belly: '站定，等鼓點，再踏出去。站定後的第一步踩在鼓點上才亮一格，亮滿 ' + num(K.BELLY_STEPS_NEED) + ' 格，同伴就替你開門。',   // HORSE_MODE 的木馬腹中（第 1.1 節：只算起步；規則角色暫擬，畫面角色可改）
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
       dash: cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
         : '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
@@ -1117,7 +1118,7 @@
         let stepNow = null;   // {masked, beatT}
         if (!walking && t - lastStepT >= K.STEP_GAP * K.STEP_GAP_MIN - 1e-9) {
           const masked = stepMasked(t, g);
-          stepNow = { masked, beatT: masked ? nearestMaskBeat(t, g) : null };
+          stepNow = { masked, beatT: masked ? nearestMaskBeat(t, g) : null, start: true };   // 起步：站定後踏出的第一步
         } else {
           const nx = nextStepAt(lastStepT, g);
           if (t >= nx.t - 1e-9) stepNow = nx.beatT != null ? { masked: true, beatT: nx.beatT } : { masked: stepMasked(t, g), beatT: null };
@@ -1126,16 +1127,20 @@
           lastStepT = t;
           stepLoud = !stepNow.masked;
           if (K.HORSE_MODE && pl.inBelly) {
-            // 木馬腹中練習：零失敗。出聲的腳步不讓任何衛兵聽見，改發 belly_hush（同伴按住你）並歸零；踩準的帶 {n, need}
-            const B = g.belly;
+            // 木馬腹中練習（第 1.1 節）：零失敗，衛兵什麼都聽不到。只有「起步」算數：
+            //   起步踩準亮一格、帶 {n, need, start: true}；起步踩歪發 belly_hush、扣 BELLY_MISS_COST 格（最少 0）；
+            //   接著連續走的後續步不亮不扣，帶 start: false，出聲的照一般腳步發 step_loud。
+            const B = g.belly, start = !!stepNow.start;
             stepLoud = false;
             if (stepNow.masked) {
-              if (!B.ready) B.n = Math.min(B.need, B.n + 1);
-              emit('sfx', 'step_masked', { x: pl.x, z: pl.z, beatT: stepNow.beatT, n: B.n, need: B.need });
-              if (!B.ready && B.n >= B.need) { B.ready = true; emit('sfx', 'belly_ready'); }
+              if (start && !B.ready) B.n = Math.min(B.need, B.n + 1);
+              emit('sfx', 'step_masked', { x: pl.x, z: pl.z, beatT: stepNow.beatT, n: B.n, need: B.need, start });
+              if (start && !B.ready && B.n >= B.need) { B.ready = true; emit('sfx', 'belly_ready'); }
+            } else if (start) {
+              if (!B.ready) B.n = Math.max(0, B.n - K.BELLY_MISS_COST);
+              emit('sfx', 'belly_hush', { x: pl.x, z: pl.z, n: B.n, need: B.need, cost: K.BELLY_MISS_COST });
             } else {
-              if (!B.ready) B.n = 0;
-              emit('sfx', 'belly_hush', { x: pl.x, z: pl.z });
+              emit('sfx', 'step_loud', { x: pl.x, z: pl.z, beatT: null, start: false });
             }
           } else
           emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z, beatT: stepNow.beatT });

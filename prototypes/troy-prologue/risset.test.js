@@ -2464,7 +2464,7 @@ test('11/11 木馬：HORSE_MODE 預設關；開關關著時腹中、陰影都和
   assert.equal(g.zone, 2, '開關關著：走到暗門就下去');
 });
 
-test('11/11 木馬 A：腹中零失敗——出聲的腳步發 belly_hush、計數歸零，不進高度警覺、不失敗；衛兵就在正下方也一樣', () => {
+test('11/11 木馬 A：腹中零失敗——起步出聲發 belly_hush（扣格），不進高度警覺、不失敗；衛兵就在正下方也一樣', () => {
   const g = hrs({ startZone: 1 });
   const q = g.guards.find((x) => x.zone === 1);
   q.x = 8; q.z = 15; q.route = [{ x: 8, z: 15 }]; q.wp = 0;   // 衛兵就站在腹中正下方
@@ -2489,53 +2489,64 @@ test('11/11 木馬 A：腹中零失敗——出聲的腳步發 belly_hush、計�
   assert.equal(g.belly.ready, false);
 });
 
-test('11/11 木馬 A：連續 BELLY_STEPS_NEED 步踩準 → belly_ready（step_masked 帶 {n, need}）；踩歪歸零；之後下一個掩護窗 trapdoor_open，暗門才開', () => {
+test('11/11 木馬 A（第 1.1 節）：只有起步算數——站定後第一步踩準亮一格（start: true），後續步不亮不扣（start: false）；起步踩歪 belly_hush 扣 BELLY_MISS_COST 格（最少 0）；亮滿 → belly_ready → 下一個掩護窗 trapdoor_open', () => {
   const g = hrs({ startZone: 1 });
   let t = 1; g.step(t, {}); g.drain();
   place(g, 11, 15); t += DT; g.step(t, {});
   assert.equal(g.zone, 1, '沒達成前走到暗門不開');
-  assert.equal(g.belly.open, false);
   place(g, 7, 15);
-  t = idleUntil(g, t, (gg, tt) => R.stepMasked(tt, gg), 9.5);   // 從可聽拍起步，之後腳步自己跟著鼓走
-  g.drain();
-  let dir = 1;
-  const r = runEv(g, t, t + 25, (gg) => (gg.belly.ready ? {} : { mx: (dir = paceDir(gg, dir)) }));
-  const steps = r.ev.filter((e) => e.a === 'step_masked');
-  assert.ok(steps.length && steps.every((e) => e.need === K.BELLY_STEPS_NEED && Number.isInteger(e.n) && e.n >= 1 && e.n <= K.BELLY_STEPS_NEED), '腹中的 step_masked 帶 {n, need}');
-  const ready = r.ev.find((e) => e.a === 'belly_ready');
-  assert.ok(ready, `要達成：${r.ev.map((e) => e.a + (e.n ? e.n : '')).join(' ')}`);
-  const before = r.ev.filter((e) => (e.a === 'step_masked' || e.a === 'belly_hush') && e.t <= ready.t).slice(-K.BELLY_STEPS_NEED);
-  assert.deepEqual(before.map((e) => e.n), Array.from({ length: K.BELLY_STEPS_NEED }, (_, i) => i + 1), 'belly_ready 前最後幾步依序 1..need');
-  const open = r.ev.find((e) => e.a === 'trapdoor_open');
-  assert.ok(open && open.t > ready.t, '達成之後才開');
-  assert.ok(g.belly.open);
+  // 起步踩準，接著連續走 2 秒：只有起步那一步亮格
+  t = idleUntil(g, t, (gg, tt) => R.stepMasked(tt, gg), 9.5); g.drain();
+  let r = runEv(g, t, t + 2, (gg) => ({ mx: 1 }));
+  t = r.t;
+  const st = r.ev.filter((e) => e.a === 'step_masked' || e.a === 'step_loud' || e.a === 'belly_hush');
+  assert.ok(st.length >= 3, st.map((e) => e.a).join(' '));
+  assert.equal(st[0].a, 'step_masked'); assert.equal(st[0].start, true); assert.equal(st[0].n, 1); assert.equal(st[0].need, K.BELLY_STEPS_NEED);
+  assert.ok(st.slice(1).every((e) => e.start === false && e.a !== 'belly_hush'), '後續步 start: false、不扣格');
+  assert.ok(st.slice(1).filter((e) => e.a === 'step_masked').every((e) => e.n === 1), '後續步不亮格');
+  assert.equal(g.belly.n, 1);
+  // 站定之後離拍起步：扣 BELLY_MISS_COST 格
+  t = runEv(g, t, t + 1, () => ({})).t;
+  t = idleUntil(g, t, (gg, tt) => !R.stepMasked(tt, gg), t + 5); g.drain();
+  r = runEv(g, t, t + DT, () => ({ mx: -1 })); t = r.t;
+  const hush = r.ev.find((e) => e.a === 'belly_hush');
+  assert.ok(hush, r.ev.map((e) => e.a).join(' '));
+  assert.equal(g.belly.n, Math.max(0, 1 - K.BELLY_MISS_COST));
+  assert.equal(hush.n, g.belly.n); assert.equal(hush.cost, K.BELLY_MISS_COST);
+  // 再踩歪一次也不會低於 0
+  t = runEv(g, t, t + 1, () => ({})).t;
+  t = idleUntil(g, t, (gg, tt) => !R.stepMasked(tt, gg), t + 5); g.drain();
+  t = runEv(g, t, t + DT, () => ({ mx: 1 })).t;
+  assert.equal(g.belly.n, 0, '最少扣到 0');
+  // 每次站定、等鼓點、起步一步，亮滿 need 格 → belly_ready（先回到腹中中間，免得門一開就站在暗門上掉下去）
+  place(g, 7, 15);
+  let ready = null;
+  while (!g.belly.ready && t < 120) {
+    t = runEv(g, t, t + 0.4, () => ({})).t;
+    t = idleUntil(g, t, (gg, tt) => R.stepMasked(tt, gg), t + 10); g.drain();
+    r = runEv(g, t, t + DT, (gg) => ({ mx: gg.player.x > 9 ? -1 : 1 })); t = r.t;
+    ready = r.ev.find((e) => e.a === 'belly_ready') || ready;
+  }
+  assert.ok(ready && g.belly.n === K.BELLY_STEPS_NEED);
+  const after = runEv(g, t, t + 12, () => ({}));
+  const open = after.ev.find((e) => e.a === 'trapdoor_open');
+  assert.ok(open && g.belly.open, '亮滿之後才開');
+  assert.equal(g.zone, 1, '門開了但還沒走過去');
   const ws = R.blindWindows(ready.t + 1e-6, open.t + 1e-6, g);
-  assert.equal(ws.length, 1, `達成之後的「下一個」掩護窗：${JSON.stringify(ws)}`);
+  assert.equal(ws.length, 1, `達成之後的「下一個」掩護窗：ready ${ready.t} open ${open.t} ${JSON.stringify(ws)}`);
   assert.ok(Math.abs(open.t - ws[0].from) <= DT + 1e-9, `開門在掩護窗開頭：${open.t} vs ${ws[0].from}`);
-  place(g, 11, 15); g.step(r.t + DT, {});
+  place(g, 11, 15); g.step(after.t + DT, {});
   assert.equal(g.zone, 2, '開了之後走到暗門就下去');
-  // 踩歪歸零：另開一局，踩準 2 步後停下、離拍起步
-  const h = hrs({ startZone: 1 });
-  let u = 1; h.step(u, {}); place(h, 7, 15);
-  u = idleUntil(h, u, (gg, tt) => R.stepMasked(tt, gg), 9.5); h.drain();
-  let d2 = 1;
-  while (h.belly.n < 2 && u < 30) u = runEv(h, u, u + DT, (gg) => ({ mx: (d2 = paceDir(gg, d2)) })).t;
-  assert.equal(h.belly.n, 2);
-  u = runEv(h, u, u + 1.2, () => ({})).t;
-  u = idleUntil(h, u, (gg, tt) => !R.stepMasked(tt, gg), u + 5); h.drain();
-  const rr = runEv(h, u, u + DT, () => ({ mx: 1 }));
-  assert.ok(rr.ev.some((e) => e.a === 'belly_hush'), rr.ev.map((e) => e.a).join(' '));
-  assert.equal(h.belly.n, 0, '踩歪一步歸零');
 });
 
-test('11/11 木馬 A：開關開時第 1 區的進區提示改成腹中練習（數字由常數生成、不說「斷」「停」）；關著仍是踩拍走', () => {
+test('11/11 木馬 A：開關開時第 1 區的進區提示講「站定、等鼓點、再踏出去」（數字由常數生成、不說「斷」「停」）；關著仍是踩拍走', () => {
   const g = hrs({ startZone: 0 });
   g.step(1, {}); g.start(); const out = g.drain();
   const H = R.hintsFor(g.T);
   assert.ok(out.some((e) => e.type === 'hint' && e.a === H.belly));
-  assert.equal(H.belly, '踩著鼓點走到前面。連續 ' + K.BELLY_STEPS_NEED + ' 步踩準，同伴就替你開門。');
-  assert.ok(R.hintsFor(Object.assign({}, K, { BELLY_STEPS_NEED: 6 })).belly.includes('連續 6 步'));
-  assert.ok(!/斷|停/.test(H.belly));
+  assert.ok(H.belly.includes('站定') && H.belly.includes('第一步') && H.belly.includes('亮滿 ' + K.BELLY_STEPS_NEED + ' 格'), H.belly);
+  assert.ok(R.hintsFor(Object.assign({}, K, { BELLY_STEPS_NEED: 6 })).belly.includes('亮滿 6 格'));
+  assert.ok(!/斷|停|跟著鼓點走/.test(H.belly), '不說斷、停，也不寫成「跟著鼓點走」（第 1.1 節第 5 點）');
   const off = R.createLevel({ startZone: 0 }); off.step(1, {}); off.start();
   assert.ok(off.drain().some((e) => e.type === 'hint' && e.a === R.hintsFor(off.T).step));
 });
@@ -2584,50 +2595,65 @@ test('11/11 木馬 ?lab=belly：只有腹中、沒有衛兵、循環固定、開
 });
 
 /**
- * ?lab=belly 的程式玩家。kind：
- *   'perfect'：在腹中來回走；停著時只在「下一幀落在可聽拍上」才起步（涵蓋 1/144～1/30 秒），之後腳步自己跟鼓；
- *              達成後停下等門，門開了走向暗門。
- *   'sigma'：同上，起步判定用 t − e 那一刻（e ~ N(0, sigma)，每次起步重抽）。
- *   'forward'：一直往暗門走，不管拍。
+ * ?lab=belly 的程式玩家（第 1.1 節：只有起步算數，所以都是「站定 → 起步走一幀 → 站定」）。kind：
+ *   'perfect'：站定夠久（STEP_GAP × STEP_GAP_MIN）後，只在下一幀落在可聽拍上時起步；
+ *   'sigma'：同上，判斷用 t − e 那一刻的狀態（e ~ N(0, sigma)，每次起步重抽）；
+ *   'random'：不聽拍，站定一段隨機時間（0.3～1.5 秒）就起步；
+ *   'forward'：一直按住往暗門走（整局只有一次起步）。
+ * 亮滿之後站著等；暗門開了就走過去（這段不算考題）。
  */
 function makeBellyBot(kind, sigma, seed) {
   const rnd = R.mulberry32((seed || 1) * 31 + 7);
   const gauss = () => { let u = 0; while (u === 0) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
-  let walking = false, dir = 1, err = sigma ? gauss() * sigma : 0;
+  let dir = 1, err = sigma ? gauss() * sigma : 0, lastStep = -1e9, waitUntil = null;
   return function (g) {
-    const t = g.time, B = g.belly, pl = g.player;
-    let out = {};
-    if (kind === 'forward') out = { mx: 1 };
-    else if (B.open) { const dx = 11 - pl.x, dz = 15 - pl.z, d = Math.hypot(dx, dz) || 1; out = { mx: dx / d, mz: dz / d }; }
-    else if (B.ready) out = {};
-    else {
-      const tv = walking ? t : t - err;
-      const ok = walking || [1 / 144, 1 / 60, 1 / 30].every((d) => R.stepMasked(tv + d, g));
-      if (ok) out = { mx: (dir = paceDir(g, dir)) };
+    const t = g.time, B = g.belly, pl = g.player, K2 = g.T;
+    if (kind === 'forward') return { mx: 1 };
+    if (B.open) { const dx = 11 - pl.x, dz = 15 - pl.z, d = Math.hypot(dx, dz) || 1; return { mx: dx / d, mz: dz / d }; }
+    if (B.ready) return {};
+    const rested = t - lastStep >= K2.STEP_GAP * K2.STEP_GAP_MIN + 0.02;
+    if (!rested) return {};
+    let go = false;
+    if (kind === 'random') {
+      if (waitUntil == null) waitUntil = t + 0.3 + rnd() * 1.2;
+      go = t >= waitUntil;
+    } else {
+      const tv = t - err;
+      go = R.stepMasked(tv + 1 / 60, g);
     }
-    const moving = !!(out.mx || out.mz);
-    if (moving && !walking && sigma) err = gauss() * sigma;
-    walking = moving;
-    return out;
+    if (!go) return {};
+    lastStep = t + 1 / 60; waitUntil = null;
+    if (sigma) err = gauss() * sigma;
+    return { mx: (dir = paceDir(g, dir)) };
   };
 }
-function runBelly(kind, sigma, seed, maxT = 120) {
+function runBelly(kind, sigma, seed, T, maxT = 300) {
   const t0 = (seed * 1.37) % 10;
-  const g = R.createLevel({ lab: 'belly', t0, seed });
+  const g = R.createLevel({ lab: 'belly', t0, seed, T });
   const bot = makeBellyBot(kind, sigma, seed);
   let t = t0; g.step(t, {});
   let hush = 0;
   while (g.phase === 'play' && t - t0 < maxT) { t += DT; g.step(t, bot(g)); for (const e of g.drain()) if (e.a === 'belly_hush') hush++; }
   return { win: g.phase === 'win', time: t - t0, hush };
 }
+const medianOf = (a) => { const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+/** 某個 BELLY_MISS_COST 下四種程式玩家各 20 局的結果。 */
+function bellyTrial(cost) {
+  const T = { BELLY_MISS_COST: cost };
+  const run = (kind, sigma, maxT) => { const rs = []; for (let seed = 1; seed <= 20; seed++) rs.push(runBelly(kind, sigma, seed, T, maxT)); return rs; };
+  const P = run('perfect', 0), S = run('sigma', 0.12), X = run('random', 0), F = run('forward', 0, 60);
+  const m = (rs) => medianOf(rs.map((r) => r.time));
+  const res = { cost, perfect: m(P), sigma: m(S), random: m(X), forwardWins: F.filter((r) => r.win).length, randomWins: X.filter((r) => r.win).length, allWin: [P, S].every((rs) => rs.every((r) => r.win)) };
+  res.pass = res.perfect <= 20 && res.sigma <= 45 && res.random >= 2 * res.perfect && res.forwardWins === 0;
+  return res;
+}
 
-test('11/11 木馬 ?lab=belly 程式玩家：完美 20 局全過且中位 ≤ 20 秒；σ0.12 20 局全過且中位 ≤ 45 秒；只按前進 60 秒內過不了', () => {
-  const med = (a) => { const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
-  const P = [], S = [], F = [];
-  for (let seed = 1; seed <= 20; seed++) { P.push(runBelly('perfect', 0, seed)); S.push(runBelly('sigma', 0.12, seed)); F.push(runBelly('forward', 0, seed, 60)); }
-  const pm = med(P.map((r) => r.time)), sm = med(S.map((r) => r.time));
-  console.log(`  [lab=belly] 完美：過 ${P.filter((r) => r.win).length}/20、中位 ${pm.toFixed(1)} 秒；σ0.12：過 ${S.filter((r) => r.win).length}/20、中位 ${sm.toFixed(1)} 秒、每局出聲 ${(S.reduce((a, r) => a + r.hush, 0) / 20).toFixed(1)} 次；只按前進：60 秒內過 ${F.filter((r) => r.win).length}/20`);
-  assert.ok(P.every((r) => r.win) && pm <= 20, `完美 ${P.filter((r) => r.win).length}/20、中位 ${pm}`);
-  assert.ok(S.every((r) => r.win) && sm <= 45, `σ0.12 ${S.filter((r) => r.win).length}/20、中位 ${sm}`);
-  assert.ok(F.every((r) => !r.win), `只按前進 60 秒內過了 ${F.filter((r) => r.win).length} 局`);
+test('11/11 木馬 ?lab=belly（第 1.1 節驗收量時間）：BELLY_MISS_COST 0／1／4 各跑完美起步、σ0.12、隨機起步 20 局；預設值是三條都過的最小值', () => {
+  const rows = [0, 1, 4].map(bellyTrial);
+  console.log('  [lab=belly 第 1.1 節] BELLY_MISS_COST｜完美起步中位｜σ0.12 中位｜隨機起步中位（÷ 完美）｜只按前進 60 秒內過｜三條');
+  for (const r of rows) console.log(`    ${r.cost}｜${r.perfect.toFixed(1)} 秒｜${r.sigma.toFixed(1)} 秒｜${r.random.toFixed(1)} 秒（${(r.random / r.perfect).toFixed(2)} 倍）｜${r.forwardWins}/20｜${r.pass ? '過' : '不過'}（隨機起步 300 秒內過 ${r.randomWins}/20）`);
+  for (const r of rows) assert.ok(r.allWin, `cost ${r.cost}：零失敗，完美起步與 σ0.12 都要過`);
+  const best = rows.find((r) => r.pass);
+  assert.ok(best, '三個值都過不了：回報設計席（不調 STEP_WIN）');
+  assert.equal(K.BELLY_MISS_COST, best.cost, `預設 BELLY_MISS_COST 要是三條都過的最小值 ${best.cost}`);
 });
