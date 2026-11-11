@@ -512,7 +512,12 @@ if (SPKC) {
       if (pk == null || bg == null) return null;
       return { t: +a.toFixed(3), peakDb: r1(pk), baseDb: r1(bg), riseDb: r1(pk - bg) };
     };
-    for (const [a] of normal) { const m = measure(a); if (m) rows.push(m); }
+    // 11/11：殘響掩護版的木魚預告音量乘視覺輔助強度（設計 7.9），強度 0 的盲區本來就沒有預告音，另列不判。
+    // 時間軸有 va 就照 va；舊錄音沒有 va 時，殘響掩護版的第 4 區當作 0。
+    const vaAt = (a) => { let st = null; for (const s of TL) { if (s.t > a) break; st = s; } if (!st) return null;
+      if (st.va != null) return st.va; return (RULE_COVER && st.zone >= 4) ? 0 : null; };
+    const skipped = [];
+    for (const [a] of normal) { const m = measure(a); if (!m) continue; const va = vaAt(a - lead); if (va === 0) skipped.push(m); else rows.push(m); }
     for (const [a] of IV.fake || []) { const m = measure(a); if (m) fakeRows.push(m); }
     const rises = rows.map(r => r.riseDb), md = median(rises), mn = rises.length ? Math.min(...rises) : null;
     const okN = rises.filter(v => v >= need).length;
@@ -520,9 +525,10 @@ if (SPKC) {
     const fakeOk = fakeRows.every(r => r.riseDb < need);
     add('preBlindMid', `盲區前 ${lead} 秒的預告音在 ${cfg.band[0] / 1000}～${cfg.band[1] / 1000} kHz 聽得出來`, pass == null ? null : pass && fakeOk,
       (rises.length ? `相對前 1 秒平均：中位 +${md} dB、最小 ${mn >= 0 ? '+' : ''}${mn} dB、≥ +${need} dB 的 ${okN}／${rises.length} 次（${fmtList(rises)}）` : '沒有可量的一般盲區') +
+      (skipped.length ? `；視覺輔助強度 0 的盲區 ${skipped.length} 次另列不判（${fmtList(skipped.map(r => r.riseDb))}）` : '') +
       (fakeRows.length ? `；假驟降前（不該有）：${fmtList(fakeRows.map(r => r.riseDb))} dB${fakeOk ? '' : '（**有加強，不對**）'}` : ''),
       `門檻：每次一般盲區，盲區前 [${lead + 0.05}, 0.01] 秒內 ${cfg.band[0]}～${cfg.band[1]} Hz 頻帶的峰值，比再往前 1 秒的平均高 ≥ ${need} dB；中位 ≥ ${need} 且八成以上達標才通過。假驟降前量到的必須 < ${need} dB（沒有預告音才是假的）。短時 FFT 1024 點、hop ${(BS.hop * 1000).toFixed(1)} ms。`);
-    speaker.preBlind = { rows, fakeRows, medianDb: md, minDb: mn };
+    speaker.preBlind = { rows, fakeRows, skipped, medianDb: md, minDb: mn };
   }
   // 7. 警戒時低音拍在 200～600 Hz 是否可辨：拍點附近的峰值相對背景 ≥ +6 dB
   if (SPKC.bassMid) {

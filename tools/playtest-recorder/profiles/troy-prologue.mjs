@@ -131,6 +131,8 @@ export default {
       fire: Number.isFinite(g.fire) ? +g.fire.toFixed(4) : null, dg: Number.isFinite(g.danger) ? +g.danger.toFixed(4) : null,
       // 木馬共鳴（HORSE_MODE）：聲音層算的離木馬中心距離；沒開就是 null
       // horseInfo 在 TroyDebug.audio.raw 上（畫面層包了一層）；兩處都找
+      // va：視覺輔助強度（殘響掩護版的木魚預告音量也乘它；第 4 區自動模式為 0，見設計 7.9）
+      va: (() => { try { const R = window.RissetRules; return R && R.visualAidFor ? R.visualAidFor(g.zone, g.visualAidMode, g.T) : null; } catch (e) { return null; } })(),
       hd: (() => { const r = (a.raw && a.raw.horseInfo) ? a.raw : a; try { const h = r.horseInfo && r.horseInfo(); return h && isFinite(h.dist) ? +h.dist.toFixed(2) : null; } catch (e) { return null; } })(),
       events: evs
     };
