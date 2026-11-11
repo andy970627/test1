@@ -52,7 +52,39 @@ export default {
         window.__recPlayMake = () => new Function('R', 'return (' + src + ')')(window.RissetRules)({ cover: window.TroyDebug.game.T.COVER_MODE === true });
       }, src);
     }
-    await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse }) => {
+    // --listen-test（11/11，屏息聽 C1）：頁面用 ?lab=listen 開。聲音層建立前掛分接點，量衛兵線（guardListen）與一般鼓拍線（beatBus）進出的音量差與左右，
+    // 不受「衛兵聲在總輸出裡太小」影響。找法：audio.js 連續建立 guardOut、beatBus、guardListen，guardListen 一建立就接往前第 2 個 GainNode（guardOut），中間那個＝beatBus；候選裡第一個被衛兵 PannerNode 接上的才算。
+    if (o.listenTest) await page.evaluate(() => {
+      const AP = AudioNode.prototype, oc = AP.connect, BC = BaseAudioContext.prototype, ocg = BC.createGain;
+      const M = window.__recListen = { gains: [], ok: false };
+      BC.createGain = function () { const g = ocg.apply(this, arguments); if (!M.ok && M.gains.length < 400) M.gains.push(g); return g; };
+      const an = (ctx) => { const a = ctx.createAnalyser(); a.fftSize = 2048; return a; };
+      const stereo = (ctx, src) => { const sp = ctx.createChannelSplitter(2), L = an(ctx), R = an(ctx); oc.call(src, sp); oc.call(sp, L, 0); oc.call(sp, R, 1); return [L, R]; };
+      function setup(gl) {
+        const ctx = gl.context, i = M.gains.indexOf(gl), bb = M.gains[i - 1];
+        M.ok = true; M.gl = gl; M.bb = bb;
+        M.gIn = ocg.call(ctx); M.bIn = ocg.call(ctx);
+        M.aGI = stereo(ctx, M.gIn); M.aGO = stereo(ctx, gl);
+        M.aBI = an(ctx); M.aBO = an(ctx); oc.call(M.bIn, M.aBI); oc.call(bb, M.aBO);
+      }
+      M.first = new Map(); M.cand = 0;
+      AP.connect = function (dest) {
+        const r = oc.apply(this, arguments);
+        // audio.js 連續建立 guardOut → beatBus → guardListen，guardListen 一建立就接 guardOut（往前數第 2 個 GainNode）
+        if (!M.ok && this instanceof GainNode && !M.first.has(this)) {
+          M.first.set(this, dest);
+          const i = M.gains.indexOf(this);
+          if (i >= 2 && dest === M.gains[i - 2] && M.first.get(M.gains[i - 1]) !== dest) { M.cand++; (M.cands || (M.cands = new Set())).add(this); }
+        }
+        // 候選裡第一個被 PannerNode（衛兵 3D 聲）接上的才是 guardListen（beatBus 也符合上面的建立順序）
+        if (!M.ok && this instanceof PannerNode && M.cands && M.cands.has(dest)) setup(dest);
+        if (M.ok && dest === M.gl && this !== M.gIn) oc.call(this, M.gIn);
+        if (M.ok && dest === M.bb && this !== M.bIn) oc.call(this, M.bIn);
+        return r;
+      };
+    });
+    await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse, listenT }) => {
+      window.__recListenTest = listenT;
       window.__recStepTest = !!stepTest;   // --step-test：第 1 區改成離拍起步累積腳步樣本（不喘氣引起注意）
       // --horse-test（11/11，木馬共鳴 C2）：頁面要用 ?lab=horse 開（record.mjs 的 --page）；前半段站在木馬旁、後半段站到 30 公尺外
       window.__recHorse = horse;
@@ -68,7 +100,7 @@ export default {
       const ph = document.getElementById('oPhase');
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
     }, { cycle, phaseBar: o.phaseBar !== false, cover, stepTest: !!o.stepTest,
-      horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
+      listenT: o.listenTest ? { period: +(o.listenPeriod || 2.5) } : null, horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
     await page.click('#btnStart');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
     return page.evaluate(() => {
@@ -131,6 +163,11 @@ export default {
       fire: Number.isFinite(g.fire) ? +g.fire.toFixed(4) : null, dg: Number.isFinite(g.danger) ? +g.danger.toFixed(4) : null,
       // 木馬共鳴（HORSE_MODE）：聲音層算的離木馬中心距離；沒開就是 null
       // horseInfo 在 TroyDebug.audio.raw 上（畫面層包了一層）；兩處都找
+      // lg（--listen-test）：衛兵線、鼓拍線進出的 RMS 功率（線性，取樣當下 2048 點）；ls＝聲音層 listenInfo().on
+      lg: (() => { const M = window.__recListen; if (!M || !M.ok) return null; const buf = new Float32Array(2048);
+        const pw = (x) => { x.getFloatTimeDomainData(buf); let q = 0; for (let k = 0; k < buf.length; k++) q += buf[k] * buf[k]; return +(q / buf.length).toExponential(3); };
+        return { iL: pw(M.aGI[0]), iR: pw(M.aGI[1]), oL: pw(M.aGO[0]), oR: pw(M.aGO[1]), bi: pw(M.aBI), bo: pw(M.aBO) }; })(),
+      ls: (() => { try { const r = a.raw && a.raw.listenInfo ? a.raw : a; return r.listenInfo ? !!r.listenInfo().on : null; } catch (e) { return null; } })(),
       // va：視覺輔助強度（殘響掩護版的木魚預告音量也乘它；第 4 區自動模式為 0，見設計 7.9）
       va: (() => { try { const R = window.RissetRules; return R && R.visualAidFor ? R.visualAidFor(g.zone, g.visualAidMode, g.T) : null; } catch (e) { return null; } })(),
       hd: (() => { const r = (a.raw && a.raw.horseInfo) ? a.raw : a; try { const h = r.horseInfo && r.horseInfo(); return h && isFinite(h.dist) ? +h.dist.toFixed(2) : null; } catch (e) { return null; } })(),
@@ -174,6 +211,16 @@ export default {
       return;
     }
     if (g.phase !== 'play') { api.releaseAll(); return; }
+    // --listen-test：站著不動，每 period 秒換一次屏息／平常（試驗場第 3 區）
+    if (window.__recListenTest) {
+      const L = window.__recListenTest; api.set('KeyW', false); api.set('KeyS', false);
+      // 掩護窗前 2 秒到窗後 1 秒（p > 0.8 或 p < 0.1）：單號窗屏息、雙號窗平常，才量得到「最響一擊」兩種狀態；其他時間每 period 秒切換
+      const near = p > 0.8 || p < 0.1, wcyc = p > 0.8 ? (s.cyc || 0) + 1 : (s.cyc || 0);
+      const on = (near ? wcyc % 2 === 1 : Math.floor(t / L.period) % 2 === 1) && !P.breathLock;
+      if (st.lsOn !== on) { st.lsOn = on; api.log('listen_bot', { on }); }
+      api.set('Space', on);
+      return;
+    }
     // --play-through：完美踩拍玩家的輸出轉成按鍵（移動方向→視角＋W；屏息→空白；安撫→Q；衝刺→Shift；暗殺→點 E；城門→按住 E）
     if (window.__recPlayMake) {
       if (!window.__recPlay) window.__recPlay = window.__recPlayMake();

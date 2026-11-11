@@ -58,7 +58,11 @@ const TH = Object.assign({
   horseNearM: 6,          // 貼近：離木馬中心幾公尺內
   horseFarM: 25,          // 遠處：幾公尺外（聲音層 HORSE_BOOM_R 25 m 外共鳴為 0）
   horseDiffDb: 3,         // 貼近比遠處厚幾 dB（設計 C2）
-  horseBoomOverHitDb: 0,  // 貼近時共鳴峰值最多比重合擊峰值高幾 dB（0＝不能比重擊響）
+  horseBoomOverHitDb: 0,
+  listenDuckDb: 6,        // 屏息聽：規則沒有 LISTEN_DUCK_DB 時用這個
+  listenTolDb: 1,         // 屏息聽：增益差容許誤差
+  listenWidenFrac: 0.65,  // 屏息聽：成對比裡屏息較寬的切換至少占幾成
+  listenHitTolDb: 1.5,    // 屏息聽：最響一擊屏息時最多比平常低幾 dB  // 貼近時共鳴峰值最多比重合擊峰值高幾 dB（0＝不能比重擊響）
   fireDrop: 0.05,         // fireSync：相鄰兩幀 fire 掉超過這個量、而 danger 沒掉（< 0.01）＝「火光掉回」
   // 玩家自己的動作音（走提示音匯流排，盲區不壓）：盲區內有這些 cue 時，那次盲區照列但不計入盲區檢查
   blindConfoundCues: '^(dash|trapdoor|checkpoint|step_loud|gasp|takedown|takedown_fail|latch|latch_step|calm_ok|calm_bad|calm_done|alert|caught|hunt|escape|gate_open)$'
@@ -341,6 +345,57 @@ const fireInfo = {};
       `相關係數 fire×danger ${fireInfo.corrDanger ?? '—'}、fire×p ${fireInfo.corrP ?? '—'}；fire ${fireInfo.fireRange.map(v => v.toFixed(2)).join('～')}、danger ${fireInfo.dangerRange.map(v => v.toFixed(2)).join('～')}`,
       `門檻：誤差 > ${TH.fireTol} 的幀 ≤ 1%，且沒有「相鄰兩幀 fire 掉超過 ${TH.fireDrop}、danger 卻沒掉（< 0.01）」的掉回。舊模式（COVER_MODE = false）盲區幀照設計壓到 FIRE_BLIND，不算掉回。` +
       `fire×p 的相關係數是對照：火光若跟著循環相位走，等於用眼睛把交接點指出來（核心方向文件第 2 節）。danger 在錄製中變化小時兩個相關係數都可能不穩，只看前兩條。`);
+  }
+}
+
+// 1d. 屏息聽（C1，MOVES_MODE；docs/design/2026-11-11-companion-mechanics.md 第 7 節）：時間軸有 lg（--listen-test 的分接點）才跑。
+// 量法：衛兵線（guardListen）與一般鼓拍線（beatBus）每幀「出口功率／入口功率」＝那條線當下的增益，和總輸出裡衛兵聲多小無關。
+// 屏息（ls＝listenInfo().on）與平常各取中位；狀態切換後 0.4 秒內不算（攻擊 0.08、回復 0.06 秒的過渡）。
+// 左右：衛兵線入口（panner 之後）左右聲道功率差 |ILD| 的中位，屏息要比平常大。最響一擊：一般掩護窗 [−0.01, +0.05] 秒 300～1200 Hz 峰值，屏息與平常的中位差。
+const listenInfo = {};
+{
+  const fr = TL.filter(s => s.lg && s.ls != null && s.phase === 'play');
+  if (fr.length) {
+    const sw = []; let prev = null; for (const s of TL) { if (s.ls != null && prev != null && s.ls !== prev) sw.push(s.t); if (s.ls != null) prev = s.ls; }
+    const settled = (t) => !sw.some(x => t >= x && t < x + 0.4);
+    const dbr = (a, b) => 10 * Math.log10(a / b);
+    const pick = (on, f) => fr.filter(s => s.ls === on && settled(s.t)).map(f).filter(v => v != null && isFinite(v));
+    const gG = (s) => (s.lg.iL + s.lg.iR > 1e-10 ? dbr(s.lg.oL + s.lg.oR, s.lg.iL + s.lg.iR) : null);
+    const gB = (s) => (s.lg.bi > 1e-10 ? dbr(s.lg.bo, s.lg.bi) : null);
+    const ild = (s) => (s.lg.iL > 1e-10 && s.lg.iR > 1e-10 ? Math.abs(dbr(s.lg.iL, s.lg.iR)) : null);
+    const gOn = median(pick(true, gG)), gOff = median(pick(false, gG)), bOn = median(pick(true, gB)), bOff = median(pick(false, gB));
+    const iOn = median(pick(true, ild)), iOff = median(pick(false, ild));
+    // 衛兵一直在走，前後時段位置不同；改成每次切換「前 1 秒 vs 後 0.4～1.4 秒」成對比，換成「屏息減平常」
+    const pairs = [];
+    for (const t of sw) {
+      const on = (fr.find(s => s.t >= t) || {}).ls; if (on == null) continue;
+      const pre = median(fr.filter(s => s.t > t - 1 && s.t < t).map(ild).filter(v => v != null)), post = median(fr.filter(s => s.t > t + 0.4 && s.t < t + 1.4).map(ild).filter(v => v != null));
+      if (pre != null && post != null) pairs.push(on ? post - pre : pre - post);
+    }
+    const pMed = median(pairs), pPos = pairs.filter(v => v > 0).length;
+    // 最響一擊（重合擊）不退
+    const HS = bandSeries([[300, 1200]]), arr = HS.p[0], fI = (t) => Math.round((t - HS.t[0]) / HS.hop);
+    const lsAt = (t) => { let b = null; for (const s of TL) { if (s.t > t) break; if (s.ls != null) b = s; } return b && settled(b.t) && settled(t) ? b.ls : null; };
+    const hit = { on: [], off: [] };
+    for (const [a] of (IV.normalBlind && IV.normalBlind.length ? IV.normalBlind : IV.blind)) {
+      if (a - 0.1 < T0 || a + 0.1 > T0 + DUR) continue;
+      const st = lsAt(a - 0.02); if (st == null || lsAt(a + 0.05) !== st) continue;
+      let m = 0; for (let f = Math.max(0, fI(a - 0.01)); f <= Math.min(arr.length - 1, fI(a + 0.05)); f++) if (arr[f] > m) m = arr[f];
+      if (m > 0) hit[st ? 'on' : 'off'].push(db(m));
+    }
+    const hOn = median(hit.on), hOff = median(hit.off);
+    const want = (PREP.rulesT && isFinite(PREP.rulesT.LISTEN_DUCK_DB)) ? PREP.rulesT.LISTEN_DUCK_DB : TH.listenDuckDb;
+    const okG = gOn != null && gOff != null && Math.abs((gOn - gOff) - want) <= TH.listenTolDb;
+    const okB = bOn != null && bOff != null && Math.abs((bOn - bOff) + want) <= TH.listenTolDb;
+    const okI = pairs.length >= 6 && pMed > 0 && pPos / pairs.length >= TH.listenWidenFrac;
+    const okH = hit.on.length && hit.off.length ? hOn - hOff >= -TH.listenHitTolDb : null;
+    Object.assign(listenInfo, { guardOnDb: r1(gOn), guardOffDb: r1(gOff), beatOnDb: r1(bOn), beatOffDb: r1(bOff), ildOnDb: r1(iOn), ildOffDb: r1(iOff), ildPairs: pairs.length, ildPairPos: pPos, ildPairMedDb: r1(pMed), hitOn: hit.on.length, hitOff: hit.off.length, hitDiffDb: okH == null ? null : r1(hOn - hOff) });
+    const sg = (v) => (v >= 0 ? '+' : '') + r1(v);
+    add('listenC1', `屏息聽：衛兵聲 +${want} dB、左右拉開，一般鼓拍 −${want} dB，最響一擊不退`,
+      okG && okB && okI && okH !== false,
+      `衛兵線增益 屏息 ${sg(gOn)}／平常 ${sg(gOff)} dB（差 ${sg(gOn - gOff)}）；鼓拍線 屏息 ${sg(bOn)}／平常 ${sg(bOff)} dB（差 ${sg(bOn - bOff)}）；衛兵左右差 |ILD|：切換前後成對比 ${pairs.length} 次、屏息較寬 ${pPos} 次、中位 ${sg(pMed)} dB（整段中位 屏息 ${r1(iOn)}／平常 ${r1(iOff)} dB）；` +
+      (okH == null ? '最響一擊：屏息或平常沒有可量的掩護窗（不判）' : `最響一擊 300～1200 Hz 峰值 屏息 ${hit.on.length} 窗比平常 ${hit.off.length} 窗 ${sg(hOn - hOff)} dB`),
+      `門檻：衛兵線差 ${want} ± ${TH.listenTolDb} dB、鼓拍線差 −${want} ± ${TH.listenTolDb} dB（${want} 取規則 LISTEN_DUCK_DB）；|ILD| 每次切換前 1 秒與後 0.4～1.4 秒成對比，中位 > 0 且 ≥ ${Math.round(TH.listenWidenFrac * 100)}% 的切換是屏息較寬（LISTEN_WIDEN 放大側向距離；衛兵在正前後方時本來拉不開）；最響一擊屏息時不低於平常 ${TH.listenHitTolDb} dB 以上。切換後 0.4 秒內的幀不算。分接點在 --listen-test 錄製時掛上（profiles/troy-prologue.mjs）。`);
   }
 }
 
