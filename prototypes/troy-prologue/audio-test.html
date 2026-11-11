@@ -38,6 +38,13 @@ input[type=range] { flex:1; }
     <label>窗前變亮 <input id="bright" type="range" min="0" max="6" step="0.5" value="4"> <span id="brightv">4</span> dB（殘響掩護下；0＝關，設計 7.3）</label>
   </section>
   <section>
+    <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 3.1、6.1 節）</b>
+    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="s1">S1 同一種鼓</option><option value="s2">S2 鐘形偏快</option><option value="s3">S3 兩個都改</option></select></label>
+    <label>循環 <select id="illT"><option value="10" selected>10 秒（原本）</option><option value="12">12 秒（附近沒有衛兵）</option><option value="6">6 秒（危險）</option></select></label>
+    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=s1|s2|s3&amp;cycle=12|6。</div>
+    <div class="note" id="illinfo">—</div>
+  </section>
+  <section>
     <b>木馬（HORSE_MODE，設計 2026-11-11 方向 A、C2）</b>
     <label><input id="horse" type="checkbox"> 開木馬</label>
     <label><input id="belly" type="checkbox"> 在腹中</label>
@@ -77,11 +84,25 @@ input[type=range] { flex:1; }
     } else { delete ST.player; delete ST.level; delete ST.belly; }
     return ST;
   }
+  // 加速感試聽：版本 → 聲音層 setIllusion；循環長度換了就重建聲音層（試聽頁的循環固定，不跟規則）
+  var ILL = { now: { timbre: false, bell: false }, s1: { timbre: true, bell: false }, s2: { timbre: false, bell: true }, s3: { timbre: true, bell: true } };
+  function applyIll() { if (audio && audio.setIllusion) audio.setIllusion(ILL[$('ill').value] || null); }
+  function build() {
+    if (audio && audio.dispose) audio.dispose();
+    audio = RissetAudio.createAudio(ctx, { T: +$('illT').value || 10, t0: ctx.currentTime + 0.1 });
+    audio.setMaster(+$('vol').value); applyIll();
+  }
+  (function () {   // 網址參數預選：?ill=s1|s2|s3&cycle=12|6
+    var q = new URLSearchParams(location.search), v = q.get('ill'), c = q.get('cycle');
+    if (v && ILL[v]) { $('ill').value = v; $('cover').checked = true; }
+    if (c === '12' || c === '6' || c === '10') $('illT').value = c;
+  })();
+  $('ill').onchange = function () { if (this.value !== 'now') $('cover').checked = true; applyIll(); };
+  $('illT').onchange = function () { if (ctx) build(); };
   $('start').onclick = function () {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
-      audio = RissetAudio.createAudio(ctx, { T: 10, t0: ctx.currentTime + 0.1 });
-      audio.setMaster(+$('vol').value);
+      build();
       requestAnimationFrame(frame);
     } else audio.resume();
   };
@@ -106,6 +127,10 @@ input[type=range] { flex:1; }
     $('blind').className = s.cycle.blind ? 'yes' : '';
     $('bar').firstChild.style.width = (p * 100).toFixed(1) + '%';
     $('info').textContent = '音訊時間 ' + s.cycle.index + ' 循環・下一個低音 ' + (s.bass.nextBeat - audio.now()).toFixed(2) + ' 秒後';
+    if (audio.illusionInfo) {
+      var ii = audio.illusionInfo();
+      $('illinfo').textContent = '循環 ' + ii.T + ' 秒・最大聲那一層 每分鐘 ' + ii.loudBpm + ' 拍・聽得到的最快（≥ −12 dB）每分鐘 ' + ii.fastBpm + ' 拍・各層 ' + ii.layersDb.join(' / ') + ' dB';
+    }
     if (audio.horseInfo) {
       var h = audio.horseInfo();
       $('horseinfo').textContent = !h.on ? '木馬開關關著' :

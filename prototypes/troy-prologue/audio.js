@@ -166,6 +166,12 @@
     INTRO_BOOST_DB: 4,         // 試聽頁可調到 0
     INTRO_CYCLES: 1,           // 重合擊：進區後前幾記；低音拍：整局第一次起疑後幾個循環（安撫在哪一區第一次出現都算）
     INTRO_COVER_ZONE: 2,       // 殘響掩護版第 2 區才教最響的一擊：進區後第一記重合擊
+    // 加速感試聽（docs/design/2026-11-11-illusion-not-heard.md 第 3.1、6.1 節）：只在聲音測試頁用 setIllusion 打開，預設＝現行
+    ILL_TIMBRE_X: 0.375,       // S1 同一種鼓：所有層都用這個「速度位置」的音色（playHit 的 0.375＝純框鼓）
+    ILL_CENTER: 0.62,          // S2 鐘形偏快：中心【假設，待試聽】
+    ILL_SIG_FAST: 0.30,        // S2：快的那一側寬度
+    ILL_SIG_SLOW: 0.16,        // S2：慢的那一側寬度
+    ILL_AUDIBLE_DB: -12,       // 面板「聽得到的最快速度」：音量 ≥ 最大聲那一層 −12 dB 的最快那一層
     // 木馬（規則 T.HORSE_MODE 開時才用；docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C2）
     BELLY_LOWPASS_HZ: 1200,    // 腹中隔著木板聽鼓：節奏線只留這以下（框鼓、木框敲擊都還在，筆電喇叭聽得到）【假設】
     BELLY_OPEN_SEC: 0.6,       // 暗門打開時低通掃開的時間（秒），和畫面掀開同步
@@ -662,7 +668,30 @@
     function ruleM() { var K = RK(); return (K && isFinite(K.RISSET_M) && K.RISSET_M > 0) ? K.RISSET_M | 0 : C.M; }
     function minGain() { var K = RK(); return (K && isFinite(K.BEAT_MIN_GAIN)) ? +K.BEAT_MIN_GAIN : C.MIN_GAIN; }
     // 第 k 層在相位 p 的音量：以規則的 layerGain 為準（追殺時 5 層都走鐘形），沒有規則才用備援鐘形
+    // ---------- 加速感試聽（聲音測試頁專用；ill 全為預設時，所有分支都不走，輸出和以前逐樣本相同） ----------
+    var ill = { timbre: false, bell: false };
+    function ownBell(k, p, nL) { var K = RK(), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA; return bell((k + p) / nL, sig * nLayers() / nL); }
+    function asymBell(x) { var d = x - C.ILL_CENTER, sg = d > 0 ? C.ILL_SIG_FAST : C.ILL_SIG_SLOW; return Math.exp(-(d / sg) * (d / sg)); }
+    // S2：鐘形改成左右不對稱（偏快），再把每個瞬間的四層總和縮放回現行的總和——形狀照新的走，整體音量的起伏和現行一樣
+    function illGain(k, p, hunted) {
+      var nL = layerCount(hunted), sc = 0, sa = 0;
+      for (var j = 0; j < nL; j++) { sc += ownBell(j, p, nL); sa += asymBell((j + p) / nL); }
+      return sa > 0 ? asymBell((k + p) / nL) * sc / sa : 0;
+    }
+    function illTimbre(x) { return ill.timbre ? C.ILL_TIMBRE_X : x; }
+    function illusionInfo(t) {           // 面板讀數：最大聲那一層、聽得到的最快那一層的速度（每分鐘幾拍），以及各層 dB
+      t = t == null ? ctx.currentTime : t;
+      var T = Tof(t), p = frac(Pof(t)), nL = layerCount(st.hunted), f0 = ruleM() * Math.LN2 / T, gs = [], mx = 0, iMax = 0, k;
+      for (k = 0; k < nL; k++) { var g = beatGain(k, p, st.hunted); gs.push(g); if (g > mx) { mx = g; iMax = k; } }
+      var thr = mx * Math.pow(10, C.ILL_AUDIBLE_DB / 20), iFast = iMax;
+      for (k = 0; k < nL; k++) if (gs[k] >= thr && k > iFast) iFast = k;
+      var bpm = function (kk) { return 60 * f0 * Math.pow(2, kk + p); };
+      return { T: +T.toFixed(2), p: +p.toFixed(3), loudBpm: Math.round(bpm(iMax)), fastBpm: Math.round(bpm(iFast)),
+        layersDb: gs.map(function (g) { return mx > 0 && g > 0 ? +(20 * Math.log10(g / mx)).toFixed(1) : -99; }),
+        timbre: ill.timbre, bell: ill.bell };
+    }
     function beatGain(k, p, hunted) {
+      if (ill.bell) return illGain(k, p, hunted);   // 加速感試聽 S2／S3（只有聲音測試頁會開）
       var Rr = getRules(), K = RK();
       if (Rr && typeof Rr.layerGain === 'function') { try { var g = Rr.layerGain(k, p, hunted, K || undefined); if (isFinite(g)) return g; } catch (e) {} }
       var nL = layerCount(hunted), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA;
@@ -881,14 +910,14 @@
         // 11/10 晚（裁決 7.5）：係數 COVER_ALERT_GAIN 套整記輕版。只調層的係數沒用（上半層是手拍、金屬，能量多在 1200 Hz 以上，
         // 離線量 0.6→0.85 突出只從 2.8 到 3 dB），所以把 700～1200 Hz 的主體加重：在低音拍中頻（200～600 Hz）之上，不蓋低音。
         var ag = C.COVER_ALERT_GAIN;
-        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN * ag);
+        for (k = Math.floor(nL / 2); k < nL; k++) playHit(out, illTimbre(k / nL), t, C.COVER_LAYER_GAIN * ag);
         tone(out, t, 'triangle', 900, 760, 0.08, C.COVER_ALERT_BODY * G * ag, 0.002, 0.18);
         tone(out, t, 'sine', 1150, 1080, 0.05, 0.5 * C.COVER_ALERT_BODY * G * ag, 0.002, 0.14);
         noise(out, t, 'bandpass', 950, 1.1, 1.2 * C.COVER_ALERT_BODY * G * ag, 0.001, 0.09);
         tone(out, t, 'sine', 1380, 1300, 0.05, 0.12 * G * ag, 0.002, 0.14);
         return;
       }
-      for (k = 0; k < nL; k++) playHit(out, k / nL, t, C.COVER_LAYER_GAIN);
+      for (k = 0; k < nL; k++) playHit(out, illTimbre(k / nL), t, C.COVER_LAYER_GAIN);
       tone(out, t, 'triangle', 420, 260, 0.12, 0.32 * G, 0.002, 0.35);   // 鼓皮的「咚」：中頻主體
       tone(out, t, 'sine', 640, 520, 0.08, 0.18 * G, 0.002, 0.25);
       noise(out, t, 'bandpass', 700, 0.9, 0.45 * G, 0.002, 0.18);       // 皮面拍擊的寬頻成分
@@ -1239,7 +1268,7 @@
             if (g < gMin) continue;                             // 音量不抖（A3）：實際響度 ∝ 規則 gain
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
             if (le) log.push(le);
-            (function (x, g) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(x, g);
+            (function (x, g) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(illTimbre(x), g);
           }
         }
       }
@@ -2045,6 +2074,9 @@
       },
       setListener: setListener,
       // 木馬（HORSE_MODE）：試驗場面板用。setBellyLowpass(true｜false｜null＝照規則自動)；horseInfo() 讀距離、共鳴音量、低通狀態
+      // 加速感試聽（聲音測試頁）：setIllusion({ timbre: true|false, bell: true|false })；null＝回到現行。illusionInfo() 給面板讀數
+      setIllusion: function (o) { o = o || {}; ill.timbre = !!o.timbre; ill.bell = !!o.bell; replan(ctx.currentTime); },
+      illusionInfo: illusionInfo,
       stopHorseSignal: stopHorseSignal,   // C3 結尾演出被跳過（畫面 cinFinish）時呼叫：0.3 秒內收掉共鳴、落地、主題
       setBellyLowpass: function (v) { horse.lpForce = (v == null) ? null : !!v; if (lastState) horseUpdate(lastState, ctx.currentTime); },
       horseInfo: function () {
