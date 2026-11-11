@@ -1491,6 +1491,9 @@
           const nx = nextStepAt(lastStepT, g);
           if (t >= nx.t - 1e-9) stepNow = nx.beatT != null ? { masked: true, beatT: nx.beatT } : { masked: stepMasked(t, g, stepWin), beatT: null };
         }
+        // 第 18.7 節：新鼓聲（MOVES_MODE 開、T.DRUMS 不是 'old'）時，追殺中、你不在影子裡（追兵知道你在哪）的腳步一律出聲；
+        // 躲進影子就恢復照拍點判定；最響一擊照舊有效（掩護窗裡衛兵本來就察覺不到）。?drums=old 照舊。
+        if (stepNow && K.MOVES_MODE && K.DRUMS !== 'old' && g.hunted && !pl.hidden && !blind) stepNow = { masked: false, beatT: null, start: stepNow.start, manual: stepNow.manual };
         if (stepNow) {
           lastStepT = t;
           stepLoud = !stepNow.masked;

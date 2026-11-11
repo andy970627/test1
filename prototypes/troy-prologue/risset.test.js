@@ -4118,3 +4118,40 @@ test('11/11 第 17.4 節：被追殺的提示分兩次——追殺一開始講�
   assert.ok(hints[i2].hidden, '第二句在已經躲進陰影時才出');
   assert.equal(hints.filter((h) => h.a === H.huntSearch).length, 1, '只出一次');
 });
+
+test('11/12 第 18.7 節：新鼓聲時，逃（追殺中、不在影子裡）的腳步一律出聲、踩得上的拍數 0；躲進影子恢復，持續走的步 100% 對得上；最響一擊照舊；?drums=old 照舊', () => {
+  // 追兵在遠處站著（看不到、追不到），玩家在第 2 區空地往東走 → 每一步都在「逃」；再放進大影子裡來回走 → 「躲」
+  const run = (T, inShadow) => {
+    const g = R.createLevel({ startZone: 2, T: Object.assign({ DYNAMIC: false }, T) });
+    const q = solo(g, 'g2b', 28, 6, 0);
+    g.step(0, {});
+    let t = 0.5; g.step(t, {});
+    Object.assign(q, { state: 'hunted', susp: 1, lastKnown: { x: 28, z: 6 }, knownAt: t, search: { route: [{ x: 28, z: 6 }], i: 0, pause: 999, done: false } });
+    g.hunted = true; g.huntKnownAt = t; g.huntStartUntil = t + 999;   // 追兵站著不動（只量腳步）
+    place(g, inShadow ? 18.5 : 14, inShadow ? 9.2 : 22);
+    const steps = [];
+    let dir = 1;
+    while (t < 12) {
+      t += DT; g.huntKnownAt = t;
+      if (inShadow && (g.player.x > 27.4 || g.player.x < 18.6)) dir = g.player.x > 27.4 ? -1 : 1;   // 在 x 18～28、z 8～10.5 那塊影子裡來回
+      g.step(t, { mx: dir });
+      for (const e of g.drain()) if (e.a === 'step_masked' || e.a === 'step_loud') steps.push({ a: e.a, blind: g.cycle.blind, hidden: g.player.hidden, start: e.start === true });
+    }
+    assert.ok(g.hunted && g.phase === 'play');
+    return steps;
+  };
+  // 逃：掩護窗外的步全部出聲
+  const flee = run({}, false).filter((s) => !s.blind && !s.hidden);
+  assert.ok(flee.length >= 8, `逃的步數 ${flee.length}`);
+  assert.equal(flee.filter((s) => s.a === 'step_masked').length, 0, '逃的時候規則認定踩得上的拍數 = 0');
+  // 躲：影子裡持續走的步（不算起步）100% 對得上
+  const hide = run({}, true).filter((s) => !s.blind && s.hidden && !s.start);
+  assert.ok(hide.length >= 8, `躲的步數 ${hide.length}`);
+  assert.equal(hide.filter((s) => s.a === 'step_masked').length, hide.length, '躲的時候 100% 對得上');
+  // 舊鼓聲：逃的時候照舊有對得上的拍
+  const old = run({ DRUMS: 'old' }, false).filter((s) => !s.blind && !s.hidden && !s.start);
+  assert.ok(old.filter((s) => s.a === 'step_masked').length >= old.length - 1, '?drums=old 照舊規則');
+  // 報告版（開關關著）不受影響
+  const off = run({ MOVES_MODE: false }, false).filter((s) => !s.blind && !s.hidden && !s.start);
+  assert.ok(off.filter((s) => s.a === 'step_masked').length >= off.length - 1, '報告版照舊');
+});
