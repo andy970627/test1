@@ -2043,7 +2043,7 @@ function sync(dt, now) {
     F.halo.scale.setScalar(1 + (1 - pulse) * .4);
     if (!on && G.susp > 0) { F.glow.material.color.setHex(0xe0b04a); F.glow.material.opacity = Math.max(F.glow.material.opacity, clamp(G.susp, 0, 1) * .35); }
     // 第 13 節：查看中（checking）火把與頭上微光變橘；轉向由規則的 q.yaw（朝 lookAt）帶。報告版沒有這個狀態
-    const shouting = HV.shout && HV.shout.id === G.id && performance.now() < HV.shout.until && !down;
+    const shouting = huntShouting() && HV.shout && HV.shout.id === G.id && !down;   // 第 17 節：喊了、還沒開始追（g.huntStartUntil）
     if (shouting) {                                    // 喊一聲到開始追之間：火把全紅、頭上的光一閃一閃
       F.glow.material.color.copy(CHECK_RED); F.glow.material.opacity = .6 + .4 * Math.abs(Math.sin(performance.now() / 70));
       F.light.color.copy(CHECK_RED); F.light.intensity *= 1.6;
@@ -2663,6 +2663,12 @@ function movesFrame(dt) {
 //   喘 pant：畫面邊緣跟著喘息起伏（讀 player.panting）
 // ============================================================
 const CHECK_RED = new THREE.Color(0xd23a2a);   // 查看中疑心滿時的火把色（和追殺同一個紅）
+/** 第 17 節：追兵喊了一聲、還沒開始追的空檔。規則給 g.huntStartUntil（音訊時間，追殺結束為 null）；沒有這個欄位時退回 hunt_call 的 delay 計時 */
+function huntShouting() {
+  const g = game; if (!g || g.phase !== 'play') return false;
+  if ('huntStartUntil' in g) return g.huntStartUntil != null && num(g.time, audio ? audio.now() : 0) < g.huntStartUntil;
+  return !!(HV.shout && performance.now() < HV.shout.until);
+}
 const HUNT_FX = { alertCol: 0xff8a3a, callCol: 0xff8a3a, routeCol: 0xd8624a, routeOp: .38, earCol: 0xb8c8ee, earHotCol: 0xff4a3a, pantHz: 1.7 };
 const HV = { routes: new Map(), ears: new Map(), pantV: 0, heardAt: -1e9,
   marks: new Map(), n: null };
@@ -2680,7 +2686,7 @@ function huntEvent(e) {
   const n = HV.n;
   if (e.a === 'hunt_call' || e.a === 'hunt_shout') {
     // 第 17 節：疑心滿了先喊一聲，HUNT_START_DELAY（0.8 秒）後才追：這段時間火把猛地變紅、畫面邊緣閃紅
-    HV.shout = { id: e.id, until: performance.now() + num(K().HUNT_START_DELAY, .8) * 1000 + 150 };
+    HV.shout = { id: e.id, until: performance.now() + num(e.delay, num(K().HUNT_START_DELAY, .8)) * 1000 + 150 };   // until 只在規則沒給 g.huntStartUntil 時用
     flashV = Math.max(flashV, .9);
     if (e.a === 'hunt_shout') return;
     const called = arr(e.called);
@@ -2765,10 +2771,11 @@ function huntFrame(dt, on) {
     if (!q || q.active === false) continue;
     const key = q.id, hunted = q.state === 'hunted', checking = q.state === 'checking' && q.check;
     if (!hunted && !checking) continue;
-    // 追兵的搜索路線：從追兵現在的位置連到還沒走的點（只在試驗場或相位條）
-    if (hunted && dbg) {
+    // 追兵的搜索路線：從追兵現在的位置連到還沒走的點。試驗場或相位條全畫；一般遊玩照視覺輔助分區淡出（第 17.3 節：前兩區淡淡畫出他要搜的線）
+    if (hunted && aidF > .01) {
       const R = q.search && !q.search.done ? arr(q.search.route).slice(q.search.i) : [];
       const o = huntRouteObj(key); used.add(key);
+      o.mat.opacity = HUNT_FX.routeOp * (dbg ? 1 : .8 * aidF);
       if (R.length) { huntRouteSet(o, [{ x: q.x, z: q.z }, ...R]); o.obj.visible = true; } else o.obj.visible = false;
     }
     // 查看：地上一圈標出他要走去的點（轉頭、走過去、停下來聽的時候；走回去時不畫）
@@ -3151,7 +3158,8 @@ function hud(dt) {
   const aEl = $('alertedEdge');
   if (aEl) aEl.style.opacity = alertedEdgeV > .002 ? alertedEdgeV.toFixed(3) : '0';
   // 追殺：紅色暈影
-  $('red').style.opacity = g.hunted ? (.75 + Math.sin(performance.now() / 160) * .15).toFixed(2) : flashV.toFixed(2);
+  // 追殺：紅色暈影；第 17 節喊了還沒追的那 0.8 秒（g.huntStartUntil）邊緣快速閃紅
+  $('red').style.opacity = huntShouting() ? (.45 + .55 * Math.abs(Math.sin(performance.now() / 75))).toFixed(2) : g.hunted ? (.75 + Math.sin(performance.now() / 160) * .15).toFixed(2) : flashV.toFixed(2);
   flashV = Math.max(0, flashV - dt * 1.5);
   // 暗殺：邊緣短白閃，WHITE_DUR 秒內淡完
   if (whiteFlashV > 0) {
