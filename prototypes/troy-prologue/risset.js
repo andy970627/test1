@@ -92,6 +92,16 @@
     CROUCH_SPEED_MUL: 0.5, // 蹲走速度 = WALK × 0.5
     CROUCH_STEP_WIN: 0.16, // 蹲走時起步判定寬度（取代 STEP_WIN）
     CROUCH_R: 1.2,        // 蹲走離拍的腳步聲傳多遠（約站著走 STEP_R 的一半；第 8 節：跟 MOVES_STEP_R 等比例）
+    // 搭配動作第 12 節（追殺重做，只在 MOVES_MODE 開時）
+    SEARCH_PAUSE: 0.8,    // 追兵搜影子：每到一點（消失點、影子中心、最遠端）停幾秒環顧
+    SEARCH_BREATH_R: 2.5, // 追兵幾公尺內聽得到你沒屏住的呼吸
+    SEARCH_STEP_R: 5,     // 追殺中踩歪的腳步傳多遠（他正在專心聽；蹲著照 CROUCH_R ÷ MOVES_STEP_R 等比例縮）
+    RUN_PANT_AFTER: 1.5,  // 連續跑超過幾秒，停下後會喘
+    RUN_PANT_DUR: 2.5,    // 喘幾秒：不能屏息、呼吸聲傳 RUN_PANT_MUL 倍遠
+    RUN_PANT_MUL: 1.6,    // 喘的時候呼吸聲的距離倍率
+    HUNT_CALL_R: 12,      // 追殺開始時那一聲喊，幾公尺內巡邏的衛兵進高度警覺
+    CALM_MEMORY: 30,      // 同一名衛兵幾秒內……
+    CALM_MEMORY_N: 3,     // ……第幾次起疑就不能再安撫，直接高度警覺（第 12 節第 9 點的「第三次」）
     MOVES_STEP_R: 2.5,    // 第 8 節：開關開著時，出聲的腳步傳多遠（取代 STEP_R；關著照舊 STEP_R 2.5）。2.5／4／5／6 實測後取值
     COVER_EAR_P: 0,      // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
@@ -488,6 +498,8 @@
   /** 秒數的寫法：整數照印，小數去掉尾零（0.6、2.4、1.5）。 */
   const num = (v) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
   /** 速度倍率的說法（由常數生成）：2 →「快一倍」、0.5 →「慢一半」，其他照印倍數。 */
+  /** 小整數的中文（「第三次」）；其他照印。 */
+  const cnNum = (n) => ('〇一二三四五六七八九十'[n] || num(n));
   const speedText = (m) => (m === 2 ? '快一倍' : m === 0.5 ? '慢一半' : '變成平常的 ' + num(m) + ' 倍');
   function hintsFor(K) {
     K = K || T;
@@ -509,9 +521,11 @@
       dash: moves ? runDash
         : cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
         : '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
-      panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。',
+      panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。' +
+        (moves ? '同一個人 ' + num(K.CALM_MEMORY) + ' 秒內騙不了第' + cnNum(K.CALM_MEMORY_N) + '次。' : ''),
       alerted: '衛兵高度警覺了！' + num(K.ALERTED_DURATION) + ' 秒內別再動、別出聲，否則就會被追殺。',
-      hunted: '被發現了！躲進陰影不動 ' + num(K.ESCAPE_STILL) + ' 秒，或連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上甩開他。',
+      hunted: moves ? '被發現了！躲進陰影，聽他的腳步：他走近就屏住呼吸，或踩著鼓點挪開；他搜完影子找不到你就會走。連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上能讓他慢下來。'
+        : '被發現了！躲進陰影不動 ' + num(K.ESCAPE_STILL) + ' 秒，或連續 ' + num(K.HUNT_STEP_ESCAPE) + ' 步踩在鼓點上甩開他。',
       takedown: cover ? '最響的那一擊落下時，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。'
         : '節奏斷掉的瞬間，從衛兵背後靠近按 E，可以把他放倒。時機不對，他會起疑。',
       gate: '城門的門閂要在節奏慢的時候按住 E 推；節奏一快就放手，否則門閂聲會被聽見。',
@@ -725,7 +739,9 @@
     //   ?lab=horse（第 3 節 C2）：木馬開關開、沒有衛兵；從第 2 區開始自由走，不會過關也不會失敗（出口擋住）；木馬陰影照開關邏輯加入。
     //   ?lab=run／crouch／listen（搭配動作第 7.4 節）：MOVES_MODE 開、衛兵照常（要看得到驚動與否）、出口擋住；
     //     run 在第 2 區（空曠的廣場），crouch、listen 在第 3 區（有水缸、貨堆）。被抓照常失敗，畫面層 retry 回起點。
-    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3 };
+    //   ?lab=hunt（第 12 節）：第 2 區，一名追兵（g2b）從背後 6 公尺開始追，玩家離東南角的影子 6 公尺；出口擋住。
+    //     第一幀開始追殺；甩掉或被抓都留在原地（畫面層 retry 重來）。
+    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2 };
     const lab = LABS[opts.lab] ? opts.lab : null;
     const horseLab = lab === 'belly' || lab === 'horse';
     if (horseLab && oT.HORSE_MODE == null) K.HORSE_MODE = true;
@@ -807,6 +823,7 @@
     const CZ = opts.T ? causesFor(K) : CAUSES;
     const RUN_MSG = '跑步聲傳開了——衛兵高度警覺！';
     const RUN_HUNT_MSG = '又聽到跑步聲——衛兵衝過來！';
+    const CALM_MEMORY_MSG = '他已經起疑第' + cnNum(K.CALM_MEMORY_N) + '次了——這次騙不過他，他盯著這裡。';
     const MOVE_HIGH_MSG = K.COVER_MODE ? '節奏最快的時候腳步露了聲——被發現了！' : '節奏最快的時候亂動——被發現了！';
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HTXT[key]); } };
@@ -835,7 +852,8 @@
     function makePlayer(z) {
       const s = level.zones[z].start;
       return { x: s.x, z: s.z, y: s.y || 0, yaw: s.yaw || 0, breathing: false, breathT: 0, breathLock: false,
-        hidden: false, moving: false, inBelly: !!level.zones[z].belly, running: false, crouching: false, runHeld: 0 };
+        hidden: false, moving: false, inBelly: !!level.zones[z].belly, running: false, crouching: false, runHeld: 0,
+        runT: 0, pantUntil: -1e9, panting: false };
     }
     function makeGuard(d) {
       const p0 = d.route[0], p1 = d.route[1] || p0;
@@ -887,6 +905,18 @@
     resetGuards(0);
     setActive();
     if (startZone > 0) enterZone(startZone, true);
+    let huntLabPending = false;   // ?lab=hunt：第一個 play 幀開始追殺
+    /** ?lab=hunt 的固定場景（第 12 節）：影子 x 26.5～30、z 23.5～27；玩家在它正南方 6 公尺，追兵再往南 6 公尺。 */
+    function setupHuntLab() {
+      const tx = 28.25, pz = 17.5;
+      g.player.x = tx; g.player.z = pz; g.player.yaw = 0;
+      for (const q of g.guards) {
+        if (q.id === 'g2b') Object.assign(q, { x: tx, z: pz - 6, route: [{ x: tx, z: pz - 6 }], wp: 0, baseYaw: 0, yaw: 0, state: 'patrol', susp: 0 });
+        else { q.state = 'down'; q.active = false; }
+      }
+      huntLabPending = true;
+    }
+    if (lab === 'hunt') setupHuntLab();
 
     // ----- 移動與碰撞 -----
     function blocked(x, z, rad) {
@@ -958,6 +988,14 @@
     }
     function makeSuspicious(q, t) {
       if (q.state !== 'patrol') return;
+      if (K.MOVES_MODE) {
+        // 第 12 節第 8 點：追殺中才起疑的衛兵直接進高度警覺（取代 10.3 的「暫停安撫倒數」）
+        if (g.hunted) { makeAlerted(q, t, 'hunt'); return; }
+        // 第 9 點：同一名衛兵 CALM_MEMORY 秒內第 CALM_MEMORY_N 次起疑，不能再安撫，直接高度警覺
+        q.suspHist = (q.suspHist || []).filter((x) => t - x < K.CALM_MEMORY);
+        q.suspHist.push(t);
+        if (q.suspHist.length >= K.CALM_MEMORY_N) { q.suspHist = []; makeAlerted(q, t, 'calm_memory'); return; }
+      }
       if (behindPlayer(q)) hintFail('listen');
       q.state = 'suspicious'; q.susp = 1;
       q.lookAt = { x: g.player.x, z: g.player.z };
@@ -968,7 +1006,7 @@
         emit('sfx', 'alert');
       }
       q.calm = g.panic.count;
-      if (!(K.MOVES_MODE && g.hunted)) hint('panic');   // 第 10 節：追殺中先不要求安撫，提示等追殺結束（endHunt）再出
+      hint('panic');
     }
     function makeAlerted(q, t, cause) {
       if (!q || q.state !== 'patrol') return;
@@ -977,11 +1015,12 @@
       q.susp = K.ALERTED_SUSP;
       q.alertUntil = t + K.ALERTED_DURATION;
       q.lookAt = { x: g.player.x, z: g.player.z };
-      emit('sfx', 'alerted');
+      emit('sfx', 'alerted', { id: q.id, cause: cause || null });
       // 11/10 複審：之前 msg 和 hint 都發 HTXT.alerted，同一句出現兩次。改成 msg 說「發生了什麼」（每次進入都發，
       // 只有腳步露聲才有；大聲沒有另外的訊息），hint 說「接下來怎麼辦」（第一次）。
       if (cause === 'move_high') emit('msg', MOVE_HIGH_MSG);
       if (cause === 'run') emit('msg', RUN_MSG);
+      if (cause === 'calm_memory') emit('msg', CALM_MEMORY_MSG);
       hint('alerted');
     }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
@@ -995,30 +1034,73 @@
       if (!g.hunted) huntCause = cause;
       const pl = g.player;
       const wasHunted = g.hunted;
+      const tNow = g.time;
       for (const o of g.guards) {
         if (!o.active) continue;
-        if (o === q || o.state === 'suspicious' || o.state === 'alerted') {
+        // 第 12 節：追殺已經開始後（開關開），只有發現你的這一名加入；被喊聲叫到的高度警覺衛兵要再犯才加入
+        const join = o === q || (!(K.MOVES_MODE && wasHunted) && (o.state === 'suspicious' || o.state === 'alerted'));
+        if (join) {
           o.state = 'hunted'; o.susp = 1; o.lastKnown = { x: pl.x, z: pl.z }; o.calm = 0;
+          o.knownAt = tNow; o.search = null; o.stuckT = 0;
         }
       }
+      if (K.MOVES_MODE) g.huntKnownAt = tNow;
       clearPanic();
       g.hunted = true; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
       g.cycle.nextFake = false;   // 追殺中不要假驟降（擺脫要靠真的盲區判斷時機）
       if (!wasHunted) { emit('sfx', 'hunt'); if (reason) emit('msg', reason); }
+      // 第 12 節第 7 點：追殺開始時發現你的那一名喊一聲；HUNT_CALL_R 內還在巡邏的衛兵進高度警覺、轉向喊聲
+      if (K.MOVES_MODE && !wasHunted) {
+        let caller = q && q.state === 'hunted' ? q : null;
+        if (!caller) for (const o of g.guards) if (o.active && o.state === 'hunted' && (!caller || dist2(o, pl) < dist2(caller, pl))) caller = o;
+        if (caller) {
+          const called = [];
+          for (const o of g.guards) {
+            if (!o.active || o.state !== 'patrol' || Math.hypot(o.x - caller.x, o.z - caller.z) > K.HUNT_CALL_R) continue;
+            makeAlerted(o, tNow, 'call');
+            o.lookAt = { x: caller.x, z: caller.z };
+            called.push(o.id);
+          }
+          emit('sfx', 'hunt_call', { x: caller.x, z: caller.z, id: caller.id, called });
+        }
+      }
       hint('hunted');
     }
-    function endHunt(t) {
-      for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; }
+    function endHunt() {
+      for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; o.search = null; }
       g.hunted = false; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0; huntCause = null;
       emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
-      // 搭配動作第 10 節：追殺期間起疑的衛兵，安撫倒數沒有走；追殺結束時倒數與慢低音的拍子從頭算
-      if (K.MOVES_MODE && g.panic.active) {
-        g.panic.start = t; g.panic.count = 0; g.panic.lastPress = null;
-        g.bass.anchor = t + K.BASS_LEAD;
-        refreshBass(t);
-        for (const q of g.guards) if (q.active && q.state === 'suspicious') q.calm = 0;
-        hint('panic');
+    }
+    /**
+     * 第 12 節第 1 點：追兵到了消失點 v 之後的搜索路線（固定）：v → 影子中心 → 影子「最遠端」。
+     * 影子：包含 v 的那一塊，沒有就取離 v 最近的一塊（矩形距離 3 公尺內）；都沒有就只在 v 環顧。
+     * 最遠端：從 v 經過中心的射線穿出影子的那一點（往內縮 0.3 公尺）；v 就在中心時取離 v 最遠的角。
+     */
+    function searchRoute(v) {
+      let best = null, bd = 1e9;
+      for (const s of level.shadows) {
+        const cx = Math.max(s.x0, Math.min(v.x, s.x1)), cz = Math.max(s.z0, Math.min(v.z, s.z1));
+        const d = Math.hypot(cx - v.x, cz - v.z);
+        if (d < bd) { bd = d; best = s; }
       }
+      if (!best || bd > 3) return [{ x: v.x, z: v.z }];
+      const ins = 0.3, x0 = best.x0 + ins, x1 = best.x1 - ins, z0 = best.z0 + ins, z1 = best.z1 - ins;
+      const c = { x: (best.x0 + best.x1) / 2, z: (best.z0 + best.z1) / 2 };
+      let dx = c.x - v.x, dz = c.z - v.z;
+      const l = Math.hypot(dx, dz);
+      let far;
+      if (l < 0.1) {
+        far = null; let fd = -1;
+        for (const [x, z] of [[x0, z0], [x0, z1], [x1, z0], [x1, z1]]) { const d = Math.hypot(x - v.x, z - v.z); if (d > fd) { fd = d; far = { x, z }; } }
+      } else {
+        dx /= l; dz /= l;
+        let sMax = Infinity;
+        if (dx > 1e-9) sMax = Math.min(sMax, (x1 - c.x) / dx); else if (dx < -1e-9) sMax = Math.min(sMax, (x0 - c.x) / dx);
+        if (dz > 1e-9) sMax = Math.min(sMax, (z1 - c.z) / dz); else if (dz < -1e-9) sMax = Math.min(sMax, (z0 - c.z) / dz);
+        sMax = Math.max(0, sMax);
+        far = { x: c.x + dx * sMax, z: c.z + dz * sMax };
+      }
+      return [{ x: v.x, z: v.z }, c, far];
     }
 
     // ----- 每幀 -----
@@ -1139,6 +1221,11 @@
       }
 
       const pl = g.player, c = g.cycle, p = c.p, blind = c.blind;
+      if (huntLabPending) {
+        huntLabPending = false;
+        const hq = g.guards.find((q) => q.id === 'g2b');
+        if (hq && hq.active) startHunt(hq, 'seen', '追兵從背後衝過來了！');
+      }
       if (inp.yaw != null) pl.yaw = inp.yaw;
       // 按鍵的判定時間：按鍵當下的音訊時間（畫面層給 actAt），沒有才用幀時間；不會晚於本幀
       const actT = inp.actAt != null ? Math.min(inp.actAt, t) : t;
@@ -1159,8 +1246,14 @@
       }
       let loud = false;
 
+      // 第 12 節第 5 點：跑完會喘（RUN_PANT_DUR 秒內不能屏息，呼吸聲傳 RUN_PANT_MUL 倍遠）
+      const panting = K.MOVES_MODE && t < pl.pantUntil - 1e-9;
+      if (pl.panting && !panting) emit('sfx', 'pant_end', { x: pl.x, z: pl.z });
+      pl.panting = panting;
+      // 跑超過 RUN_PANT_AFTER 之後，停下那一幀就算喘（不能趁那一幀屏息）
+      const noBreath = panting || (K.MOVES_MODE && pl.running && pl.runT > K.RUN_PANT_AFTER + 1e-9);
       // 屏息
-      if (inp.breath && !pl.breathLock) {
+      if (inp.breath && !pl.breathLock && !noBreath) {
         if (!pl.breathing) { emit('sfx', 'breath_in'); pl.breathSaved = false; }
         pl.breathing = true;
         pl.breathT += dt;
@@ -1188,6 +1281,14 @@
         if (running !== !!pl.running) emit('sfx', running ? 'run_start' : 'run_stop', { x: pl.x, z: pl.z });
         if (crouching !== !!pl.crouching) emit('sfx', crouching ? 'crouch_on' : 'crouch_off', { x: pl.x, z: pl.z });
         pl.running = running; pl.crouching = crouching;
+        if (running) pl.runT += dt;
+        else if (pl.runT > 0) {
+          if (pl.runT > K.RUN_PANT_AFTER + 1e-9) {
+            pl.pantUntil = t + K.RUN_PANT_DUR; pl.panting = true;
+            emit('sfx', 'pant_start', { x: pl.x, z: pl.z, dur: K.RUN_PANT_DUR, ran: pl.runT });
+          }
+          pl.runT = 0;
+        }
       }
       const speed = running ? K.WALK * K.RUN_SPEED_MUL : crouching ? K.WALK * K.CROUCH_SPEED_MUL : K.WALK;
       const stepWin = crouching ? K.CROUCH_STEP_WIN : undefined;
@@ -1358,9 +1459,7 @@
       // 安撫（機制 B）
       // 判定時間：按鍵當下的音訊時間（calmAt，沒有就 actAt），再沒有才用幀時間；比起疑還早的按鍵不算
       const calmT = inp.calmAt != null ? Math.min(inp.calmAt, t) : actT;
-      // 搭配動作第 10 節：有衛兵在追殺時，安撫倒數不走、也不要求安撫（按 Q 不算對也不算錯）；追殺結束才從頭算（endHunt）
-      const calmPaused = K.MOVES_MODE && g.hunted;
-      if (inp.calm && g.panic.active && !calmPaused && calmT >= g.panic.start) {
+      if (inp.calm && g.panic.active && calmT >= g.panic.start) {
         const P = g.panic;
         const b = bassBeatNear(calmT, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN, K.LATENCY_GRACE);
         if (P.lastPress != null && calmT - P.lastPress < K.CALM_GAP) {
@@ -1381,7 +1480,7 @@
         }
       }
       if (g.phase !== 'play') return g;
-      if (g.panic.active && !calmPaused && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
+      if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
       if (g.phase !== 'play') return g;
 
       // 木馬腹中練習：達成之後的下一個掩護窗一開始，同伴趁那一擊拉開木栓（玩家什麼都不用按）
@@ -1441,13 +1540,22 @@
         const coverEar = !!K.COVER_MODE && p > K.COVER_EAR_P;
         const hearR = crouching ? Math.min(r, K.CROUCH_R) : r;   // 蹲走：離拍的聲音只傳 CROUCH_R
         const heardMove = mv && d <= hearR && (!coverEar || (stepLoud && p > K.HIGH_P));
-        const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
+        const pantMul = pl.panting ? K.RUN_PANT_MUL : 1;
+        const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR * pantMul;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
         const heardStep = stepLoud && d < (crouching ? K.CROUCH_R : K.STEP_R);
         const heardRun = runLoud && d <= K.RUN_R;   // 搭配動作 A1：掩護窗外的跑步
 
         if (q.state === 'hunted') {
-          if (seen || heardMove || heardLoud || heardStep || heardRun || (!pl.hidden && !blind)) q.lastKnown = { x: pl.x, z: pl.z };
+          // 第 12 節第 2、3 點（開關開）：追兵聽得到 SEARCH_BREATH_R 內沒屏住的呼吸（喘時 × RUN_PANT_MUL）、SEARCH_STEP_R 內踩歪的腳步
+          const huntBreath = K.MOVES_MODE && !pl.breathing && d <= K.SEARCH_BREATH_R * pantMul;
+          const huntStep = K.MOVES_MODE && stepLoud && d <= (crouching ? K.SEARCH_STEP_R * K.CROUCH_R / K.MOVES_STEP_R : K.SEARCH_STEP_R);
+          const knows = seen || heardMove || heardLoud || heardStep || heardRun || (!pl.hidden && !blind);
+          if (knows || huntBreath || huntStep) {
+            if (K.MOVES_MODE && !knows && (q.search || t - q.knownAt > 0.5)) emit('sfx', 'hunt_heard', { id: q.id, x: q.x, z: q.z, why: huntBreath ? 'breath' : 'step' });
+            q.lastKnown = { x: pl.x, z: pl.z };
+            if (K.MOVES_MODE) { q.knownAt = t; g.huntKnownAt = t; if (q.search) { q.search = null; q.stuckT = 0; } }
+          }
           continue;
         }
         if (q.state === 'alerted') {
@@ -1548,6 +1656,40 @@
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
         } else if (q.state === 'alerted') {
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
+        } else if (q.state === 'hunted' && K.MOVES_MODE) {
+          // 第 12 節第 1 點：追到消失點後搜影子（巡邏速度、每點停 SEARCH_PAUSE 秒環顧）；又知道你在哪就回頭追。
+          // 卡住（1.5 秒沒前進，例如被牆擋）就當作到了那一點。
+          const hs = t < g.huntSlowUntil ? K.HUNT_SPEED * K.HUNT_SLOW_MUL : K.HUNT_SPEED;
+          const stuckCheck = (d0, tx, tz) => {
+            const d1 = Math.hypot(tx - q.x, tz - q.z);
+            q.stuckT = d0 - d1 < 0.005 ? (q.stuckT || 0) + dt : 0;
+            return q.stuckT > 1.5;
+          };
+          if (!q.search) {
+            const L = q.lastKnown || { x: pl.x, z: pl.z };
+            const dL = Math.hypot(L.x - q.x, L.z - q.z);
+            let arrived = dL <= 0.3;
+            if (!arrived) { moveToward(q, L.x, L.z, hs, dt); arrived = stuckCheck(dL, L.x, L.z); }
+            if (arrived) {
+              q.search = { route: searchRoute(L), i: 0, pause: K.SEARCH_PAUSE, done: false };
+              q.stuckT = 0;
+              emit('sfx', 'search_start', { id: q.id, route: q.search.route.map((w) => ({ x: w.x, z: w.z })) });
+            }
+          } else if (!q.search.done) {
+            const S = q.search, w = S.route[S.i];
+            const dW = Math.hypot(w.x - q.x, w.z - q.z);
+            let there = dW <= 0.05;
+            if (!there) { moveToward(q, w.x, w.z, K.PATROL_SPEED, dt); there = stuckCheck(dW, w.x, w.z); S.pause = K.SEARCH_PAUSE; }
+            if (there) {
+              q.yaw += K.SEARCH_TURN * dt;
+              S.pause -= dt;
+              if (S.pause <= 0) {
+                S.i++; q.stuckT = 0;
+                if (S.i >= S.route.length) { S.done = true; emit('sfx', 'search_done', { id: q.id, x: q.x, z: q.z }); }
+              }
+            }
+          } else q.yaw += K.SEARCH_TURN * dt;
+          if (dist2(q, pl) < K.CATCH_R) { fail(CZ[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
         } else if (q.state === 'hunted') {
           const L = q.lastKnown || { x: pl.x, z: pl.z };
           const hs = t < g.huntSlowUntil ? K.HUNT_SPEED * K.HUNT_SLOW_MUL : K.HUNT_SPEED;
@@ -1560,7 +1702,10 @@
       // 擺脫追殺
       if (g.hunted) {
         if (pl.hidden && !moved) g.stillT += dt; else g.stillT = 0;
-        if (g.stillT >= K.ESCAPE_STILL) endHunt(t);
+        if (!K.MOVES_MODE && g.stillT >= K.ESCAPE_STILL) endHunt();
+        // 第 12 節第 4 點：追兵都搜完了，而且最後一次知道你在哪已過 ESCAPE_STILL 秒 → 甩掉（取代站著不動 6 秒）
+        if (K.MOVES_MODE && g.guards.every((q) => !q.active || q.state !== 'hunted' || (q.search && q.search.done)) &&
+          t - (g.huntKnownAt == null ? -1e9 : g.huntKnownAt) >= K.ESCAPE_STILL - 1e-9) endHunt();
       }
 
       // 搭配動作第 8 節：站在同一塊影子裡、超過三個循環沒動（跨過 4 次交接）→ 給下一步提示；之後每再久站三個循環一次。
@@ -1634,6 +1779,7 @@
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
       enterZone(z, true);
+      if (lab === 'hunt') setupHuntLab();
       // 循環時鐘不重設：相位保持連續（聲音已排好的拍不會錯位），長度自己平滑逼近新目標
       emit('msg', '從「' + level.zones[z].name + '」重新開始。');
       g.alarm = 0;

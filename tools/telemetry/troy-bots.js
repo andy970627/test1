@@ -24,7 +24,7 @@ function makeBot(opts = {}) {
     3: [{ x: 34, z: 25.5 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
     4: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.5 }]
   };
-  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false;
+  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false, hideAt = null;
   const erng = R.mulberry32((opts.seed || 1) * 97 + 13);
   const gauss = () => { let u = 0, v = 0; while (u === 0) u = erng(); v = erng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
   let curErr = opts.sigma ? gauss() * opts.sigma : 0;
@@ -42,6 +42,26 @@ function makeBot(opts = {}) {
     const d3 = (q, x = pl.x, z = pl.z) => Math.hypot(q.x - x, q.z - z, pl.y || 0);
     const wantBreath = () => act.some(q => d3(q) <= r(q, Math.min(1, p + 0.05)) * K.BREATH_HEAR + 0.8);
     // 追殺：躲到最近陰影深處
+    // 第 12 節（MOVES_MODE）：追兵會進影子搜 → 聽著躲：走到最近那塊影子裡離自己最遠的角（內縮 0.4），
+    // 到了以後追兵在 3 公尺內就屏息（快憋不住就放開），離開就換氣。報告版（開關關著）照舊。
+    if (!g.hunted) hideAt = null;
+    if (g.hunted && K.MOVES_MODE) {
+      if (!hideAt) {
+        let bs = null, bd2 = 1e9;
+        for (const s of g.level.shadows) {
+          const cx = Math.max(s.x0, Math.min(pl.x, s.x1)), cz = Math.max(s.z0, Math.min(pl.z, s.z1)), d = Math.hypot(cx - pl.x, cz - pl.z);
+          if (d < bd2) { bd2 = d; bs = s; }
+        }
+        let fd = -1;
+        for (const [x, z] of [[bs.x0 + 0.4, bs.z0 + 0.4], [bs.x0 + 0.4, bs.z1 - 0.4], [bs.x1 - 0.4, bs.z0 + 0.4], [bs.x1 - 0.4, bs.z1 - 0.4]]) {
+          const d = Math.hypot(x - pl.x, z - pl.z); if (d > fd) { fd = d; hideAt = { x, z }; }
+        }
+      }
+      const hx = hideAt.x - pl.x, hz = hideAt.z - pl.z, hd = Math.hypot(hx, hz);
+      if (hd > 0.3) { inp.mx = hx / hd; inp.mz = hz / hd; if (blind && hd > K.DASH_HUNT) inp.dash = true; }
+      else if (pl.breathT < K.BREATH_MAX - 0.2 && g.guards.some((q) => q.active && q.state === 'hunted' && Math.hypot(q.x - pl.x, q.z - pl.z) <= 3)) inp.breath = true;
+      return inp;
+    }
     if (g.hunted) {
       let best = null, bd = 1e9;
       for (const s of g.level.shadows) {
