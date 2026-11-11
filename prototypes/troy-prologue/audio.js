@@ -169,6 +169,21 @@
     CHECK_STEP_DIST_REF: 2.5, CHECK_STEP_DIST_MAX: 3,   // 查看中：離你超過 2.5 公尺時腳步再按距離補回來（最多 3 倍），遠一點也聽得到他在走過來
     CHECK_VOICE_MUL: 2.8,            // 查看的疑問聲、走到時的吸氣再乘幾倍（錄音 −19、−22 dB）
     CHECK_OVER_MUL: 5,               // 沒找到時的呼氣再乘幾倍（錄音 −31 dB）
+    // 追殺時的聲音：逃時快到極限，躲時靜下來（docs/design/2026-11-11-companion-mechanics.md 第 18 節；MOVES_MODE）
+    HUNT_ORDER_GAP: 0.3,       // 18.3：喊聲之後幾秒才是其他衛兵的反應聲、鼓開始加速
+    HUNT_OTHERS_MUL: 0.5,      // 18.3：其他被叫到的衛兵的反應聲比平常小幾倍（−6 dB）
+    HUNT_ACCEL: 2,             // 逃：從喊聲起幾秒內鼓聲加速到最快（相位推到一圈的最尾端後停住）
+    HUNT_VERB: 0.25,           // 逃：最響一擊的餘韻縮到幾秒
+    HUNT_VERB_GAIN: 0.25,      // 逃：殘響輸出乘幾倍（−12 dB，長迴盪拿掉）
+    HUNT_GLIDE_LO: 800, HUNT_GLIDE_HI: 1600, HUNT_GLIDE_GAIN: 0.025,   // 逃：往上滑的長音（2 秒到頂後停住）
+    HIDE_DUCK_TIME: 0.5,       // 躲：鼓聲幾秒內悶下去
+    HIDE_DUCK_DB: -14,         // 躲：悶下去的鼓整體退幾 dB（低通同木馬腹中 BELLY_LOWPASS_HZ；設計起點 10，11/12 量 3 公尺外追兵腳步比鼓低 10 dB，加到 14 並把追兵拉高）
+    HIDE_GUARD_MUL: 3.5,       // 躲：搜索中的追兵聲音再乘幾倍（18.4：追兵腳步排在踩得上的鼓點前面；驗收要比鼓高 ≥ 3 dB）
+    HIDE_KEEP_DB: 6,           // 躲：規則認定踩得上的拍比其他鼓多留幾 dB
+    FOUND_OPEN: 0.1,           // 被找到：濾波幾秒內打開
+    HUNT_ALARM_ESCAPE: 0.3, HUNT_DIST_ESCAPE: 0.25,   // 逃：失控層、失真降到多少（平常追殺 0.6／0.8；18.1 的「亂」有一半來自它們）
+    HUNT_ALARM_HIDE: 0, HUNT_DIST_HIDE: 0,            // 躲：失控層、失真收掉（失真在低通之後，會把濾掉的高頻再生出來）
+    ESCAPED_BACK: 2,           // 甩掉：鼓聲幾秒回到平常
     SUSP_STEP_FAST: 0.35,            // 疑心（q.susp 0～1）滿時，腳步間隔縮短幾成
     SUSP_BREATH_FAST: 0.5,           // 疑心滿時，呼吸間隔縮短幾成；疑心 ≥ 0.3 就用急促的呼吸
     CROUCH_STARTLE_R: 1.2,     // 蹲走離拍時，衛兵「被聽到」的吸氣只在這個距離內（規則 CROUCH_R；規則有就用規則的）
@@ -421,7 +436,8 @@
     var verb = ctx.createConvolver(); verb.buffer = makeIR(2.4, 3);
     var verbSend = ctx.createGain(); verbSend.gain.value = 0.28; bright.connect(verbSend); verbSend.connect(verb);
     var verbOut = ctx.createGain(); verbOut.gain.value = 0.6; verb.connect(verbOut);
-    var verbDuck = ctx.createGain(); verbDuck.gain.value = 1; verbOut.connect(verbDuck); verbDuck.connect(gate);   // 殘響掩護：窗結束時壓低殘響（gateVD），現行版恆為 1
+    var verbDuck = ctx.createGain(); verbDuck.gain.value = 1; verbOut.connect(verbDuck);
+    var huntVerbG = ctx.createGain(); huntVerbG.gain.value = 1; verbDuck.connect(huntVerbG); huntVerbG.connect(gate);   // 第 18 節「逃」：長迴盪拿掉（平時 1）   // 殘響掩護：窗結束時壓低殘響（gateVD），現行版恆為 1
     var shaper = ctx.createWaveShaper(); shaper.curve = shaperCurve(6); shaper.oversample = '2x';
     var distWet = ctx.createGain(); distWet.gain.value = 0; bright.connect(distWet); distWet.connect(shaper);
     var distOut = ctx.createGain(); distOut.gain.value = 0.5; shaper.connect(distOut); distOut.connect(gate);
@@ -774,12 +790,12 @@
     function dnGains(p, hunted) { return newDrumGains(p, baseLayerCount(hunted), function (k, pp) { return curGain(k, pp, hunted); }); }
     function dnGain(j, p, t, c, hunted) {
       var gs = dnGains(p, hunted), nS = gs.length, g = gs[j];
-      if (j === nS - 1 && p >= C.ILL_ROLL_FROM) {   // 每圈末最快那條越打越密衝進那一擊（U4）
+      if (j === nS - 1 && p >= C.ILL_ROLL_FROM && !hunted) {   // 每圈末最快那條越打越密衝進那一擊（U4；追殺時不做，第 18 節）
         var S = 0, gm = 0; for (var i = 0; i < nS; i++) { S += gs[i]; gm = Math.max(gm, gs[i]); }
         var g0 = dnGains(C.ILL_ROLL_FROM, hunted)[nS - 1], tgt = Math.min(gm, C.DN_ROLL_CAP * S) * C.DN_ROLL_MUL, u = (p - C.ILL_ROLL_FROM) / (1 - C.ILL_ROLL_FROM);
         if (tgt > g) g = g0 > 0 ? Math.max(g, g0 * Math.pow(tgt / g0, u)) : tgt * u;
       }
-      if (coverMode()) {                // 最響的一擊（每圈起點）拉回來
+      if (coverMode() && !hunted) {     // 最響的一擊（每圈起點）拉回來（追殺時不做前後讓開，第 18 節）
         if (t - tAt(c) < C.DN_CLEAR_AFTER) return 0;
         if (tAt(c + 1) - t < C.DN_PRE) g *= Math.pow(10, C.DN_PRE_DB / 20);
       }
@@ -800,6 +816,7 @@
             var p = tab[n], P = c + p, t = tAt(P);
             if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;
             var g = dnGain(j, p, t, c, st.hunted);
+            if (hm.mode !== 'none' || hm.back) g *= hideKeep(k, p, st.hunted) * rissetFade(t);   // 第 18 節：躲、甩掉
             if (g < C.DN_MIN_GAIN) continue;
             var le = log ? { type: 'beat', k: k, n: nn, c: c, t: t, p: p, g: g, drums: 'new' } : null;
             if (le) log.push(le);
@@ -1187,8 +1204,9 @@
       // 中頻餘韻（11/10 錄音工具回報：殘響多在 200 Hz 以下，喇叭模擬下只剩 0.10 秒）：寬帶通雜訊慢慢收掉，像大廳牆面的回聲，
       // 撐滿 0.6 秒的窗；走節奏匯流排，也進殘響。
       var TG = C.COVER_TAIL_GAIN;
-      noise(out, t + 0.015, 'bandpass', 850, 0.6, TG, 0.04, C.COVER_TAIL_SEC);
-      noise(out, t + 0.02, 'bandpass', 1700, 0.8, TG * 0.5, 0.05, C.COVER_TAIL_SEC * 0.75);
+      var TS = hm.mode === 'escape' ? C.HUNT_VERB : C.COVER_TAIL_SEC;   // 第 18 節「逃」：餘韻縮短（平常照舊）
+      noise(out, t + 0.015, 'bandpass', 850, 0.6, TG, 0.04, TS);
+      noise(out, t + 0.02, 'bandpass', 1700, 0.8, TG * 0.5, 0.05, TS * 0.75);
     }
     function scheduleCoverHits(from, end, ws) {
       for (var i = 0; i < ws.length; i++) {
@@ -1204,7 +1222,7 @@
         var hg = (!aw && horseOn() && !horse.inBelly) ? horseBoomGain(horse.dist) : 0;
         if (le && hg > 0) le.boom = hg;
         if (hg > 0) horse.lastBoom = { t: t, gain: +hg.toFixed(3), dist: +horse.dist.toFixed(2) };
-        (function (aw, bst, hg) { addEvent(key, P, rhythmBus, function (tt, out) { out.gain.value = bst; coverHit(out, tt, aw); if (hg > 0) horseBoom(horseBus, tt, hg); }, false, le); })(aw, bst, hg);
+        (function (aw, bst, hg) { addEvent(key, P, movesOn() ? hideSplit : rhythmBus, function (tt, out) { out.gain.value = bst; coverHit(out, tt, aw); if (hg > 0) horseBoom(horseBus, tt, hg); }, false, le); })(aw, bst, hg);
       }
     }
 
@@ -1235,6 +1253,7 @@
       for (var i = 0; i < pending.length; i++) {
         var r = pending[i];
         if (r.t < now - 0.05) continue;                       // 已響過：不再追蹤（evs 留著做去重）
+        if (r.fixed) { keep.push(r); continue; }              // 第 18 節「逃」的脈衝拍：時間是自己算的，不跟循環外推搬
         if (r.t < now + C.RESCHED_MARGIN) { keep.push(r); continue; }
         var t2 = tAt(r.P), blocked = r.gated && !coverMode() && (inWins(t2, ws) || gateR.forced);
         if (Math.abs(t2 - r.t) <= C.RESCHED_TOL && !blocked) { keep.push(r); continue; }
@@ -1399,7 +1418,13 @@
     // 搭配動作（MOVES_MODE）。C1 屏息聽：一般鼓拍改走 beatBus（屏息時退後），最響的一擊（重合擊）照舊直接進 rhythmBus、不退；
     // 衛兵的 panner 改接 guardListen（屏息時提高）。開關關著時鼓拍和衛兵照舊直接接 rhythmBus／guardOut，路徑和以前一模一樣
     function movesOn() { var K = lastState && lastState.T; return !!(K && typeof K === 'object' && K.MOVES_MODE === true); }   // 同 dnOn：只看遊戲傳進來的狀態
-    var beatBus = ctx.createGain(); beatBus.gain.value = 1; beatBus.connect(rhythmBus);
+    var beatBus = ctx.createGain(); beatBus.gain.value = 1;
+    // 第 18 節「躲」：鼓拍與最響一擊進 hideSplit → 乾路徑（平時 1）＋兩級低通（同木馬腹中，平時 0）並聯，躲的時候換成悶的那條、退 HIDE_DUCK_DB
+    var hideSplit = ctx.createGain(); hideSplit.gain.value = 1; beatBus.connect(hideSplit);
+    var hideDry = ctx.createGain(); hideDry.gain.value = 1; hideSplit.connect(hideDry); hideDry.connect(rhythmBus);
+    var hideLP1 = ctx.createBiquadFilter(); hideLP1.type = 'lowpass'; hideLP1.frequency.value = C.BELLY_LOWPASS_HZ; hideLP1.Q.value = 0.7;
+    var hideLP2 = ctx.createBiquadFilter(); hideLP2.type = 'lowpass'; hideLP2.frequency.value = C.BELLY_LOWPASS_HZ; hideLP2.Q.value = 0.7;
+    var hideWet = ctx.createGain(); hideWet.gain.value = 0; hideSplit.connect(hideLP1); hideLP1.connect(hideLP2); hideLP2.connect(hideWet); hideWet.connect(rhythmBus);
     var guardListen = ctx.createGain(); guardListen.gain.value = 1; guardListen.connect(guardOut);
     var listen = { on: false, amt: 0 };   // amt：側向放大用（0 或 1，panner 自己有 0.03 秒平滑）
     function listenDb() { var K = RK(); return (K && isFinite(K.LISTEN_DUCK_DB)) ? +K.LISTEN_DUCK_DB : C.LISTEN_DUCK_DB; }
@@ -1528,7 +1553,112 @@
 
     // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排。
     // 拍點時間用本檔的外推（tAt），音量用規則的 layerGain（A2），追殺時 5 層、音色位置 x = (k + p) ÷ 層數。
+    // ---------- 第 18 節：追殺時的聲音（MOVES_MODE）----------
+    // mode：none（平常、查看）／escape（逃：追兵知道你在哪）／hide（躲：影子裡、追兵在搜）。
+    // 逃：鼓改成「脈衝」——相位 pv 從進入那一刻的 p0 在 HUNT_ACCEL 內推到一圈尾端（最快的那一刻）後停住，各條速度照 pv 算、拍子靠積分排，
+    // 所以真的加速、停在最快，不會 3 秒一輪又起伏。躲：照常排規則的拍，但踩得上的拍多留 HIDE_KEEP_DB、整體走悶的那條路。
+    var hm = { mode: 'none', callT: -1e9, callId: null, pulse: null, back: null, glide: null };
+    function huntPv(t) { var P = hm.pulse; if (!P) return 1; if (P.dur <= 0) return P.p1; return P.p0 + (P.p1 - P.p0) * clamp((t - P.t0) / P.dur, 0, 1); }
+    function pulseGains(pv) {           // 脈衝各條音量（新鼓聲：規則層 ± 1；舊：規則層），照 pv 那一刻的鐘形
+      var nL = baseLayerCount(true), out = [], k;
+      if (dnOn()) { var g = newDrumGains(pv, nL, function (kk, pp) { return curGain(kk, pp, true); }); for (k = 0; k < g.length; k++) out.push({ k: k - 1, g: g[k] }); }
+      else for (k = 0; k < nL; k++) out.push({ k: k, g: curGain(k, pv, true) });
+      return out;
+    }
+    function killBeatsAfter(t0, now) {  // 進入／離開脈衝：還沒響、t0 之後的拍收掉（只收鼓拍，最響一擊照留）
+      var keep = [];
+      for (var i = 0; i < pending.length; i++) {
+        var r = pending[i];
+        if (r.t > t0 && r.t > now + 0.004 && (r.key.charAt(0) === 'b' || r.key.charAt(0) === 'u')) { kill(r, now); delete evs[r.key]; } else keep.push(r);
+      }
+      pending = keep;
+    }
+    function startPulse(t0, p0, p1, dur, now) {
+      killBeatsAfter(t0, now);
+      var M = tables[0] ? tables[0].length : ruleM();
+      hm.pulse = { t0: t0, p0: p0, p1: p1, dur: dur, t: t0, B: M * (Math.pow(2, frac(Pof(t0))) - 1), n: 0, M: M };   // B：第 0 層的拍數（接著原本的格子走）
+    }
+    function schedulePulse(from, end) {
+      var P = hm.pulse; if (!P) return;
+      var dt = 0.004, t = Math.max(P.t, from - dt);
+      while (t < end) {
+        var pv = Math.min(huntPv(t), 1 - 1e-3), T = Tof(t), rate = P.M * Math.LN2 * Math.pow(2, pv) / T;   // 第 0 層每秒幾拍
+        var B0 = P.B, B1 = P.B + rate * dt, gs = null;
+        for (var kk = -1; kk <= baseLayerCount(true); kk++) {
+          var sc = Math.pow(2, kk), a = Math.floor(B0 * sc + 1e-9), b = Math.floor(B1 * sc + 1e-9);
+          if (b > a) {
+            if (!gs) gs = pulseGains(pv);
+            var gi = null; for (var q = 0; q < gs.length; q++) if (gs[q].k === kk) { gi = gs[q]; break; }
+            if (!gi) continue;
+            var tb = t + dt * ((b / sc) - B0) / (B1 - B0), g = gi.g * pulseFade(tb);
+            if (tb < from || g < C.DN_MIN_GAIN) continue;
+            var key = 'u' + (P.n++), le = log ? { type: 'beat', k: kk, t: tb, p: pv, g: g, pulse: true } : null;
+            if (le) log.push(le);
+            (function (g, tb) { var r = addEvent(key, Pof(tb), movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, illTimbre(0.5), tt, g); }, false, le); r.t = tb; r.fixed = true; })(g, tb);
+          }
+        }
+        P.B = B1; t += dt;
+      }
+      P.t = t;
+    }
+    function pulseFade(t) { return hm.back ? clamp(1 - (t - hm.back.t0) / C.ESCAPED_BACK, 0, 1) : 1; }   // 甩掉：脈衝 2 秒淡出
+    function rissetFade(t) { return hm.back ? clamp((t - hm.back.t0) / C.ESCAPED_BACK, 0, 1) : 1; }      // 甩掉：循環的鼓 2 秒淡入
+    function hideKeep(k, p, hunted) {   // 躲：規則認定踩得上的拍照留，其他拍再退 HIDE_KEEP_DB
+      if (hm.mode !== 'hide') return 1;
+      var K = RK(), mg = (K && isFinite(K.MASK_GAIN)) ? +K.MASK_GAIN : 0.3;
+      return (k >= 0 && k < baseLayerCount(hunted) && curGain(k, p, hunted) >= mg) ? 1 : Math.pow(10, -C.HIDE_KEEP_DB / 20);
+    }
+    function glideOn(now, fromTop) {    // 逃：往上滑的長音（800 Hz 以上），HUNT_ACCEL 內到頂後停住；被找到時直接從頂端開始
+      if (hm.glide) return;
+      var o = ctx.createOscillator(), g = ctx.createGain(), te = now + (fromTop ? 0.02 : C.HUNT_ACCEL);
+      o.type = 'triangle'; o.frequency.setValueAtTime(fromTop ? C.HUNT_GLIDE_HI : C.HUNT_GLIDE_LO, now); o.frequency.exponentialRampToValueAtTime(C.HUNT_GLIDE_HI, te);
+      g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(C.HUNT_GLIDE_GAIN, now + 0.3);
+      o.connect(g); g.connect(cueBus); o.start(now); hm.glide = { o: o, g: g };
+    }
+    function glideOff(now, dur) {
+      var G = hm.glide; if (!G) return; hm.glide = null;
+      G.g.gain.cancelScheduledValues(now); G.g.gain.setValueAtTime(G.g.gain.value, now); G.g.gain.linearRampToValueAtTime(0, now + dur);
+      try { G.o.stop(now + dur + 0.05); } catch (e) {}
+    }
+    function hideFilter(on, now, dur) {
+      var k = Math.pow(10, C.HIDE_DUCK_DB / 20), tc = dur / 4;
+      hideDry.gain.cancelScheduledValues(now); hideDry.gain.setTargetAtTime(on ? 0 : 1, now, tc);
+      hideWet.gain.cancelScheduledValues(now); hideWet.gain.setTargetAtTime(on ? k : 0, now, tc);
+    }
+    function huntMix(mode, now, tc) {   // 失控層與失真：逃降、躲收、平常照規則的失控程度
+      var al = st.alarm, hu = st.hunted;
+      var a = mode === 'escape' ? C.HUNT_ALARM_ESCAPE : mode === 'hide' ? C.HUNT_ALARM_HIDE : Math.max(al * 0.9, hu ? 0.6 : 0);
+      var d = mode === 'escape' ? C.HUNT_DIST_ESCAPE : mode === 'hide' ? C.HUNT_DIST_HIDE : al * 0.55 + (hu ? 0.25 : 0);
+      alarmGain.gain.cancelScheduledValues(now); alarmGain.gain.setTargetAtTime(a, now, tc);
+      distWet.gain.cancelScheduledValues(now); distWet.gain.setTargetAtTime(d, now, tc);
+    }
+    function huntUpdate(s, now) {       // 每幀：從規則狀態判斷是逃、躲還是平常（開關關著時什麼都不動）
+      var hu = !!s.hunted, pl = s.player, searching = false;
+      (s.guards || []).forEach(function (q) { if (q && q.active !== false && q.search && !q.search.done) searching = true; });
+      var want = !hu ? 'none' : (searching && pl && pl.hidden ? 'hide' : 'escape'), was = hm.mode;
+      if (hm.back && now > hm.back.t0 + C.ESCAPED_BACK + 0.6) { hm.back = null; hm.pulse = null; }
+      if (want === was) { if (want !== 'none') huntMix(want, now, 0.1); return; }   // 每幀蓋過 update 裡照失控程度設的值
+      hm.mode = want;
+      huntMix(want, now, want === 'hide' ? C.HIDE_DUCK_TIME / 4 : 0.1);
+      if (log) log.push({ type: 'huntMode', mode: want, from: was, t: now });
+      if (want === 'escape' && was === 'none') {          // 被發現：喊聲＋一擊 → 0.3 秒後鼓開始加速，喊聲起 HUNT_ACCEL 內到最快
+        var callT = now - hm.callT < 1 ? hm.callT : now, t0 = Math.max(now + 0.02, callT + C.HUNT_ORDER_GAP);
+        hm.back = null; startPulse(t0, frac(Pof(t0)), 1, Math.max(0.2, callT + C.HUNT_ACCEL - t0), now);
+        huntVerbG.gain.setTargetAtTime(C.HUNT_VERB_GAIN, now, 0.1); glideOn(now, false);
+      } else if (want === 'escape' && was === 'hide') {   // 被找到：濾波 0.1 秒打開、回最快、一聲短喊、長音從頂端開始
+        hideFilter(false, now, C.FOUND_OPEN); startPulse(now + 0.02, 1, 1, 0, now);
+        huntVerbG.gain.setTargetAtTime(C.HUNT_VERB_GAIN, now, 0.05); glideOn(now, true);
+        CUES.huntCall(now + 0.01, { id: hm.callId, delay: 0.3 });
+      } else if (want === 'hide') {                       // 躲：鼓 0.5 秒內悶下去，回到照規則排拍（踩得上的拍要在），長音收掉
+        hideFilter(true, now, C.HIDE_DUCK_TIME); killBeatsAfter(now + 0.02, now); hm.pulse = null;
+        huntVerbG.gain.setTargetAtTime(1, now, 0.1); glideOff(now, 0.4);
+      } else if (want === 'none') {                       // 甩掉：濾波打開，脈衝 2 秒淡出、循環的鼓 2 秒淡入
+        hideFilter(false, now, 0.3); huntVerbG.gain.setTargetAtTime(1, now, 0.3); glideOff(now, 1);
+        if (hm.pulse) { hm.pulse.p0 = hm.pulse.p1 = 1 - 1e-3; hm.pulse.dur = 0; hm.back = { t0: now + 0.02 }; killBeatsAfter(now + 0.02, now); hm.pulse.t = now + 0.02; }
+      }
+    }
     function scheduleBeats(from, end, ws) {
+      if (movesOn() && hm.pulse) { schedulePulse(from, end); if (!hm.back) return; }   // 第 18 節「逃」：只排脈衝（甩掉的 2 秒內脈衝和循環並排、交叉淡換）
       if (dnOn()) { scheduleBeatsNew(from, end, ws); scheduleFakeTails(from, end); return; }   // 新鼓聲（T.DRUMS）
       var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), gMin = ill.u ? C.ILL_U_MIN_GAIN : minGain();   // 追殺 5 層、巡邏 4 層（規則決定）
       if (tables.length < nL) refreshTables();
@@ -1545,6 +1675,7 @@
             var x = (k + p) / nL, g = beatGain(k, p, st.hunted);
             if (ill.v) g = vGain(t, k, p, g);
             if (ill.v4) g *= C.V4_SCALE;
+            if (movesOn() && (hm.mode !== 'none' || hm.back)) g *= hideKeep(k, p, st.hunted) * rissetFade(t);   // 第 18 節：躲、甩掉（開關關著不走）
             if (g < gMin) continue;                             // 音量不抖（A3）：實際響度 ∝ 規則 gain
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
             if (le) log.push(le);
@@ -1777,6 +1908,7 @@
         var kill = hintSig && hintSig.kill && hintSig.kill[c.id];
         var gk = (1 - C.GUARD_P_GAIN / 2 + C.GUARD_P_GAIN * guardP) * (kill ? C.KILL_BREATH_MUL : 1);
         var vm = movesOn() ? ((c.q.state === 'hunted' || c.q.state === 'checking' || c.q.search) ? C.MOVES_VOICE_ALERT_MUL : C.MOVES_VOICE_MUL) : 1;   // 開關關著＝1，照舊
+        if (movesOn() && hm.mode === 'hide' && c.q.search) vm *= C.HIDE_GUARD_MUL;   // 第 18 節「躲」：追兵的腳步是主角
         v.input.gain.setTargetAtTime(clamp((C.GUARD_FAR - c.d) / 8, 0, 1) * gk * vm, now, 0.2);
         var alert = c.q.state === 'hunted' || c.q.state === 'suspicious';
         // 可暗殺：盲區前 0.7 秒內吸一口氣，吐氣正好蓋過盲區開頭（衛兵聲在盲區照樣被 gateG 壓低）
@@ -2045,6 +2177,7 @@
         if (!movesOn()) return;
         var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
         var cv = C.CHECK_VOICE_MUL;
+        if (t - hm.callT < C.HUNT_ORDER_GAP && !(d && d.id != null && d.id === hm.callId)) { t = hm.callT + C.HUNT_ORDER_GAP; cv *= C.HUNT_OTHERS_MUL; }   // 18.3：被喊聲叫到的衛兵晚 0.3 秒、小 6 dB
         guardHuh(out, t, 1.3 * cv, 1.25);
         noise(out, t + 0.2, 'bandpass', 1400, 1.2, 0.08 * cv, 0.02, 0.18);
         tone(out, t + 0.28, 'sine', 2600, 0, 0, 0.02 * cv, 0.001, 0.15);
@@ -2064,6 +2197,7 @@
       },
       huntCall: function (t, d) {         // 發現你的那一名喊一聲（「嘿！」）：鋸齒聲帶＋三個共振峰，從他的位置，夠響讓 12 公尺內的人聽到
         if (!movesOn()) return;
+        hm.callT = t; hm.callId = d && d.id != null ? d.id : hm.callId;
         var out = guardVoiceAt(d && d.id, d && d.x, d && d.z), G = C.SHOUT_GAIN;
         var hold = d && isFinite(d.delay) ? clamp(+d.delay, 0.3, 1.2) : 0.5;   // 第 17.2 節：喊聲撐滿追兵站著不動的空檔
         var src = ctx.createGain(); src.gain.setValueAtTime(0, t); src.gain.linearRampToValueAtTime(1, t + 0.03); src.gain.setValueAtTime(1, t + hold * 0.7); src.gain.linearRampToValueAtTime(0, t + hold);
@@ -2501,6 +2635,7 @@
           s.guards.forEach(function (q) { if (q && q.active !== false && q.state === 'checking' && isFinite(q.x) && pl) near = Math.max(near, clamp(1 - Math.sqrt((q.x - pl.x) * (q.x - pl.x) + (q.z - pl.z) * (q.z - pl.z)) / C.CHECK_BASS_R, 0, 1)); });
           bassGain.gain.setTargetAtTime(Math.max(C.BASS_BASE + (1 - C.BASS_BASE) * al, C.BASS_BASE + (C.CHECK_BASS_MAX - C.BASS_BASE) * near), now, 0.3);
         }
+        if (mv) huntUpdate(s, now);       // 第 18 節：逃／躲／被找到／甩掉
         if (s.guards && s.guards.length != null) updateGuards(s.guards, now);
         horseUpdate(s, now);   // 木馬：開關關著時只把 dist 設成無限大，什麼都不改
         // 立刻補排一次（新外推、新盲區），不等下一個 tick
