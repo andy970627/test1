@@ -112,6 +112,8 @@
     CHECK_STEP_SUSP: 0.3, // 聽到踩歪的腳步：疑心 +0.3，改朝聲音的位置走
     CHECK_BREATH_RATE: 0.3, // 聽到沒屏住的呼吸（SEARCH_BREATH_R 內）：疑心每秒 +0.3，朝你走
     CHECK_DECAY: 0.1,     // 沒看到、沒聽到時疑心每秒退多少
+    CHECK_STOP_R: 2.5,    // 第 17.2 節：查看離目標這麼近就停下張望（改目標時也一樣）；規則角色可在 2～3 內調
+    HUNT_START_DELAY: 0.8, // 第 17.2 節：疑心滿、追殺開始時先喊一聲（hunt_call），這段時間追兵站著不動；規則角色可在 0.6～1.0 內調
     CALL_LOOK_ONLY: false, // 第 16.1 節方向 (a)：追殺開始的喊聲叫來的衛兵只轉頭看、不走過來（查看的「走過去」跳過）
     // 走法試驗場（第 11.4 節，?lab=walk；不進預設版）：'glide' 現狀（按住就滑）｜'stride' P1 步子跟著鼓｜'manual' P1＋P2 火光圈內自己踩
     STEP_MODE: 'glide',
@@ -1104,7 +1106,8 @@
         return;
       }
       const dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
-      const k = cause === 'call' && K.CALL_LOOK_ONLY ? 0 : d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
+      // 第 17.2 節：最多走 CHECK_WALK，而且離目標 CHECK_STOP_R 就停（不走到你身上）
+      const k = cause === 'call' && K.CALL_LOOK_ONLY ? 0 : d > 1e-6 ? Math.min(K.CHECK_WALK, Math.max(0, d - K.CHECK_STOP_R)) / d : 0;
       const walkTo = { x: q.x + dx * k, z: q.z + dz * k };
       q.state = 'checking'; q.susp = K.CHECK_SUSP0; q.calm = 0;
       q.check = { target: { x: pos.x, z: pos.z }, walkTo, home: { x: q.x, z: q.z }, phase: 'turn', from: t, until: t + K.CHECK_TURN,
@@ -1119,7 +1122,7 @@
     function retargetCheck(q, t, pos, why) {
       const C = q.check;
       const dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
-      const k = d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
+      const k = d > 1e-6 ? Math.min(K.CHECK_WALK, Math.max(0, d - K.CHECK_STOP_R)) / d : 0;   // 改目標時最近也只到 CHECK_STOP_R
       C.target = { x: pos.x, z: pos.z }; C.walkTo = { x: q.x + dx * k, z: q.z + dz * k };
       if (C.phase !== 'turn') { C.phase = 'walk'; C.stuckT = 0; }
       q.lookAt = { x: pos.x, z: pos.z };
@@ -1148,6 +1151,8 @@
         }
       }
       if (K.MOVES_MODE) g.huntKnownAt = tNow;
+      // 第 17.2 節：追殺一開始先喊一聲，HUNT_START_DELAY 秒內追兵站著不動（玩家的反應時間）
+      if (K.MOVES_MODE && !wasHunted) g.huntStartUntil = tNow + K.HUNT_START_DELAY;
       clearPanic();
       g.hunted = true; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
       g.cycle.nextFake = false;   // 追殺中不要假驟降（擺脫要靠真的盲區判斷時機）
@@ -1163,14 +1168,14 @@
             enterCheck(o, tNow, { x: caller.x, z: caller.z }, 'call');   // 第 13 節：被喊聲驚動的過來查看喊聲的位置
             if (o.state === 'checking') called.push(o.id);
           }
-          emit('sfx', 'hunt_call', { x: caller.x, z: caller.z, id: caller.id, called });
+          emit('sfx', 'hunt_call', { x: caller.x, z: caller.z, id: caller.id, called, delay: K.HUNT_START_DELAY });   // delay：追兵站著不動的空檔（喊聲、火把猛地變紅）
         }
       }
       hint('hunted');
     }
     function endHunt() {
       for (const o of g.guards) if (o.state === 'hunted') { o.state = 'patrol'; o.susp = 0; o.grace = K.CALM_GRACE; o.lastKnown = null; o.search = null; }
-      g.hunted = false; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0; huntCause = null;
+      g.hunted = false; g.stillT = 0; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0; huntCause = null; g.huntStartUntil = null;
       emit('sfx', 'escape'); emit('msg', '追兵走遠了。');
     }
     /**
@@ -1856,6 +1861,11 @@
           // 第 12 節第 1 點：追到消失點後搜影子（巡邏速度、每點停 SEARCH_PAUSE 秒環顧）；又知道你在哪就回頭追。
           // 卡住（1.5 秒沒前進，例如被牆擋）就當作到了那一點。
           const hs = t < g.huntSlowUntil ? K.HUNT_SPEED * K.HUNT_SLOW_MUL : K.HUNT_SPEED;
+          if (g.huntStartUntil != null && t < g.huntStartUntil - 1e-9) {   // 喊聲的空檔：站著不動、看著你（碰到 1 公尺內照樣算被抓）
+            q.yaw = yawTo(pl.x - q.x, pl.z - q.z);
+            if (dist2(q, pl) < K.CATCH_R) { fail(CZ[huntCause || 'seen'] + '，之後被追上、抓住了。', 'caught_' + (huntCause || 'seen')); return g; }
+            continue;
+          }
           const stuckCheck = (d0, tx, tz) => {
             const d1 = Math.hypot(tx - q.x, tz - q.z);
             q.stuckT = d0 - d1 < 0.005 ? (q.stuckT || 0) + dt : 0;

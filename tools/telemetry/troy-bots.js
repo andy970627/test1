@@ -88,10 +88,11 @@ function makeBot(opts = {}) {
       for (const q of chk) { const d = Math.hypot(q.x - pl.x, q.z - pl.z); if (d < cd) { cd = d; cq = q; } }
       const holdOk = pl.breathT < K.BREATH_MAX - 0.2;
       // 有任何一名查看中的衛兵要去的點落在躲點 3 公尺內，就換地方（走過的點記在 trail，回程倒著走）
-      const threat = (x, z) => chk.some((q) => q.check && Math.hypot(q.check.walkTo.x - x, q.check.walkTo.z - z) < 3);
+      // 第 17.2 節後他停在離目標 CHECK_STOP_R 的地方、盯著目標：躲點要離「他走去的點」和「他盯著的目標」都 3 公尺以上
+      const threat = (x, z) => chk.some((q) => q.check && (Math.hypot(q.check.walkTo.x - x, q.check.walkTo.z - z) < 3 || Math.hypot(q.check.target.x - x, q.check.target.z - z) < 3));
       if (!hideCk || (Math.hypot(hideCk.x - pl.x, hideCk.z - pl.z) <= 0.2 && threat(hideCk.x, hideCk.z) && !hideCk.moved2)) {
         if (hideCk) hideCk.moved2 = true;
-        const w = cq.check ? cq.check.walkTo : cq;
+        const w = cq.check ? cq.check.target : cq;
         let best = null, bt = 1e9;
         for (const s of g.level.shadows) {
           for (const [x, z] of [[s.x0 + 0.4, s.z0 + 0.4], [s.x0 + 0.4, s.z1 - 0.4], [s.x1 - 0.4, s.z0 + 0.4], [s.x1 - 0.4, s.z1 - 0.4], [(s.x0 + s.x1) / 2, (s.z0 + s.z1) / 2]]) {
@@ -105,7 +106,7 @@ function makeBot(opts = {}) {
           const prev = wi > 0 ? WP[g.zone][wi - 1] : g.level.zones[g.zone].start;
           const ux = prev.x - pl.x, uz = prev.z - pl.z, ul = Math.hypot(ux, uz);
           if (Math.hypot(pl.x - w.x, pl.z - w.z) >= 3.2 || ul < 0.3) best = { x: pl.x, z: pl.z };
-          else for (let k = 0.5; k <= Math.min(6, ul) + 1e-9; k += 0.5) {
+          else for (let k = 0.5, first = true; k <= Math.max(0.5, Math.min(6, ul)) + 1e-9; k += 0.5, first = false) {
             const x = pl.x + ux / ul * k, z = pl.z + uz / ul * k;
             best = { x, z };
             if (Math.hypot(x - w.x, z - w.z) >= 3.2) break;
