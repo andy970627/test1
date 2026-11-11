@@ -180,6 +180,7 @@
     HORSE_LAND_N: 4,           // 落地人數
     HORSE_SIGNAL_THEME_AT: 0.9,// 那一擊後多久接主題動機（里拉琴前四音，和腹中 belly_ready 同一句）
     HORSE_SIGNAL_FADE: 0.3,    // 演出被跳過時收掉的時間（秒）
+    HORSE_SIGNAL_DOWN_GAIN: 0.5, // 衛兵在那一擊同時倒下的悶響（只在 250 Hz 以下，疊在重擊裡）：離線 0.9 時那一擊前後 0.5 秒 250 Hz 以下也只多 0.2 dB，等於被蓋住，照裁決「不另外突出」
     HORSE_BOOM_MIX: 7,         // 木馬共鳴音色內部的混音倍數（GAIN 是設計常數，這個是聲音層調成「貼著木馬那一擊後 0.5 秒 300～1200 Hz 比 30 公尺外厚 ≥ 3 dB」用的；離線 6 倍 +3.1、8 倍 +4.4）
     // 喇叭可聽度（11/08）
     PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
@@ -1650,6 +1651,10 @@
         var now = ctx.currentTime;
         sigBus.gain.cancelScheduledValues(now); sigBus.gain.setValueAtTime(1, now);   // 上一次被收掉的話重新打開
         horseBoom(sigBus, t, C.HORSE_BOOM_GAIN);   // 玩家在城門口、遠超過 HORSE_BOOM_R，距離算出來是 0，這一次照貼著木馬發
+        // C3 補充裁決：暗門 8 公尺內的衛兵在這一擊同時倒下（畫面做）。倒地悶響和那一擊同一刻、只留 250 Hz 以下、音量小，
+        // 被重擊與共鳴蓋住，不另外突出（像遠遠一聲悶倒，不是單獨的音效）
+        tone(sigBus, t, 'sine', 75, 40, 0.25, C.HORSE_SIGNAL_DOWN_GAIN, 0.004, 0.35);
+        noise(sigBus, t + 0.01, 'lowpass', 250, 0.7, C.HORSE_SIGNAL_DOWN_GAIN * 0.8, 0.004, 0.18);
         var t0 = t + (d && isFinite(d.delay) ? Math.max(0, +d.delay) : 0);
         for (var i = 0; i < C.HORSE_LAND_N; i++) horseLand(t0 + C.HORSE_LAND_FALL + i * C.HORSE_LAND_GAP, 1 - i * 0.08);
         for (var j = 0; j < 4; j++) lyre(sigBus, t + C.HORSE_SIGNAL_THEME_AT + j * 0.2, THEME.notes[j].midi, C.LATCH_VEL);

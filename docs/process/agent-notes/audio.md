@@ -245,3 +245,6 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - 開關關著比提交版：兩版各頻段 0.000 dB。
     - 錄音 `out/horse3-off-cover` 全過。`compare-bands.mjs` 對 `horse2-off-cover`：第 2 區差 0.1～1.0 dB；第 1 區差大，是兩段程式玩家在那裡發生的事不同（起疑 2 次對 1 次），而且只有 5～7 秒。
   - 要轉畫面：`cinFinish()`（跳過與自然演完都會呼叫）加一行 `audio.stopHorseSignal && audio.stopHorseSignal()`。自然演完時主題已在收尾，收掉不突兀。
+- **11/11 C3 補充裁決**：`horse_signal` 那一擊同時加一聲衛兵倒地悶響（75→40 Hz 正弦＋250 Hz 低通雜訊，走 `sigBus`，可一起收掉）。常數 `HORSE_SIGNAL_DOWN_GAIN` 0.5。
+  - 離線量那一擊前後 0.5 秒，有悶響比沒悶響：0.18 時量不出（±0.07，等於渲染誤差）；0.9 時 250 Hz 以下才 +0.2 dB。重擊加共鳴的低頻很滿，悶響本來就會被蓋住，符合「不另外突出」；倒下主要靠畫面，聲音只補身體感。
+  - 全套 302 過。開關關著比提交版：殘響掩護版 0.000 dB，留空檔版高頻 ±0.08 dB（渲染誤差）。開關關著的路徑沒動，所以沒重錄。
