@@ -150,6 +150,8 @@ button:hover { filter: brightness(1.12); }
 #survey textarea { font: inherit; font-size: 14px; background: rgba(0,0,0,.35); color: var(--ash); border: 1px solid var(--line); padding: 6px; min-height: 48px; resize: vertical; }
 #survey .row button { font-size: 14px; padding: 5px 12px; }
 #survey .thanks { color: var(--moon); }
+/* 腹中練習試驗場（?lab=belly）的判定數字面板 */
+#labPanel { left: calc(18px + var(--sl)); top: 70px; width: 300px; font: 12px/1.55 ui-monospace, monospace; color: #e8e0d0; background: var(--panel); padding: 8px 10px; white-space: pre; }
 #telHud { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 230px; font: 11px/1.5 ui-monospace, monospace; color: var(--dim); background: var(--panel); padding: 6px 8px; white-space: pre; }
 </style>
 
@@ -174,6 +176,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="msgs" aria-live="polite"></div>
 <div class="hud" id="hint" aria-live="polite"></div>
 <div class="hud" id="telHud" hidden></div>
+<div class="hud" id="labPanel" hidden></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
 <div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
 <div class="hud" id="phase" hidden>
@@ -248,6 +251,8 @@ button:hover { filter: brightness(1.12); }
   <label>難度（一個加速循環） <select id="oT"><option value="10">10 秒</option><option value="12">12 秒（較寬鬆）</option></select></label>
   <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
   <label>鼓聲 <select id="oCover"><option value="cover">不停（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
+  <!-- 試驗場入口（專案規則：每個機制都要有試驗場）：木馬第 1 批，docs/design/2026-11-11-trojan-horse-directions.md 方向 A -->
+  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）</div>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -297,8 +302,8 @@ button:hover { filter: brightness(1.12); }
 <!-- 勝利 -->
 <div class="screen" id="win" hidden>
   <div class="card">
-    <h2>城門開了</h2>
-    <p>希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
+    <h2 id="winTitle">城門開了</h2>
+    <p id="winText">希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
     <p class="later">十年後……</p>
     <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
     <div class="surveySlot"></div>
@@ -350,6 +355,11 @@ if (MUTE && window.AudioNode && window.AudioDestinationNode) {
 }
 // 鼓聲模式（核心方向甲）：規則常數 T.COVER_MODE。true＝鼓聲不中斷、掩護窗是重合擊與殘響；false＝舊版盲區。
 // 規則檔還沒有這個常數時一律當舊版（聲音也還在靜音），選單停用並說明
+// 木馬第 1 批（docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C1）：?horse=1 開規則的 T.HORSE_MODE；
+// ?lab=belly 腹中練習試驗場（規則自己開 HORSE_MODE、固定循環、只有腹中）。兩個都沒帶時畫面和報告版完全一樣
+const HORSE_Q = URLQ.get('horse') === '1', LAB = URLQ.get('lab') === 'belly' ? 'belly' : null;
+const horseOn = () => !!K().HORSE_MODE;
+const WIN_TEXT0 = $('winText').textContent;   // 正常過關畫面的原文（試驗場過關時換字，回來要還原）
 const COVER_SUPPORTED = !!(Rules.T && 'COVER_MODE' in Rules.T);
 const coverMode = () => COVER_SUPPORTED && !!K().COVER_MODE;
 if (!COVER_SUPPORTED) { $('oCover').value = 'gap'; $('oCover').disabled = true; $('oCoverNote').hidden = false; }
@@ -359,6 +369,7 @@ function coverText() {                            // 開場說明跟著選單換
   document.querySelectorAll('.modeGap').forEach(el => { el.hidden = cv; });
 }
 $('oCover').addEventListener('change', coverText); coverText();
+{ const q = new URLSearchParams(); q.set('lab', 'belly'); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $('labBellyLink').href = '?' + q.toString(); }
 
 // ============================================================
 // three.js 場景
@@ -571,7 +582,7 @@ function build(L) {
     const l1 = new THREE.PointLight(0xff8030, 0, 30, 2); l1.position.set(gx + 4, 3, gzc); world.add(l1);
     S.invaders = { g: out, list, light: l1, gx };
   }
-  if (L.horse) buildHorse(L.horse, L);
+  if (L.horse) { buildHorse(L.horse, L); if (horseOn()) buildBellyPractice(); }
   if (gate) buildGate(L.gate, gate);
   buildRouteHints(L, gate, walls);
 }
@@ -694,6 +705,7 @@ function buildHorse(H, L) {
   }
   // 地板：沿 x 的木條，中間有縫；暗門那裡挖空
   const td = H.trapdoor || (L.zones && L.zones[1] && L.zones[1].exit);
+  S.bellyGeom = { g, fy, top, bx0, bx1, bz0, bz1, bxc, bzc, td };   // 木馬第 1 批的腹中物件用
   const n = Math.round(bd / .32);
   for (let i = 0; i < n; i++) {
     const z = bz0 + (i + .5) * bd / n, wdt = bd / n - .13;
@@ -713,7 +725,7 @@ function buildHorse(H, L) {
     const shaft = new THREE.Mesh(new THREE.PlaneGeometry(.8, 1.9), mm(.09)); shaft.position.set(td.x + .1, fy + .9, td.z); shaft.rotation.z = -.18; g.add(shaft);
     const shaft2 = shaft.clone(); shaft2.rotation.y = Math.PI / 2; g.add(shaft2);
     const moonL = new THREE.PointLight(0x9fb4e8, .9, 3.2, 2); moonL.position.set(td.x, fy + .3, td.z); g.add(moonL);
-    S.trapMoon = { hole, shaft, shaft2, light: moonL };
+    S.trapMoon = { hole, shaft, shaft2, light: moonL }; S.trapGlow = glow;
   }
   // 側板：豎著的木條，縫隙透出外面的火光
   // 側板與頂板放在同一個群組：隨拍輕震（設計文件 8.2「世界隨拍跳動」）
@@ -1150,6 +1162,8 @@ function newGame() {
   const opts = { t0, startZone: qz >= 1 && qz <= 4 ? qz | 0 : 0, T: { CYCLE: curT } };
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
+  if (HORSE_Q) opts.T.HORSE_MODE = true;                               // 木馬第 1 批（沒帶參數就不碰，規則走報告版的路）
+  if (LAB) opts.lab = LAB;
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
@@ -1158,7 +1172,7 @@ function newGame() {
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
-  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
+  HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.hushKick = 0; LABS.steps.length = 0; HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
   resetActionFx(); S.lastPrint = null;
   for (const P of S.prints) { P.life = 0; P.tier = 0; P.m.visible = false; }
   $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
@@ -1389,6 +1403,7 @@ function drain() {
   telOut(evs);                                   // 試玩數據：規則事件原樣記
   for (const e of evs) {
     if (!e) continue;
+    if (e.type === 'sfx' && horseOn()) bellyEvent(e);                     // 木馬第 1 批：腹中練習的畫面
     if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) { VIS.stepFlash = 1; tiltGuards(e.x, e.z); }   // 這一步被聽到了
     if (e.type === 'sfx' && e.a === 'step_masked') spawnPrint(e.x, e.z);                // 合拍：腳印發亮
     if (e.type === 'sfx' && e.a === 'hunt_step') upgradeLatestPrint(num(e.index, 1));     // 合拍甩追兵：每步腳印亮一階
@@ -1872,11 +1887,100 @@ function spawnPrint(x, z) {                      // 合拍腳步：塵土裡的�
 }
 const RING_MOON = new THREE.Color(0xdce6ff), RING_DARK = new THREE.Color(0x1c1c22);
 const PRINT_COL = [0xffc070, 0xff5a3c, 0xb070e0, 0x6aa8ff];   // 平常（暖黃）、追殺合拍第 1／2／3 步（紅、紫、藍）
+// ============================================================
+// 木馬第 1 批：腹中練習（方向 A）的畫面。只在 T.HORSE_MODE 開著時建立與更新
+//   step_masked（起步）：腳下木板縫泛淡藍；頭上橫樑的刻痕亮到第 n 格（共 need 格，直接讀 game.belly.n）
+//   belly_hush：同伴的手按上你的肩（#hand），刻痕照規則扣掉的格數熄掉
+//   belly_ready：刻痕全亮、輕輕脈動；前端的同伴握住木栓
+//   trapdoor_open：木栓滑開、暗門蓋掀起、底下的火光照進來
+// ============================================================
+const NOTCH_OFF = new THREE.Color(0x2a1c10), NOTCH_ON = new THREE.Color(0xffc870), BOLT_LIT = new THREE.Color(0xffb050);
+function buildBellyPractice() {
+  const G = S.bellyGeom; if (!G || !G.td) return;
+  const need = Math.max(1, num(game && game.belly && game.belly.need, K().BELLY_STEPS_NEED, 4));
+  const B = S.belly = { notches: [], need, crack: null, crackV: 0, lid: null, bolt: null, boltMat: null, hand: null, readyV: 0, openV: 0 };
+  // 刻痕：前端那根橫樑朝玩家的一面，沿著橫樑排開
+  const beamX = G.bx1 - 1 - .08, span = Math.min(G.bz1 - G.bz0 - .4, need * .3);
+  for (let i = 0; i < need; i++) {
+    const m = new THREE.MeshBasicMaterial({ color: NOTCH_OFF.getHex(), fog: false });
+    box(.02, .09, .16, 0, beamX, G.top - .2, G.bzc - span / 2 + (i + .5) * span / need, G.g, m);
+    B.notches.push(m);
+  }
+  // 腳下的木板縫：一條淡藍的光縫，起步踩準時在腳下亮一下
+  const cm = new THREE.MeshBasicMaterial({ color: 0x8fc0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  B.crack = new THREE.Mesh(new THREE.PlaneGeometry(.9, .06), cm); B.crack.rotation.x = -Math.PI / 2; B.crack.visible = false; G.g.add(B.crack);
+  // 暗門蓋：鉸鏈在東邊（遠離玩家），開門時往前掀，不擋住看向洞口的視線
+  const td = G.td, lid = new THREE.Group(); lid.position.set(td.x + .45, G.fy + .07, td.z); G.g.add(lid);
+  box(.9, .05, .9, 0, -.45, 0, 0, lid, MB(0x3a2814));
+  for (const oz of [-.25, .25]) box(.88, .055, .06, 0, -.45, .005, oz, lid, MB(0x24180e));
+  B.lid = lid;
+  // 木栓（靠玩家這一側）與同伴的手
+  B.boltMat = new THREE.MeshBasicMaterial({ color: 0x5a4024, fog: false });
+  B.bolt = box(.34, .06, .06, 0, td.x - .5, G.fy + .12, td.z, G.g, B.boltMat);
+  B.hand = box(.12, .07, .1, 0, td.x - .62, G.fy + .2, td.z, G.g, MB(0x3a2a1c)); B.hand.visible = false;
+}
+function bellyEvent(e) {
+  const B = S && S.belly; if (!game) return;
+  const inBelly = !!(game.player && game.player.inBelly);
+  if (e.a === 'step_masked' && inBelly && e.start !== false) {
+    if (B) { B.crackV = 1; B.crack.position.set(num(e.x, game.player.x), S.bellyGeom.fy + .05, num(e.z, game.player.z)); B.crack.visible = true; }
+    LABS.add({ ok: true, off: Number.isFinite(e.beatT) && Number.isFinite(game.time) ? (e.beatT - game.time) * 1000 : null, n: e.n, need: e.need, start: e.start });
+  } else if (e.a === 'belly_hush') {
+    HW.hushKick = 1;
+    LABS.add({ ok: false, off: null, n: game.belly ? game.belly.n : null });
+  }
+}
+function bellyFrame(dt) {
+  const B = S && S.belly, g = game; if (!B || !g) return;
+  const Bs = g.belly || {}, n = num(Bs.n, 0), ready = !!Bs.ready, open = !!Bs.open;
+  B.readyV = ready ? Math.min(1, B.readyV + dt * 3) : 0;
+  const pulse = ready && !open ? .75 + .25 * Math.sin(performance.now() / 180) : 1;
+  B.notches.forEach((m, i) => { m.color.copy(NOTCH_OFF).lerp(NOTCH_ON, (ready || i < n ? 1 : 0) * pulse); });
+  B.crackV = Math.max(0, B.crackV - dt * 2.5);
+  B.crack.material.opacity = B.crackV * .8; B.crack.visible = B.crackV > 0;
+  B.hand.visible = ready;                                                     // 同伴握住木栓
+  B.boltMat.color.setHex(0x5a4024).lerp(BOLT_LIT, B.readyV * .7);
+  B.openV = open ? Math.min(1, B.openV + dt / .6) : 0;                        // 0.6 秒內掀開，和聲音的低通打開同步
+  B.lid.rotation.z = -B.openV * 1.9;                                          // 繞東邊的鉸鏈往前掀
+  B.bolt.position.x = S.bellyGeom.td.x - .5 - B.openV * .25;                 // 木栓往玩家這邊滑開
+  if (S.trapGlow) S.trapGlow.intensity = .7 + B.openV * 2.3;                 // 暗門下的火光照進來
+}
+// 試驗場（?lab=belly）：連續踩準幾步、每步離最近鼓點幾毫秒（beatT − 事件時間；正＝鼓點在後，早踩）、這一步是不是起步
+const LABS = {
+  steps: [],
+  add(r) { if (!game || !game.lab) return; this.steps.push(r); if (this.steps.length > 40) this.steps.shift(); },
+  summary() {
+    const offs = this.steps.filter(r => r.ok && Number.isFinite(r.off)).map(r => Math.abs(r.off));
+    const miss = this.steps.filter(r => !r.ok).length;
+    const med = offs.length ? offs.slice().sort((a, b) => a - b)[Math.floor(offs.length / 2)] : null;
+    return '踩準 ' + offs.length + ' 次、踩歪 ' + miss + ' 次' + (med != null ? '、離鼓點中位 ' + med.toFixed(0) + ' 毫秒' : '');
+  },
+};
+function labHud() {
+  const el = $('labPanel'), g = game;
+  const on = !!(g && g.lab);
+  el.hidden = !on; if (!on) return;
+  const Bs = g.belly || {}, need = num(Bs.need, 4), n = num(Bs.n, 0);
+  const bar = Array.from({ length: need }, (_, i) => (Bs.ready || i < n ? '■' : '□')).join('');
+  const state = Bs.open ? '暗門開了：走過去爬下' : Bs.ready ? '刻痕滿了：等下一個最響的一擊' : '停下，等鼓點，再踏出去';
+  const lines = ['腹中練習試驗場（?lab=belly）', '踩準 ' + n + ' / ' + need + '  ' + bar, '狀態：' + state, '', '最近的步（離最近鼓點，正＝早踩）：'];
+  const recent = LABS.steps.slice(-6).reverse();
+  if (!recent.length) lines.push('  還沒有');
+  for (const r of recent) {
+    if (!r.ok) { lines.push('  踩歪，同伴按住你'); continue; }
+    const off = Number.isFinite(r.off) ? (r.off >= 0 ? '+' : '') + r.off.toFixed(0) + ' 毫秒' : '—';
+    lines.push('  ' + off.padStart(9) + '  踩準' + (r.start === true ? '（起步）' : r.start === false ? '（續步）' : ''));
+  }
+  lines.push('', '低通（隔著木板聽鼓）：尚未提供（聲音第 2 批）');
+  el.textContent = lines.join('\n');
+}
 function hintVisuals(dt) {
   const g = game, s = HW.sig, aid = VIS.aid, blind = !!(g.cycle && g.cycle.blind);
   // 同伴的手：屏息警告越強越伸進畫面（只在教屏息的那一區：舊版木馬腹中、殘響掩護版窄巷）
   HW.handKick = Math.max(0, HW.handKick - dt * .45);
-  const handT = g.zone === teachBreathZone() && s ? Math.max(s.breathWarn * .8, HW.handKick) : 0;
+  HW.hushKick = Math.max(0, (HW.hushKick || 0) - dt * .8);
+  let handT = g.zone === teachBreathZone() && s ? Math.max(s.breathWarn * .8, HW.handKick) : 0;
+  if (horseOn() && g.zone === 1) handT = Math.max(handT, HW.hushKick);   // 腹中練習：起步踩歪，同伴按住你的肩
   HW.hand += (handT - HW.hand) * Math.min(1, dt * 6);
   const hEl = $('hand'), hv = HW.hand * aid;
   hEl.style.opacity = Math.min(1, hv * 1.4).toFixed(3);
@@ -1900,9 +2004,11 @@ function hintVisuals(dt) {
     if (g.zone === 1) for (const q of arr(g.guards)) if (q.active && (gx == null || Math.abs(q.x - g.player.x) < Math.abs(gx - g.player.x))) gx = q.x;
     for (const sh of S.shafts) {
       const near = gx == null ? 0 : Math.exp(-Math.pow(sh.position.x - gx, 2) / .8);
-      sh.material.opacity = .05 + .03 * Math.random() * (1 - VIS.freeze) + near * (.06 + .12 * warn) * aid;
+      sh.material.opacity = .05 + .03 * Math.random() * (1 - VIS.freeze) + near * (.06 + .12 * warn) * aid
+        + (horseOn() && g.zone === 1 ? VIS.pulse * .1 : 0);              // 木馬第 1 批：縫裡的火光隨拍一明一暗
     }
   }
+  bellyFrame(dt);
   // 門閂鐵環：低頻映著月光（銀白），高頻沒入陰影（暗）；visualAid = 0 時固定中間色
   if (S && S.latchRings) {
     const low = curP() <= num(K().GATE_LOW_P, .5);
@@ -1924,6 +2030,7 @@ const gateProg = g => g.gate ? clamp(num(g.gate.progress, 0) / num(g.gate.need, 
 let noiseT = 0;
 const nctx = $('noise').getContext('2d'), nimg = nctx.createImageData(160, 90);
 function hud(dt) {
+  labHud();
   const g = game, P = g.player, p = curP();
   // 區名
   const z = clamp(g.zone | 0, 0, 4);
@@ -1998,6 +2105,9 @@ function showOver() {
     telSurveyShow('fail');
     setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
   } else {
+    const lab = !!game.lab;   // 試驗場過關：不是城門，是爬下暗門
+    $('winTitle').textContent = lab ? '爬下暗門了' : '城門開了';
+    $('winText').textContent = lab ? '起步踩準了，同伴趁最響的那一擊替你拉開木栓。（' + LABS.summary() + '）' : WIN_TEXT0;
     $('win').hidden = false;
     telSurveyShow('win');
     // 先看城門打開、火把湧入，再轉黑畫面
