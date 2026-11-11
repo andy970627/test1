@@ -1438,7 +1438,7 @@ function makeBot(opts = {}) {
     const d3 = (q, x = pl.x, z = pl.z) => Math.hypot(q.x - x, q.z - z, pl.y || 0);
     const wantBreath = () => act.some(q => d3(q) <= r(q, Math.min(1, p + 0.05)) * K.BREATH_HEAR + 0.8);
     // 追殺：躲到最近陰影深處
-    // 第 12 節（MOVES_MODE）：追兵會進影子搜 → 聽著躲：走到最近那塊影子裡離自己最遠的角（內縮 0.4），
+    // 第 12 節（MOVES_MODE）：追兵會進影子搜 → 聽著躲：走到最近那塊影子裡離搜索線最遠的角（內縮 0.4；第 17.3 節），
     // 到了以後追兵在 3 公尺內就屏息（快憋不住就放開），離開就換氣。報告版（開關關著）照舊。
     if (!g.hunted) hideAt = null;
     if (g.hunted && K.MOVES_MODE) {
@@ -1448,9 +1448,12 @@ function makeBot(opts = {}) {
           const cx = Math.max(s.x0, Math.min(pl.x, s.x1)), cz = Math.max(s.z0, Math.min(pl.z, s.z1)), d = Math.hypot(cx - pl.x, cz - pl.z);
           if (d < bd2) { bd2 = d; bs = s; }
         }
+        // 第 17.3 節：追兵會順著你進來的方向搜（消失點 → 影子中心 → 穿出去那端），所以躲在離那條線最遠的角落（同樣遠就取離自己較遠的）
         let fd = -1;
+        const cx = (bs.x0 + bs.x1) / 2, cz = (bs.z0 + bs.z1) / 2, lx = cx - pl.x, lz = cz - pl.z, ll = Math.hypot(lx, lz) || 1;
         for (const [x, z] of [[bs.x0 + 0.4, bs.z0 + 0.4], [bs.x0 + 0.4, bs.z1 - 0.4], [bs.x1 - 0.4, bs.z0 + 0.4], [bs.x1 - 0.4, bs.z1 - 0.4]]) {
-          const d = Math.hypot(x - pl.x, z - pl.z); if (d > fd) { fd = d; hideAt = { x, z }; }
+          const off = Math.abs((x - pl.x) * lz - (z - pl.z) * lx) / ll;   // 離搜索線多遠
+          const d = off * 10 + Math.hypot(x - pl.x, z - pl.z); if (d > fd) { fd = d; hideAt = { x, z }; }
         }
       }
       const hx = hideAt.x - pl.x, hz = hideAt.z - pl.z, hd = Math.hypot(hx, hz);
