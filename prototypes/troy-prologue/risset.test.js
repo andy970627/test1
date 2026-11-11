@@ -3004,54 +3004,158 @@ test('11/11 搭配動作試驗場 lab: run／crouch／listen：各自開 MOVES_M
 });
 
 /** 7.5 的程式玩家：完美踩拍 makeBot({cover: true}) 外面再包一層。kind：
- *   'crouch'：一直按住 C（只有暗殺、推門閂那一幀站起來）；
+ *   'crouch'：一直按住 C（推門閂、被追殺逃跑、離站崗衛兵 4 公尺內要暗殺時站起來）；
  *   'runRandom'：不看時機，有方向鍵就按住 Shift；
- *   'runCover'：只在掩護窗按住 Shift（窗開前 RUN_HOLD 秒先按，窗一開就跑起來；窗快結束就放），其餘照走。 */
+ *   'runCover'：只在掩護窗按住 Shift（窗開前 RUN_HOLD 秒先按，窗一開就跑起來；窗快結束就放），其餘照走；
+ *   'runDrum'（第 9.2 節「聽鼓跑」）：最近的衛兵在 RUN_R ＋ 2 公尺以外，或在掩護窗內（同 runCover），就按住 Shift；否則照完美踩拍走。 */
 function makeMovesBot(kind, opts = {}) {
   const inner = makeBot(Object.assign({ cover: true }, opts));
   return function (g) {
     const out = inner(g);
     const moving = !!(out.mx || out.mz);
-    if (kind === 'crouch') out.crouch = !out.takedown && !out.interact;
-    else if (kind === 'runRandom') out.run = moving;
-    else if (kind === 'runCover') {
-      const c = g.cycle, K2 = g.T;
-      const soon = !c.alertBlind && !g.hunted && Number.isFinite(c.blindFrom) && c.blindFrom - g.time <= K2.RUN_HOLD && c.blindFrom > g.time;
-      // 窗剩不到 1/30 秒就放開：它讀的是上一幀的狀態，下一幀可能已在窗外（幀率抖動最多 1/30 秒）；人也會提早放
-      const inWin = c.blind && c.blindTo - g.time > 1 / 30;
-      out.run = !!(inWin || soon) && !g.panic.active;
+    const c = g.cycle, K2 = g.T, pl = g.player;
+    // 掩護窗：窗開前 RUN_HOLD 秒先按；窗剩不到 1/30 秒就放開（它讀的是上一幀的狀態，下一幀可能已在窗外；人也會提早放）
+    const soon = !c.alertBlind && !g.hunted && Number.isFinite(c.blindFrom) && c.blindFrom - g.time <= K2.RUN_HOLD && c.blindFrom > g.time;
+    const inWin = c.blind && c.blindTo - g.time > 1 / 30;
+    if (kind === 'crouch') {
+      // 被追殺時站起來逃（之前連逃跑都蹲著、半速，窄巷多卡好幾局）；要暗殺時站起來靠過去（蹲著半速，最響的一擊裡走不到他背後，會繞到正面一直失手、整局逾時）
+      const tg = g.zone === 3 && g.guards.find((q) => q.id === 'g3a' && q.active);
+      const stab = tg && Math.hypot(tg.x - pl.x, tg.z - pl.z) < 4;
+      out.crouch = !out.takedown && !out.interact && !g.hunted && !stab;
+    } else if (kind === 'runRandom') out.run = moving;
+    else if (kind === 'runCover') out.run = !!(inWin || soon) && !g.panic.active;
+    else if (kind === 'runDrum') {
+      const far = g.guards.every((q) => !q.active || Math.hypot(q.x - pl.x, q.z - pl.z, pl.y || 0) > K2.RUN_R + 2);
+      out.run = !!(far || inWin || soon) && !g.panic.active;
     }
     return out;
   };
 }
+/** 一局（和 runGame 同樣的 t0、幀率抖動、一條命），多記：各區跑了幾秒、第一次跑步出聲的後果（'alerted'｜'hunt'｜null）。 */
+function runMoves(seed, botMaker, maxT = 420) {
+  const t0 = (seed * 1.37) % 10, jitter = seed % 2 === 1;
+  const g = R.createLevel({ t0, seed });
+  const bot = botMaker(seed), jr = R.mulberry32(seed * 7 + 3);
+  let t = 2, alerted = 0, firstRun = null;
+  const runSec = {};
+  g.step(t, {}); g.step(t, { start: true });
+  while (g.phase === 'play' && t <= maxT) {
+    const dt = jitter ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : DT;
+    t += dt; g.step(t, bot(g));
+    if (g.player.running) runSec[g.zone] = (runSec[g.zone] || 0) + dt;
+    for (const e of g.drain()) {
+      if (e.type === 'sfx' && e.a === 'alerted') alerted++;
+      if (e.type === 'msg' && !firstRun) {
+        if (/^跑步聲傳開了/.test(e.a)) firstRun = 'alerted';
+        else if (/^又聽到跑步聲|你在鼓聲蓋不住的時候跑/.test(e.a)) firstRun = 'hunt';
+      }
+    }
+  }
+  return { win: g.phase === 'win', t: t - 2, alerted, firstRun, runSec, zone: g.zone };
+}
+function movesStats(botMaker, n) {
+  const rs = []; for (let s = 1; s <= n; s++) rs.push(runMoves(s, botMaker));
+  const wins = rs.filter((r) => r.win);
+  const med = (a) => { if (!a.length) return NaN; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+  const runSec = {}; for (const r of rs) for (const [z, v] of Object.entries(r.runSec)) runSec[z] = (runSec[z] || 0) + v / n;
+  const stuck = {}; for (const r of rs) if (!r.win) stuck[r.zone] = (stuck[r.zone] || 0) + 1;
+  const withRun = rs.filter((r) => r.firstRun);
+  return { n, winRate: wins.length / n, tMed: med(wins.map((r) => r.t)), alerted: rs.reduce((a, r) => a + r.alerted, 0) / n, runSec, stuck,
+    firstRunN: withRun.length, firstRunAlert: withRun.filter((r) => r.firstRun === 'alerted').length };
+}
 
-test('11/11 搭配動作 7.5 驗收（只量、門檻是假設）：全程蹲、亂跑、只趁最響一擊跑各 100 局；σ0.12 一半局蹲走的對照', () => {
+test('11/11 搭配動作 7.5／第 9 節驗收（只量、門檻是假設）：全程蹲、亂跑、聽鼓跑各 100 局；只趁最響一擊跑只印；σ0.12 站著／一半蹲／全蹲', () => {
   const N = 100;
   const pct = (v) => (v * 100).toFixed(0) + '%';
-  const fmt = (s) => `通關 ${pct(s.winRate)}、通關時間中位 ${Number.isFinite(s.tMed) ? s.tMed.toFixed(1) : '—'} 秒、每局進高度警覺 ${s.alerted.toFixed(2)} 次、卡關區 ${JSON.stringify(s.stuck)}`;
-  const perfect = stats(true, () => makeBot({ cover: true }), N);
-  const crouch = stats(true, () => makeMovesBot('crouch'), N);
-  const runR = stats(true, () => makeMovesBot('runRandom'), N);
-  const runC = stats(true, () => makeMovesBot('runCover'), N);
-  const s12 = stats(true, (seed) => makeBot({ cover: true, sigma: 0.12, seed }), N);
-  const s12half = stats(true, (seed) => (seed % 2 === 0 ? makeMovesBot('crouch', { sigma: 0.12, seed }) : makeBot({ cover: true, sigma: 0.12, seed })), N);
-  const s12crouch = stats(true, (seed) => makeMovesBot('crouch', { sigma: 0.12, seed }), N);
-  console.log('[11/11 搭配動作 7.5，各 ' + N + ' 局，一條命，MOVES_MODE 開]');
+  const secs = (o) => [1, 2, 3, 4].map((z) => (o[z] || 0).toFixed(1)).join('／');
+  const fmt = (s) => `通關 ${pct(s.winRate)}、通關時間中位 ${Number.isFinite(s.tMed) ? s.tMed.toFixed(1) : '—'} 秒、每局進高度警覺 ${s.alerted.toFixed(2)} 次、各區跑的秒數（1／2／3／4）${secs(s.runSec)}、卡關區 ${JSON.stringify(s.stuck)}`;
+  const perfect = movesStats(() => makeBot({ cover: true }), N);
+  const crouch = movesStats(() => makeMovesBot('crouch'), N);
+  const runR = movesStats(() => makeMovesBot('runRandom'), N);
+  const runD = movesStats(() => makeMovesBot('runDrum'), N);
+  const runC = movesStats(() => makeMovesBot('runCover'), N);
+  const s12 = movesStats((seed) => makeBot({ cover: true, sigma: 0.12, seed }), N);
+  const s12half = movesStats((seed) => (seed % 2 === 0 ? makeMovesBot('crouch', { sigma: 0.12, seed }) : makeBot({ cover: true, sigma: 0.12, seed })), N);
+  const s12crouch = movesStats((seed) => makeMovesBot('crouch', { sigma: 0.12, seed }), N);
+  console.log('[11/11 搭配動作 7.5／第 9 節，各 ' + N + ' 局，一條命，MOVES_MODE 開，STEP_R ' + R.createLevel().T.STEP_R + ']');
   console.log('  完美踩拍走路（對照）：' + fmt(perfect));
   console.log('  全程蹲：' + fmt(crouch));
-  console.log('  亂跑：' + fmt(runR));
-  console.log('  只趁最響一擊跑：' + fmt(runC));
+  console.log('  亂跑：' + fmt(runR) + `、第一次跑步出聲 → 高度警覺 ${runR.firstRunAlert}/${runR.firstRunN} 局`);
+  console.log('  聽鼓跑：' + fmt(runD));
+  console.log('  只趁最響一擊跑（只印不判）：' + fmt(runC));
   console.log('  σ0.12 全站著：' + fmt(s12));
   console.log('  σ0.12 一半局蹲走（偶數種子蹲）：' + fmt(s12half));
-  console.log('  σ0.12 全蹲（參考）：' + fmt(s12crouch));
+  console.log('  σ0.12 全蹲：' + fmt(s12crouch));
   const ok = (b) => (b ? '過' : '⚠ 沒過');
   const c1 = crouch.winRate > 0 && crouch.tMed >= 1.6 * perfect.tMed;
-  const c2 = runR.alerted >= 3 && !(runR.tMed < perfect.tMed);
-  const c3 = runC.tMed <= 0.8 * perfect.tMed && runC.alerted <= perfect.alerted;
+  const c2 = runR.winRate <= 0.1 && runR.firstRunN > 0 && runR.firstRunAlert === runR.firstRunN;
+  const c3 = runD.tMed <= 0.8 * perfect.tMed && runD.alerted <= perfect.alerted + 0.2;
   console.log(`  全程蹲：能通關、時間 ÷ 完美 = ${(crouch.tMed / perfect.tMed).toFixed(2)}（要 ≥ 1.6）→ ${ok(c1)}`);
-  console.log(`  亂跑：每局警覺 ${runR.alerted.toFixed(2)}（要 ≥ 3）、時間 ÷ 完美 = ${Number.isFinite(runR.tMed) ? (runR.tMed / perfect.tMed).toFixed(2) : '沒有通關局'}（不比完美快）→ ${ok(c2)}`);
-  console.log(`  只趁最響一擊跑：時間 ÷ 完美 = ${(runC.tMed / perfect.tMed).toFixed(2)}（要 ≤ 0.8）、每局警覺 ${runC.alerted.toFixed(2)}（不比完美 ${perfect.alerted.toFixed(2)} 多）→ ${ok(c3)}`);
-  // 門檻是假設：不合先回報，不調判定寬度。這裡只擋程式壞掉（數字要有意義）
-  for (const s of [perfect, crouch, runR, runC, s12, s12half, s12crouch]) assert.ok(s.winRate >= 0 && s.winRate <= 1 && s.alerted >= 0);
+  console.log(`  亂跑（9.1）：通關率 ${pct(runR.winRate)}（要 ≤ 10%）、第一次跑步出聲是高度警覺 ${runR.firstRunAlert}/${runR.firstRunN} 局（要全部）→ ${ok(c2)}`);
+  console.log(`  聽鼓跑（9.2）：時間 ÷ 完美 = ${(runD.tMed / perfect.tMed).toFixed(2)}（要 ≤ 0.8）、每局警覺 ${runD.alerted.toFixed(2)}（不比完美 ${perfect.alerted.toFixed(2)} 多 0.2 以上）→ ${ok(c3)}`);
+  console.log(`  只趁最響一擊跑：時間 ÷ 完美 = ${(runC.tMed / perfect.tMed).toFixed(2)}（參考：掩護窗本身省多少）`);
+  // 門檻是假設：不合先回報，不調判定寬度。這裡只擋程式壞掉
+  for (const s of [perfect, crouch, runR, runD, runC, s12, s12half, s12crouch]) assert.ok(s.winRate >= 0 && s.winRate <= 1 && s.alerted >= 0);
   assert.equal(perfect.winRate, 1, '開關開著，完美踩拍照樣 100%（它不會蹲也不會按住 Shift）');
+});
+
+// ---------------- 11/11 搭配動作第 8 節（STEP_R 隨開關、久站影子的引導；docs/design/2026-11-11-companion-mechanics.md 第 8 節） ----------------
+
+test('11/11 第 8 節：開關開著時 g.T.STEP_R ＝ MOVES_STEP_R（實際半徑）；關著照舊 STEP_R；直接給 opts.T.STEP_R 的以它為準；CROUCH_R 約為一半', () => {
+  assert.equal(K.STEP_R, 2.5, '常數表的 STEP_R 不動（報告版）');
+  assert.equal(mvs().T.STEP_R, K.MOVES_STEP_R);
+  assert.equal(mvOff().T.STEP_R, 2.5);
+  assert.equal(mvs({ T: { MOVES_STEP_R: 5 } }).T.STEP_R, 5);
+  assert.equal(mvs({ T: { MOVES_STEP_R: 5, STEP_R: 3 } }).T.STEP_R, 3);
+  const ratio = K.CROUCH_R / K.MOVES_STEP_R;
+  assert.ok(ratio > 0.4 && ratio < 0.6, `CROUCH_R ÷ MOVES_STEP_R = ${ratio.toFixed(2)}，維持約一半`);
+  // 出聲的腳步：開關開時 MOVES_STEP_R 內才聽得到（拿 5 公尺試：4 公尺聽得到）
+  const hear = (make, d) => {
+    const g = make({ startZone: 2, T: { MOVES_STEP_R: 5 } });
+    const q = solo(g, 'g2a', 30, 12, R.yawTo(0, 1));
+    place(g, 20, 22);
+    let u = 2; g.step(u, {});
+    while (u < 30 && (R.stepMasked(u + DT, g) || g.cycle.p > K.HIGH_P - 0.05)) { u += DT; g.step(u, {}); }
+    q.x = 20; q.z = 22 + d; q.susp = 0; g.drain();
+    u += DT; g.step(u, { mx: 1 });
+    assert.ok(g.drain().some((e) => e.a === 'step_loud'), '離拍起步');
+    return q.susp;
+  };
+  assert.ok(hear(mvs, 4) > 0, '開關開、MOVES_STEP_R 5：4 公尺聽得到');
+  assert.equal(hear(mvOff, 4), 0, '開關關：4 公尺聽不到（照舊 2.5）');
+});
+
+test('11/11 第 8 節：同一塊影子裡超過三個循環沒動 → 暗示階梯給下一步（第 2 階、再久站第 3 階，帶 idle: true）；動了就重算；不加懲罰；開關關著沒有', () => {
+  const watch = (make, inputFn, until = 85) => {
+    const g = allDown(make({ startZone: 2 }));      // 起點在「木馬的影子」
+    let t = 0; g.step(t, {});
+    const got = [];
+    while (t < until) {
+      t += DT; g.step(t, inputFn ? inputFn(t) : {});
+      for (const e of g.drain()) if (e.type === 'hint' && e.idle) got.push(Object.assign({ t, idx: g.cycle.index }, e));
+    }
+    return { g, got };
+  };
+  const { g, got } = watch(mvs);
+  assert.ok(g.player.hidden);
+  assert.ok(got.length >= 2, `久站 85 秒至少兩次：${got.length}`);
+  assert.equal(got[0].key, 'blind', '神殿廣場的下一步：最響的一擊');
+  assert.equal(got[0].level, 2); assert.equal(got[1].level, 3);
+  assert.equal(got[0].a, R.ladderText('blind', 2, R.hintLadderFor(g.T)));
+  assert.ok(got[0].t > 3 * g.cycle.T, `超過三個循環才出：${got[0].t.toFixed(1)} 秒（循環 ${g.cycle.T} 秒）`);
+  assert.ok(got[0].t <= 4 * g.cycle.T + 0.1, '最多再晚一個循環');
+  assert.equal(g.phase, 'play', '不加懲罰');
+  assert.ok(g.guards.every((q) => q.state !== 'alerted' && q.state !== 'hunted'));
+  // 每 20 秒動一下：一直重算，不會出
+  const moving = watch(mvs, (t) => ({ mx: (Math.floor(t) % 20 === 0) ? 0.3 : 0 }));
+  assert.equal(moving.got.length, 0, '動了就重算');
+  // 開關關著：沒有
+  assert.equal(watch(mvOff).got.length, 0);
+  // 第 3 區還有站崗衛兵：下一步是暗殺；第 4 區：門閂
+  const g3 = mvs({ startZone: 3 });
+  for (const q of g3.guards) if (q.id !== 'g3a') { q.state = 'down'; q.active = false; }
+  let t = 0; g3.step(t, {});
+  const k3 = [];
+  while (t < 50) { t += DT; g3.step(t, {}); for (const e of g3.drain()) if (e.idle) k3.push(e.key); }
+  assert.equal(k3[0], 'takedown');
 });

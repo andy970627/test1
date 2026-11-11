@@ -91,7 +91,8 @@
     RUN_STEP_GAP: 0.3,    // 跑步的步距秒數（規格沒寫，規則角色暫擬）
     CROUCH_SPEED_MUL: 0.5, // 蹲走速度 = WALK × 0.5
     CROUCH_STEP_WIN: 0.16, // 蹲走時起步判定寬度（取代 STEP_WIN）
-    CROUCH_R: 1.2,        // 蹲走離拍的腳步聲傳多遠（站著走是 STEP_R）
+    CROUCH_R: 1.2,        // 蹲走離拍的腳步聲傳多遠（約站著走 STEP_R 的一半；第 8 節：跟 MOVES_STEP_R 等比例）
+    MOVES_STEP_R: 2.5,    // 第 8 節：開關開著時，出聲的腳步傳多遠（取代 STEP_R；關著照舊 STEP_R 2.5）。2.5／4／5／6 實測後取值
     COVER_EAR_P: 0,      // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
@@ -493,8 +494,9 @@
     const cover = !!K.COVER_MODE;   // 殘響掩護版：鼓聲不斷，時機改說「最響的那一擊」（文字照設計席 7.4）
     const moves = !!K.MOVES_MODE;   // 搭配動作（第 7 節）：dash 講兩種用法、breath 補一句、多一則 crouch
     const listen = moves ? '屏住時聽得到衛兵的腳步在哪。' : '';
-    const runDash = '按住 Shift 可以跑，速度' + speedText(K.RUN_SPEED_MUL) + '，但只有' + (cover ? '那一擊' : '斷掉的那一瞬間') +
-      '蓋得住跑步聲；平常跑，' + num(K.RUN_R) + ' 公尺內的衛兵都會警覺。';
+    // 第 9.2 節：三個檔位都由鼓決定——鼓慢、火暗、附近沒人可以跑；鼓快改用走的踩鼓點；最響的一擊再近也能衝
+    const runDash = '鼓慢、火暗、' + num(K.RUN_R) + ' 公尺內沒有衛兵時，按住 Shift 可以跑，速度' + speedText(K.RUN_SPEED_MUL) +
+      '；鼓快起來就改用走的，踩著鼓點；' + (cover ? '最響的那一擊落下時' : '節奏斷掉的瞬間') + '點一下 Shift，再近也能衝出一小段。';
     const H = {
       breath: (cover ? '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。'
         : '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。') + listen,
@@ -503,7 +505,7 @@
       trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
       belly: '站定，等鼓點，再踏出去。站定後的第一步踩在鼓點上才亮一格，亮滿 ' + num(K.BELLY_STEPS_NEED) + ' 格，同伴就替你開門。',   // HORSE_MODE 的木馬腹中（第 1.1 節：只算起步；規則角色暫擬，畫面角色可改）
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
-      dash: moves ? (cover ? '最響的那一擊落下時點一下 Shift，可以快速衝出一小段。' : '節奏斷掉的瞬間點一下 Shift，可以快速衝出一小段。') + runDash
+      dash: moves ? runDash
         : cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
         : '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
       panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。',
@@ -728,6 +730,8 @@
     if (horseLab && oT.HORSE_MODE == null) K.HORSE_MODE = true;
     if (lab && !horseLab && oT.MOVES_MODE == null) K.MOVES_MODE = true;
     if (lab && oT.DYNAMIC == null) K.DYNAMIC = false;
+    // 搭配動作第 8 節：開關開著時，這一局的 STEP_R 換成 MOVES_STEP_R（g.T.STEP_R 就是實際半徑；直接給 opts.T.STEP_R 的以它為準）
+    if (K.MOVES_MODE && oT.STEP_R == null) K.STEP_R = K.MOVES_STEP_R;
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
     let level = opts.level || buildLevel();
     if (horseLab) level = Object.assign({}, level, { guards: [] });
@@ -787,6 +791,7 @@
     let horsePrevBlind = true; // 木馬腹中練習：上一幀是否在掩護窗（偵測「窗剛開」那一幀；開局當作在窗裡，不會一開局就開門）
     let crouchHintAt = null;  // 搭配動作：第 3 區先教蹲走（進區），隔 HINT_GAP 秒後的掩護窗再教暗殺
     let runStepT = -1e9;      // 搭配動作：上一個跑步步的音訊時間
+    let idleWatch = null;     // 搭配動作第 8 節：{name（哪一塊影子）, idx（上次看到的循環）, n（站著不動跨過幾次交接）}
     let breathHintAt = null;  // 殘響掩護教學：第 3 區暗殺提示出現的時間；屏息提示至少隔 HINT_GAP 秒、等節奏快起來
     let huntCause = null;
     let clockT = null;    // 循環時鐘上次推進到的音訊時間
@@ -859,7 +864,7 @@
       clearPanic();
       g.player.inBelly = !!level.zones[z].belly;
       g.visualAid = visualAidFor(z, g.visualAidMode, K);
-      walking = false; lastStepT = -1e9;
+      walking = false; lastStepT = -1e9; idleWatch = null;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
       // 教學順序（M9）。一區只主動教一件新事；起疑、高度警覺、追殺、腳步太吵是「第一次發生時」才教（要馬上會解）。
       if (K.COVER_MODE) {
@@ -921,6 +926,20 @@
     function lowCover(q, pl) {
       for (const w of level.walls) if (w.low && segHitsRect(q.x, q.z, pl.x, pl.z, w)) return true;
       return false;
+    }
+    /** 玩家站在哪一塊影子裡（名稱），不在影子裡 = null。木馬腹中算一塊。 */
+    function shadowAt(pl) {
+      if (pl.inBelly) return '木馬腹中';
+      for (const s of level.shadows) if (inRect(pl.x, pl.z, s)) return s.name;
+      return null;
+    }
+    /** 搭配動作第 8 節：久站影子時，暗示階梯往上推一階（至少第 2 階、有文字），提示這一區的下一步。只引導，不懲罰。 */
+    function idleNudge() {
+      const tgt = g.guards.find((q) => q.id === 'g3a');
+      const key = g.zone === 1 ? 'step' : g.zone === 3 && tgt && tgt.active ? 'takedown' : g.zone === 4 ? 'latch' : 'blind';
+      const H = g.hints[key]; if (!H) return;
+      H.fails = Math.max(H.fails + 1, 2); H.level = Math.min(3, H.fails); H.lastFail = g.time;
+      emit('hint', ladderText(key, H.level, LADDER), { key, level: H.level, idle: true });
     }
     function isHidden(pl) {
       if (pl.inBelly) return true;
@@ -1531,6 +1550,17 @@
       if (g.hunted) {
         if (pl.hidden && !moved) g.stillT += dt; else g.stillT = 0;
         if (g.stillT >= K.ESCAPE_STILL) endHunt();
+      }
+
+      // 搭配動作第 8 節：站在同一塊影子裡、超過三個循環沒動（跨過 4 次交接）→ 給下一步提示；之後每再久站三個循環一次。
+      // 追殺（躲影子本來就是解法）、起疑、高度警覺時不算。
+      if (K.MOVES_MODE) {
+        const sh = !moved && !g.hunted && !g.panic.active && !g.alerted ? shadowAt(pl) : null;
+        if (!sh || !idleWatch || idleWatch.name !== sh) idleWatch = sh ? { name: sh, idx: c.index, n: 0 } : null;
+        else if (c.index !== idleWatch.idx) {
+          idleWatch.n += c.index - idleWatch.idx; idleWatch.idx = c.index;
+          if (idleWatch.n >= 4) { idleWatch.n = 0; idleNudge(); }
+        }
       }
 
       // 區域出口
