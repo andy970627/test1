@@ -54,7 +54,7 @@ export default {
     }
     // --listen-test（11/11，屏息聽 C1）：頁面用 ?lab=listen 開。聲音層建立前掛分接點，量衛兵線（guardListen）與一般鼓拍線（beatBus）進出的音量差與左右，
     // 不受「衛兵聲在總輸出裡太小」影響。找法：audio.js 連續建立 guardOut、beatBus、guardListen，guardListen 一建立就接往前第 2 個 GainNode（guardOut），中間那個＝beatBus；候選裡第一個被衛兵 PannerNode 接上的才算。
-    if (o.listenTest) await page.evaluate(() => {
+    if (o.listenTest || o.labBot) await page.evaluate(() => {
       const AP = AudioNode.prototype, oc = AP.connect, BC = BaseAudioContext.prototype, ocg = BC.createGain;
       const M = window.__recListen = { gains: [], ok: false };
       BC.createGain = function () { const g = ocg.apply(this, arguments); if (!M.ok && M.gains.length < 400) M.gains.push(g); return g; };
@@ -66,6 +66,12 @@ export default {
         M.gIn = ocg.call(ctx); M.bIn = ocg.call(ctx);
         M.aGI = stereo(ctx, M.gIn); M.aGO = stereo(ctx, gl);
         M.aBI = an(ctx); M.aBO = an(ctx); oc.call(M.bIn, M.aBI); oc.call(bb, M.aBO);
+        // 11/11 查看／追殺：衛兵總線 guardOut（過盲區閘門後）、總音量 master、慢低音 bassGain 候選（建立後馬上被前一個 GainNode 接上、自己接 master）
+        M.gOut = M.first.get(gl); M.master = M.gOut && M.first.get(M.gOut);
+        if (M.gOut) { M.aGT = an(ctx); oc.call(M.gOut, M.aGT); }
+        if (M.master) { M.aM = an(ctx); oc.call(M.master, M.aM); }
+        M.bass = [];
+        for (let j = 1; j < M.gains.length; j++) { const x = M.gains[j]; if (x !== M.gOut && M.first.get(x) === M.master && M.first.get(M.gains[j - 1]) === x) { const a = an(ctx); oc.call(x, a); M.bass.push({ j, a }); } }
       }
       M.first = new Map(); M.cand = 0;
       AP.connect = function (dest) {
@@ -83,8 +89,8 @@ export default {
         return r;
       };
     });
-    await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse, listenT }) => {
-      window.__recListenTest = listenT;
+    await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse, listenT, labBot }) => {
+      window.__recListenTest = listenT; window.__recLabBot = labBot;
       window.__recStepTest = !!stepTest;   // --step-test：第 1 區改成離拍起步累積腳步樣本（不喘氣引起注意）
       // --horse-test（11/11，木馬共鳴 C2）：頁面要用 ?lab=horse 開（record.mjs 的 --page）；前半段站在木馬旁、後半段站到 30 公尺外
       window.__recHorse = horse;
@@ -100,7 +106,7 @@ export default {
       const ph = document.getElementById('oPhase');
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
     }, { cycle, phaseBar: o.phaseBar !== false, cover, stepTest: !!o.stepTest,
-      listenT: o.listenTest ? { period: +(o.listenPeriod || 2.5) } : null, horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
+      labBot: o.labBot || null, listenT: o.listenTest ? { period: +(o.listenPeriod || 2.5) } : null, horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
     await page.click('#btnStart');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
     return page.evaluate(() => {
@@ -166,7 +172,11 @@ export default {
       // lg（--listen-test）：衛兵線、鼓拍線進出的 RMS 功率（線性，取樣當下 2048 點）；ls＝聲音層 listenInfo().on
       lg: (() => { const M = window.__recListen; if (!M || !M.ok) return null; const buf = new Float32Array(2048);
         const pw = (x) => { x.getFloatTimeDomainData(buf); let q = 0; for (let k = 0; k < buf.length; k++) q += buf[k] * buf[k]; return +(q / buf.length).toExponential(3); };
-        return { iL: pw(M.aGI[0]), iR: pw(M.aGI[1]), oL: pw(M.aGO[0]), oR: pw(M.aGO[1]), bi: pw(M.aBI), bo: pw(M.aBO) }; })(),
+        const pk = (x) => { x.getFloatTimeDomainData(buf); let m = 0; for (let k = 0; k < buf.length; k++) { const v = Math.abs(buf[k]); if (v > m) m = v; } return m; };
+        const mg = M.master ? M.master.gain.value : 1, dB = (v) => (v > 1e-7 ? +(20 * Math.log10(v)).toFixed(1) : -140);
+        // gp／mp／bp：衛兵總線、總輸出、慢低音候選的取樣峰值（dBFS，衛兵與低音乘上 master 音量＝在總輸出裡的大小）
+        return { iL: pw(M.aGI[0]), iR: pw(M.aGI[1]), oL: pw(M.aGO[0]), oR: pw(M.aGO[1]), bi: pw(M.aBI), bo: pw(M.aBO),
+          gp: M.aGT ? dB(pk(M.aGT) * mg) : null, mp: M.aM ? dB(pk(M.aM)) : null, bp: (M.bass || []).map(b => dB(pk(b.a) * mg)), bg: (M.bass || []).map(b => +M.gains[b.j].gain.value.toFixed(3)) }; })(),
       ls: (() => { try { const r = a.raw && a.raw.listenInfo ? a.raw : a; return r.listenInfo ? !!r.listenInfo().on : null; } catch (e) { return null; } })(),
       // va：視覺輔助強度（殘響掩護版的木魚預告音量也乘它；第 4 區自動模式為 0，見設計 7.9）
       va: (() => { try { const R = window.RissetRules; return R && R.visualAidFor ? R.visualAidFor(g.zone, g.visualAidMode, g.T) : null; } catch (e) { return null; } })(),
@@ -211,6 +221,30 @@ export default {
       return;
     }
     if (g.phase !== 'play') { api.releaseAll(); return; }
+    // --lab-bot check｜hunt（11/11）：查看試驗場站著、每 14 秒按 N 在自己位置製造聲響，衛兵查看中且 4 公尺內就屏息；
+    // 追殺試驗場往北（+z）跑進影子（z 23.5～27），進去後停下，衛兵 4 公尺內屏息。
+    if (window.__recLabBot) {
+      const kind = window.__recLabBot, gs = g.guards.filter(q => q.active !== false && q.state !== 'down');
+      const near = gs.reduce((m, q) => Math.min(m, Math.hypot(q.x - P.x, q.z - P.z)), 1e9);
+      const busy = gs.some(q => q.state === 'checking' || q.state === 'hunted' || q.search);
+      const canB = !P.breathLock && P.breathT < g.T.BREATH_MAX - 0.4;
+      if (kind === 'check') {
+        api.set('ShiftLeft', false);
+        if (st.nAt == null) st.nAt = t + 3;
+        // 單號那次製造聲響後躲進北邊影子（量查看的疑問聲、走近的腳步、慢低音），雙號那次站著不動（被發現：量喊人、追殺）
+        if (t >= st.nAt) { st.nAt = t + 14; st.nN = (st.nN || 0) + 1; st.hide = st.nN % 2 === 1; api.press('KeyN'); api.log('lab_noise', { hide: st.hide }); }
+        const go = st.hide && P.z < 24.8;
+        D.V.yaw = Math.PI; D.V.pitch = -0.1;
+        api.set('KeyW', go);
+        api.set('Space', !go && busy && near < 4 && canB);
+      } else {
+        D.V.yaw = Math.PI; D.V.pitch = -0.1;
+        const inShadow = P.z >= 24.5;
+        api.set('KeyW', !inShadow); api.set('ShiftLeft', !inShadow);
+        api.set('Space', inShadow && near < 4 && canB);
+      }
+      return;
+    }
     // --listen-test：站著不動，每 period 秒換一次屏息／平常（試驗場第 3 區）
     if (window.__recListenTest) {
       const L = window.__recListenTest; api.set('KeyW', false); api.set('KeyS', false);

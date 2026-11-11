@@ -399,6 +399,18 @@ const listenInfo = {};
   }
 }
 
+// 1e. 衛兵聲在總輸出裡多大（查看／追殺，11/11；guard-mix.mjs）：時間軸有 lg.gp 才跑。只列數字、不判（門檻等聲音角色定）。
+{
+  const { guardMix } = await import('./guard-mix.mjs');
+  const gm = TL.some(s => s.lg && s.lg.gp != null) ? guardMix(TL, EV, { bassBase: (PREP.audioConst || {}).BASS_BASE }) : null;
+  if (gm) {
+    const f = (o) => Object.entries(o).map(([k, v]) => `${k} ${v.medDb}（比鼓 ${v.vsDrumDb >= 0 ? '+' : ''}${v.vsDrumDb}，${v.n}）`).join('、') || '無';
+    add('guardMix', '衛兵腳步、人聲、慢低音在總輸出裡的大小（只列不判）', null,
+      `鼓峰值 ${gm.drumPeakDb} dBFS；腳步 ${f(gm.steps)}；人聲 ${f(gm.voice)}；慢低音（查看中衛兵距離）${Object.entries(gm.bass).map(([k, v]) => `${k} 增益 ${v.gain}`).join('、') || '無'}`,
+      '量法見 tools/playtest-recorder/guard-mix.mjs：分接點在聲音層 master 之後、輸出限制之前，所以鼓峰值可能 > 0 dBFS；比較看「比鼓」的相對值。');
+  }
+}
+
 // 1c. 木馬共鳴（C2，HORSE_MODE；docs/design/2026-11-11-trojan-horse-directions.md 第 3 節）：時間軸有 hd（離木馬中心距離）而且貼近、遠處都有掩護窗才跑。
 // 量法：每個一般掩護窗，那一擊後 [+0.05, +0.55] 秒 300～1200 Hz 的平均能量，減去窗前 1.0～0.15 秒同頻帶平均（不用峰值：峰值永遠是重合擊本身）。
 // 貼近（hd ≤ horseNearM）與遠處（hd ≥ horseFarM）各取中位，差 ≥ horseDiffDb 才過。剛換位置的那個窗（窗前 1 秒內換過位置）不算。
