@@ -164,7 +164,8 @@
     CHECK_BASS_MAX: 1,               // 貼近時低音音量（平時 BASS_BASE）
     PANT_GAP: 0.42,                  // 跑完喘氣（pant_start）：每口間隔
     PANT_GAIN: 0.09,                 // 喘氣第一口的音量，之後越來越輕
-    SHOUT_GAIN: 0.8,                 // hunt_call 喊一聲（11/12 錄音：0.32 時比鼓 −6 dB；第 17.2 節要它是「現在開始逃」的訊號，加大到約比鼓 +2 dB）
+    SHOUT_GAIN: 0.074,               // hunt_call 喊一聲（11/12 實錄 0.8 時追殺比鼓 +14.7 dB，撞輸出限制把鼓壓下去；調回約比鼓 −6 dB，第 18 節逃的鼓聲已經比較安靜）
+    SEARCH_VOICE_MUL: 0.126,         // 搜索開始、搜完的聲音再乘幾倍（11/12 實錄搜索比鼓 +12 dB，躲的時候鼓退了 14 dB；調回約比鼓 −6 dB）
     CHECK_STEP_MUL: 2,               // 查看中的衛兵腳步再乘幾倍（11/12 錄音：走近 4～7 公尺時比鼓 −31 dB，聽不清楚；連距離補償約 +12 dB。3 倍時離線 5 公尺已比鼓大聲，先取 2）
     CHECK_STEP_DIST_REF: 2.5, CHECK_STEP_DIST_MAX: 3,   // 查看中：離你超過 2.5 公尺時腳步再按距離補回來（最多 3 倍），遠一點也聽得到他在走過來
     CHECK_VOICE_MUL: 2.8,            // 查看的疑問聲、走到時的吸氣再乘幾倍（錄音 −19、−22 dB）
@@ -178,8 +179,9 @@
     HUNT_GLIDE_LO: 800, HUNT_GLIDE_HI: 1600, HUNT_GLIDE_GAIN: 0.025,   // 逃：往上滑的長音（2 秒到頂後停住）
     HIDE_DUCK_TIME: 0.5,       // 躲：鼓聲幾秒內悶下去
     HIDE_DUCK_DB: -14,         // 躲：悶下去的鼓整體退幾 dB（低通同木馬腹中 BELLY_LOWPASS_HZ；設計起點 10，11/12 量 3 公尺外追兵腳步比鼓低 10 dB，加到 14 並把追兵拉高）
-    HIDE_GUARD_MUL: 3.5,       // 躲：搜索中的追兵聲音再乘幾倍（18.4：追兵腳步排在踩得上的鼓點前面；驗收要比鼓高 ≥ 3 dB）
-    HIDE_KEEP_DB: 6,           // 躲：規則認定踩得上的拍比其他鼓多留幾 dB
+    HIDE_GUARD_MUL: 0.35,      // 躲：搜索中的追兵聲音再乘幾倍（11/12 實錄 3.5 倍時 3 公尺腳步峰值 +10 dBFS，撞輸出限制把鼓一起壓下去；調小 20 dB，仍要比鼓高 ≥ 3 dB）
+    HIDE_KEEP_DB: 12,          // 躲：規則認定踩得上的拍比其他鼓多留幾 dB（實錄 6 dB 時反而低 0.8 dB、每秒約 25 個起音）
+    HIDE_OTHER_MIN: 0.03,      // 躲：其他拍壓下去後低於這個音量就不排（減少起音，讓踩得上的拍真的突出）
     FOUND_OPEN: 0.1,           // 被找到：濾波幾秒內打開
     HUNT_ALARM_ESCAPE: 0.3, HUNT_DIST_ESCAPE: 0.25,   // 逃：失控層、失真降到多少（平常追殺 0.6／0.8；18.1 的「亂」有一半來自它們）
     HUNT_ALARM_HIDE: 0, HUNT_DIST_HIDE: 0,            // 躲：失控層、失真收掉（失真在低通之後，會把濾掉的高頻再生出來）
@@ -230,6 +232,7 @@
     DN_ROLL_MUL: 0.5,          // 漸強終點再乘這個值（V3 的做法：漸強的最後幾拍是那一擊前一秒內最響的）
     DN_PRE: 1, DN_PRE_DB: -9,  // 那一擊之前 DN_PRE 秒，全部鼓一起退 DN_PRE_DB（一起退，各拍的相對大小不變，踩得上的拍照樣聽得到）
     DN_CLEAR_AFTER: 0.15,      // 那一擊之後幾秒其他鼓讓開（在掩護窗裡，規則不算這些拍）
+    DN_TAIL_MUL: 3,            // 新鼓聲平常狀態：最響一擊的中頻餘韻乘幾倍（六條鼓較密、整體大 2.5 dB，餘韻被蓋掉；11/12 實錄餘韻 0.2 秒、窗內只比前後高 4.3 dB，舊鼓聲 0.6 秒、10 dB）
     // 第三輪試聽 V1～V3（同文件第 10.1 節）：最響的一擊從循環起點解開，落在對齊點上（聽得到的最慢那條鼓的一拍＝所有聽得到的鼓同時落下）
     V_GAP_MIN: 6, V_GAP_MAX: 14,   // 兩次之間的目標間隔（秒，循環 12 秒時；其他循環長度等比例），落到目標之後的第一個對齊點
                                // （規格寫「隔 4～7 個對齊點」，但對齊點實際每 0.4～0.8 秒一個，4～7 個只有 1.6～5.6 秒、比預告還短；照規格要的 6～14 秒做）
@@ -816,7 +819,7 @@
             var p = tab[n], P = c + p, t = tAt(P);
             if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;
             var g = dnGain(j, p, t, c, st.hunted);
-            if (hm.mode !== 'none' || hm.back) g *= hideKeep(k, p, st.hunted) * rissetFade(t);   // 第 18 節：躲、甩掉
+            if (hm.mode !== 'none' || hm.back) { var hk = hideKeep(k, p, st.hunted); g *= hk * rissetFade(t); if (hk < 1 && g < C.HIDE_OTHER_MIN) continue; }   // 第 18 節：躲、甩掉
             if (g < C.DN_MIN_GAIN) continue;
             var le = log ? { type: 'beat', k: k, n: nn, c: c, t: t, p: p, g: g, drums: 'new' } : null;
             if (le) log.push(le);
@@ -1205,6 +1208,7 @@
       // 撐滿 0.6 秒的窗；走節奏匯流排，也進殘響。
       var TG = C.COVER_TAIL_GAIN;
       var TS = hm.mode === 'escape' ? C.HUNT_VERB : C.COVER_TAIL_SEC;   // 第 18 節「逃」：餘韻縮短（平常照舊）
+      if (dnOn() && !st.hunted) TG *= C.DN_TAIL_MUL;                     // 新鼓聲平常：餘韻加大，蓋過較密的鼓
       noise(out, t + 0.015, 'bandpass', 850, 0.6, TG, 0.04, TS);
       noise(out, t + 0.02, 'bandpass', 1700, 0.8, TG * 0.5, 0.05, TS * 0.75);
     }
@@ -1675,7 +1679,7 @@
             var x = (k + p) / nL, g = beatGain(k, p, st.hunted);
             if (ill.v) g = vGain(t, k, p, g);
             if (ill.v4) g *= C.V4_SCALE;
-            if (movesOn() && (hm.mode !== 'none' || hm.back)) g *= hideKeep(k, p, st.hunted) * rissetFade(t);   // 第 18 節：躲、甩掉（開關關著不走）
+            if (movesOn() && (hm.mode !== 'none' || hm.back)) { var hk2 = hideKeep(k, p, st.hunted); g *= hk2 * rissetFade(t); if (hk2 < 1 && g < C.HIDE_OTHER_MIN) continue; }   // 第 18 節：躲、甩掉（開關關著不走）
             if (g < gMin) continue;                             // 音量不抖（A3）：實際響度 ∝ 規則 gain
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
             if (le) log.push(le);
@@ -2209,13 +2213,14 @@
       searchStart: function (t, d) {      // 追兵走進影子開始搜：吸鼻子聞兩下＋一聲低低的悶哼
         if (!movesOn()) return;
         var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
-        for (var i = 0; i < 2; i++) noise(out, t + i * 0.18, 'bandpass', 1600, 2, 0.24, 0.02, 0.08);
-        tone(out, t + 0.45, 'sawtooth', 95, 85, 0.3, 0.06, 0.04, 0.3);
+        var sv = C.SEARCH_VOICE_MUL;
+        for (var i = 0; i < 2; i++) noise(out, t + i * 0.18, 'bandpass', 1600, 2, 0.24 * sv, 0.02, 0.08);
+        tone(out, t + 0.45, 'sawtooth', 95, 85, 0.3, 0.06 * sv, 0.04, 0.3);
       },
       searchDone: function (t, d) {       // 搜完了沒找到：不甘心的吐氣
         if (!movesOn()) return;
         var out = guardVoiceAt(d && d.id, d && d.x, d && d.z);
-        var f = noise(out, t, 'bandpass', 700, 1, 0.36, 0.03, 0.4); f.frequency.exponentialRampToValueAtTime(350, t + 0.4);
+        var f = noise(out, t, 'bandpass', 700, 1, 0.36 * C.SEARCH_VOICE_MUL, 0.03, 0.4); f.frequency.exponentialRampToValueAtTime(350, t + 0.4);
       },
       checkRetarget: function (t, d) {    // 查看中又聽到你（踩歪的腳步或呼吸）、改朝新的位置：更確定的「嗯」，不上揚
         if (!movesOn()) return;
