@@ -23,12 +23,29 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    # 11/12：PR 有新推送（synchronize）時只看「這次推送」改了什麼；原本比整個 PR 對 main，
+    # 這個 PR 動過 Unity 檔，結果每推一次都跑約 25 分鐘的 Unity，把 Actions 額度用完。
     outputs:
-      unity: ${{ steps.f.outputs.unity == 'true' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
-      web: ${{ steps.f.outputs.web == 'true' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+      unity: ${{ (steps.d.outcome == 'success' && steps.d.outputs.unity == 'true') || (steps.d.outcome != 'success' && steps.f.outputs.unity == 'true') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+      web: ${{ (steps.d.outcome == 'success' && steps.d.outputs.web == 'true') || (steps.d.outcome != 'success' && steps.f.outputs.web == 'true') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PR 新推送：只看這次推送改的檔
+        id: d
+        if: github.event_name == 'pull_request' && github.event.action == 'synchronize'
+        continue-on-error: true   # 找不到上一次的提交（例如強制推送）時，退回整個 PR 的比較
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha }}
+        run: |
+          files=$(git diff --name-only "$BEFORE" "$AFTER")
+          echo "$files"
+          if echo "$files" | grep -qE '^(Assets/|Packages/|ProjectSettings/|tools/CoreTests/|tools/NightSim/|tools/NightSimTests/|tools/playtest/|\.github/workflows/)'; then echo "unity=true" >> "$GITHUB_OUTPUT"; else echo "unity=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$files" | grep -qE '^(prototypes/|tools/telemetry/|tools/playtest-recorder/|tools/build-itch\.|\.github/workflows/)'; then echo "web=true" >> "$GITHUB_OUTPUT"; else echo "web=false" >> "$GITHUB_OUTPUT"; fi
       - uses: dorny/paths-filter@v3
+        if: steps.d.outcome != 'success'
         id: f
         with:
           filters: |
