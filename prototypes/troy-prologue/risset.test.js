@@ -3286,7 +3286,7 @@ function huntSceneBot(kind, opts = {}) {
 }
 /** 跑一次固定場景：t0 時開始追殺，最多 60 秒。回傳 {escaped, caught, t（從追殺開始到甩掉或被抓）, runT, pant（有沒有喘過）}。 */
 function huntScene(kind, gap, t0, behind = 6, opts = {}) {
-  const g = mvs({ startZone: 2 });
+  const g = mvs({ startZone: 2, T: opts.T || {} });
   const pz = HS.z0 - gap;
   const q = solo(g, 'g2b', HS_TX, pz - behind, 0);
   g.step(0, {});
@@ -3886,7 +3886,138 @@ test('11/11 第 14.2 節貼身場景（追兵背後 2 公尺、影子 10 公尺�
   console.log('  先跑、最後 4 公尺改走（不衝刺）：' + fmt(runWalk));
   console.log('  踩著鼓點起步、一路踩鼓點走（只印）：' + fmt(beat3));
   console.log('  參考：用走的、最響一擊照衝刺（只印）：' + fmt(walkDash));
+  const noSlow = run('walk', { noDash: true, T: { HUNT_SLOW_MUL: 1 } }), noSlowRun = run('runWalk', { noDash: true, T: { HUNT_SLOW_MUL: 1 } });
+  console.log('  對照：關掉「踩三步讓他慢下來」（HUNT_SLOW_MUL = 1），只用走的：' + fmt(noSlow));
+  console.log('  對照：關掉「踩三步讓他慢下來」，先跑後走：' + fmt(noSlowRun));
   const ok = (b) => (b ? '過' : '⚠ 沒過');
   console.log(`  只用走的 ≤ 40% → ${ok(walk.rate <= 0.4)}；先跑後走 ≥ 75% → ${ok(runWalk.rate >= 0.75)}`);
   for (const s of [walk, walkDash, runWalk, beat3]) assert.ok(s.rate >= 0 && s.rate <= 1);
+});
+
+// ---------------- 11/11 走法試驗場 ?lab=walk（第 11.4 節 P1＋P2；第 14.1 節裁決：先 P1 再 P2，不進預設版） ----------------
+
+test('11/11 走法試驗場：STEP_MODE 預設 glide（現狀）；?lab=walk 第 2 區、預設 stride（P1）、可切 manual／glide；衛兵在路中間來回巡邏', () => {
+  assert.equal(K.STEP_MODE, 'glide'); assert.equal(K.STRIDE_LEN, 0.9); assert.equal(K.STRIDE_SLIDE, 0.18);
+  const g = R.createLevel({ lab: 'walk' });
+  assert.equal(g.zone, 2); assert.equal(g.T.STEP_MODE, 'stride'); assert.equal(g.T.MOVES_MODE, true); assert.equal(g.T.DYNAMIC, false);
+  assert.equal(R.createLevel({ lab: 'walk', T: { STEP_MODE: 'manual' } }).T.STEP_MODE, 'manual');
+  g.step(0, {});
+  const act = g.guards.filter((q) => q.active);
+  assert.equal(act.length, 1); assert.equal(act[0].route.length, 2);
+  assert.ok(near(g.player.x, 15, 1e-9) && near(g.player.z, 20, 1e-9));
+  assert.equal(R.createLevel({ startZone: 2 }).T.STEP_MODE, 'glide', '一般關卡照舊');
+});
+
+test('11/11 走法試驗場 P1：按住方向鍵時一步 0.9 公尺、0.18 秒滑完，其餘時間腳停著；下一步落在下一個聽得到的鼓點（最密 0.27 秒）；站定後第一步照起步判定', () => {
+  const g = R.createLevel({ lab: 'walk', T: { FOV: 0.01 } });
+  g.step(0, {});
+  for (const q of g.guards) { q.state = 'down'; q.active = false; }
+  let t = 0;
+  while (!R.stepMasked(t + DT, g)) { t += DT; g.step(t, {}); }
+  const steps = [];
+  const x0 = g.player.x;
+  let stillFrames = 0, frames = 0;
+  while (t < 4) {
+    t += DT; const bx = g.player.x; g.step(t, { mx: 1 }); frames++;
+    if (Math.abs(g.player.x - bx) < 1e-9) stillFrames++;
+    for (const e of g.drain()) if (e.a === 'step_masked' || e.a === 'step_loud') steps.push(Object.assign({ t }, e));
+  }
+  assert.ok(steps.length >= 6, `${steps.length} 步`);
+  assert.equal(steps[0].a, 'step_masked', '踩在鼓點上起步');
+  for (let i = 1; i < steps.length; i++) assert.ok(steps[i].t - steps[i - 1].t >= K.STEP_GAP * K.STEP_GAP_MIN - 1e-6, '最密 0.27 秒');
+  assert.ok(steps.filter((e) => e.a === 'step_masked').length >= steps.length - 1, '之後每步都落在鼓點上（被蓋過）');
+  const dist = g.player.x - x0;
+  assert.ok(Math.abs(dist - K.STRIDE_LEN * steps.length) < K.STRIDE_LEN + 1e-6, `走了 ${dist.toFixed(2)} 公尺，${steps.length} 步 × 0.9`);
+  assert.ok(stillFrames / frames > 0.2, '有一段時間腳是停的');
+  assert.ok(steps.every((e) => e.stride === true));
+});
+
+/** 走法試驗場的程式玩家。kind：'perfect' 踩在鼓點上起步／按鍵；'sigma' 每次起步或按鍵差 N(0, σ)；'random' 不看鼓，每 0.3～0.6 秒按一下（P2）／不等拍就起步（P0、P1）。
+ *  圈外（或 P0、P1）：按住方向鍵；P2 圈內：每一步放開再按（新按下）。 */
+function makeWalkBot(kind, sigma, seed) {
+  const rng = R.mulberry32(seed * 31 + 7);
+  const gauss = () => { let u = 0; while (u === 0) u = rng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng()); };
+  let started = false, nextPress = null, lastPress = -1e9, holding = false, startAt = null;
+  return function (g) {
+    const t = g.time, pl = g.player, K2 = g.T;
+    if (!started) {
+      if (startAt == null) {
+        if (kind === 'random') startAt = t;
+        else {
+          const bs = R.beatsBetween(t + 0.05, t + 2, g, { minGain: K2.MASK_GAIN });
+          startAt = (bs.length ? bs[0].t : t) + (kind === 'sigma' ? gauss() * sigma : 0);
+        }
+      }
+      if (t + DT / 2 < startAt) return {};
+      started = true;
+    }
+    if (!pl.inCircle) { holding = true; nextPress = null; return { mx: 1 }; }
+    if (holding) { holding = false; return {}; }   // 進圈第一幀先放開
+    if (nextPress == null) {
+      if (kind === 'random') nextPress = Math.max(t, lastPress + 0.3 + rng() * 0.3);
+      else {
+        const bs = R.beatsBetween(Math.max(t + DT, lastPress + K2.STEP_GAP * K2.STEP_GAP_MIN), t + 3, g, { minGain: K2.MASK_GAIN });
+        nextPress = Math.max(t, (bs.length ? bs[0].t : t + 0.5) + (kind === 'sigma' ? gauss() * sigma : 0));
+      }
+    }
+    if (t + DT / 2 >= nextPress) { lastPress = t; nextPress = null; return { mx: 1, actAt: t }; }
+    return {};
+  };
+}
+/** 穿過一次：從 (15, 20) 走到 x ≥ 29（最多 40 秒）。看不見（FOV 極小）只量聽覺；回傳 {t, loud（圈內出聲的步數）, ok（走到）}。 */
+function walkCross(mode, kind, sigma, seed) {
+  const g = R.createLevel({ lab: 'walk', T: { STEP_MODE: mode, FOV: 0.01 } });
+  let t = (seed * 0.37) % 10;
+  g.step(t, {});
+  const bot = makeWalkBot(kind, sigma, seed), from = t;
+  let loud = 0, start = null;
+  while (g.player.x < 29 && t < from + 40 && g.phase === 'play') {
+    t += DT; g.step(t, bot(g));
+    if (start == null && Math.abs(g.player.x - 15) > 1e-6) start = t;
+    for (const e of g.drain()) {
+      if (e.a !== 'step_loud') continue;
+      if (g.guards.some((q) => q.active && Math.hypot(q.x - e.x, q.z - e.z) <= (q.state === 'checking' || q.state === 'hunted' ? g.T.SEARCH_STEP_R : g.T.STEP_R))) loud++;
+    }
+  }
+  return { t: t - (start == null ? t : start), loud, ok: g.player.x >= 29, hunted: g.hunted || g.phase === 'fail' };
+}
+
+test('11/11 走法試驗場 P2（manual）：圈內按住不放只走一步，要新按一下才走下一步；圈內不能跑；進出圈發 manual_on／manual_off；圈半徑跟著規則的常數', () => {
+  const g = R.createLevel({ lab: 'walk', T: { STEP_MODE: 'manual', FOV: 0.01 } });
+  g.step(0, {});
+  const q = g.guards.find((o) => o.id === 'g2b');
+  q.route = [{ x: 22, z: 20 }]; q.x = 22; q.z = 20;
+  place(g, 19.6, 20);   // 圈內（STEP_R 2.5），往衛兵走兩步都還在圈內
+  let t = 0.1; g.step(t, {});
+  assert.ok(g.player.inCircle);
+  const x0 = g.player.x;
+  for (let k = 0; k < 90; k++) { t += DT; g.step(t, { mx: 1, run: true }); }
+  assert.ok(Math.abs(g.player.x - x0 - K.STRIDE_LEN) < 1e-6, `按住 1.5 秒只走一步：${(g.player.x - x0).toFixed(2)}`);
+  assert.ok(!g.player.running, '圈內不能跑');
+  t += DT; g.step(t, {});
+  for (let k = 0; k < 20; k++) { t += DT; g.step(t, { mx: 1 }); }
+  assert.ok(Math.abs(g.player.x - x0 - 2 * K.STRIDE_LEN) < 1e-6, '再按一下走第二步');
+  g.drain();
+  place(g, 19.6, 20); t += DT; g.step(t, {});   // 回到圈邊，往外踏一步
+  t += DT; g.step(t, { mx: -1 });
+  for (let k = 0; k < 20; k++) { t += DT; g.step(t, {}); }
+  assert.ok(g.drain().some((e) => e.a === 'manual_off'), '走出圈 → manual_off');
+  q.state = 'checking'; q.check = { target: { x: 22, z: 20 }, walkTo: { x: 22, z: 20 }, home: { x: 22, z: 20 }, phase: 'listen', from: t, until: t + 30, baseYaw: 0, yaw0: 0, yaw1: 0, cause: 'lab', stuckT: 0 };
+  place(g, 22 - K.SEARCH_STEP_R + 0.2, 20); t += DT; g.step(t, {});
+  assert.ok(g.player.inCircle, '查看中的衛兵，圈半徑 = SEARCH_STEP_R');
+});
+
+test('11/11 走法試驗場量測（各 20 次，只印不擋）：穿過一個圈——完美／σ0.12／亂按的通過時間與圈內出聲的步數；P0 glide、P1 stride、P2 manual', () => {
+  const rows = {};
+  for (const mode of ['glide', 'stride', 'manual']) for (const kind of ['perfect', 'sigma', 'random']) {
+    const rs = []; for (let s = 1; s <= 20; s++) rs.push(walkCross(mode, kind, 0.12, s));
+    rows[mode + ':' + kind] = { t: median12(rs.filter((r) => r.ok).map((r) => r.t)), loud: rs.reduce((a, r) => a + r.loud, 0) / rs.length, ok: rs.filter((r) => r.ok).length, hunted: rs.filter((r) => r.hunted).length };
+  }
+  const name = { glide: 'P0 glide（現狀）', stride: 'P1 stride', manual: 'P2 manual' }, kn = { perfect: '完美', sigma: 'σ0.12', random: '亂按' };
+  console.log('[11/11 走法試驗場 ?lab=walk，衛兵在路中間來回巡邏、看不見（只量聽覺），從 x 15 走到 29，各 20 次]');
+  for (const mode of ['glide', 'stride', 'manual']) console.log(`  ${name[mode]}｜` + ['perfect', 'sigma', 'random'].map((k) => { const r = rows[mode + ':' + k]; return `${kn[k]}：通過 ${r.ok}/20、時間中位 ${Number.isFinite(r.t) ? r.t.toFixed(1) : '—'} 秒、圈內出聲 ${r.loud.toFixed(2)} 步、被追殺 ${r.hunted}`; }).join('｜'));
+  const M = (k) => rows['manual:' + k];
+  const ok = (b) => (b ? '過' : '⚠ 沒過');
+  console.log(`  P2 亂按每次穿越出聲 ≥ 2 步 → ${ok(M('random').loud >= 2)}；σ0.12 出聲明顯多於完美 → ${ok(M('sigma').loud >= M('perfect').loud + 0.5)}（${M('sigma').loud.toFixed(2)} vs ${M('perfect').loud.toFixed(2)}）；完美通過時間 ≤ P0 的 1.5 倍 → ${ok(M('perfect').t <= 1.5 * rows['glide:perfect'].t)}（${(M('perfect').t / rows['glide:perfect'].t).toFixed(2)} 倍）`);
+  for (const r of Object.values(rows)) assert.ok(r.ok >= 0 && r.loud >= 0);
 });

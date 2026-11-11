@@ -106,6 +106,10 @@
     CHECK_TURN: 0.5,      // 查看：先轉向引起注意的位置，幾秒
     CHECK_WALK: 5,        // 查看：朝那個位置最多走幾公尺（巡邏速度）
     CHECK_LISTEN: 4,      // 查看：到了停幾秒，左右轉頭聽
+    // 走法試驗場（第 11.4 節，?lab=walk；不進預設版）：'glide' 現狀（按住就滑）｜'stride' P1 步子跟著鼓｜'manual' P1＋P2 火光圈內自己踩
+    STEP_MODE: 'glide',
+    STRIDE_LEN: 0.9,      // P1：每一步前進幾公尺（蹲著 × CROUCH_SPEED_MUL）
+    STRIDE_SLIDE: 0.18,   // P1：一步花幾秒滑過去，其餘時間腳是停的
     MOVES_STEP_R: 2.5,    // 第 8 節：開關開著時，出聲的腳步傳多遠（取代 STEP_R；關著照舊 STEP_R 2.5）。2.5／4／5／6 實測後取值
     COVER_EAR_P: 0,      // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
@@ -763,11 +767,14 @@
     //     第一幀開始追殺；甩掉或被抓都留在原地（畫面層 retry 重來）。
     //   ?lab=check（第 13 節）：第 2 區，一名衛兵（g2b）在玩家南方 6 公尺、背對玩家；循環固定；
     //     g.labNotice(x, z) 在指定位置製造一次「被聽到」（他過來查看那一點）。出口擋住。
-    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2, check: 2 };
+    //   ?lab=walk（第 11.4 節）：第 2 區，一名衛兵在玩家要走的路中間來回巡邏；循環固定；STEP_MODE 預設 'stride'（P1），
+    //     opts.T.STEP_MODE = 'manual' 切 P1＋P2、'glide' 切回現狀。玩家從 (15, 20) 往東走到 (29, 20)，非得穿過他的圈。
+    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2, check: 2, walk: 2 };
     const lab = LABS[opts.lab] ? opts.lab : null;
     const horseLab = lab === 'belly' || lab === 'horse';
     if (horseLab && oT.HORSE_MODE == null) K.HORSE_MODE = true;
     if (lab && !horseLab && oT.MOVES_MODE == null) K.MOVES_MODE = true;
+    if (lab === 'walk' && oT.STEP_MODE == null) K.STEP_MODE = 'stride';
     if (lab && oT.DYNAMIC == null) K.DYNAMIC = false;
     // 搭配動作第 8 節：開關開著時，這一局的 STEP_R 換成 MOVES_STEP_R（g.T.STEP_R 就是實際半徑；直接給 opts.T.STEP_R 的以它為準）
     if (K.MOVES_MODE && oT.STEP_R == null) K.STEP_R = K.MOVES_STEP_R;
@@ -877,7 +884,8 @@
       const s = level.zones[z].start;
       return { x: s.x, z: s.z, y: s.y || 0, yaw: s.yaw || 0, breathing: false, breathT: 0, breathLock: false,
         hidden: false, moving: false, inBelly: !!level.zones[z].belly, running: false, crouching: false, runHeld: 0,
-        runT: 0, pantUntil: -1e9, panting: false };
+        runT: 0, pantUntil: -1e9, panting: false,
+        slide: null, nextStrideT: -1e9, nextStrideBeat: null, lastStrideT: -1e9, dirHeld: false, inCircle: false };
     }
     function makeGuard(d) {
       const p0 = d.route[0], p1 = d.route[1] || p0;
@@ -951,6 +959,15 @@
         else { q.state = 'down'; q.active = false; }
       }
     }
+    /** ?lab=walk 的場景：玩家在 (15, 20) 面朝東；衛兵 g2b 在 (22, 18)～(22, 22) 來回巡邏（路的正中間）。 */
+    function setupWalkLab() {
+      g.player.x = 15; g.player.z = 20; g.player.yaw = yawTo(1, 0);
+      for (const q of g.guards) {
+        if (q.id === 'g2b') Object.assign(q, { x: 22, z: 18, route: [{ x: 22, z: 18 }, { x: 22, z: 22 }], wp: 1, yaw: yawTo(0, 1), baseYaw: null, state: 'patrol', susp: 0, check: null, suspHist: [] });
+        else { q.state = 'down'; q.active = false; }
+      }
+    }
+    if (lab === 'walk') setupWalkLab();
     if (lab === 'check') {
       setupCheckLab();
       /** 試驗場按鈕：在 (x, z) 製造一次被聽到（巡邏中的衛兵過來查看）。 */
@@ -1015,6 +1032,8 @@
       H.fails = Math.max(H.fails + 1, 2); H.level = Math.min(3, H.fails); H.lastFail = g.time;
       emit('hint', ladderText(key, H.level, LADDER), { key, level: H.level, idle: true });
     }
+    /** 走法試驗場 P2 的圈半徑＝這名衛兵聽得到踩歪腳步的距離（規則裡同一個常數，不另訂 MANUAL_R）。 */
+    function manualR(q) { return q.state === 'checking' || q.state === 'hunted' ? K.SEARCH_STEP_R : K.STEP_R; }
     function isHidden(pl) {
       if (pl.inBelly) return true;
       for (const s of level.shadows) if (inRect(pl.x, pl.z, s)) return true;
@@ -1335,11 +1354,17 @@
         if (!inp.breath) pl.breathLock = false;
       }
 
+      // 走法試驗場 P2（STEP_MODE 'manual'）：在任何一名衛兵「聽得到踩歪腳步」的圈裡（巡邏中 STEP_R；查看、追殺中 SEARCH_STEP_R）
+      // 每按一下方向鍵才走一步、不能跑；圈外照 P1。進圈、出圈各發一次 manual_on／manual_off。
+      const strideMode = K.STEP_MODE === 'stride' || K.STEP_MODE === 'manual';
+      const inCircle = K.STEP_MODE === 'manual' && g.guards.some((q) => q.active && dist2(q, pl) <= manualR(q));
+      if (inCircle !== pl.inCircle) emit('sfx', inCircle ? 'manual_on' : 'manual_off', { x: pl.x, z: pl.z });
+      pl.inCircle = inCircle;
       // 搭配動作（MOVES_MODE）：按住 Shift 超過 RUN_HOLD 而且有方向鍵 = 跑（屏息時不能跑）；按住 C = 蹲（跑的時候站起來）
       let running = false, crouching = false;
       if (K.MOVES_MODE) {
         pl.runHeld = inp.run && !pl.breathing ? (pl.runHeld || 0) + dt : 0;
-        running = pl.runHeld >= K.RUN_HOLD - 1e-9 && Math.hypot(inp.mx, inp.mz) > 1e-6;
+        running = pl.runHeld >= K.RUN_HOLD - 1e-9 && Math.hypot(inp.mx, inp.mz) > 1e-6 && !inCircle;
         crouching = inp.crouch && !running;
         if (running !== !!pl.running) emit('sfx', running ? 'run_start' : 'run_stop', { x: pl.x, z: pl.z });
         if (crouching !== !!pl.crouching) emit('sfx', crouching ? 'crouch_on' : 'crouch_off', { x: pl.x, z: pl.z });
@@ -1360,11 +1385,38 @@
       // 移動與衝刺（屏息時不能動）
       const ox = pl.x, oz = pl.z;
       let walked = false;
+      let strideStepNow = null;   // 走法試驗場：這一幀踏出的一步 {masked, beatT, start, manual}
       if (!pl.breathing) {
         let mx = inp.mx, mz = inp.mz;
         const len = Math.hypot(mx, mz);
         if (len > 1) { mx /= len; mz /= len; }
-        if (len > 1e-6) {
+        if (strideMode && !running) {
+          // 第 11.4 節 P1：一步 STRIDE_LEN、花 STRIDE_SLIDE 秒滑過去；按住方向鍵時下一步落在下一個聽得到的鼓點（nextStepAt，最密 0.27 秒）。
+          // 站定後的第一步、以及 P2 圈內每一步（新按下方向鍵）都照起步判定（stepMasked，蹲著寬度 CROUCH_STEP_WIN），判定時間用按鍵當下（actAt）。
+          const pressed = len > 1e-6, edge = pressed && !pl.dirHeld;
+          pl.dirHeld = pressed;
+          const bx = pl.x, bz = pl.z;
+          if (pl.slide) {
+            const S = pl.slide, k = Math.min(1, (t - S.t0) / K.STRIDE_SLIDE);
+            moveBody(pl, S.dx * (k - S.k), S.dz * (k - S.k)); S.k = k;
+            if (k >= 1 - 1e-9) pl.slide = null;
+          } else if (pressed) {
+            const rested = t - pl.lastStrideT > K.STEP_GAP * K.STEP_GAP_MAX + 1e-9;
+            const go = inCircle ? edge : (rested || t >= pl.nextStrideT - 1e-9);
+            if (go) {
+              const L = K.STRIDE_LEN * (crouching ? K.CROUCH_SPEED_MUL : 1);
+              const judgeT = inCircle ? actT : t;
+              const start = inCircle || rested;
+              const masked = start ? stepMasked(judgeT, g, stepWin) : pl.nextStrideBeat != null;
+              strideStepNow = { masked, beatT: masked ? (start ? nearestMaskBeat(judgeT, g, stepWin) : pl.nextStrideBeat) : null, start, manual: inCircle };
+              pl.slide = { dx: mx * L, dz: mz * L, t0: t, k: 0 };
+              pl.lastStrideT = t;
+              const nx = nextStepAt(t, g);
+              pl.nextStrideT = nx.t; pl.nextStrideBeat = nx.beatT;
+            }
+          }
+          walked = Math.hypot(pl.x - bx, pl.z - bz) > 1e-6;
+        } else if (len > 1e-6) {
           const bx = pl.x, bz = pl.z;
           moveBody(pl, mx * speed * dt, mz * speed * dt);
           walked = Math.hypot(pl.x - bx, pl.z - bz) > 1e-6;
@@ -1402,9 +1454,10 @@
           runLoud = !masked;
           emit('sfx', 'run_step', { x: pl.x, z: pl.z, masked });
         }
-      } else if (walked) {
-        let stepNow = null;   // {masked, beatT}
-        if (!walking && t - lastStepT >= K.STEP_GAP * K.STEP_GAP_MIN - 1e-9) {
+      } else if (walked || strideStepNow) {
+        let stepNow = strideMode ? strideStepNow : null;   // {masked, beatT}；走法試驗場的步在上面移動時就決定了
+        if (strideMode) { /* 照上面 */ }
+        else if (!walking && t - lastStepT >= K.STEP_GAP * K.STEP_GAP_MIN - 1e-9) {
           const masked = stepMasked(t, g, stepWin);
           stepNow = { masked, beatT: masked ? nearestMaskBeat(t, g, stepWin) : null, start: true };   // 起步：站定後踏出的第一步
         } else {
@@ -1431,7 +1484,7 @@
               emit('sfx', 'step_loud', stepX({ x: pl.x, z: pl.z, beatT: null, start: false }));
             }
           } else
-          emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', stepX({ x: pl.x, z: pl.z, beatT: stepNow.beatT }));
+          emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', stepX(strideMode ? { x: pl.x, z: pl.z, beatT: stepNow.beatT, stride: true, manual: !!stepNow.manual } : { x: pl.x, z: pl.z, beatT: stepNow.beatT }));
           if (g.hunted) {
             if (stepNow.masked) {
               g.huntSteps++;
@@ -1604,7 +1657,9 @@
         const hearR = crouching ? Math.min(r, K.CROUCH_R) : r;   // 蹲走：離拍的聲音只傳 CROUCH_R
         const heardMove = mv && d <= hearR && (!coverEar || (stepLoud && p > K.HIGH_P));
         const pantMul = pl.panting ? K.RUN_PANT_MUL : 1;
-        const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR * pantMul;
+        // 走法試驗場：P1 兩步之間腳是停的，但按著方向鍵、還在走的節奏裡，不算「站著不動」（不然巡邏的衛兵會在你走路途中聽到站著的呼吸）
+        const standing = !moved && !(strideMode && pl.dirHeld && t - pl.lastStrideT < K.STEP_GAP * K.STEP_GAP_MAX);
+        const heardBreath = !pl.breathing && standing && d <= r * K.BREATH_HEAR * pantMul;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
         const heardStep = stepLoud && d < (crouching ? K.CROUCH_R : K.STEP_R);
         const heardRun = runLoud && d <= K.RUN_R;   // 搭配動作 A1：掩護窗外的跑步
@@ -1884,6 +1939,7 @@
       enterZone(z, true);
       if (lab === 'hunt') setupHuntLab();
       if (lab === 'check') setupCheckLab();
+      if (lab === 'walk') setupWalkLab();
       // 循環時鐘不重設：相位保持連續（聲音已排好的拍不會錯位），長度自己平滑逼近新目標
       emit('msg', '從「' + level.zones[z].name + '」重新開始。');
       g.alarm = 0;
