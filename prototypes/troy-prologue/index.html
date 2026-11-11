@@ -2799,11 +2799,28 @@ canvas.addEventListener('mousedown', e => {
 });
 window.addEventListener('mouseup', e => { if (e.button === 2) { if (mouseBreath) telInput('Mouse2', false); mouseBreath = false; } drag = null; });
 window.addEventListener('blur', () => { mouseBreath = false; });
+// 滑鼠轉視角的跳值防護（11/11 使用者回報「看的方向突然自己轉掉」）：
+//   (1) 指標鎖定時 Windows 的 Chrome 偶爾送出一次幾百像素的 movementX/Y（滑鼠沒動那麼多），鎖定後頭一兩個事件也常是跳值：
+//       鎖定後丟掉前 MOUSE_SKIP 個事件；單次超過 MOUSE_SPIKE、或超過 MOUSE_JUMP 且是最近平均的 MOUSE_JUMP_X 倍的事件當跳值丟掉
+//   (2) 沒鎖定改用拖曳時，放開按鍵的地方在視窗外就收不到 mouseup，之後不按鍵移動也會轉：沒按著左鍵就結束拖曳
+const MOUSE_SKIP = 2, MOUSE_SPIKE = 400, MOUSE_JUMP = 150, MOUSE_JUMP_X = 8;
+const MOUSE = { skip: 0, avg: 0, dropped: 0 };
+document.addEventListener('pointerlockchange', () => { MOUSE.skip = MOUSE_SKIP; MOUSE.avg = 0; });
+window.addEventListener('blur', () => { drag = null; });
 window.addEventListener('mousemove', e => {
   if (!active()) return;
   let dx = 0, dy = 0;
-  if (locked) { dx = e.movementX; dy = e.movementY; }
-  else if (drag) { dx = e.clientX - drag.x; dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; }
+  if (locked) {
+    dx = num(e.movementX, 0); dy = num(e.movementY, 0);
+    const m = Math.max(Math.abs(dx), Math.abs(dy));
+    if (MOUSE.skip > 0) { MOUSE.skip--; MOUSE.dropped++; return; }
+    // 丟掉時平均仍往上拉一點（最多算 MOUSE_JUMP）：真的從靜止快速甩動，只會丟第一個事件，下一個就收
+    if (m > MOUSE_SPIKE || (m > MOUSE_JUMP && m > MOUSE.avg * MOUSE_JUMP_X + 20)) { MOUSE.avg = MOUSE.avg * .8 + Math.min(m, MOUSE_JUMP) * .2; MOUSE.dropped++; return; }
+    MOUSE.avg = MOUSE.avg * .8 + m * .2;
+  } else if (drag) {
+    if (!(e.buttons & 1)) { drag = null; return; }
+    dx = e.clientX - drag.x; dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  }
   V.yaw -= dx * .0024;
   V.pitch = clamp(V.pitch - dy * .0024, -1.45, 1.2);
 });
