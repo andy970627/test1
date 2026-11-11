@@ -2431,3 +2431,203 @@ test('11/10 夜 M9：舊盲區版教學順序不變（區 1 屏息再盲區、�
   assert.equal(first('takedown').zone, 3);
   assert.equal(first('gate').zone, 4);
 });
+
+// ---------------- 11/11 木馬第 1 批（HORSE_MODE：A 腹中練習、C1 木馬陰影、?lab=belly；docs/design/2026-11-11-trojan-horse-directions.md） ----------------
+
+/** 木馬開關開、固定 10 秒循環的關卡。 */
+const hrs = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false, HORSE_MODE: true }, o.T || {}) }));
+/** 從 t 推到 t1（每幀 DT），回傳 {t, ev}：ev 是 sfx 事件（含附帶欄位與發生時間 t）。 */
+function runEv(g, t, t1, inputFn) {
+  const ev = [];
+  while (t < t1 - 1e-9 && g.phase === 'play') {
+    t = Math.min(t1, t + DT);
+    g.step(t, inputFn ? inputFn(g, t) : {});
+    for (const e of g.drain()) if (e.type === 'sfx') ev.push(Object.assign({ t }, e));
+  }
+  return { t, ev };
+}
+/** 腹中來回走的方向：靠近兩端就掉頭（不去踩暗門）。 */
+function paceDir(g, dir) { const x = g.player.x; return x > 10.2 ? -1 : x < 6 ? 1 : dir; }
+
+test('11/11 木馬：HORSE_MODE 預設關；開關關著時腹中、陰影都和原本一樣', () => {
+  assert.equal(K.HORSE_MODE, false);
+  assert.equal(K.BELLY_STEPS_NEED, 4);
+  const off = R.createLevel({ startZone: 1 });
+  assert.ok(!off.level.shadows.some((s) => s.name === '木馬東側的影子'), '關著不多陰影');
+  assert.equal(off.level.shadows.length, R.buildLevel().shadows.length);
+  const on = R.createLevel({ startZone: 1, T: { HORSE_MODE: true } });
+  assert.equal(on.level.shadows.length, R.buildLevel().shadows.length + 1);
+  // 開關關著：腹中照舊可以直接從暗門下去（不用先踩準）
+  const g = R.createLevel({ startZone: 1, T: { DYNAMIC: false } });
+  g.step(0, {}); g.drain();
+  place(g, 11, 15); g.step(DT, {});
+  assert.equal(g.zone, 2, '開關關著：走到暗門就下去');
+});
+
+test('11/11 木馬 A：腹中零失敗——出聲的腳步發 belly_hush、計數歸零，不進高度警覺、不失敗；衛兵就在正下方也一樣', () => {
+  const g = hrs({ startZone: 1 });
+  const q = g.guards.find((x) => x.zone === 1);
+  q.x = 8; q.z = 15; q.route = [{ x: 8, z: 15 }]; q.wp = 0;   // 衛兵就站在腹中正下方
+  let t = 6.4; g.step(t, {}); g.drain();                      // p > HIGH_P：舊版這時在腹中出聲就會被發現
+  place(g, 7, 15);
+  const all = [];
+  let dir = 1;
+  for (let k = 0; k < 6; k++) {
+    t = idleUntil(g, t, (gg, tt) => !R.stepMasked(tt, gg), t + 5);   // 離拍起步 → 出聲
+    g.drain();
+    const r = runEv(g, t, t + 0.2, (gg) => ({ mx: (dir = paceDir(gg, dir)) }));
+    t = r.t; all.push(...r.ev);
+    t = runEv(g, t, t + 0.6, () => ({})).t;
+  }
+  const hush = all.filter((e) => e.a === 'belly_hush');
+  assert.ok(hush.length >= 3, `有出聲的腳步：${all.map((e) => e.a).join(' ')}`);
+  assert.ok(!all.some((e) => e.a === 'step_loud'), '腹中不發 step_loud（改發 belly_hush）');
+  assert.ok(!all.some((e) => e.a === 'alerted' || e.a === 'hunt' || e.a === 'caught'));
+  assert.equal(g.phase, 'play');
+  assert.equal(q.state, 'patrol');
+  assert.equal(q.susp, 0, '衛兵什麼都沒察覺');
+  assert.equal(g.belly.ready, false);
+});
+
+test('11/11 木馬 A：連續 BELLY_STEPS_NEED 步踩準 → belly_ready（step_masked 帶 {n, need}）；踩歪歸零；之後下一個掩護窗 trapdoor_open，暗門才開', () => {
+  const g = hrs({ startZone: 1 });
+  let t = 1; g.step(t, {}); g.drain();
+  place(g, 11, 15); t += DT; g.step(t, {});
+  assert.equal(g.zone, 1, '沒達成前走到暗門不開');
+  assert.equal(g.belly.open, false);
+  place(g, 7, 15);
+  t = idleUntil(g, t, (gg, tt) => R.stepMasked(tt, gg), 9.5);   // 從可聽拍起步，之後腳步自己跟著鼓走
+  g.drain();
+  let dir = 1;
+  const r = runEv(g, t, t + 25, (gg) => (gg.belly.ready ? {} : { mx: (dir = paceDir(gg, dir)) }));
+  const steps = r.ev.filter((e) => e.a === 'step_masked');
+  assert.ok(steps.length && steps.every((e) => e.need === K.BELLY_STEPS_NEED && Number.isInteger(e.n) && e.n >= 1 && e.n <= K.BELLY_STEPS_NEED), '腹中的 step_masked 帶 {n, need}');
+  const ready = r.ev.find((e) => e.a === 'belly_ready');
+  assert.ok(ready, `要達成：${r.ev.map((e) => e.a + (e.n ? e.n : '')).join(' ')}`);
+  const before = r.ev.filter((e) => (e.a === 'step_masked' || e.a === 'belly_hush') && e.t <= ready.t).slice(-K.BELLY_STEPS_NEED);
+  assert.deepEqual(before.map((e) => e.n), Array.from({ length: K.BELLY_STEPS_NEED }, (_, i) => i + 1), 'belly_ready 前最後幾步依序 1..need');
+  const open = r.ev.find((e) => e.a === 'trapdoor_open');
+  assert.ok(open && open.t > ready.t, '達成之後才開');
+  assert.ok(g.belly.open);
+  const ws = R.blindWindows(ready.t + 1e-6, open.t + 1e-6, g);
+  assert.equal(ws.length, 1, `達成之後的「下一個」掩護窗：${JSON.stringify(ws)}`);
+  assert.ok(Math.abs(open.t - ws[0].from) <= DT + 1e-9, `開門在掩護窗開頭：${open.t} vs ${ws[0].from}`);
+  place(g, 11, 15); g.step(r.t + DT, {});
+  assert.equal(g.zone, 2, '開了之後走到暗門就下去');
+  // 踩歪歸零：另開一局，踩準 2 步後停下、離拍起步
+  const h = hrs({ startZone: 1 });
+  let u = 1; h.step(u, {}); place(h, 7, 15);
+  u = idleUntil(h, u, (gg, tt) => R.stepMasked(tt, gg), 9.5); h.drain();
+  let d2 = 1;
+  while (h.belly.n < 2 && u < 30) u = runEv(h, u, u + DT, (gg) => ({ mx: (d2 = paceDir(gg, d2)) })).t;
+  assert.equal(h.belly.n, 2);
+  u = runEv(h, u, u + 1.2, () => ({})).t;
+  u = idleUntil(h, u, (gg, tt) => !R.stepMasked(tt, gg), u + 5); h.drain();
+  const rr = runEv(h, u, u + DT, () => ({ mx: 1 }));
+  assert.ok(rr.ev.some((e) => e.a === 'belly_hush'), rr.ev.map((e) => e.a).join(' '));
+  assert.equal(h.belly.n, 0, '踩歪一步歸零');
+});
+
+test('11/11 木馬 A：開關開時第 1 區的進區提示改成腹中練習（數字由常數生成、不說「斷」「停」）；關著仍是踩拍走', () => {
+  const g = hrs({ startZone: 0 });
+  g.step(1, {}); g.start(); const out = g.drain();
+  const H = R.hintsFor(g.T);
+  assert.ok(out.some((e) => e.type === 'hint' && e.a === H.belly));
+  assert.equal(H.belly, '踩著鼓點走到前面。連續 ' + K.BELLY_STEPS_NEED + ' 步踩準，同伴就替你開門。');
+  assert.ok(R.hintsFor(Object.assign({}, K, { BELLY_STEPS_NEED: 6 })).belly.includes('連續 6 步'));
+  assert.ok(!/斷|停/.test(H.belly));
+  const off = R.createLevel({ startZone: 0 }); off.step(1, {}); off.start();
+  assert.ok(off.drain().some((e) => e.type === 'hint' && e.a === R.hintsFor(off.T).step));
+});
+
+test('11/11 木馬 C1：開關開時多一塊木馬東緣外 3 公尺的陰影，規則照現有陰影（站進去就藏起來）', () => {
+  const L = R.buildLevel();
+  const hs = R.horseShadowFor(L);
+  assert.deepEqual([hs.x0, hs.z0, hs.x1, hs.z1], [L.horse.x1, L.horse.z0, L.horse.x1 + 3, L.horse.z1]);
+  const g = hrs({ startZone: 2 });
+  assert.ok(g.level.shadows.some((s) => s.name === hs.name));
+  g.step(0, {});
+  place(g, (hs.x0 + hs.x1) / 2, (hs.z0 + hs.z1) / 2); g.step(DT, {});
+  assert.equal(g.player.hidden, true, '在木馬陰影裡');
+  const off = R.createLevel({ startZone: 2, T: { DYNAMIC: false } });
+  off.step(0, {}); place(off, (hs.x0 + hs.x1) / 2, (hs.z0 + hs.z1) / 2); off.step(DT, {});
+  const inOther = off.level.shadows.some((s) => R.inRect(off.player.x, off.player.z, s));
+  assert.equal(off.player.hidden, inOther, '開關關著：照原本的陰影');
+});
+
+test('11/11 木馬 C1：被追殺時躲進木馬陰影不動 ESCAPE_STILL 秒，甩掉追兵', () => {
+  const g = hrs({ startZone: 2 });
+  const hs = R.horseShadowFor(g.level);
+  const q = solo(g, 'g2a', 25, 15, Math.PI / 2);
+  place(g, (hs.x0 + hs.x1) / 2, (hs.z0 + hs.z1) / 2);
+  g.step(0.7, {}); g.drain();
+  q.state = 'hunted'; q.susp = 1; q.lastKnown = { x: 25, z: 15 }; g.hunted = true; g.stillT = 0;
+  const r = runEv(g, 0.7, 0.7 + K.ESCAPE_STILL + 0.5, () => ({}));
+  assert.ok(g.player.hidden);
+  assert.ok(r.ev.some((e) => e.a === 'escape'), r.ev.map((e) => e.a).join(' '));
+  assert.equal(g.hunted, false);
+  assert.equal(g.phase, 'play');
+});
+
+test('11/11 木馬 ?lab=belly：只有腹中、沒有衛兵、循環固定、開關自己開；爬下暗門就過關', () => {
+  const g = R.createLevel({ lab: 'belly' });
+  assert.equal(g.lab, 'belly');
+  assert.equal(g.T.HORSE_MODE, true);
+  assert.equal(g.T.DYNAMIC, false);
+  assert.equal(g.zone, 1);
+  assert.equal(g.phase, 'play');
+  assert.equal(g.guards.length, 0, '沒有衛兵');
+  g.step(0, {});
+  g.belly.open = true; place(g, 11, 15); g.step(DT, {});
+  assert.equal(g.phase, 'win');
+  assert.ok(g.drain().some((e) => e.a === 'trapdoor'));
+});
+
+/**
+ * ?lab=belly 的程式玩家。kind：
+ *   'perfect'：在腹中來回走；停著時只在「下一幀落在可聽拍上」才起步（涵蓋 1/144～1/30 秒），之後腳步自己跟鼓；
+ *              達成後停下等門，門開了走向暗門。
+ *   'sigma'：同上，起步判定用 t − e 那一刻（e ~ N(0, sigma)，每次起步重抽）。
+ *   'forward'：一直往暗門走，不管拍。
+ */
+function makeBellyBot(kind, sigma, seed) {
+  const rnd = R.mulberry32((seed || 1) * 31 + 7);
+  const gauss = () => { let u = 0; while (u === 0) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
+  let walking = false, dir = 1, err = sigma ? gauss() * sigma : 0;
+  return function (g) {
+    const t = g.time, B = g.belly, pl = g.player;
+    let out = {};
+    if (kind === 'forward') out = { mx: 1 };
+    else if (B.open) { const dx = 11 - pl.x, dz = 15 - pl.z, d = Math.hypot(dx, dz) || 1; out = { mx: dx / d, mz: dz / d }; }
+    else if (B.ready) out = {};
+    else {
+      const tv = walking ? t : t - err;
+      const ok = walking || [1 / 144, 1 / 60, 1 / 30].every((d) => R.stepMasked(tv + d, g));
+      if (ok) out = { mx: (dir = paceDir(g, dir)) };
+    }
+    const moving = !!(out.mx || out.mz);
+    if (moving && !walking && sigma) err = gauss() * sigma;
+    walking = moving;
+    return out;
+  };
+}
+function runBelly(kind, sigma, seed, maxT = 120) {
+  const t0 = (seed * 1.37) % 10;
+  const g = R.createLevel({ lab: 'belly', t0, seed });
+  const bot = makeBellyBot(kind, sigma, seed);
+  let t = t0; g.step(t, {});
+  let hush = 0;
+  while (g.phase === 'play' && t - t0 < maxT) { t += DT; g.step(t, bot(g)); for (const e of g.drain()) if (e.a === 'belly_hush') hush++; }
+  return { win: g.phase === 'win', time: t - t0, hush };
+}
+
+test('11/11 木馬 ?lab=belly 程式玩家：完美 20 局全過且中位 ≤ 20 秒；σ0.12 20 局全過且中位 ≤ 45 秒；只按前進 60 秒內過不了', () => {
+  const med = (a) => { const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+  const P = [], S = [], F = [];
+  for (let seed = 1; seed <= 20; seed++) { P.push(runBelly('perfect', 0, seed)); S.push(runBelly('sigma', 0.12, seed)); F.push(runBelly('forward', 0, seed, 60)); }
+  const pm = med(P.map((r) => r.time)), sm = med(S.map((r) => r.time));
+  console.log(`  [lab=belly] 完美：過 ${P.filter((r) => r.win).length}/20、中位 ${pm.toFixed(1)} 秒；σ0.12：過 ${S.filter((r) => r.win).length}/20、中位 ${sm.toFixed(1)} 秒、每局出聲 ${(S.reduce((a, r) => a + r.hush, 0) / 20).toFixed(1)} 次；只按前進：60 秒內過 ${F.filter((r) => r.win).length}/20`);
+  assert.ok(P.every((r) => r.win) && pm <= 20, `完美 ${P.filter((r) => r.win).length}/20、中位 ${pm}`);
+  assert.ok(S.every((r) => r.win) && sm <= 45, `σ0.12 ${S.filter((r) => r.win).length}/20、中位 ${sm}`);
+  assert.ok(F.every((r) => !r.win), `只按前進 60 秒內過了 ${F.filter((r) => r.win).length} 局`);
+});

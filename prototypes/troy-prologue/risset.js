@@ -77,6 +77,10 @@
     //   2. p > HIGH_P 時，踩在可聽拍上的腳步（step_masked）不算被聽見，出聲的腳步（step_loud）才進高度警覺；被看見照舊；
     //   3. 掩護窗內感知仍為 0（和盲區一樣）。另外火光改讀實際速度 danger，FIRE_BLIND 不用。
     COVER_MODE: true,
+    // 11/11 木馬第 1 批（docs/design/2026-11-11-trojan-horse-directions.md 第 1、3、4.1、6 節）：木馬新內容全部藏在這個開關後面；
+    // 關著時所有路徑和 11/11 報告版（c1d4aa3）完全一樣。網址 ?horse=1 開；createLevel({lab: 'belly'}) 自己開。
+    HORSE_MODE: false,
+    BELLY_STEPS_NEED: 4,  // 木馬腹中練習：連續幾步踩在鼓點上（step_masked），同伴才在下一個掩護窗替你拉開暗門【假設，待量】
     COVER_EAR_P: 0,       // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
@@ -478,6 +482,7 @@
       blind: cover ? '所有的鼓同時落下的那一擊最響，餘韻約 ' + num(K.BLIND_LEN) + ' 秒。這段時間衛兵什麼都察覺不到——趁這時移動。'
         : '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
       trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
+      belly: '踩著鼓點走到前面。連續 ' + num(K.BELLY_STEPS_NEED) + ' 步踩準，同伴就替你開門。',   // HORSE_MODE 的木馬腹中
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
       dash: cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
         : '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
@@ -557,6 +562,12 @@
   const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
 
   // ---------- 關卡資料：木馬之夜（整關 60 × 30 m） ----------
+  /** 木馬陰影（C1，HORSE_MODE）：木馬東緣往外 3 公尺、和木馬同寬的矩形。畫面層可以直接拿來畫。 */
+  function horseShadowFor(level) {
+    const h = level && level.horse;
+    if (!h) return null;
+    return { x0: h.x1, z0: h.z0, x1: h.x1 + 3, z1: h.z1, name: '木馬東側的影子' };
+  }
   function buildLevel() {
     const R = (x0, z0, x1, z1, name) => ({ x0, z0, x1, z1, name });
     const walls = [
@@ -679,13 +690,24 @@
     const oT = opts.T || {};
     if (oT.BLIND_LEN == null && oT.BLIND != null) K.BLIND_LEN = oT.BLIND;
     K.BLIND = K.BLIND_LEN;
+    // 試驗場 ?lab=belly：木馬開關開、循環固定（opts.T 可再覆寫）、只有腹中、沒有衛兵；爬下暗門就算過關
+    const lab = opts.lab === 'belly' ? 'belly' : null;
+    if (lab) { if (oT.HORSE_MODE == null) K.HORSE_MODE = true; if (oT.DYNAMIC == null) K.DYNAMIC = false; }
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
-    const level = opts.level || buildLevel();
+    let level = opts.level || buildLevel();
+    if (lab) level = Object.assign({}, level, { guards: [] });
+    if (K.HORSE_MODE) {
+      const hs = horseShadowFor(level);
+      if (hs && !level.shadows.some((s) => s.name === hs.name)) level = Object.assign({}, level, { shadows: level.shadows.concat([hs]) });
+    }
     const t0 = opts.t0 || 0;
-    const startZone = Math.max(0, Math.min(4, opts.startZone | 0));
+    const startZone = lab ? 1 : Math.max(0, Math.min(4, opts.startZone | 0));
 
     const g = {
       T: K,
+      lab,
+      // 木馬腹中練習（HORSE_MODE）：n 連續踩準幾步、need 要幾步、ready 達成（等下一個掩護窗）、open 暗門開了
+      belly: { n: 0, need: K.BELLY_STEPS_NEED, ready: false, open: false },
       phase: startZone === 0 ? 'intro' : 'play',
       zone: startZone,
       time: null,
@@ -726,6 +748,7 @@
     let preBlindCycle = null; // 每個循環只預告一次
     let blindHintGate = null; // {i, t}：進教盲區那一區時的循環與時間；盲區提示要等到下一個循環以後
     let dashHintGate = null;  // 殘響掩護教學：最響的一擊提示出過之後的循環；衝刺提示等到下一個掩護窗
+    let horsePrevBlind = true; // 木馬腹中練習：上一幀是否在掩護窗（偵測「窗剛開」那一幀；開局當作在窗裡，不會一開局就開門）
     let breathHintAt = null;  // 殘響掩護教學：第 3 區暗殺提示出現的時間；屏息提示至少隔 HINT_GAP 秒、等節奏快起來
     let huntCause = null;
     let clockT = null;    // 循環時鐘上次推進到的音訊時間
@@ -735,7 +758,7 @@
     let fakeWatch = null; // 暗示階梯「假驟降」：{index, moved}，這一輪假驟降的頭 BLIND_LEN 秒有沒有動
 
     // 提示文字：沒改常數就用共用的 HINTS／HINT_LADDER（畫面層可覆寫按鍵說法）；改了常數就照改過的數字重新生成
-    const HTXT = opts.T ? hintsFor(K) : HINTS;
+    const HTXT = (opts.T || lab) ? hintsFor(K) : HINTS;
     const LADDER = opts.T ? hintLadderFor(K) : HINT_LADDER;
     const CZ = opts.T ? causesFor(K) : CAUSES;
     const MOVE_HIGH_MSG = K.COVER_MODE ? '節奏最快的時候腳步露了聲——被發現了！' : '節奏最快的時候亂動——被發現了！';
@@ -801,7 +824,7 @@
       // 教學順序（M9）。一區只主動教一件新事；起疑、高度警覺、追殺、腳步太吵是「第一次發生時」才教（要馬上會解）。
       if (K.COVER_MODE) {
         // 殘響掩護版（總控 11/10 夜）：踩拍走 → 最響的一擊（衝刺、暗殺） → 被看見與屏息 → 警戒
-        if (z === 1) hint('step');                                   // 木馬腹中：踩著鼓點走，腳步被蓋過
+        if (z === 1) hint(K.HORSE_MODE ? 'belly' : 'step');          // 木馬腹中：踩著鼓點走，腳步被蓋過（HORSE_MODE：連續踩準幾步才開門）
         if (z === 2) { blindHintGate = null; dashHintGate = null; }  // 神殿廣場：第一個掩護窗教最響的一擊，下一個教衝刺
         if (z === 3) { hint('takedown'); breathHintAt = null; }      // 窄巷：最響的一擊暗殺；之後教被看見與屏息
         if (z === 4) hint('gate');
@@ -1102,6 +1125,19 @@
         if (stepNow) {
           lastStepT = t;
           stepLoud = !stepNow.masked;
+          if (K.HORSE_MODE && pl.inBelly) {
+            // 木馬腹中練習：零失敗。出聲的腳步不讓任何衛兵聽見，改發 belly_hush（同伴按住你）並歸零；踩準的帶 {n, need}
+            const B = g.belly;
+            stepLoud = false;
+            if (stepNow.masked) {
+              if (!B.ready) B.n = Math.min(B.need, B.n + 1);
+              emit('sfx', 'step_masked', { x: pl.x, z: pl.z, beatT: stepNow.beatT, n: B.n, need: B.need });
+              if (!B.ready && B.n >= B.need) { B.ready = true; emit('sfx', 'belly_ready'); }
+            } else {
+              if (!B.ready) B.n = 0;
+              emit('sfx', 'belly_hush', { x: pl.x, z: pl.z });
+            }
+          } else
           emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z, beatT: stepNow.beatT });
           if (g.hunted) {
             if (stepNow.masked) {
@@ -1217,6 +1253,12 @@
       if (g.panic.active && t - g.panic.start > K.CALM_TIMEOUT) startHunt(null, 'calm_slow', '安撫得太慢——衛兵大喊有人！');
       if (g.phase !== 'play') return g;
 
+      // 木馬腹中練習：達成之後的下一個掩護窗一開始，同伴趁那一擊拉開木栓（玩家什麼都不用按）
+      if (K.HORSE_MODE && g.zone === 1 && g.belly.ready && !g.belly.open && blind && !horsePrevBlind) {
+        g.belly.open = true;
+        emit('sfx', 'trapdoor_open');
+      }
+      horsePrevBlind = blind;
       // 盲區提示：不和進區提示同時出，等到進區之後的下一個循環、而且隔 HINT_GAP 秒以上。
       // 舊版在區 1（屏息之後）；殘響掩護版在區 2（踩拍走之後），出過之後下一個掩護窗再教衝刺。
       if (g.zone === (K.COVER_MODE ? 2 : 1)) {
@@ -1244,6 +1286,7 @@
           continue;
         }
         if (blind) continue; // 盲區：感知 = 0
+        if (K.HORSE_MODE && pl.inBelly) continue;   // 木馬腹中練習：衛兵什麼都察覺不到（零失敗）
         const alert = q.state === 'suspicious' || q.state === 'hunted' || q.state === 'alerted';
         const r = radiusAt(p, alert, K);
         const d = dist3(q, pl);
@@ -1381,7 +1424,8 @@
         let reached = false;
         if (Z.exit.kind === 'trapdoor') {
           reached = Math.hypot(pl.x - Z.exit.x, pl.z - Z.exit.z) <= K.TRAPDOOR_R;
-          if (pl.x > Z.belly.x0 + 2) hint('trapdoor');
+          if (K.HORSE_MODE && !g.belly.open) reached = false;      // 腹中練習：同伴還沒拉開木栓，暗門不開
+          if (pl.x > Z.belly.x0 + 2 && (!K.HORSE_MODE || g.belly.open)) hint('trapdoor');
         } else if (Z.exit.kind === 'rect') reached = inRect(pl.x, pl.z, Z.exit.rect);
         if (reached) {
           if (g.hunted) hint('lockedExit');
@@ -1392,6 +1436,7 @@
               pl.hidden = isHidden(pl);
               if (Z.exit.kind === 'trapdoor') emit('sfx', 'trapdoor');
             }
+            if (lab === 'belly' && Z.exit.kind === 'trapdoor') { g.phase = 'win'; return g; }   // 試驗場：爬下暗門就過關
             enterZone(Z.exit.to);
           }
         }
@@ -1446,7 +1491,7 @@
 
   return {
     T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES, causesFor,
-    createLevel, buildLevel,
+    createLevel, buildLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
     stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
