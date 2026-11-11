@@ -88,6 +88,7 @@
 - （11/11）`troy-prologue/index.html` 在工作區是 CRLF 換行：用指令碼改檔時跨行的錨點要先把 
  換成 
  再比對，寫回時換回 CRLF（git 會再正規化）。單行錨點不受影響。
+- （11/11）量場景亮度不要用遊戲畫布截圖：在頁內另開一個 WebGLRenderer（preserveDrawingBuffer）配俯視正交相機渲染同一個 scene，再 readPixels；火光每幀隨機閃，要多次取平均。
 - （11/10）PointsMaterial 的點離鏡頭太近會放大成一大團光斑；灑在鏡頭四周的粒子至少離 1 公尺。
 - （11/10）木馬之夜在 claude.ai 預覽以 `file://` 開時，`../nav.js`、`../telemetry.js` 都載不到；本機測試用暫存站台：複製 `nav.js`、`telemetry.js` 到根目錄，原型放子資料夾，index 包外殼，`python -m http.server 8781`（8765 埠被別的程式佔用）。
 
@@ -133,5 +134,6 @@
 - 11/11（畫面）換層試驗場 `prototypes/layer-ride/index.html` 第一次在瀏覽器實開：載入、console 無錯誤、聲部譜與數字面板在動、W 前進、Q 換層（面板顯示偏差）、提示依事件切換、滑桿按重來生效、`?CYCLE=12` 覆寫、`?aid=0` 關聲部譜都正常。補了 `?mute=1`（同木馬之夜的總閘做法；這頁不鎖滑鼠，nolock 不用處理）；`?aid=0` 時數字面板的騎的聲部、下一條、換層窗三列改顯示「（聲部譜關閉）」，免得用眼睛看出時機。總首頁照規格不加連結。截圖在暫存 `shots-layer-ride/`。
 - 11/11（畫面）木馬第 1 批（設計文件 2026-11-11-trojan-horse-directions.md 方向 A、C1；規則 0e01020）：`?horse=1` 時 newGame 傳 `T.HORSE_MODE`，`?lab=belly` 時傳 `lab`；判斷用 `horseOn()`。腹中物件由 `buildBellyPractice()` 在開關開時才建（前端橫樑的刻痕 need 格、腳下淡藍光縫、東邊鉸鏈的暗門蓋、木栓與同伴的手），`bellyEvent()` 處理 step_masked（只有 start 不是 false 才亮縫）／belly_hush（同伴的手 `HW.hushKick`）；`bellyFrame()` 每幀直接讀 `game.belly.n/ready/open`（刻痕不自己數）；木板縫火光加 `VIS.pulse`。木馬陰影不用另外畫：規則把它加進 level.shadows，原有的陰影畫法就畫出來。試驗場面板 `#labPanel`／`labHud()`／`LABS`（偏差＝beatT − 事件時間，正＝早踩），低通先放占位；過關畫面在試驗場換成「爬下暗門了」。入口在實驗開關「試驗場：木馬腹中練習」（連結會帶上 mute、nolock）。驗證：內建瀏覽器三種網址都實測，沒帶參數時開關關、沒陰影、沒新物件、面板不出現；全套測試 294 項通過；截圖在暫存 `shots-horse1/`。
 - 11/11（畫面）照 1.1 節定案的事件補完（b6765e5 之後，未提交）：起步 step_masked {start:true} 亮縫、續步 {start:false} 不亮但面板列「續步」；belly_hush {n, need, cost} 面板寫「起步踩歪，同伴按住你（熄 cost 格）」，刻痕照 game.belly.n；腹中的 step_loud {start:false} 面板寫「續步出聲（不扣格）」。進區提示 belly 用規則現有字句（「站定，等鼓點，再踏出去。…」），不另提。驗證：?lab=belly 實測起步、續步，另手動送 hush 與 step_loud 確認面板；294 項測試通過。
+- 11/11（畫面）C1 補充裁決：開關開時路線暗示第一個火盆 (15.5, 18.3, dim 1) 移到 (17.3, 18.3)，影子不動；開關關著不動。亮度量法：頁內另開一個 WebGLRenderer，俯視正交相機（y 6，x 8～22、z 8～24，關霧），讀像素算亮度（0.2126R＋0.7152G＋0.0722B），12 次取平均（火光每幀閃）。結果：東側影子 9.06、影子外 2 公尺 34.46（比值 0.26 ≤ 0.5）、「木馬的影子」16.48，都過，不用加深；對照火盆在原位 9.25／33.2／17.45。截圖在暫存 `shots-horse-shadow/`。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
