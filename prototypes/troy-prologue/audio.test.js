@@ -81,3 +81,35 @@ test('慢低音只當氣氛：查看中的衛兵貼近時比平時重，但不�
   assert.ok(C.CHECK_BASS_MAX > C.BASS_BASE && C.CHECK_BASS_MAX <= 1);
   assert.ok(C.CHECK_BASS_R > 0);
 });
+
+// 新鼓聲（鼓聲換皮）：docs/design/2026-11-11-illusion-not-heard.md 第 13.3 節第一步
+test('新鼓聲：規則認定踩得上的拍（規則音量 ≥ MASK_GAIN），在新聲音裡都 ≥ 最大聲那條的 0.4 倍（巡邏 4 層、追殺 5 層，掃整圈）', () => {
+  const R = require('./risset.js');
+  for (const hunted of [false, true]) {
+    const nL = R.layerCount(hunted, R.T);
+    let n = 0, worst = Infinity;
+    for (let i = 0; i < 1000; i++) {
+      const p = i / 1000, g = A.newDrumGains(p, nL, (k, pp) => R.layerGain(k, pp, hunted, R.T)), mx = Math.max(...g);
+      for (let k = 0; k < nL; k++) {
+        if (R.layerGain(k, p, hunted, R.T) < R.T.MASK_GAIN) continue;
+        n++; worst = Math.min(worst, g[k + 1] / mx);
+        assert.ok(g[k + 1] >= 0.4 * mx, `hunted=${hunted} p=${p} 規則第 ${k} 層：新聲音 ${g[k + 1].toFixed(3)} < 0.4 × ${mx.toFixed(3)}`);
+      }
+    }
+    assert.ok(n > 0 && worst >= 0.4);
+  }
+});
+
+test('新鼓聲：最慢那條進場、最快那條退場時 ≤ −40 dB（接縫淡到零），總和和規則一樣', () => {
+  const R = require('./risset.js');
+  for (const hunted of [false, true]) {
+    const nL = R.layerCount(hunted, R.T), rg = (k, pp) => R.layerGain(k, pp, hunted, R.T);
+    const g0 = A.newDrumGains(0, nL, rg), g1 = A.newDrumGains(1 - 1e-9, nL, rg);
+    assert.ok(g0[0] / Math.max(...g0) <= 0.01, `進場 ${g0[0] / Math.max(...g0)}`);
+    assert.ok(g1[nL + 1] / Math.max(...g1) <= 0.01, `退場 ${g1[nL + 1] / Math.max(...g1)}`);
+    for (const p of [0, 0.3, 0.77]) {
+      const s = A.newDrumGains(p, nL, rg).reduce((a, b) => a + b, 0); let sr = 0; for (let k = 0; k < nL; k++) sr += rg(k, p);
+      assert.ok(Math.abs(s - sr * C.DN_SCALE) < 1e-9);
+    }
+  }
+});

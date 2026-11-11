@@ -200,6 +200,15 @@
     ILL_U_MIN_GAIN: 0.003,     // U 版低於這個音量的拍不排（約 −50 dB；現行 0.02 約 −34 dB，進場會有一點斷崖）
     ILL_PITCH: [1, 1.1225, 1.3348],   // U2：三個音高輪流（低、高一個全音、再高一個小三度），每條鼓從進場到退場固定
     ILL_RISE_ST: 5,            // U3：每條鼓從進場到退場再升幾個半音（5＝四度；框鼓的「啪」在 900→1200 Hz，落在 800 Hz 以上）
+    // 新鼓聲進遊戲第一步「鼓聲換皮」（docs/design/2026-11-11-illusion-not-heard.md 第 13.3 節）：T.DRUMS 'new'（預設跟著 MOVES_MODE）／'old'
+    // 規則的層原封不動放中間（拍點、哪些拍踩得上都照規則），下面多一條（第 0 層的隔拍）、上面多一條（規則表再往上一層）
+    DN_SIG_L: 1.26,            // 鐘形寬度（以「層」為單位；U1 的 0.21 × 6）；中心對準規則各層的中心
+    DN_SCALE: 0.9,             // 整體音量倍數（每個瞬間各條總和先縮放回規則的總和，再乘這個；1 時拍子變密、整段比舊版大 3.1 dB）
+    DN_MIN_GAIN: 0.003,        // 低於這個音量的拍不排（約 −50 dB，進退場淡到零）
+    DN_ROLL_CAP: 0.4,          // 每圈末（ILL_ROLL_FROM 起）最快那條漸強的終點：min(最大聲那條, 總和 × 0.4)
+    DN_ROLL_MUL: 0.5,          // 漸強終點再乘這個值（V3 的做法：漸強的最後幾拍是那一擊前一秒內最響的）
+    DN_PRE: 1, DN_PRE_DB: -9,  // 那一擊之前 DN_PRE 秒，全部鼓一起退 DN_PRE_DB（一起退，各拍的相對大小不變，踩得上的拍照樣聽得到）
+    DN_CLEAR_AFTER: 0.15,      // 那一擊之後幾秒其他鼓讓開（在掩護窗裡，規則不算這些拍）
     // 第三輪試聽 V1～V3（同文件第 10.1 節）：最響的一擊從循環起點解開，落在對齊點上（聽得到的最慢那條鼓的一拍＝所有聽得到的鼓同時落下）
     V_GAP_MIN: 6, V_GAP_MAX: 14,   // 兩次之間的目標間隔（秒，循環 12 秒時；其他循環長度等比例），落到目標之後的第一個對齊點
                                // （規格寫「隔 4～7 個對齊點」，但對齊點實際每 0.4～0.8 秒一個，4～7 個只有 1.6～5.6 秒、比預告還短；照規格要的 6～14 秒做）
@@ -324,6 +333,15 @@
   function bell(x, sigma) { var d = (x - 0.5) / (sigma || C.BELL_SIGMA); return Math.exp(-d * d); }
   function log2(v) { return Math.log(v) / Math.LN2; }
 
+  // 新鼓聲（第 13.3 節）各條音量：規則 nL 層放中間、上下各多一條（共 nL + 2 條），同一個鐘形（寬 DN_SIG_L 層）、中心對準規則的中心；
+  // 每個瞬間把總和縮放回規則各層音量的總和（ruleGain(k, p) 是規則第 k 層的音量）。聲音第 j 條＝規則第 j − 1 層。純函式，測試直接用
+  function newDrumGains(p, nL, ruleGain) {
+    var nS = nL + 2, sc = 0, sa = 0, g = [], j, sx = C.DN_SIG_L / nS;
+    for (j = 0; j < nL; j++) sc += ruleGain(j, p);
+    for (j = 0; j < nS; j++) { var d = ((j + p) / nS - 0.5) / sx; g.push(Math.exp(-d * d)); sa += g[j]; }
+    for (j = 0; j < nS; j++) g[j] = sa > 0 ? g[j] * sc / sa * C.DN_SCALE : 0;
+    return g;
+  }
   function phaseAt(t, T, t0) { return frac((t - t0) / T); }
   // 第 k 層、第 c 個循環的所有拍點（絕對時間），規則與測試可用
   function beatTimes(k, c, T, t0) {
@@ -737,7 +755,53 @@
       for (var j = 0; j < nL; j++) { sc += ownBell(j, p, nL); sa += asymBell((j + p) / nL); }
       return sa > 0 ? asymBell((k + p) / nL) * sc / sa : 0;
     }
-    function illTimbre(x) { return ill.timbre ? C.ILL_TIMBRE_X : x; }
+    function illTimbre(x) { return (ill.timbre || dnOn()) ? C.ILL_TIMBRE_X : x; }
+    // ---------- 新鼓聲（鼓聲換皮，第 13.3 節第一步）----------
+    // 只看遊戲傳進來的 state.T：還沒收到狀態時（建立後的第一次預排）規則檔的預設是 MOVES_MODE 開，會誤排成新鼓聲，?moves=0 開頭那段就不一樣了
+    function dnOn() { var K = lastState && lastState.T; return !!(K && typeof K === 'object' && K.MOVES_MODE === true && K.DRUMS !== 'old') && !(ill && ill.u); }   // ?moves=0 一律舊鼓聲；試聽頁的試聽版優先
+    var dnSlow = null, dnSlowSrc = null;
+    function dnTab(k) {                 // 聲音第 j 條＝規則第 k = j − 1 層；k = −1 用第 0 層的隔拍（每個都是第 0 層的拍，所以對得齊）
+      if (k >= 0) return tables[k];
+      if (dnSlowSrc !== tables[0]) { dnSlowSrc = tables[0]; dnSlow = tables[0] ? tables[0].filter(function (v, i) { return i % 2 === 0; }) : null; }
+      return dnSlow;
+    }
+    function dnGains(p, hunted) { return newDrumGains(p, baseLayerCount(hunted), function (k, pp) { return curGain(k, pp, hunted); }); }
+    function dnGain(j, p, t, c, hunted) {
+      var gs = dnGains(p, hunted), nS = gs.length, g = gs[j];
+      if (j === nS - 1 && p >= C.ILL_ROLL_FROM) {   // 每圈末最快那條越打越密衝進那一擊（U4）
+        var S = 0, gm = 0; for (var i = 0; i < nS; i++) { S += gs[i]; gm = Math.max(gm, gs[i]); }
+        var g0 = dnGains(C.ILL_ROLL_FROM, hunted)[nS - 1], tgt = Math.min(gm, C.DN_ROLL_CAP * S) * C.DN_ROLL_MUL, u = (p - C.ILL_ROLL_FROM) / (1 - C.ILL_ROLL_FROM);
+        if (tgt > g) g = g0 > 0 ? Math.max(g, g0 * Math.pow(tgt / g0, u)) : tgt * u;
+      }
+      if (coverMode()) {                // 最響的一擊（每圈起點）拉回來
+        if (t - tAt(c) < C.DN_CLEAR_AFTER) return 0;
+        if (tAt(c + 1) - t < C.DN_PRE) g *= Math.pow(10, C.DN_PRE_DB / 20);
+      }
+      return g;
+    }
+    function scheduleBeatsNew(from, end, ws) {
+      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + 2;
+      if (tables.length < nL) refreshTables();
+      var M0 = tables[0] ? tables[0].length : ruleM();
+      while (tables.length < nL + 1) tables.push(ownTable(tables.length, M0));   // 最上面那條：規則表再往上一層（拍數照第 0 層擴展）
+      for (var j = 0; j < nS; j++) {
+        var k = j - 1, tab = dnTab(k);
+        if (!tab) continue;
+        for (var c = Math.floor(Pa); c <= Math.floor(Pb); c++) {
+          for (var n = lowerBound(tab, Pa - c); n < tab.length && c + tab[n] < Pb; n++) {
+            var nn = k < 0 ? n * 2 : n, key = 'b' + c + ':' + k + ':' + nn;
+            if (evs[key]) continue;
+            var p = tab[n], P = c + p, t = tAt(P);
+            if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;
+            var g = dnGain(j, p, t, c, st.hunted);
+            if (g < C.DN_MIN_GAIN) continue;
+            var le = log ? { type: 'beat', k: k, n: nn, c: c, t: t, p: p, g: g, drums: 'new' } : null;
+            if (le) log.push(le);
+            (function (g) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, C.ILL_TIMBRE_X, tt, g); }, true, le); })(g);
+          }
+        }
+      }
+    }
     // U1：6 層、左右對稱的鐘形，每個瞬間把總和縮放回現行（規則的 4 層）總和——整體音量和現行一樣，只是分給更多條鼓
     function uCS() { return ill.layers === 8 ? [C.ILL_U8_CENTER, C.ILL_U8_SIG] : [C.ILL_U_CENTER, C.ILL_U_SIG]; }
     function uBase(k, p, nL) { var cs = uCS(), d = ((k + p) / nL - cs[0]) / cs[1]; return Math.exp(-d * d); }
@@ -1328,7 +1392,7 @@
     var guardOut = ctx.createGain(); guardOut.gain.value = 1; guardOut.connect(master);   // 衛兵 3D 聲音（盲區壓低、不全靜音）
     // 搭配動作（MOVES_MODE）。C1 屏息聽：一般鼓拍改走 beatBus（屏息時退後），最響的一擊（重合擊）照舊直接進 rhythmBus、不退；
     // 衛兵的 panner 改接 guardListen（屏息時提高）。開關關著時鼓拍和衛兵照舊直接接 rhythmBus／guardOut，路徑和以前一模一樣
-    function movesOn() { var K = RK(); return !!(K && K.MOVES_MODE === true); }
+    function movesOn() { var K = lastState && lastState.T; return !!(K && typeof K === 'object' && K.MOVES_MODE === true); }   // 同 dnOn：只看遊戲傳進來的狀態
     var beatBus = ctx.createGain(); beatBus.gain.value = 1; beatBus.connect(rhythmBus);
     var guardListen = ctx.createGain(); guardListen.gain.value = 1; guardListen.connect(guardOut);
     var listen = { on: false, amt: 0 };   // amt：側向放大用（0 或 1，panner 自己有 0.03 秒平滑）
@@ -1459,6 +1523,7 @@
     // Risset 打擊：[from, end) 內每層每拍，已排過的（evs 有）跳過，盲區不排。
     // 拍點時間用本檔的外推（tAt），音量用規則的 layerGain（A2），追殺時 5 層、音色位置 x = (k + p) ÷ 層數。
     function scheduleBeats(from, end, ws) {
+      if (dnOn()) { scheduleBeatsNew(from, end, ws); scheduleFakeTails(from, end); return; }   // 新鼓聲（T.DRUMS）
       var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), gMin = ill.u ? C.ILL_U_MIN_GAIN : minGain();   // 追殺 5 層、巡邏 4 層（規則決定）
       if (tables.length < nL) refreshTables();
       for (var k = 0; k < nL; k++) {
@@ -2423,6 +2488,8 @@
         scheduleTo(now + C.LOOKAHEAD, now);
       },
       setListener: setListener,
+      // 新鼓聲（第 13.3 節）：drumsInfo(p, hunted) 回傳聲音各條的音量（第 j 條＝規則第 j − 1 層），沒套那一擊前後的處理與漸強；on＝現在是不是新鼓聲
+      drumsInfo: function (p, hunted) { return { on: dnOn(), gains: dnGains(frac(+p || 0), !!hunted) }; },
       tap: function (node) { comp.connect(node); },   // 試聽頁接分析器量輸出（只多接一條，不改原本的輸出）
       // 搭配動作：t（音訊時間）之後的衛兵腳步 [{x, z, t, id}]，t 是那一步實際響起的時間（可能比現在晚幾十毫秒，畫面等到 t 再畫）；開關關著時是空陣列
       guardStepsSince: function (t) { var a = +t; if (!isFinite(a)) a = -Infinity; return stepMarks.filter(function (m) { return m.t > a; }).map(function (m) { return { x: m.x, z: m.z, t: m.t, id: m.id }; }); },
@@ -2551,5 +2618,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain };
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains };
 });
