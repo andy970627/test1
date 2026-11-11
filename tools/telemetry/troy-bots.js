@@ -24,7 +24,7 @@ function makeBot(opts = {}) {
     3: [{ x: 34, z: 25.5 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
     4: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.5 }]
   };
-  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false, hideAt = null;
+  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false, hideAt = null, hideCk = null;
   const erng = R.mulberry32((opts.seed || 1) * 97 + 13);
   const gauss = () => { let u = 0, v = 0; while (u === 0) u = erng(); v = erng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
   let curErr = opts.sigma ? gauss() * opts.sigma : 0;
@@ -71,6 +71,64 @@ function makeBot(opts = {}) {
       if (bd > 0.3) { inp.mx = (best.x - pl.x) / bd; inp.mz = (best.z - pl.z) / bd; if (blind) inp.dash = true; }
       return inp;
     }
+    // 第 13 節（MOVES_MODE）：衛兵過來查看 → 退開並屏息：踩著鼓點走到「離他要去的那一點 3 公尺以上」的影子角落（6 公尺內、直線走得到），
+    // 沒有就退到離那一點 3 公尺外；到了以後他進到 3 公尺內就屏息（快憋不住就放開）。查看結束先沿原路走回躲之前的位置，再接著走路線。
+    const chk = K.MOVES_MODE ? act.filter((q) => q.state === 'checking') : [];
+    const clearPath = (x0, z0, x1, z1) => {
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.25));
+      for (let k = 0; k <= n; k++) {
+        const x = x0 + (x1 - x0) * k / n, z = z0 + (z1 - z0) * k / n;
+        if (g.level.walls.some((wl) => x > wl.x0 - 0.35 && x < wl.x1 + 0.35 && z > wl.z0 - 0.35 && z < wl.z1 + 0.35)) return false;
+      }
+      return true;
+    };
+    const stepOk = () => walkingPrev || [1 / 144, 1 / 60, 1 / 30].every((dd) => R.stepMasked(t + dd, g));
+    if (chk.length && !g.hunted) {
+      let cq = null, cd = 1e9;
+      for (const q of chk) { const d = Math.hypot(q.x - pl.x, q.z - pl.z); if (d < cd) { cd = d; cq = q; } }
+      const holdOk = pl.breathT < K.BREATH_MAX - 0.2;
+      // 有任何一名查看中的衛兵要去的點落在躲點 3 公尺內，就換地方（走過的點記在 trail，回程倒著走）
+      const threat = (x, z) => chk.some((q) => q.check && Math.hypot(q.check.walkTo.x - x, q.check.walkTo.z - z) < 3);
+      if (!hideCk || (Math.hypot(hideCk.x - pl.x, hideCk.z - pl.z) <= 0.2 && threat(hideCk.x, hideCk.z) && !hideCk.moved2)) {
+        if (hideCk) hideCk.moved2 = true;
+        const w = cq.check ? cq.check.walkTo : cq;
+        let best = null, bt = 1e9;
+        for (const s of g.level.shadows) {
+          for (const [x, z] of [[s.x0 + 0.4, s.z0 + 0.4], [s.x0 + 0.4, s.z1 - 0.4], [s.x1 - 0.4, s.z0 + 0.4], [s.x1 - 0.4, s.z1 - 0.4], [(s.x0 + s.x1) / 2, (s.z0 + s.z1) / 2]]) {
+            const tr = Math.hypot(x - pl.x, z - pl.z);
+            if (tr > 6 || tr >= bt || threat(x, z) || Math.hypot(x - w.x, z - w.z) < 3 || !clearPath(pl.x, pl.z, x, z)) continue;
+            bt = tr; best = { x, z };
+          }
+        }
+        if (!best) {
+          // 沒有影子可躲：沿來時的路線往回退（上一個路線點，或這一區的起點），退到離那一點 3.2 公尺外
+          const prev = wi > 0 ? WP[g.zone][wi - 1] : g.level.zones[g.zone].start;
+          const ux = prev.x - pl.x, uz = prev.z - pl.z, ul = Math.hypot(ux, uz);
+          if (Math.hypot(pl.x - w.x, pl.z - w.z) >= 3.2 || ul < 0.3) best = { x: pl.x, z: pl.z };
+          else for (let k = 0.5; k <= Math.min(6, ul) + 1e-9; k += 0.5) {
+            const x = pl.x + ux / ul * k, z = pl.z + uz / ul * k;
+            best = { x, z };
+            if (Math.hypot(x - w.x, z - w.z) >= 3.2) break;
+          }
+        }
+        if (!hideCk) hideCk = { trail: [] };
+        hideCk.trail.push({ x: pl.x, z: pl.z });
+        hideCk.x = best.x; hideCk.z = best.z;
+      }
+      const mx = hideCk.x - pl.x, mz = hideCk.z - pl.z, ml = Math.hypot(mx, mz);
+      if (ml > 0.2) {
+        if (pl.breathing && cd <= 3 && holdOk) { inp.breath = true; return inp; }
+        if (stepOk()) { inp.mx = mx / ml; inp.mz = mz / ml; }
+      } else if (cd <= 3 && holdOk) inp.breath = true;
+      return inp;
+    }
+    while (hideCk && !g.hunted && hideCk.trail.length) {   // 查看結束：沿走過的點倒著走回躲之前的位置
+      const b = hideCk.trail[hideCk.trail.length - 1];
+      const bx = b.x - pl.x, bz = b.z - pl.z, bl = Math.hypot(bx, bz);
+      if (bl > 0.3) { if (stepOk()) { inp.mx = bx / bl; inp.mz = bz / bl; } return inp; }
+      hideCk.trail.pop();
+    }
+    hideCk = null;
     if (g.panic.active) {
       const b = R.bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN);
       if (Math.abs(b.off) < 0.03 && calmBeat !== b.beat) { inp.calm = true; calmBeat = b.beat; }

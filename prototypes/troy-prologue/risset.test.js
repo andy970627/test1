@@ -1420,7 +1420,7 @@ function makeBot(opts = {}) {
     3: [{ x: 34, z: 25.5 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
     4: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.5 }]
   };
-  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false, hideAt = null;
+  let zone = -1, wi = 0, calmBeat = null, walkingPrev = false, hideAt = null, hideCk = null;
   const erng = R.mulberry32((opts.seed || 1) * 97 + 13);
   const gauss = () => { let u = 0, v = 0; while (u === 0) u = erng(); v = erng(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
   let curErr = opts.sigma ? gauss() * opts.sigma : 0;
@@ -1467,6 +1467,64 @@ function makeBot(opts = {}) {
       if (bd > 0.3) { inp.mx = (best.x - pl.x) / bd; inp.mz = (best.z - pl.z) / bd; if (blind) inp.dash = true; }
       return inp;
     }
+    // 第 13 節（MOVES_MODE）：衛兵過來查看 → 退開並屏息：踩著鼓點走到「離他要去的那一點 3 公尺以上」的影子角落（6 公尺內、直線走得到），
+    // 沒有就退到離那一點 3 公尺外；到了以後他進到 3 公尺內就屏息（快憋不住就放開）。查看結束先沿原路走回躲之前的位置，再接著走路線。
+    const chk = K.MOVES_MODE ? act.filter((q) => q.state === 'checking') : [];
+    const clearPath = (x0, z0, x1, z1) => {
+      const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.25));
+      for (let k = 0; k <= n; k++) {
+        const x = x0 + (x1 - x0) * k / n, z = z0 + (z1 - z0) * k / n;
+        if (g.level.walls.some((wl) => x > wl.x0 - 0.35 && x < wl.x1 + 0.35 && z > wl.z0 - 0.35 && z < wl.z1 + 0.35)) return false;
+      }
+      return true;
+    };
+    const stepOk = () => walkingPrev || [1 / 144, 1 / 60, 1 / 30].every((dd) => R.stepMasked(t + dd, g));
+    if (chk.length && !g.hunted) {
+      let cq = null, cd = 1e9;
+      for (const q of chk) { const d = Math.hypot(q.x - pl.x, q.z - pl.z); if (d < cd) { cd = d; cq = q; } }
+      const holdOk = pl.breathT < K.BREATH_MAX - 0.2;
+      // 有任何一名查看中的衛兵要去的點落在躲點 3 公尺內，就換地方（走過的點記在 trail，回程倒著走）
+      const threat = (x, z) => chk.some((q) => q.check && Math.hypot(q.check.walkTo.x - x, q.check.walkTo.z - z) < 3);
+      if (!hideCk || (Math.hypot(hideCk.x - pl.x, hideCk.z - pl.z) <= 0.2 && threat(hideCk.x, hideCk.z) && !hideCk.moved2)) {
+        if (hideCk) hideCk.moved2 = true;
+        const w = cq.check ? cq.check.walkTo : cq;
+        let best = null, bt = 1e9;
+        for (const s of g.level.shadows) {
+          for (const [x, z] of [[s.x0 + 0.4, s.z0 + 0.4], [s.x0 + 0.4, s.z1 - 0.4], [s.x1 - 0.4, s.z0 + 0.4], [s.x1 - 0.4, s.z1 - 0.4], [(s.x0 + s.x1) / 2, (s.z0 + s.z1) / 2]]) {
+            const tr = Math.hypot(x - pl.x, z - pl.z);
+            if (tr > 6 || tr >= bt || threat(x, z) || Math.hypot(x - w.x, z - w.z) < 3 || !clearPath(pl.x, pl.z, x, z)) continue;
+            bt = tr; best = { x, z };
+          }
+        }
+        if (!best) {
+          // 沒有影子可躲：沿來時的路線往回退（上一個路線點，或這一區的起點），退到離那一點 3.2 公尺外
+          const prev = wi > 0 ? WP[g.zone][wi - 1] : g.level.zones[g.zone].start;
+          const ux = prev.x - pl.x, uz = prev.z - pl.z, ul = Math.hypot(ux, uz);
+          if (Math.hypot(pl.x - w.x, pl.z - w.z) >= 3.2 || ul < 0.3) best = { x: pl.x, z: pl.z };
+          else for (let k = 0.5; k <= Math.min(6, ul) + 1e-9; k += 0.5) {
+            const x = pl.x + ux / ul * k, z = pl.z + uz / ul * k;
+            best = { x, z };
+            if (Math.hypot(x - w.x, z - w.z) >= 3.2) break;
+          }
+        }
+        if (!hideCk) hideCk = { trail: [] };
+        hideCk.trail.push({ x: pl.x, z: pl.z });
+        hideCk.x = best.x; hideCk.z = best.z;
+      }
+      const mx = hideCk.x - pl.x, mz = hideCk.z - pl.z, ml = Math.hypot(mx, mz);
+      if (ml > 0.2) {
+        if (pl.breathing && cd <= 3 && holdOk) { inp.breath = true; return inp; }
+        if (stepOk()) { inp.mx = mx / ml; inp.mz = mz / ml; }
+      } else if (cd <= 3 && holdOk) inp.breath = true;
+      return inp;
+    }
+    while (hideCk && !g.hunted && hideCk.trail.length) {   // 查看結束：沿走過的點倒著走回躲之前的位置
+      const b = hideCk.trail[hideCk.trail.length - 1];
+      const bx = b.x - pl.x, bz = b.z - pl.z, bl = Math.hypot(bx, bz);
+      if (bl > 0.3) { if (stepOk()) { inp.mx = bx / bl; inp.mz = bz / bl; } return inp; }
+      hideCk.trail.pop();
+    }
+    hideCk = null;
     if (g.panic.active) {
       const b = R.bassBeatNear(t, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN);
       if (Math.abs(b.off) < 0.03 && calmBeat !== b.beat) { inp.calm = true; calmBeat = b.beat; }
@@ -2074,7 +2132,7 @@ test('hintSignals：屏息警告、可暗殺、背後有人、門閂旁的高低
 // ---------------- 11/10 核心方向甲「殘響掩護」（COVER_MODE，docs/design/2026-11-10-core-direction-illusion.md 第 1 節） ----------------
 
 /** 殘響掩護版、固定 10 秒循環。 */
-const cvr = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false, COVER_MODE: true }, o.T || {}) }));
+const cvr = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false, COVER_MODE: true, MOVES_MODE: false }, o.T || {}) }));   // 11/10 的殘響掩護測試：搭配動作（11/11）關著
 /** 從 t 開始空跑到 cond(g, t) 成立為止（每幀 DT），回傳那時的 t。 */
 function idleUntil(g, t, cond, maxT) {
   while (!cond(g, t + DT) && t < maxT) { t += DT; g.step(t, {}); }
@@ -2391,7 +2449,7 @@ test('11/10 7.8 改：程式玩家各 50 局——只按前進 ≤ 30%、完美 
 
 /** 程式玩家打一整關，記下每則主動提示（type 'hint'、沒有 level 的那種）第一次出現的 {key, zone, t, index}。 */
 function hintTimeline(cover, seed) {
-  const g = R.createLevel({ t0: (seed * 1.37) % 10, seed, T: { COVER_MODE: cover } });
+  const g = R.createLevel({ t0: (seed * 1.37) % 10, seed, T: cover ? { COVER_MODE: true } : { COVER_MODE: false, MOVES_MODE: false } });   // 舊盲區版＝報告版的教學
   const H = R.hintsFor(g.T);
   const byText = new Map(Object.entries(H).map(([k, v]) => [v, k]));
   const bot = makeBot({ cover });
@@ -2835,10 +2893,10 @@ test('11/11 A1 跑：掩護窗外跑，RUN_R 內的衛兵進高度警覺、再�
   let t = 2; g.step(t, {}); g.drain();
   let r = runAll(g, t, t + K.RUN_HOLD + 0.1, () => ({ mx: 1, run: true }));   // 朝背對的衛兵跑（一直在 RUN_R 內）
   t = r.t;
-  assert.equal(q.state, 'alerted', '第一步跑步聲 → 高度警覺');
+  assert.equal(q.state, 'checking', '第一步跑步聲 → 過來查看（第 13 節：開關開著時取代高度警覺）');
   assert.ok(r.ev.some((e) => e.type === 'msg' && /跑步聲/.test(e.a)), '訊息說是跑步聲');
-  r = runAll(g, t, t + K.RUN_STEP_GAP + 0.05, () => ({ mx: 1, run: true }));
-  assert.ok(g.hunted && q.state === 'hunted', '已警覺再聽到跑步聲 → 追殺');
+  r = runAll(g, t, t + K.CHECK_TURN + K.RUN_STEP_GAP + 0.05, () => ({ mx: 1, run: true }));
+  assert.ok(g.hunted && q.state === 'hunted', '查看中（轉完頭）再聽到跑步聲 → 追殺');
   // RUN_R 外：9.5 公尺，往遠處跑
   const g2 = mvs({ startZone: 2 });
   const q2 = solo(g2, 'g2a', 25, 22, R.yawTo(0, 1));
@@ -3201,17 +3259,22 @@ const HS_DEEP = { x: HS.x1 - 0.4, z: HS.z1 - 0.4 };
  *   'runWalk'：跑到離影子 4 公尺改用走的（照樣踩鼓點），進去之後照 listen。
  * 走的時候和完美程式玩家一樣：最響的一擊衝刺（剩下距離大於 DASH_HUNT 才衝，免得衝過頭）。
  */
-function huntSceneBot(kind) {
+function huntSceneBot(kind, opts = {}) {
+  // 第 14.2 節貼身場景另加：'walk'＝只用走的（＝listen），'beat3'＝等鼓點才起步、之後一路踩著鼓點走（連三步讓他慢下來），再聽著躲。
+  // opts.noDash：不用最響一擊的衝刺（量「只用走的」時用）。
   const target = kind === 'stand' ? { x: HS_TX, z: HS.z0 + 1.5 } : HS_DEEP;
+  let walkingPrev = false;
   return function (g) {
     const pl = g.player, K2 = g.T;
     const dx = target.x - pl.x, dz = target.z - pl.z, d = Math.hypot(dx, dz);
     const inp = {};
     if (d > 0.3) {
+      if (kind === 'beat3' && !walkingPrev && ![1 / 144, 1 / 60, 1 / 30].every((dd) => R.stepMasked(g.time + dd, g))) return inp;
       inp.mx = dx / d; inp.mz = dz / d;
+      walkingPrev = true;
       const run = kind === 'runAll' || (kind === 'runWalk' && HS.z0 - pl.z > 4);
       if (run) inp.run = true;
-      else if (g.cycle.blind && d > K2.DASH_HUNT) inp.dash = true;
+      else if (!opts.noDash && g.cycle.blind && d > K2.DASH_HUNT) inp.dash = true;
       return inp;
     }
     if (kind !== 'stand') {
@@ -3222,7 +3285,7 @@ function huntSceneBot(kind) {
   };
 }
 /** 跑一次固定場景：t0 時開始追殺，最多 60 秒。回傳 {escaped, caught, t（從追殺開始到甩掉或被抓）, runT, pant（有沒有喘過）}。 */
-function huntScene(kind, gap, t0, behind = 6) {
+function huntScene(kind, gap, t0, behind = 6, opts = {}) {
   const g = mvs({ startZone: 2 });
   const pz = HS.z0 - gap;
   const q = solo(g, 'g2b', HS_TX, pz - behind, 0);
@@ -3235,14 +3298,16 @@ function huntScene(kind, gap, t0, behind = 6) {
   q.x = HS_TX; q.z = pz - behind; q.yaw = R.yawTo(0, 1);
   q.state = 'hunted'; q.susp = 1; q.lastKnown = { x: HS_TX, z: pz }; q.knownAt = t; q.search = null;
   g.hunted = true; g.huntKnownAt = t; g.drain();
-  const bot = huntSceneBot(kind), from = t;
+  const bot = huntSceneBot(kind, opts), from = t;
+  let slips = 0;
   let runT = 0, pant = false;
   while (g.phase === 'play' && g.hunted && t < from + 60) {
     t += DT; g.step(t, bot(g));
     if (g.player.running) runT += DT;
     if (g.player.panting) pant = true;
+    for (const e of g.drain()) if (e.a === 'hunt_slip') slips++;
   }
-  return { escaped: !g.hunted && g.phase === 'play', caught: g.phase === 'fail', t: t - from, runT, pant };
+  return { escaped: !g.hunted && g.phase === 'play', caught: g.phase === 'fail', t: t - from, runT, pant, slips };
 }
 const median12 = (a) => { if (!a.length) return NaN; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
 function huntSceneStats(kind) {
@@ -3426,30 +3491,27 @@ test('11/11 第 12 節第 5 點：連續跑超過 1.5 秒，停下後喘 2.5 秒
   assert.ok(!off.drain().some((e) => e.a === 'pant_start'));
 });
 
-test('11/11 第 12 節第 7、8 點：追殺開始時發 hunt_call，12 公尺內巡邏的衛兵進高度警覺、轉向喊聲，不直接變追兵；再犯才加入；追殺中才起疑的直接進高度警覺', () => {
+test('11/11 第 12 節第 7、8 點（第 13 節改）：追殺開始時發 hunt_call，12 公尺內巡邏的衛兵過來查看喊聲的位置，不直接變追兵；追殺中才注意到你的也是查看；開關關著沒有喊聲', () => {
   const g = mvs({ startZone: 2 });
   g.step(0, {});
   const a = g.guards.find((q) => q.id === 'g2a'), b = g.guards.find((q) => q.id === 'g2b');
-  // a 發現你；b 在 a 的 10 公尺內
   Object.assign(a, { x: 20, z: 20, route: [{ x: 20, z: 20 }], wp: 0 });
   Object.assign(b, { x: 20, z: 10, route: [{ x: 20, z: 10 }], wp: 0, yaw: 0, baseYaw: 0 });
-  place(g, 13, 18.5);   // 木馬影子裡
-  let t = 0.5; g.step(t, {}); g.drain();
-  // 讓 a 起疑再安撫失敗太慢不好控制；直接用規則入口：起疑 → 12 秒沒安撫 → 追殺
-  a.susp = 1; a.state = 'patrol';
-  // 用「被看見」的方式：把玩家放到 a 面前、不在影子裡，等他盯滿
-  place(g, 20, 22); a.yaw = R.yawTo(0, 1);
+  place(g, 20, 22); a.yaw = R.yawTo(0, 1);   // 站在 a 面前、不在影子裡：疑心滿 → 查看 → 轉完頭看到 → 追殺
+  let t = 0.5; g.step(t, {});
   const ev = [];
-  while (t < 60 && !g.hunted) { t += DT; g.step(t, { calm: false }); for (const e of g.drain()) ev.push(Object.assign({ t }, e)); }
+  while (t < 60 && !g.hunted) { t += DT; g.step(t, {}); for (const e of g.drain()) ev.push(Object.assign({ t }, e)); }
   assert.ok(g.hunted, '進了追殺');
+  const cs = ev.find((e) => e.a === 'check_start' && e.id === 'g2a');
+  const hu = ev.find((e) => e.a === 'hunt');
+  assert.ok(cs && hu && hu.t - cs.t >= K.CHECK_TURN - 1e-6, `先查看、轉完頭（${K.CHECK_TURN} 秒）才因為看到你而追殺：${cs && hu ? (hu.t - cs.t).toFixed(2) : '—'}`);
   const call = ev.find((e) => e.a === 'hunt_call');
-  assert.ok(call, '發 hunt_call');
-  assert.equal(call.id, a.state === 'hunted' ? a.id : call.id);
-  assert.ok(call.called.includes('g2b'), '10 公尺內的巡邏衛兵被叫到');
-  assert.equal(b.state, 'alerted', '被叫到的只進高度警覺');
-  assert.ok(near(R.angDiff(b.yaw, R.yawTo(call.x - b.x, call.z - b.z)), 0, 0.05) || b.lookAt.x === call.x, '轉向喊聲');
-  assert.ok(ev.some((e) => e.a === 'alerted' && e.id === 'g2b' && e.cause === 'call'));
-  // 開關關著：沒有 hunt_call，b 照常巡邏
+  assert.ok(call && call.called.includes('g2b'), '10 公尺內的巡邏衛兵被叫到');
+  assert.equal(b.state, 'checking', '被叫到的過來查看，不直接變追兵');
+  assert.ok(near(b.check.target.x, call.x, 1e-9) && near(b.check.target.z, call.z, 1e-9), '目標是喊聲的位置');
+  assert.ok(ev.some((e) => e.a === 'check_start' && e.id === 'g2b' && e.cause === 'call'));
+  assert.ok(!ev.some((e) => e.a === 'alerted'), '開關開著沒有高度警覺');
+  // 開關關著：沒有 hunt_call
   const o = mvOff({ startZone: 2 });
   o.step(0, {});
   const a2 = o.guards.find((q) => q.id === 'g2a'), b2 = o.guards.find((q) => q.id === 'g2b');
@@ -3459,60 +3521,52 @@ test('11/11 第 12 節第 7、8 點：追殺開始時發 hunt_call，12 公尺�
   let u = 0.5; o.step(u, {});
   const ev2 = [];
   while (u < 60 && !o.hunted) { u += DT; o.step(u, {}); for (const e of o.drain()) ev2.push(e); }
-  assert.ok(o.hunted && !ev2.some((e) => e.a === 'hunt_call'));
-  assert.notEqual(b2.state, 'alerted');
-  // 追殺中才起疑：不出安撫，直接高度警覺（第 8 點）。用 g2b 在高度警覺結束後回巡邏，再把它放到看得到你的位置累積疑心
+  assert.ok(o.hunted && !ev2.some((e) => e.a === 'hunt_call' || e.a === 'check_start'));
+  // 追殺中才注意到你：進查看（不出安撫、不開安撫倒數）
   const h = mvs({ startZone: 2 });
   h.step(0, {});
   const ha = h.guards.find((q) => q.id === 'g2a'), hb = h.guards.find((q) => q.id === 'g2b');
   Object.assign(ha, { x: 28, z: 6, route: [{ x: 28, z: 6 }], wp: 0, state: 'hunted', susp: 1, lastKnown: { x: 28, z: 6 }, knownAt: 0, search: { route: [{ x: 28, z: 6 }], i: 0, pause: 999, done: false } });
   h.hunted = true; h.huntKnownAt = 0.5;
   Object.assign(hb, { x: 13, z: 25, route: [{ x: 13, z: 25 }], wp: 0, yaw: R.yawTo(0, -1), baseYaw: R.yawTo(0, -1), susp: 0.99 });
-  place(h, 13, 22.5);   // 不在影子裡、在 g2b 面前 2.5 公尺
+  place(h, 13, 22.5);
   let v = 0.5; h.step(v, {}); h.drain();
   const ev3 = [];
   while (v < 5 && hb.state === 'patrol') { v += DT; h.step(v, {}); for (const e of h.drain()) ev3.push(e); }
-  assert.ok(hb.state === 'alerted' || hb.state === 'hunted', `追殺中起疑 → ${hb.state}`);
-  assert.ok(!ev3.some((e) => e.type === 'hint' && e.a === R.hintsFor(h.T).panic) && !h.panic.active, '不出安撫、不開安撫倒數');
+  assert.equal(hb.state, 'checking', '追殺中才注意到你 → 查看');
+  assert.ok(ev3.some((e) => e.a === 'check_start' && e.cause === 'hunt'));
+  assert.ok(!h.panic.active);
 });
 
-test('11/11 第 12 節第 9 點：同一名衛兵 30 秒內第三次起疑不能再安撫，直接高度警覺；前兩次照舊；超過 30 秒重算', () => {
-  // 讓 g2b 盯著站在面前的玩家：疑心滿 → 起疑 → 照低音安撫 4 次 → 寬限 3 秒後又起疑……
-  const play = (gapBetween) => {
-    const g = mvs({ startZone: 2 });
-    const q = solo(g, 'g2b', 20, 20, R.yawTo(0, 1));
-    g.step(0, {}); place(g, 20, 24);
-    let t = 0.5; g.step(t, {}); g.drain();
+test('11/11 第 13 節：同一名衛兵 30 秒內第三次被注意到，不再查看、直接追殺；第三次在 30 秒外照舊查看；報告版仍可無限安撫', () => {
+  const play = (wait) => {
+    const g = R.createLevel({ lab: 'check' });
+    const q = g.guards.find((o) => o.id === 'g2b');
+    g.step(0, {});
+    place(g, 28.25, 25.25);   // 躲在影子裡，他看不到也（屏息時）聽不到
+    let t = 0;
     const kinds = [];
-    let last = null, waitUntil = 0;
-    while (t < 120 && kinds.filter((k) => k !== 'panic').length < 3 && g.phase === 'play' && !g.hunted) {
+    let next = 0.5;
+    while (t < 120 && kinds.length < 3 && g.phase === 'play' && !g.hunted) {
       t += DT;
-      let press = false;
-      if (g.panic.active) {
-        const nb = R.bassBeatNear(t, g.bass.anchor, g.T.BASS_PERIOD, g.T.BASS_WIN);
-        press = Math.abs(nb.off) < DT && last !== nb.beat;
-        if (press) last = nb.beat;
-      }
-      // 起疑之間要隔 gapBetween 秒：安撫完之後躲進木馬影子，時間到再出來
-      if (t < waitUntil) place(g, 13, 18.5); else if (!g.panic.active && q.state === 'patrol') place(g, 20, 24);
-      g.step(t, { calm: press });
+      if (q.state === 'patrol' && t >= next) { g.labNotice(20, 15); next = Infinity; }   // 在空地上製造一次被聽到
+      g.player.breathT = 0;
+      g.step(t, { breath: true });
       for (const e of g.drain()) {
-        if (e.type === 'hint' && e.a === R.hintsFor(g.T).panic) kinds.push('panic');
-        if (e.a === 'alert' ) kinds.push('suspicious');
-        if (e.a === 'calm_done') waitUntil = t + gapBetween;
-        if (e.a === 'alerted' && e.cause === 'calm_memory') kinds.push('memory');
+        if (e.a === 'check_start') kinds.push('check');
+        if (e.a === 'check_over') next = t + wait;
+        if (e.a === 'hunt') kinds.push('hunt');
       }
     }
     return { g, q, kinds };
   };
-  const fast = play(0);
-  assert.deepEqual(fast.kinds.filter((k) => k !== 'panic'), ['suspicious', 'suspicious', 'memory'], JSON.stringify(fast.kinds));
-  assert.equal(fast.q.state, 'alerted');
-  assert.ok(!fast.g.panic.active, '第三次不開安撫');
-  // 兩次起疑之間隔 20 秒：第三次在 30 秒外（第一次之後約 40 秒以上）→ 照舊可以安撫
-  const slow = play(20);
-  assert.deepEqual(slow.kinds.filter((k) => k !== 'panic').slice(0, 3), ['suspicious', 'suspicious', 'suspicious'], JSON.stringify(slow.kinds));
-  // 開關關著：無限次
+  const fast = play(0.5);
+  assert.deepEqual(fast.kinds, ['check', 'check', 'hunt'], JSON.stringify(fast.kinds));
+  assert.ok(fast.g.hunted && fast.q.state === 'hunted');
+  assert.ok(fast.g.drain().length >= 0);
+  const slow = play(12);   // 兩次查看之間多隔 12 秒：第三次離第一次超過 30 秒
+  assert.deepEqual(slow.kinds, ['check', 'check', 'check'], JSON.stringify(slow.kinds));
+  // 報告版：安撫無限次
   const g = mvOff({ startZone: 2 });
   const q = solo(g, 'g2b', 20, 20, R.yawTo(0, 1));
   g.step(0, {}); place(g, 20, 24);
@@ -3591,4 +3645,248 @@ test('11/11 第 12.3 節（只印不判）：整關 σ0.12、σ0.25 各 100 局�
     console.log(`[第 12.3 節 只印] σ${sigma}，${N} 局：通關 ${wins}、追殺 ${hunts} 次、每次追殺被叫進高度警覺 ${(hunts ? called / hunts : 0).toFixed(2)} 名、後來加入追殺 ${(hunts ? joined / hunts : 0).toFixed(2)} 名、因追殺失敗（caught_*）${huntFail} 局、逾時 ${timeout} 局`);
     assert.ok(wins + huntFail + timeout <= N);
   }
+});
+
+// ---------------- 11/11 搭配動作第 13 節（拿掉安撫，改成衛兵過來查看；docs/design/2026-11-11-companion-mechanics.md 第 13.6 節） ----------------
+
+test('11/11 第 13 節：常數；開關開著時提示多「查看」、暗示階梯的「警戒與安撫」換成「查看」、死因沒有安撫三種；開關關著照舊', () => {
+  assert.equal(K.CHECK_TURN, 0.5); assert.equal(K.CHECK_WALK, 5); assert.equal(K.CHECK_LISTEN, 4);
+  const H = R.hintsFor(K), L = R.hintLadderFor(K), C = R.causesFor(K);
+  assert.ok(H.check && /走過來/.test(H.check) && /屏住/.test(H.check), H.check);
+  assert.ok(!L.calm && L.check && L.check.name === '查看');
+  assert.ok(!/Q/.test(L.check.text + L.check.keys));
+  assert.ok(!C.calm_fast && !C.calm_off && !C.calm_slow && C.step && C.breath);
+  assert.ok(OL.calm && !OL.check, '報告版的教學照舊有安撫');
+  assert.ok(R.causesFor(Object.assign({}, K, { MOVES_MODE: false })).calm_slow);
+  assert.ok(!R.hintsFor(Object.assign({}, K, { MOVES_MODE: false })).check);
+});
+
+/** 第 13 節固定場景（?lab=check）：玩家在東南角影子南方 2 公尺，衛兵在玩家南方 gap 公尺、背對玩家。 */
+function checkScene(make, gap) {
+  const g = make();
+  const q = g.guards.find((o) => o.id === 'g2b');
+  q.z = 21.5 - gap; q.route = [{ x: q.x, z: q.z }];
+  return { g, q };
+}
+
+test('11/11 第 13 節：查看的三段——轉向 0.5 秒 → 朝目標最多走 5 公尺（巡邏速度）→ 停 4 秒左右轉頭 → 走回原處、回巡邏（寬限 3 秒）；事件 check_start／check_arrive／check_over', () => {
+  const { g, q } = checkScene(() => R.createLevel({ lab: 'check' }), 6);
+  g.step(0, {});
+  place(g, 28.25, 25.25);   // 躲在影子裡屏著氣
+  const home = { x: q.x, z: q.z };
+  let t = 0.5; g.player.breathT = 0; g.step(t, { breath: true }); g.drain();
+  g.labNotice(20, 6.5);     // 西北邊約 8.3 公尺外製造一次聲音
+  const ev = [];
+  let maxV = 0, px = q.x, pz = q.z;
+  while (t < 30 && q.state !== 'patrol') {
+    t += DT; g.player.breathT = 0; g.step(t, { breath: true });
+    maxV = Math.max(maxV, Math.hypot(q.x - px, q.z - pz) / DT); px = q.x; pz = q.z;
+    for (const e of g.drain()) ev.push(Object.assign({ t }, e));
+  }
+  const s = ev.find((e) => e.a === 'check_start'), a = ev.find((e) => e.a === 'check_arrive'), o = ev.find((e) => e.a === 'check_over');
+  assert.ok(s && a && o, ev.map((e) => e.a).join(' '));
+  assert.ok(near(s.x, 20, 1e-9) && near(s.z, 6.5, 1e-9), '目標＝引起注意的位置');
+  assert.ok(near(Math.hypot(s.walkTo.x - home.x, s.walkTo.z - home.z), K.CHECK_WALK, 1e-6), '最多走 5 公尺');
+  assert.ok(maxV <= K.PATROL_SPEED + 1e-6, `巡邏速度 ${maxV.toFixed(2)}`);
+  const walkT = K.CHECK_WALK / K.PATROL_SPEED;
+  assert.ok(Math.abs(a.t - (0.5 + K.CHECK_TURN + walkT)) < 0.1, `轉向 0.5 秒＋走 ${walkT.toFixed(2)} 秒後到：${(a.t - 0.5).toFixed(2)}`);
+  assert.ok(o.t - a.t >= K.CHECK_LISTEN + walkT - 0.1 && o.t - a.t <= K.CHECK_LISTEN + walkT + 0.1, `停 4 秒再走回來：${(o.t - a.t).toFixed(2)}`);
+  assert.ok(near(q.x, home.x, 0.06) && near(q.z, home.z, 0.06), '回到原處');
+  assert.equal(q.state, 'patrol'); assert.ok(near(q.grace, K.CALM_GRACE, 0.05));
+  assert.ok(!ev.some((e) => e.a === 'alert' || e.a === 'alerted' || e.a === 'calm_ok'), '沒有安撫、沒有高度警覺');
+  assert.ok(!g.panic.active);
+  assert.ok(ev.some((e) => e.type === 'hint' && e.a === R.hintsFor(g.T).check), '第一次查看出「查看」提示');
+});
+
+test('11/11 第 13 節：查看中看到就追殺；聽到沒屏住的呼吸（2.5 公尺）、踩歪的腳步（5 公尺）、跑步（8 公尺）都追殺；轉向的 0.5 秒與最響的一擊不算；屏住或踩準沒事', () => {
+  // 衛兵已在聽（listen 段）、站在 (28.25, 21.5)，背對玩家（朝南），玩家在影子裡或空地上
+  const listening = (px, pz) => {
+    const { g, q } = checkScene(() => R.createLevel({ lab: 'check' }), 6);
+    g.step(0, {}); place(g, px, pz);
+    let t = 0.5; g.player.breathT = 0; g.step(t, { breath: true });
+    Object.assign(q, { x: 28.25, z: 21.5, yaw: R.yawTo(0, -1), state: 'checking',
+      check: { target: { x: 28.25, z: 21.5 }, walkTo: { x: 28.25, z: 21.5 }, home: { x: 28.25, z: 15.5 }, phase: 'listen', from: t, until: t + 30, baseYaw: R.yawTo(0, -1), yaw0: 0, yaw1: 0, cause: 'lab', stuckT: 0 } });
+    while (g.cycle.blind || g.cycle.blindFrom - t < 0.3) { t += DT; g.player.breathT = 0; g.step(t, { breath: true }); q.check.baseYaw = R.yawTo(0, -1); }
+    g.drain();
+    return { g, q, t };
+  };
+  const hunted = (g) => g.hunted;
+  { // 呼吸：影子裡 2 公尺（衛兵背對、看不到），不屏息 → 追殺；屏住 → 沒事
+    const A = listening(28.25, 23.6);
+    let t = A.t + DT; A.g.step(t, {});
+    assert.ok(hunted(A.g), '沒屏住 → 追殺');
+    assert.equal(A.g.failCode, null);
+    const B = listening(28.25, 23.6);
+    t = B.t; for (let k = 0; k < 20; k++) { t += DT; B.g.step(t, { breath: true }); }
+    assert.ok(!hunted(B.g), '屏住 → 沒事');
+    const C = listening(28.25, 24.6);   // 3.1 公尺
+    t = C.t; for (let k = 0; k < 20; k++) { t += DT; C.g.step(t, {}); }
+    assert.ok(!hunted(C.g), '2.5 公尺外的呼吸聽不到');
+  }
+  { // 腳步：4 公尺，踩歪 → 追殺；踩準 → 沒事
+    const step = (masked) => {
+      const A = listening(29.5, 25.3);
+      let t = A.t;
+      while (A.g.cycle.blind || R.stepMasked(t + DT, A.g) !== masked || (masked && A.g.cycle.p < 0.05)) { t += DT; A.g.player.breathT = 0; A.g.step(t, { breath: true }); }
+      A.g.step(t + DT / 2, {});   // 放開屏息（呼吸在 2.5 公尺外聽不到）
+      t += DT; A.g.step(t, { mx: -1 });
+      return A.g;
+    };
+    assert.ok(hunted(step(false)), '踩歪 → 追殺');
+    assert.ok(!hunted(step(true)), '踩準 → 沒事');
+  }
+  { // 跑：7 公尺外按住 Shift 跑 → 追殺
+    const A = listening(28.25, 25.6);
+    A.g.player.x = 21.5; A.g.player.z = 21.5;   // 空地、衛兵背後西邊約 6.8 公尺（背對看不到）
+    let t = A.t;
+    for (let k = 0; k < 40 && !A.g.hunted; k++) { t += DT; A.g.step(t, { mx: -1, run: true }); }
+    assert.ok(hunted(A.g), '查看中聽到跑步聲 → 追殺');
+  }
+  { // 看到：轉向的 0.5 秒內不算，轉完看到就追殺
+    const { g, q } = checkScene(() => R.createLevel({ lab: 'check' }), 4);
+    g.step(0, {});
+    let t = 0.5; g.step(t, {});
+    g.labNotice(g.player.x, g.player.z);
+    const t0 = t;
+    while (t < t0 + 3 && !g.hunted) { t += DT; g.step(t, {}); }
+    assert.ok(g.hunted, '轉過頭看到站在空地上的你 → 追殺');
+    assert.ok(t - t0 >= K.CHECK_TURN - 1e-6, `轉向那 ${K.CHECK_TURN} 秒不算：${(t - t0).toFixed(2)}`);
+  }
+});
+
+test('11/11 第 13 節：開關開著時按 Q 沒有作用、不會有安撫倒數；開關關著照舊會起疑', () => {
+  const { g, q } = checkScene(() => R.createLevel({ lab: 'check' }), 4);
+  g.step(0, {});
+  let t = 0.5;
+  q.yaw = R.yawTo(0, 1); q.baseYaw = q.yaw;   // 面對玩家：被看見一陣子
+  const ev = [];
+  while (t < 10 && !g.hunted) { t += DT; g.step(t, { calm: true }); for (const e of g.drain()) ev.push(e); }
+  assert.ok(!ev.some((e) => /^calm_|^alert$/.test(e.a)) && !g.panic.active);
+  assert.ok(ev.some((e) => e.a === 'check_start'));
+  const o = R.createLevel({ lab: 'check', T: { MOVES_MODE: false } });
+  const q2 = o.guards.find((x) => x.id === 'g2b');
+  o.step(0, {}); q2.z = 17.5; q2.route = [{ x: q2.x, z: 17.5 }]; q2.yaw = R.yawTo(0, 1); q2.baseYaw = q2.yaw;
+  let u = 0.5; const ev2 = [];
+  while (u < 10 && !o.panic.active) { u += DT; o.step(u, {}); for (const e of o.drain()) ev2.push(e); }
+  assert.ok(o.panic.active && ev2.some((e) => e.a === 'alert'), '報告版照舊起疑、要安撫');
+});
+
+test('11/11 第 13 節試驗場 ?lab=check：第 2 區、MOVES_MODE 開、固定循環、一名衛兵背對玩家；labNotice 製造一次被聽到；出口擋住；retry 回到原場景', () => {
+  const g = R.createLevel({ lab: 'check' });
+  assert.equal(g.zone, 2); assert.equal(g.T.MOVES_MODE, true); assert.equal(g.T.DYNAMIC, false); assert.equal(g.lab, 'check');
+  g.step(0, {});
+  const act = g.guards.filter((q) => q.active);
+  assert.equal(act.length, 1); assert.equal(act[0].id, 'g2b'); assert.equal(act[0].state, 'patrol');
+  assert.ok(near(g.player.z - act[0].z, 6, 1e-9) && near(HS.z0 - g.player.z, 2, 1e-9));
+  assert.equal(typeof g.labNotice, 'function');
+  g.labNotice(25, 18); g.step(DT, {});
+  assert.equal(act[0].state, 'checking');
+  g.phase = 'fail'; g.retry(); g.step(2 * DT, {});
+  assert.equal(g.guards.find((q) => q.id === 'g2b').state, 'patrol');
+  assert.ok(near(g.player.z, 21.5, 1e-9));
+  assert.equal(typeof R.createLevel({ lab: 'hunt' }).labNotice, 'undefined');
+});
+
+/**
+ * 13.6 的三種程式玩家（固定場景：衛兵在玩家南方 gap 公尺、背對；t0 時在玩家所在位置製造一次被聽到）：
+ *   'ignore'：被注意到後照原路繼續走（往西走）；
+ *   'stand'：原地站著，不屏息（目標點就是玩家的位置）；
+ *   'retreat'：踩著鼓點退進北邊的影子、到離他要去的那一點 3 公尺外的角落；他進到 3 公尺內就屏息。
+ */
+function checkSceneRun(kind, gap, t0) {
+  const { g, q } = checkScene(() => R.createLevel({ lab: 'check' }), gap);
+  g.step(0, {});
+  const start = { x: g.player.x, z: g.player.z };
+  place(g, HS_DEEP.x, HS_DEEP.z);   // 等起始時間時先躲在影子裡屏著氣
+  let t = 0;
+  while (t < t0) { t += DT; g.player.breathT = 0; g.step(t, { breath: true }); }
+  g.step(t + DT / 2, {}); t += DT / 2;
+  place(g, start.x, start.z);
+  assert.equal(q.state, 'patrol');
+  g.labNotice(start.x, start.z); g.drain();
+  const from = t;
+  let walkingPrev = false;
+  while (t < from + 20 && g.phase === 'play' && !g.hunted && q.state !== 'patrol') {
+    const pl = g.player, inp = {};
+    if (kind === 'ignore') inp.mx = -1;
+    else if (kind === 'retreat') {
+      const tx = HS_DEEP.x, tz = HS_DEEP.z, d = Math.hypot(tx - pl.x, tz - pl.z);
+      const qd = Math.hypot(q.x - pl.x, q.z - pl.z);
+      if (d > 0.2) {
+        if (walkingPrev || [1 / 144, 1 / 60, 1 / 30].every((dd) => R.stepMasked(t + dd, g))) { inp.mx = (tx - pl.x) / d; inp.mz = (tz - pl.z) / d; }
+      } else if (qd <= 3 && pl.breathT < g.T.BREATH_MAX - 0.2) inp.breath = true;
+    }
+    t += DT; g.step(t, inp);
+    walkingPrev = g.player.moving;
+  }
+  return { hunted: g.hunted || g.phase === 'fail', ok: !g.hunted && g.phase === 'play' && q.state === 'patrol', t: t - from };
+}
+
+test('11/11 第 13.6 節驗收（固定場景，三種程式玩家各 60 次；門檻是假設，只印不擋）：不理他被追殺 ≥ 60%、站著等被追殺 ≥ 70%、退開並屏息沒事 ≥ 85%', () => {
+  const pct = (v) => (v * 100).toFixed(0) + '%';
+  const S = {};
+  for (const kind of ['ignore', 'stand', 'retreat']) {
+    const rs = [];
+    for (const gap of [4, 6, 8]) for (let k = 0; k < 20; k++) rs.push(Object.assign({ gap }, checkSceneRun(kind, gap, 0.5 + k * 0.5)));
+    S[kind] = { n: rs.length, hunt: rs.filter((r) => r.hunted).length / rs.length, ok: rs.filter((r) => r.ok).length / rs.length,
+      byGap: [4, 6, 8].map((gp) => rs.filter((r) => r.gap === gp && r.hunted).length),
+      tHunt: median12(rs.filter((r) => r.hunted).map((r) => r.t)) };
+  }
+  const name = { ignore: '不理他', stand: '站著等', retreat: '退開並屏息' };
+  console.log('[11/11 第 13.6 節 查看固定場景，MOVES_MODE 開；衛兵在南方 4／6／8 公尺 × 起始時間每 0.5 秒 20 個 = 60 次]');
+  for (const k of Object.keys(S)) console.log(`  ${name[k]}：被追殺 ${pct(S[k].hunt)}（4／6／8 公尺各 ${S[k].byGap.join('／')}/20，追殺前中位 ${Number.isFinite(S[k].tHunt) ? S[k].tHunt.toFixed(1) : '—'} 秒）、沒事 ${pct(S[k].ok)}`);
+  const ok = (b) => (b ? '過' : '⚠ 沒過');
+  console.log(`  不理他被追殺 ≥ 60% → ${ok(S.ignore.hunt >= 0.6)}；站著等被追殺 ≥ 70% → ${ok(S.stand.hunt >= 0.7)}；退開並屏息沒事 ≥ 85% → ${ok(S.retreat.ok >= 0.85)}`);
+  for (const s of Object.values(S)) assert.ok(s.hunt >= 0 && s.hunt <= 1);
+});
+
+test('11/11 第 13.6 節（只印不判）：整關各 100 局——查看幾次、轉成追殺幾次；對照報告版（開關關著）的起疑與高度警覺次數', () => {
+  for (const sigma of [0, 0.12, 0.25]) {
+    const row = [];
+    for (const moves of [true, false]) {
+      let checks = 0, checkHunt = 0, susp = 0, alerted = 0, hunts = 0, wins = 0;
+      const N = 100;
+      for (let seed = 1; seed <= N; seed++) {
+        const t0 = (seed * 1.37) % 10, jitter = seed % 2 === 1;
+        const g = R.createLevel({ t0, seed, T: { MOVES_MODE: moves } });
+        const bot = makeBot(sigma ? { cover: true, sigma, seed } : { cover: true }), jr = R.mulberry32(seed * 7 + 3);
+        let t = 2, lastCheck = -1e9;
+        g.step(t, {}); g.step(t, { start: true });
+        while (g.phase === 'play' && t <= 420) {
+          const dt = jitter ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : DT;
+          t += dt; g.step(t, bot(g));
+          for (const e of g.drain()) {
+            if (e.a === 'check_start' && e.cause !== 'call') { checks++; lastCheck = t; }
+            if (e.a === 'hunt') { hunts++; if (t - lastCheck < 15) checkHunt++; }
+            if (e.a === 'alert') susp++;
+            if (e.a === 'alerted') alerted++;
+          }
+        }
+        if (g.phase === 'win') wins++;
+      }
+      row.push(moves ? `開關開：通關 ${wins}、查看 ${(checks / N).toFixed(2)} 次／局、查看後 15 秒內轉追殺 ${checkHunt} 次（全部追殺 ${hunts}）`
+        : `報告版：通關 ${wins}、起疑 ${(susp / N).toFixed(2)}、高度警覺 ${(alerted / N).toFixed(2)} 次／局、追殺 ${hunts}`);
+    }
+    console.log(`[第 13.6 節 只印] ${sigma ? 'σ' + sigma : '完美'}，100 局｜` + row.join('｜'));
+  }
+});
+
+test('11/11 第 14.2 節貼身場景（追兵背後 2 公尺、影子 10 公尺外，各 20 次；門檻是假設，只印不擋）：只用走的甩掉 ≤ 40%；先跑、最後 4 公尺改走 ≥ 75%；踩三步鼓點讓他慢下來只印', () => {
+  const run = (kind, opts) => {
+    const rs = []; for (let k = 0; k < 20; k++) rs.push(huntScene(kind, 10, 0.5 + k * 0.5, 2, opts));
+    const esc = rs.filter((r) => r.escaped);
+    return { rate: esc.length / rs.length, caught: rs.filter((r) => r.caught).length, tMed: median12(esc.map((r) => r.t)),
+      pant: rs.filter((r) => r.pant).length, slips: rs.reduce((a, r) => a + r.slips, 0) / rs.length, runT: median12(rs.map((r) => r.runT)) };
+  };
+  const pct = (v) => (v * 100).toFixed(0) + '%';
+  const fmt = (s) => `甩掉 ${pct(s.rate)}、被抓 ${s.caught}、甩掉要 ${Number.isFinite(s.tMed) ? s.tMed.toFixed(1) : '—'} 秒、跑了 ${s.runT.toFixed(1)} 秒、喘過 ${s.pant} 次、讓他慢下來 ${s.slips.toFixed(1)} 次／次`;
+  const walk = run('walk', { noDash: true }), walkDash = run('walk'), runWalk = run('runWalk', { noDash: true }), beat3 = run('beat3', { noDash: true });
+  console.log('[11/11 第 14.2 節 貼身場景，MOVES_MODE 開；追兵背後 2 公尺、影子 10 公尺外，起始時間每 0.5 秒 20 次]');
+  console.log('  只用走的（不衝刺）：' + fmt(walk));
+  console.log('  先跑、最後 4 公尺改走（不衝刺）：' + fmt(runWalk));
+  console.log('  踩著鼓點起步、一路踩鼓點走（只印）：' + fmt(beat3));
+  console.log('  參考：用走的、最響一擊照衝刺（只印）：' + fmt(walkDash));
+  const ok = (b) => (b ? '過' : '⚠ 沒過');
+  console.log(`  只用走的 ≤ 40% → ${ok(walk.rate <= 0.4)}；先跑後走 ≥ 75% → ${ok(runWalk.rate >= 0.75)}`);
+  for (const s of [walk, walkDash, runWalk, beat3]) assert.ok(s.rate >= 0 && s.rate <= 1);
 });

@@ -101,7 +101,11 @@
     RUN_PANT_MUL: 1.6,    // 喘的時候呼吸聲的距離倍率
     HUNT_CALL_R: 12,      // 追殺開始時那一聲喊，幾公尺內巡邏的衛兵進高度警覺
     CALM_MEMORY: 30,      // 同一名衛兵幾秒內……
-    CALM_MEMORY_N: 3,     // ……第幾次起疑就不能再安撫，直接高度警覺（第 12 節第 9 點的「第三次」）
+    CALM_MEMORY_N: 3,     // ……第幾次被注意到就不再查看，直接追殺（第 13 節；第 12 節原本是「不能安撫、直接高度警覺」）
+    // 搭配動作第 13 節：拿掉安撫，改成衛兵過來查看（checking 取代起疑與高度警覺；只在 MOVES_MODE 開時）
+    CHECK_TURN: 0.5,      // 查看：先轉向引起注意的位置，幾秒
+    CHECK_WALK: 5,        // 查看：朝那個位置最多走幾公尺（巡邏速度）
+    CHECK_LISTEN: 4,      // 查看：到了停幾秒，左右轉頭聽
     MOVES_STEP_R: 2.5,    // 第 8 節：開關開著時，出聲的腳步傳多遠（取代 STEP_R；關著照舊 STEP_R 2.5）。2.5／4／5／6 實測後取值
     COVER_EAR_P: 0,      // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
@@ -537,6 +541,8 @@
       fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
     };
     // 蹲走（只有開關開時才有這一則；關著時提示表和報告版一模一樣）
+    // 第 13 節：查看（開關開著時取代安撫；字句待畫面角色照 7.4 格式定稿）
+    if (moves) H.check = '他聽到了，正走過來查看。踩著鼓點退開，或躲進影子；他走近時屏住呼吸。';
     if (moves) H.crouch = '按住 C 蹲著走，速度' + speedText(K.CROUCH_SPEED_MUL) + '；起步不必那麼準（鼓點前後 ' + num(K.CROUCH_STEP_WIN) +
       ' 秒內都算），離拍的腳步聲也只傳約 ' + num(K.CROUCH_R) + ' 公尺。蹲著時，水缸、貨堆這類矮東西擋得住衛兵的視線。要暗殺、推門閂得先站起來。';
     return H;
@@ -548,7 +554,7 @@
   function hintLadderFor(K) {
     K = K || T;
     const cover = !!K.COVER_MODE;
-    return {
+    const L = {
       breath: { name: '屏息', text: cover ? '「來不及躲開時，按住空白鍵屏住呼吸，站著別動。」' : '「節奏最快時，按住空白鍵屏住呼吸，別動。」',
         keys: '按住 空白鍵 屏息，放開就換氣；最多撐約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來就放開。' },
       blind: cover
@@ -577,6 +583,13 @@
       latch: { name: '城門門閂', text: '「節奏慢的時候才推，快的時候放手。」',
         keys: '站在門閂旁按住 E 推；節奏一快就放開 E，等慢下來再按住。' }
     };
+    // 第 13 節：開關開著時，教學那格「警戒與安撫」改教「查看」（字句待畫面角色定稿）
+    if (K.MOVES_MODE) {
+      delete L.calm;
+      L.check = { name: '查看', text: '「他聽到了，正走過來。踩著鼓點退開，或躲進影子。」',
+        keys: '他走近時按住 空白鍵 屏住呼吸，走遠了再放開；他走完會回原路。' };
+    }
+    return L;
   }
   const HINT_LADDER = hintLadderFor(T);
   /** 暗示階梯第 level 階的文字：1 = 沒有文字（null），2 = 提示文字，3 = 提示文字＋按鍵說明。ladder 不給就用預設常數的。 */
@@ -590,7 +603,7 @@
   // 失敗原因（g.failReason 是一句完整的話，畫面層直接顯示；g.failCode 是代號）
   function causesFor(K) {
     K = K || T;
-    return {
+    const C = {
     move_high: K.COVER_MODE ? '節奏最快時，你的腳步沒踩在鼓點上，衛兵聽見了' : '節奏最快時你動了，衛兵聽見了',
     loud: '你發出的聲音太大，衛兵聽見了',
     run: '你在鼓聲蓋不住的時候跑，衛兵聽見了',   // 搭配動作 A1（MOVES_MODE）
@@ -599,6 +612,13 @@
     calm_slow: '安撫得太慢，衛兵喊了人',
     seen: '衛兵發現了你'
     };
+    // 第 13 節：開關開著時沒有安撫；查看中聽到你的腳步或呼吸也會直接追殺
+    if (K.MOVES_MODE) {
+      delete C.calm_fast; delete C.calm_off; delete C.calm_slow;
+      C.step = '衛兵過來查看時，聽見你沒踩在鼓點上的腳步';
+      C.breath = '衛兵過來查看時，聽見你的呼吸';
+    }
+    return C;
   }
   const CAUSES = causesFor(T);
   const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
@@ -741,7 +761,9 @@
     //     run 在第 2 區（空曠的廣場），crouch、listen 在第 3 區（有水缸、貨堆）。被抓照常失敗，畫面層 retry 回起點。
     //   ?lab=hunt（第 12 節）：第 2 區，一名追兵（g2b）從背後 6 公尺開始追，玩家離東南角的影子 6 公尺；出口擋住。
     //     第一幀開始追殺；甩掉或被抓都留在原地（畫面層 retry 重來）。
-    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2 };
+    //   ?lab=check（第 13 節）：第 2 區，一名衛兵（g2b）在玩家南方 6 公尺、背對玩家；循環固定；
+    //     g.labNotice(x, z) 在指定位置製造一次「被聽到」（他過來查看那一點）。出口擋住。
+    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2, check: 2 };
     const lab = LABS[opts.lab] ? opts.lab : null;
     const horseLab = lab === 'belly' || lab === 'horse';
     if (horseLab && oT.HORSE_MODE == null) K.HORSE_MODE = true;
@@ -797,7 +819,7 @@
       visualAid: 1
     };
     g.visualAid = visualAidFor(g.zone, g.visualAidMode, K);
-    for (const k of Object.keys(HINT_LADDER)) g.hints[k] = { fails: 0, level: 1, lastFail: -1e9 };
+    for (const k of Object.keys(Object.assign({}, hintLadderFor(Object.assign({}, K, { MOVES_MODE: false })), hintLadderFor(K)))) g.hints[k] = { fails: 0, level: 1, lastFail: -1e9 };
     let last = null;
     let latchNoiseAt = -1e9;
     let dashCycle = null; // 每個盲區只能衝刺一次
@@ -823,7 +845,9 @@
     const CZ = opts.T ? causesFor(K) : CAUSES;
     const RUN_MSG = '跑步聲傳開了——衛兵高度警覺！';
     const RUN_HUNT_MSG = '又聽到跑步聲——衛兵衝過來！';
-    const CALM_MEMORY_MSG = '他已經起疑第' + cnNum(K.CALM_MEMORY_N) + '次了——這次騙不過他，他盯著這裡。';
+    const CHECK_AGAIN_MSG = '同一個衛兵第' + cnNum(K.CALM_MEMORY_N) + '次注意到你——這次直接衝過來！';
+    const CHECK_MSG = { run: '跑步聲傳開了——衛兵走過來查看。', move_high: K.COVER_MODE ? '腳步露了聲——衛兵走過來查看。' : '你動了——衛兵走過來查看。',
+      loud: '那聲音引來了衛兵，他走過來查看。', susp: '衛兵覺得不對勁，走過來查看。' };
     const MOVE_HIGH_MSG = K.COVER_MODE ? '節奏最快的時候腳步露了聲——被發現了！' : '節奏最快的時候亂動——被發現了！';
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HTXT[key]); } };
@@ -917,6 +941,25 @@
       huntLabPending = true;
     }
     if (lab === 'hunt') setupHuntLab();
+    /** ?lab=check 的固定場景：玩家在東南角影子（x 26.5～30、z 23.5～27）南方 2 公尺，衛兵再往南 6 公尺、面朝南。 */
+    function setupCheckLab() {
+      const tx = 28.25, pz = 21.5;
+      g.player.x = tx; g.player.z = pz; g.player.yaw = 0;
+      const back = yawTo(0, -1);
+      for (const q of g.guards) {
+        if (q.id === 'g2b') Object.assign(q, { x: tx, z: pz - 6, route: [{ x: tx, z: pz - 6 }], wp: 0, baseYaw: back, yaw: back, state: 'patrol', susp: 0, check: null, suspHist: [] });
+        else { q.state = 'down'; q.active = false; }
+      }
+    }
+    if (lab === 'check') {
+      setupCheckLab();
+      /** 試驗場按鈕：在 (x, z) 製造一次被聽到（巡邏中的衛兵過來查看）。 */
+      g.labNotice = function (x, z) {
+        const q = g.guards.find((o) => o.id === 'g2b');
+        if (q && q.active && g.phase === 'play') enterCheck(q, g.time == null ? 0 : g.time, { x, z }, 'lab');
+        return g;
+      };
+    }
 
     // ----- 移動與碰撞 -----
     function blocked(x, z, rad) {
@@ -988,14 +1031,8 @@
     }
     function makeSuspicious(q, t) {
       if (q.state !== 'patrol') return;
-      if (K.MOVES_MODE) {
-        // 第 12 節第 8 點：追殺中才起疑的衛兵直接進高度警覺（取代 10.3 的「暫停安撫倒數」）
-        if (g.hunted) { makeAlerted(q, t, 'hunt'); return; }
-        // 第 9 點：同一名衛兵 CALM_MEMORY 秒內第 CALM_MEMORY_N 次起疑，不能再安撫，直接高度警覺
-        q.suspHist = (q.suspHist || []).filter((x) => t - x < K.CALM_MEMORY);
-        q.suspHist.push(t);
-        if (q.suspHist.length >= K.CALM_MEMORY_N) { q.suspHist = []; makeAlerted(q, t, 'calm_memory'); return; }
-      }
+      // 第 13 節：開關開著時沒有起疑與安撫，改成過來查看你當時的位置（追殺中才注意到你的也一樣）
+      if (K.MOVES_MODE) { enterCheck(q, t, { x: g.player.x, z: g.player.z }, g.hunted ? 'hunt' : 'susp'); return; }
       if (behindPlayer(q)) hintFail('listen');
       q.state = 'suspicious'; q.susp = 1;
       q.lookAt = { x: g.player.x, z: g.player.z };
@@ -1010,6 +1047,8 @@
     }
     function makeAlerted(q, t, cause) {
       if (!q || q.state !== 'patrol') return;
+      // 第 13 節：開關開著時沒有高度警覺，改成過來查看（聽到的是聲音的位置＝你當時的位置）
+      if (K.MOVES_MODE) { enterCheck(q, t, { x: g.player.x, z: g.player.z }, g.hunted ? 'hunt' : cause); return; }
       if (cause === 'move_high') hintFail('blind');
       q.state = 'alerted';
       q.susp = K.ALERTED_SUSP;
@@ -1020,8 +1059,33 @@
       // 只有腳步露聲才有；大聲沒有另外的訊息），hint 說「接下來怎麼辦」（第一次）。
       if (cause === 'move_high') emit('msg', MOVE_HIGH_MSG);
       if (cause === 'run') emit('msg', RUN_MSG);
-      if (cause === 'calm_memory') emit('msg', CALM_MEMORY_MSG);
       hint('alerted');
+    }
+    /**
+     * 第 13 節：衛兵過來查看 pos（引起注意的位置）。轉向 CHECK_TURN 秒 → 朝 pos 最多走 CHECK_WALK 公尺（巡邏速度）
+     * → 停 CHECK_LISTEN 秒左右轉頭聽 → 走回開始查看的位置，回到巡邏（CALM_GRACE 秒內不累積疑心）。
+     * 同一名衛兵 CALM_MEMORY 秒內第 CALM_MEMORY_N 次被注意到：不查看，直接追殺。
+     * cause：susp（疑心滿）｜move_high｜run｜loud｜call（追殺開始的喊聲）｜hunt（追殺中才注意到）｜lab（試驗場按鈕）。
+     */
+    function enterCheck(q, t, pos, cause) {
+      if (!q || q.state !== 'patrol') return;
+      q.suspHist = (q.suspHist || []).filter((x) => t - x < K.CALM_MEMORY);
+      q.suspHist.push(t);
+      if (q.suspHist.length >= K.CALM_MEMORY_N) {
+        q.suspHist = [];
+        startHunt(q, cause === 'run' || cause === 'loud' || cause === 'move_high' ? cause : 'seen', CHECK_AGAIN_MSG);
+        return;
+      }
+      const dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
+      const k = d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
+      const walkTo = { x: q.x + dx * k, z: q.z + dz * k };
+      q.state = 'checking'; q.susp = 0; q.calm = 0;
+      q.check = { target: { x: pos.x, z: pos.z }, walkTo, home: { x: q.x, z: q.z }, phase: 'turn', from: t, until: t + K.CHECK_TURN,
+        yaw0: q.yaw, yaw1: d > 1e-6 ? yawTo(dx, dz) : q.yaw, cause, stuckT: 0 };
+      q.lookAt = { x: pos.x, z: pos.z };
+      emit('sfx', 'check_start', { id: q.id, x: pos.x, z: pos.z, walkTo: { x: walkTo.x, z: walkTo.z }, cause });
+      if (CHECK_MSG[cause]) emit('msg', CHECK_MSG[cause]);
+      hint('check');
     }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
     function startHunt(q, cause, reason) {
@@ -1038,10 +1102,10 @@
       for (const o of g.guards) {
         if (!o.active) continue;
         // 第 12 節：追殺已經開始後（開關開），只有發現你的這一名加入；被喊聲叫到的高度警覺衛兵要再犯才加入
-        const join = o === q || (!(K.MOVES_MODE && wasHunted) && (o.state === 'suspicious' || o.state === 'alerted'));
+        const join = o === q || (!(K.MOVES_MODE && wasHunted) && (o.state === 'suspicious' || o.state === 'alerted' || o.state === 'checking'));
         if (join) {
           o.state = 'hunted'; o.susp = 1; o.lastKnown = { x: pl.x, z: pl.z }; o.calm = 0;
-          o.knownAt = tNow; o.search = null; o.stuckT = 0;
+          o.knownAt = tNow; o.search = null; o.stuckT = 0; o.check = null;
         }
       }
       if (K.MOVES_MODE) g.huntKnownAt = tNow;
@@ -1057,9 +1121,8 @@
           const called = [];
           for (const o of g.guards) {
             if (!o.active || o.state !== 'patrol' || Math.hypot(o.x - caller.x, o.z - caller.z) > K.HUNT_CALL_R) continue;
-            makeAlerted(o, tNow, 'call');
-            o.lookAt = { x: caller.x, z: caller.z };
-            called.push(o.id);
+            enterCheck(o, tNow, { x: caller.x, z: caller.z }, 'call');   // 第 13 節：被喊聲驚動的過來查看喊聲的位置
+            if (o.state === 'checking') called.push(o.id);
           }
           emit('sfx', 'hunt_call', { x: caller.x, z: caller.z, id: caller.id, called });
         }
@@ -1524,7 +1587,7 @@
         }
         if (blind) continue; // 盲區：感知 = 0
         if (K.HORSE_MODE && pl.inBelly) continue;   // 木馬腹中練習：衛兵什麼都察覺不到（零失敗）
-        const alert = q.state === 'suspicious' || q.state === 'hunted' || q.state === 'alerted';
+        const alert = q.state === 'suspicious' || q.state === 'hunted' || q.state === 'alerted' || q.state === 'checking';
         const r = radiusAt(p, alert, K);
         const d = dist3(q, pl);
         const f = forward(q.yaw);
@@ -1556,6 +1619,19 @@
             q.lastKnown = { x: pl.x, z: pl.z };
             if (K.MOVES_MODE) { q.knownAt = t; g.huntKnownAt = t; if (q.search) { q.search = null; q.stuckT = 0; } }
           }
+          continue;
+        }
+        if (q.state === 'checking') {
+          // 第 13 節：查看中看到你就追殺；耳朵用第 12 節搜索的數字（呼吸 SEARCH_BREATH_R、踩歪 SEARCH_STEP_R、跑 RUN_R、大聲照現行）
+          const chkBreath = !pl.breathing && d <= K.SEARCH_BREATH_R * pantMul;
+          const chkStep = stepLoud && d <= (crouching ? K.SEARCH_STEP_R * K.CROUCH_R / K.MOVES_STEP_R : K.SEARCH_STEP_R);
+          // 轉向的 CHECK_TURN 秒裡他還在轉頭、不算看到或聽到（不然「被看見一陣子 → 查看」的下一幀就因為還被看見而直接追殺）
+          if (q.check && q.check.phase === 'turn') continue;
+          if (seen) startHunt(q, 'seen', '他看見你了——追兵衝過來！');
+          else if (heardLoud) startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
+          else if (heardRun) startHunt(q, 'run', RUN_HUNT_MSG);
+          else if (chkStep) startHunt(q, 'step', '他聽見你的腳步——追兵衝過來！');
+          else if (chkBreath) startHunt(q, 'breath', '他聽見你的呼吸——追兵衝過來！');
           continue;
         }
         if (q.state === 'alerted') {
@@ -1620,7 +1696,8 @@
           makeSuspicious(q, t);
         }
       }
-      g.alerted = g.guards.some((q) => q.active && q.state === 'alerted');
+      g.alerted = g.guards.some((q) => q.active && (q.state === 'alerted' || q.state === 'checking'));
+      g.checking = g.guards.some((q) => q.active && q.state === 'checking');
       if (g.phase !== 'play') return g;
 
       // 暗示階梯「聽聲辨位」的成功：背後的衛兵，3 秒內被你轉身面對（8 公尺內、正前方 ±40°）
@@ -1651,6 +1728,32 @@
               q.wp = (q.wp + 1) % q.route.length;
               q.pause = K.PATROL_PAUSE * (0.8 + 0.4 * rng());
             }
+          }
+        } else if (q.state === 'checking') {
+          const C = q.check;
+          const go = (tx, tz) => {   // 走向 (tx, tz)；到了或卡住 1.5 秒回傳 true
+            const d0 = Math.hypot(tx - q.x, tz - q.z);
+            if (d0 <= 0.05) return true;
+            moveToward(q, tx, tz, K.PATROL_SPEED, dt);
+            C.stuckT = d0 - Math.hypot(tx - q.x, tz - q.z) < 0.005 ? C.stuckT + dt : 0;
+            return C.stuckT > 1.5;
+          };
+          if (C.phase === 'turn') {
+            const u = Math.min(1, (t - C.from) / K.CHECK_TURN);
+            let dy = C.yaw1 - C.yaw0; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+            q.yaw = C.yaw0 + dy * u;
+            if (t >= C.until - 1e-9) { C.phase = 'walk'; C.stuckT = 0; }
+          } else if (C.phase === 'walk') {
+            if (go(C.walkTo.x, C.walkTo.z)) {
+              C.phase = 'listen'; C.from = t; C.until = t + K.CHECK_LISTEN; C.baseYaw = q.yaw; C.stuckT = 0;
+              emit('sfx', 'check_arrive', { id: q.id, x: q.x, z: q.z });
+            }
+          } else if (C.phase === 'listen') {
+            q.yaw = C.baseYaw + 0.6 * Math.sin(2 * Math.PI * (t - C.from) / 2);   // 左右轉頭
+            if (t >= C.until - 1e-9) { C.phase = 'back'; C.stuckT = 0; }
+          } else if (go(C.home.x, C.home.z)) {
+            q.state = 'patrol'; q.susp = 0; q.grace = K.CALM_GRACE; q.lookAt = null; q.check = null;
+            emit('sfx', 'check_over', { id: q.id, x: q.x, z: q.z });
           }
         } else if (q.state === 'suspicious') {
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
@@ -1780,6 +1883,7 @@
       latchNoiseAt = -1e9;
       enterZone(z, true);
       if (lab === 'hunt') setupHuntLab();
+      if (lab === 'check') setupCheckLab();
       // 循環時鐘不重設：相位保持連續（聲音已排好的拍不會錯位），長度自己平滑逼近新目標
       emit('msg', '從「' + level.zones[z].name + '」重新開始。');
       g.alarm = 0;
