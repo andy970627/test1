@@ -112,10 +112,12 @@
     CHECK_STEP_SUSP: 0.3, // 聽到踩歪的腳步：疑心 +0.3，改朝聲音的位置走
     CHECK_BREATH_RATE: 0.3, // 聽到沒屏住的呼吸（SEARCH_BREATH_R 內）：疑心每秒 +0.3，朝你走
     CHECK_DECAY: 0.1,     // 沒看到、沒聽到時疑心每秒退多少
+    CALL_LOOK_ONLY: false, // 第 16.1 節方向 (a)：追殺開始的喊聲叫來的衛兵只轉頭看、不走過來（查看的「走過去」跳過）
     // 走法試驗場（第 11.4 節，?lab=walk；不進預設版）：'glide' 現狀（按住就滑）｜'stride' P1 步子跟著鼓｜'manual' P1＋P2 火光圈內自己踩
     STEP_MODE: 'glide',
     STRIDE_LEN: 0.9,      // P1：每一步前進幾公尺（蹲著 × CROUCH_SPEED_MUL）
     STRIDE_SLIDE: 0.18,   // P1：一步花幾秒滑過去，其餘時間腳是停的
+    MANUAL_STEP_R: 4,     // 第 16.4 節：STEP_MODE 'manual' 時，巡邏中的衛兵聽得到踩歪腳步的固定半徑（不再「快的時候整個 r(p) 都聽得到」）；也是 P2 圈的半徑
     MOVES_STEP_R: 2.5,    // 第 8 節：開關開著時，出聲的腳步傳多遠（取代 STEP_R；關著照舊 STEP_R 2.5）。2.5／4／5／6 實測後取值
     COVER_EAR_P: 0,      // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
@@ -1039,7 +1041,7 @@
       emit('hint', ladderText(key, H.level, LADDER), { key, level: H.level, idle: true });
     }
     /** 走法試驗場 P2 的圈半徑＝這名衛兵聽得到踩歪腳步的距離（規則裡同一個常數，不另訂 MANUAL_R）。 */
-    function manualR(q) { return q.state === 'checking' || q.state === 'hunted' ? K.SEARCH_STEP_R : K.STEP_R; }
+    function manualR(q) { return q.state === 'checking' || q.state === 'hunted' ? K.SEARCH_STEP_R : K.MANUAL_STEP_R; }
     function isHidden(pl) {
       if (pl.inBelly) return true;
       for (const s of level.shadows) if (inRect(pl.x, pl.z, s)) return true;
@@ -1102,7 +1104,7 @@
         return;
       }
       const dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
-      const k = d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
+      const k = cause === 'call' && K.CALL_LOOK_ONLY ? 0 : d > K.CHECK_WALK ? K.CHECK_WALK / d : 1;
       const walkTo = { x: q.x + dx * k, z: q.z + dz * k };
       q.state = 'checking'; q.susp = K.CHECK_SUSP0; q.calm = 0;
       q.check = { target: { x: pos.x, z: pos.z }, walkTo, home: { x: q.x, z: q.z }, phase: 'turn', from: t, until: t + K.CHECK_TURN,
@@ -1666,20 +1668,25 @@
         const fa = Math.atan2(f.x, f.z);
         const inFov = d < 1e-6 || angDiff(toward, fa) <= K.FOV;
         const seen = !pl.hidden && d <= r && inFov && !(crouching && lowCover(q, pl));   // 蹲著時矮掩體擋視線
-        const mv = moved && !lead;   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
+        const mv = (moved || !!strideStepNow) && !lead;   // 走法試驗場：落步那一幀還沒位移，也算在動   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
         // 4A 的 M7 只改 R_BASE／R_GAIN，不做感知分級：移動聲、呼吸聲仍以整個 r(p) 判定（分級是 4B 的事）
         // 殘響掩護（COVER_MODE）第 2 條（設計席 7.1：p > COVER_EAR_P，預設全程）：耳朵可以用鼓聲騙——
         // 踩在可聽拍上的腳步（step_masked）聽不見；出聲的腳步（step_loud）才算，後果和舊版一樣：
         // p ≤ HIGH_P 時是 STEP_R 內加 SUSP_STEP（heardStep 那一行），p > HIGH_P 時 r(p) 內進高度警覺。被看見（seen）照舊。
         const coverEar = !!K.COVER_MODE && p > K.COVER_EAR_P;
         const hearR = crouching ? Math.min(r, K.CROUCH_R) : r;   // 蹲走：離拍的聲音只傳 CROUCH_R
-        const heardMove = mv && d <= hearR && (!coverEar || (stepLoud && p > K.HIGH_P));
+        // 第 16.4 節：STEP_MODE 'manual' 時踩歪的腳步一律固定半徑（巡邏 MANUAL_STEP_R、查看／追殺 SEARCH_STEP_R 在各自的分支），
+        // 快的時候不再是整個 r(p) 內都聽得到；後果照舊（快的時候進查看、慢的時候加疑心）
+        const manualEar = K.STEP_MODE === 'manual';
+        const manualStepR = crouching ? K.MANUAL_STEP_R * K.CROUCH_R / K.MOVES_STEP_R : K.MANUAL_STEP_R;
+        const heardMove = manualEar ? (stepLoud && p > K.HIGH_P && d <= manualStepR)
+          : mv && d <= hearR && (!coverEar || (stepLoud && p > K.HIGH_P));
         const pantMul = pl.panting ? K.RUN_PANT_MUL : 1;
         // 走法試驗場：P1 兩步之間腳是停的，但按著方向鍵、還在走的節奏裡，不算「站著不動」（不然巡邏的衛兵會在你走路途中聽到站著的呼吸）
         const standing = !moved && !(strideMode && pl.dirHeld && t - pl.lastStrideT < K.STEP_GAP * K.STEP_GAP_MAX);
         const heardBreath = !pl.breathing && standing && d <= r * K.BREATH_HEAR * pantMul;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
-        const heardStep = stepLoud && d < (crouching ? K.CROUCH_R : K.STEP_R);
+        const heardStep = stepLoud && d < (manualEar ? manualStepR : crouching ? K.CROUCH_R : K.STEP_R);
         const heardRun = runLoud && d <= K.RUN_R;   // 搭配動作 A1：掩護窗外的跑步
 
         if (q.state === 'hunted') {
