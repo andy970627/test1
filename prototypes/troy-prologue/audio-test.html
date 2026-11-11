@@ -4,7 +4,7 @@
 /* 顏色照設計系統「Odyssey 音樂系列」tokens（night、ash、dim、fire、line；panel 用不透明的 control 色，頁面不疊在遊戲上） */
 :root { --night:#07080c; --panel:#0e0f15; --control:#12131a; --on-fire:#1a1008; --line:#2a2c38; --ash:#d6cfc2; --dim:#8a8478; --fire:#f0a85a; --alarm:#c23a2c; --moon:#9fb0d8; }
 body { margin:0; background:var(--night); color:var(--ash); font:15px/1.6 "Noto Sans TC", system-ui, sans-serif; }
-main { max-width:640px; margin:0 auto; padding:20px 16px 40px; }
+main { max-width:820px; margin:0 auto; padding:20px 16px 40px; }
 h1 { font-size:20px; margin:0 0 4px; color:var(--fire); }
 p.note { color:var(--dim); margin:0 0 16px; font-size:13px; }
 section { background:var(--panel); border:1px solid var(--line); border-radius:0; padding:12px 14px; margin-bottom:12px; }
@@ -18,6 +18,12 @@ input[type=range] { flex:1; }
 #bar i { display:block; height:100%; width:0; background:var(--fire); }
 #blind { display:inline-block; min-width:5em; padding:0 8px; border-radius:0; }
 #blind.yes { background:var(--fire); color:var(--on-fire); }
+/* 節奏圖：每條鼓一條時間軌，往左捲；「現在」在右邊那條線 */
+#rhythm { display:block; width:100%; height:300px; background:var(--night); border:1px solid var(--line); }
+#rhythmHead { display:flex; flex-wrap:wrap; gap:4px 16px; font:13px/1.5 ui-monospace, monospace; color:var(--ash); margin:0 0 6px; }
+#rhythmHead b { color:var(--fire); font-weight:600; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; color:var(--dim); margin-top:6px; }
+.legend i { display:inline-block; width:10px; height:10px; margin-right:4px; vertical-align:-1px; }
 </style>
 <main>
   <h1>特洛伊的迴響・聲音試聽</h1>
@@ -29,6 +35,13 @@ input[type=range] { flex:1; }
     <div id="readout">p = 0.000　<span id="blind">—</span></div>
     <div id="bar"><i></i></div>
     <div class="note" id="info"></div>
+  </section>
+  <section>
+    <b>節奏圖</b>（每一條橫線是一條鼓，最慢的在最下面；每一拍一個點，越大越亮越響；右邊那條線是「現在」，左邊是剛響過的 6 秒）
+    <div id="rhythmHead"><span id="rhAud">按「開始」</span><span id="rhLoud"></span><span id="rhVer"></span></div>
+    <canvas id="rhythm" aria-label="節奏圖：每條鼓的拍點隨時間往左捲"></canvas>
+    <div class="legend"><span><i style="background:#f0a85a"></i>最大聲那條</span><span><i style="background:#9fb0d8"></i>聽得到的其他條</span><span><i style="background:#3a3c48"></i>太輕、聽不到</span><span><i style="background:rgba(240,168,90,.35);border:1px solid #f0a85a"></i>最響的一擊</span><span><i style="border:1px dashed #9fb0d8"></i>假的（越打越密，沒落下）</span><span><i style="border:2px solid #f0a85a;border-radius:50%"></i>V4 強拍：每兩拍一下</span><span><i style="border:2px solid #d6cfc2"></i>V4 強拍：每三拍一下</span><span><i style="background:#1a1b24"></i>鼓聲斷掉（盲區）</span></div>
+    <div class="note">假的那一下要等它過了才標出來，免得還沒聽就先看到答案。</div>
   </section>
   <section>
     <label>警戒 alarm <input id="alarm" type="range" min="0" max="1" step="0.01" value="0"> <span id="alarmv">0.00</span></label>
@@ -107,7 +120,8 @@ input[type=range] { flex:1; }
   function applyIll() { if (!audio || !audio.setIllusion) return; var o = Object.assign({}, ILL[$('ill').value] || {}); if (o.u) o.layers = +$('illL').value; audio.setIllusion(o); }
   function build() {
     if (audio && audio.dispose) audio.dispose();
-    audio = RissetAudio.createAudio(ctx, { T: +$('illT').value || 10, t0: ctx.currentTime + 0.1 });
+    audio = RissetAudio.createAudio(ctx, { T: +$('illT').value || 10, t0: ctx.currentTime + 0.1, log: true });   // log：節奏圖讀排程紀錄（每一拍、最響一擊、V4 強拍）
+    rhHist = [];
     audio.setMaster(+$('vol').value); applyIll();
     tapA = ctx.createAnalyser(); tapA.fftSize = 1024; tapBuf = new Float32Array(tapA.fftSize); audio.tap(tapA); vProm = []; vDone = {};
   }
@@ -167,7 +181,82 @@ input[type=range] { flex:1; }
         '離木馬 ' + (h.dist == null ? '—' : h.dist.toFixed(1)) + ' 公尺・這一擊共鳴音量 ' + h.boomGain.toFixed(3) + '（' + h.boomR + ' 公尺外為 0）・腹中低通 ' +
         (h.lowpass ? '開（' + h.lowpassHz + ' Hz 以下）' : '關') + (h.lastBoom ? '・上一聲 ' + h.lastBoom.gain + '（' + h.lastBoom.dist + ' 公尺）' : '');
     }
+    drawRhythm(s);
     requestAnimationFrame(frame);
+  }
+  // ---------- 節奏圖：讀聲音層的排程紀錄 audio.log（和實際播的是同一份） ----------
+  var RH_PAST = 6, RH_AHEAD = 0.25, rhHist = [];
+  function verName() { var o = $('ill').selectedOptions[0]; return o ? o.textContent : ''; }
+  function drawRhythm(s) {
+    var cv = $('rhythm'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+    if (!audio) return;
+    var now = audio.now(), log = audio.log || [], ii = audio.illusionInfo ? audio.illusionInfo() : null;
+    // 紀錄只留最近一段，免得越來越長（只有這一頁開 log）
+    var cut = 0; while (cut < log.length && log[cut].t != null && log[cut].t < now - RH_PAST - 2) cut++;
+    if (cut > 200) log.splice(0, cut);
+    rhHist.push({ t: now, blind: !!s.cycle.blind }); while (rhHist.length && rhHist[0].t < now - RH_PAST - 1) rhHist.shift();
+    var nL = ii ? ii.layers : 0;
+    if (!nL) { var mk = 0; log.forEach(function (e) { if (e.type === 'beat' && !e.tail) mk = Math.max(mk, e.k + 1); }); nL = Math.max(4, mk); }
+    var L = 70, R = W - 10, top = 8, bot = H - 22, rowH = (bot - top) / nL;
+    var x0 = now - RH_PAST, x1 = now + RH_AHEAD, X = function (t) { return L + (t - x0) / (x1 - x0) * (R - L); };
+    var Y = function (k) { return bot - (k + .5) * rowH; };          // k = 0 最慢，在最下面
+    var db = ii ? ii.layersDb : [], loud = -1, best = -1e9, aud = 0;
+    for (var k = 0; k < nL; k++) { var d = db[k] == null ? -99 : db[k]; if (d > best) { best = d; loud = k; } if (d >= -12) aud++; }
+    // 鼓聲斷掉的時段（盲區）
+    c.fillStyle = '#1a1b24';
+    for (var i = 0; i < rhHist.length; i++) if (rhHist[i].blind) { var a = X(rhHist[i].t), b = i + 1 < rhHist.length ? X(rhHist[i + 1].t) : X(now); c.fillRect(a, top, Math.max(1, b - a), bot - top); }
+    // 每條軌的底與名字
+    c.font = '12px ui-monospace, monospace'; c.textBaseline = 'middle';
+    for (k = 0; k < nL; k++) {
+      var d2 = db[k] == null ? -99 : db[k], on = d2 >= -12, isLoud = k === loud;
+      c.fillStyle = isLoud ? 'rgba(240,168,90,.10)' : on ? 'rgba(159,176,216,.05)' : 'rgba(0,0,0,0)';
+      c.fillRect(L, Y(k) - rowH / 2 + 1, R - L, rowH - 2);
+      c.strokeStyle = '#2a2c38'; c.lineWidth = 1; c.beginPath(); c.moveTo(L, Y(k)); c.lineTo(R, Y(k)); c.stroke();
+      c.fillStyle = isLoud ? '#f0a85a' : on ? '#9fb0d8' : '#4a4c58';
+      c.fillText('第 ' + (k + 1) + ' 條' + (d2 > -98 ? ' ' + Math.round(d2) : ''), 4, Y(k));
+    }
+    // 最響的一擊（V 版的時間表、現行的重合擊）：過了才畫；假的過了才標出來
+    var gmax = 1e-6;
+    log.forEach(function (e) { if (e.type === 'beat' && !e.tail && e.t > x0 && e.t <= now) gmax = Math.max(gmax, e.g); });
+    log.forEach(function (e) {
+      if (e.t == null || e.t < x0 || e.t > now) return;
+      var x = X(e.t);
+      if (e.type === 'coverHit' || (e.type === 'vEvent' && !e.fake)) {
+        c.fillStyle = 'rgba(240,168,90,.22)'; c.fillRect(x - 3, top, 6, bot - top);
+        c.strokeStyle = '#f0a85a'; c.lineWidth = 2; c.beginPath(); c.moveTo(x, top); c.lineTo(x, bot); c.stroke();
+        c.fillStyle = '#f0a85a'; c.textBaseline = 'top'; c.fillText('最響的一擊', Math.min(x + 4, R - 70), top); c.textBaseline = 'middle';
+      } else if (e.type === 'vEvent' && e.fake && $('ill').value === 'v2') {
+        c.setLineDash([4, 4]); c.strokeStyle = '#9fb0d8'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x, top); c.lineTo(x, bot); c.stroke(); c.setLineDash([]);
+        c.fillStyle = '#9fb0d8'; c.textBaseline = 'top'; c.fillText('假的', Math.min(x + 4, R - 30), top); c.textBaseline = 'middle';
+      }
+    });
+    // 每一拍
+    log.forEach(function (e) {
+      if (e.type !== 'beat' || e.tail || e.t < x0 || e.t > now + RH_AHEAD || e.k >= nL) return;
+      var u = Math.sqrt(Math.max(0, e.g) / gmax), x = X(e.t), y = Y(e.k), age = Math.max(0, now - e.t);
+      var on = (db[e.k] == null ? -99 : db[e.k]) >= -12;
+      c.globalAlpha = Math.max(.15, (e.t > now ? .35 : 1) * (1 - age / RH_PAST * .6)) * (.35 + .65 * u);
+      c.fillStyle = e.k === loud ? '#f0a85a' : on ? '#9fb0d8' : '#4a4c58';
+      c.beginPath(); c.arc(x, y, 1.5 + Math.min(rowH * .42, 9) * u, 0, Math.PI * 2); c.fill();
+    });
+    c.globalAlpha = 1;
+    // V4 的兩條強拍（三對二）：A 每兩拍一下畫圓圈、B 每三拍一下畫方框；只畫聽得到的那幾條，太輕的不畫
+    log.forEach(function (e) {
+      if (e.type !== 'accent' || e.t < x0 || e.t > now || e.k >= nL) return;
+      if ((db[e.k] == null ? -99 : db[e.k]) < -12 || e.g < gmax * .12) return;
+      var x = X(e.t), y = Y(e.k), r = Math.min(rowH * .45, 11);
+      c.lineWidth = 2;
+      if (e.which === 'B') { c.strokeStyle = '#d6cfc2'; c.strokeRect(x - r, y - r, 2 * r, 2 * r); }
+      else { c.strokeStyle = '#f0a85a'; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.stroke(); }
+    });
+    // 「現在」
+    c.strokeStyle = 'rgba(214,207,194,.7)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(X(now), top - 4); c.lineTo(X(now), bot + 4); c.stroke();
+    c.fillStyle = '#8a8478'; c.textBaseline = 'top'; c.fillText('現在', X(now) - 14, bot + 6); c.fillText('6 秒前', L, bot + 6);
+    $('rhAud').innerHTML = '聽得到 <b>' + aud + '</b> 條（共 ' + nL + ' 層）';
+    $('rhLoud').innerHTML = ii ? '最大聲那條 <b>第 ' + (loud + 1) + ' 條</b>・每分鐘 ' + ii.loudBpm + ' 拍' : '';
+    $('rhVer').textContent = '版本：' + verName() + '・一圈 ' + (ii ? ii.T : s.cycle.T) + ' 秒';
   }
 })();
 </script>
@@ -188,6 +277,7 @@ input[type=range] { flex:1; }
       "層（一條持續加速的鼓）數 8 比 6、循環 20 秒比 12 秒，哪個比較自然。"
     ],
     "panel": [
+      ["節奏圖", "每條鼓一條橫軌、最慢在最下面；點越大越亮越響，橘色是最大聲那條；橘色直條是最響的一擊，虛線是 V2 的假的，V4 的兩條強拍一圈一框"],
       [
         "p = 0.000",
         "目前在一圈裡走到哪（0 到 1）；旁邊亮「盲區」是最響一擊後那 0.6 秒"

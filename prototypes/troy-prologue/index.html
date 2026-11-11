@@ -676,6 +676,9 @@ const LAB_HELP = {
   };
 const HORSE_Q = URLQ.get('horse') === '1', LAB = ['belly', 'horse', ...MOVES_LABS].includes(URLQ.get('lab')) ? URLQ.get('lab') : null;
 const MOVES_OFF_Q = URLQ.get('moves') === '0';
+// 錄影模式 ?clean=1：不讀也不寫首頁存檔（每次都是 HTML 預設），相位條、試玩數據摘要強制關，不掛說明欄、不放「回試玩切換台」。
+// 給報告錄影用：使用者自己電腦上存過的除錯開關不會出現在畫面上
+const CLEAN_Q = URLQ.get('clean') === '1';
 const MOVES_SUPPORTED = !!(Rules.T && 'MOVES_MODE' in Rules.T);
 const movesOn = () => !!K().MOVES_MODE;
 const horseOn = () => !!K().HORSE_MODE;
@@ -1576,13 +1579,15 @@ const PREFS = (() => {
     if (game && 'visualAidMode' in game) game.visualAidMode = $('oAid').value;
   }
   function save() {
+    if (CLEAN_Q) return;                          // 錄影模式不動存檔
     const o = {};
     for (const [k, id] of fields) o[k] = read($(id));
     if (saved.trackMode) o.trackMode = saved.trackMode;
     saved = o;
     try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {}
   }
-  apply(saved);
+  apply(CLEAN_Q ? {} : saved);
+  if (CLEAN_Q) { $('oPhase').checked = false; $('oTel').checked = false; }
   $('opts').addEventListener('change', e => {
     if (e.target && e.target.id === 'oTrackFile') return;
     if (e.target && e.target.name === 'oMusic' && e.target.checked && e.target.value !== 'synth') saved.trackMode = e.target.value;
@@ -2037,7 +2042,12 @@ function sync(dt, now) {
     F.halo.scale.setScalar(1 + (1 - pulse) * .4);
     if (!on && G.susp > 0) { F.glow.material.color.setHex(0xe0b04a); F.glow.material.opacity = Math.max(F.glow.material.opacity, clamp(G.susp, 0, 1) * .35); }
     // 第 13 節：查看中（checking）火把與頭上微光變橘；轉向由規則的 q.yaw（朝 lookAt）帶。報告版沒有這個狀態
-    if (G.state === 'checking' && !down) {
+    const shouting = HV.shout && HV.shout.id === G.id && performance.now() < HV.shout.until && !down;
+    if (shouting) {                                    // 喊一聲到開始追之間：火把全紅、頭上的光一閃一閃
+      F.glow.material.color.copy(CHECK_RED); F.glow.material.opacity = .6 + .4 * Math.abs(Math.sin(performance.now() / 70));
+      F.light.color.copy(CHECK_RED); F.light.intensity *= 1.6;
+      if (F.torchMats) F.torchMats.forEach(tm => { tm.mat.color.copy(CHECK_RED); });
+    } else if (G.state === 'checking' && !down) {
       // 第 15 節：疑心慢慢滿 → 火把由橘（剛開始查看）轉紅（快要追殺）；疑心照規則的 q.susp（0～1）
       const cs = clamp(num(G.susp, 0), 0, 1);
       tmpTorchCol.setHex(HUNT_FX.alertCol).lerp(CHECK_RED, cs);
@@ -2657,7 +2667,7 @@ const HV = { routes: new Map(), ears: new Map(), pantV: 0, heardAt: -1e9,
   marks: new Map(), n: null };
 function resetHuntFx() {
   HV.n = { calls: 0, called: 0, searches: 0, searchDone: 0, heardBreath: 0, heardStep: 0, pants: 0, alerted: {},
-    checks: 0, checkArrive: 0, checkOver: 0, checkToHunt: 0, huntStarts: 0, inCheck: 0, checkCause: {}, lastCheck: '' };
+    checks: 0, checkArrive: 0, checkOver: 0, checkToHunt: 0, huntStarts: 0, inCheck: 0, retarget: 0, checkCause: {}, lastCheck: '' };
   for (const o of HV.marks.values()) o.m.visible = false;
   try { resetWalkFx(); } catch (e) {}   // 頁面載入時第一次呼叫在走法區塊之前（WK 還沒建），那時跳過；走法區塊自己會初始化
   HV.heardAt = -1e9;
@@ -2667,7 +2677,11 @@ function resetHuntFx() {
 resetHuntFx();
 function huntEvent(e) {
   const n = HV.n;
-  if (e.a === 'hunt_call') {
+  if (e.a === 'hunt_call' || e.a === 'hunt_shout') {
+    // 第 17 節：疑心滿了先喊一聲，HUNT_START_DELAY（0.8 秒）後才追：這段時間火把猛地變紅、畫面邊緣閃紅
+    HV.shout = { id: e.id, until: performance.now() + num(K().HUNT_START_DELAY, .8) * 1000 + 150 };
+    flashV = Math.max(flashV, .9);
+    if (e.a === 'hunt_shout') return;
     const called = arr(e.called);
     n.calls++; n.called += called.length;
     if (Number.isFinite(e.x)) ripple(e.x, e.z, num(K().HUNT_CALL_R, 12), HUNT_FX.callCol, .32, 1.3);
@@ -2684,6 +2698,11 @@ function huntEvent(e) {
   else if (e.a === 'alerted') { const c = e.cause || '其他'; n.alerted[c] = (n.alerted[c] || 0) + 1; }
   else if (e.a === 'check_start') { n.checks++; n.inCheck++; n.checkCause[e.cause || '其他'] = (n.checkCause[e.cause || '其他'] || 0) + 1; n.lastCheck = e.cause || ''; }
   else if (e.a === 'check_arrive') n.checkArrive++;
+  else if (e.a === 'check_retarget') {                 // 第 15 節：查看中又聽到 → 改往聲音那邊走（地上橘圈跟著 q.check.walkTo 移過去），新目標點閃一圈
+    n.retarget++;
+    const q = arr(game && game.guards).find(o => o && o.id === e.id), w = q && q.check && q.check.walkTo;
+    if (w) ripple(w.x, w.z, 1.2, HUNT_FX.alertCol, .5, .7);
+  }
   else if (e.a === 'check_over') { n.checkOver++; n.inCheck = Math.max(0, n.inCheck - 1); }
   else if (e.a === 'hunt') { if (n.inCheck > 0) n.checkToHunt++; else n.huntStarts++; n.inCheck = 0; }   // 追殺開始時規則會先清掉 q.check，所以自己記
 }
@@ -3446,11 +3465,11 @@ document.querySelectorAll('.btnHub').forEach(b => {
 // 回試玩切換台（本機的 ../switch.html；claude.ai 試玩頁沒有就隱藏）
 const hasSwitch = !!(NAV && typeof NAV.hasSwitch === 'function' && NAV.hasSwitch());
 document.querySelectorAll('.btnSwitch').forEach(b => {
-  b.hidden = !hasSwitch;
+  b.hidden = !hasSwitch || CLEAN_Q;
   b.onclick = () => { try { NAV.goSwitch(); } catch (e) { console.warn('無法前往試玩切換台', e); } };
 });
 // 試驗場的說明側欄（預設收起；按 H 或右邊的「說明」開關）：內容在 LAB_HELP，整關（沒有 ?lab）不掛
-if (LAB && NAV && typeof NAV.mount === 'function' && LAB_HELP[LAB]) { try { NAV.mount({ switchLink: false, help: LAB_HELP[LAB], key: 'KeyH', id: 'troy-lab-' + LAB }); } catch (e) { console.warn('說明側欄掛不上', e); } }
+if (LAB && !CLEAN_Q && NAV && typeof NAV.mount === 'function' && LAB_HELP[LAB]) { try { NAV.mount({ switchLink: false, help: LAB_HELP[LAB], key: 'KeyH', id: 'troy-lab-' + LAB }); } catch (e) { console.warn('說明側欄掛不上', e); } }
 
 // 開場前先建好場景當背景（看得到木馬腹中）
 try {

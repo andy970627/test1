@@ -34,7 +34,8 @@ small { color:var(--dim); }
     <label><input type="checkbox" id="horse"> 木馬新內容（腹中練習、木馬陰影、共鳴、結尾回頭）</label><br>
     <label>從第 <select id="zone"><option value="">0（開場）</option><option>1</option><option>2</option><option>3</option><option>4</option></select> 區開始</label>
     <label><input type="checkbox" id="tel"> 記錄試玩數據</label>
-    <label><input type="checkbox" id="mute"> 靜音</label><br>
+    <label><input type="checkbox" id="mute"> 靜音</label>
+    <label><input type="checkbox" id="clean"> 錄影模式（不帶出存過的除錯開關、不放說明欄）</label><br>
     <a class="btn go" id="play" target="_blank">開始玩</a> <code id="url"></code>
   </section>
 
@@ -84,6 +85,7 @@ function gameUrl() {
   if ($('zone').value) q.set('startZone', $('zone').value);
   if ($('tel').checked) q.set('telemetry', '1');
   if ($('mute').checked) q.set('mute', '1');
+  if ($('clean').checked) q.set('clean', '1');
   const s = q.toString();
   return 'troy-prologue/index.html' + (s ? '?' + s : '');
 }
@@ -92,7 +94,7 @@ function refresh() {
   $('listen').href = 'troy-prologue/audio-test.html?ill=' + $('ill').value + '&cycle=' + $('cyc').value;
 }
 // 記住上次的選擇（只存在這台電腦的瀏覽器；存不了就用預設）
-const KEYS = ['moves', 'horse', 'zone', 'tel', 'mute', 'ill', 'cyc'];
+const KEYS = ['moves', 'horse', 'zone', 'tel', 'mute', 'clean', 'ill', 'cyc'];
 try { const s = JSON.parse(localStorage.getItem('switch-board') || '{}'); KEYS.forEach(k => { if (k in s) { const el = $(k); if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; } }); } catch (e) {}
 document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', () => {
   refresh();
