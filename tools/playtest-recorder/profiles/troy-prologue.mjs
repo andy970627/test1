@@ -244,6 +244,10 @@ export default {
         api.set('Space', !go && busy && near < 4 && canB);
       } else {
         D.V.yaw = Math.PI; D.V.pitch = -0.1;
+        // 第 18 節（11/11）：甩掉追兵後試驗場不會再追；沒被追 3 秒就用規則的 g.retry()（和失敗後按 R 同一個函式）重擺場景，多錄幾次逃與躲
+        if (g.hunted) st.huntSeen = true;
+        if (st.huntSeen && !g.hunted) { if (st.calmAt == null) st.calmAt = t; else if (t - st.calmAt > 3 && typeof g.retry === 'function') { g.retry(); st.huntSeen = false; st.calmAt = null; api.log('lab_rehunt'); return; } }
+        else st.calmAt = null;
         const inShadow = P.z >= 24.5;
         api.set('KeyW', !inShadow); api.set('ShiftLeft', !inShadow);
         api.set('Space', inShadow && near < 4 && canB);
