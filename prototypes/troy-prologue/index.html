@@ -2169,9 +2169,9 @@ const RUN_RIP = { col: 0xff8a3a, op: .5, quietCol: 0xb8c8ee, quietOp: .16, dur: 
 const GUARD_RIP = { col: 0xc8d4f0, op: .22, r: 1.1, dur: .9 };                          // 屏息時衛兵的腳步
 const LOW_MARK_OP = { stand: .1, crouch: .42 };
 const RIP = { list: [], geo: null };
-const MV = { run: { masked: 0, quiet: 0, heard: 0 }, crouch: { masked: 0, loud: 0 }, last: '', gsteps: new Map(), gripN: 0, gsrc: '', gstepQ: 0, lowV: 0 };
+const MV = { run: { masked: 0, quiet: 0, heard: 0 }, crouch: { masked: 0, loud: 0 }, last: '', gsteps: new Map(), gripN: 0, gsrc: '', gstepQ: -Infinity, gpend: [], lowV: 0 };
 function resetMovesFx() {
-  MV.run = { masked: 0, quiet: 0, heard: 0 }; MV.crouch = { masked: 0, loud: 0 }; MV.last = ''; MV.gsteps.clear(); MV.gripN = 0; MV.gstepQ = 0;
+  MV.run = { masked: 0, quiet: 0, heard: 0 }; MV.crouch = { masked: 0, loud: 0 }; MV.last = ''; MV.gsteps.clear(); MV.gripN = 0; MV.gstepQ = -Infinity; MV.gpend = [];
   for (const r of RIP.list) { r.life = 0; r.m.visible = false; }
 }
 function ripple(x, z, r1, color, op, dur) {
@@ -2202,15 +2202,27 @@ function movesEvent(e) {
     if (e.a === 'step_masked') MV.crouch.masked++; else MV.crouch.loud++;
   }
 }
-/** 屏息時衛兵腳步落地：聲音層有 guardStepsSince(t) → [{x, z, t}] 就照它；沒有就用聲音層同一個步頻（0.7 ÷ 速度，0.26～0.8 秒）估。 */
+/** 屏息時衛兵腳步落地：聲音層有 guardStepsSince(t) → [{x, z, t, id}] 就照它；沒有就用聲音層同一個步頻（0.7 ÷ 速度，0.26～0.8 秒）估。
+ *  聲音層的 t 是那一步實際響起的音訊時間（可能比現在晚 10～50 毫秒）：每幀只拿「上次拿到的最晚 t」之後的新步，排隊，音訊時間到 t 才畫；
+ *  到的那一刻沒在屏息就不畫。x、z 是衛兵真實位置（不是屏息時聲音拉開後的位置）。 */
 function guardStepRipples(dt) {
   const P = game.player, on = !!(P && P.breathing);
   const a = audio && audio.raw, now = audio ? audio.now() : 0;
   if (a && typeof a.guardStepsSince === 'function') {
     MV.gsrc = '聲音層';
     let list = null; try { list = a.guardStepsSince(MV.gstepQ); } catch (e) { list = null; }
-    MV.gstepQ = now;
-    if (on && Array.isArray(list)) for (const st of list) if (st && Number.isFinite(st.x)) { ripple(st.x, st.z, GUARD_RIP.r, GUARD_RIP.col, GUARD_RIP.op, GUARD_RIP.dur); MV.gripN++; }
+    if (Array.isArray(list)) for (const st of list) {
+      if (!st || !Number.isFinite(st.t)) continue;
+      if (st.t > MV.gstepQ) MV.gstepQ = st.t;
+      if (Number.isFinite(st.x) && Number.isFinite(st.z) && st.t > now - .25) MV.gpend.push(st);   // 太舊的（例如剛開頁一次拿到的歷史）不補畫
+    }
+    if (MV.gpend.length > 64) MV.gpend.splice(0, MV.gpend.length - 64);
+    const keep = [];
+    for (const st of MV.gpend) {
+      if (now < st.t) { keep.push(st); continue; }
+      if (on) { ripple(st.x, st.z, GUARD_RIP.r, GUARD_RIP.col, GUARD_RIP.op, GUARD_RIP.dur); MV.gripN++; }
+    }
+    MV.gpend = keep;
     return;
   }
   MV.gsrc = '畫面估算';
