@@ -44,6 +44,14 @@ export default {
     const cycle = o.cycle ? +o.cycle : null;
     // 鼓聲模式（核心方向甲，11/10）：--cover cover｜gap 設定開場選單 #oCover（規則 T.COVER_MODE）；不給就用頁面預設（cover）
     const cover = o.cover === 'gap' || o.cover === 'false' ? 'gap' : (o.cover === 'cover' || o.cover === true || o.cover === 'true') ? 'cover' : null;
+    // --play-through（11/11，全流程影片）：把整夜驗證的「完美踩拍」玩家（tools/telemetry/troy-bots.js 的 makeBot，原樣）送進頁面，從開場玩到通關
+    if (o.playThrough) {
+      const { createRequire } = await import('node:module');
+      const src = createRequire(import.meta.url)('../../telemetry/troy-bots.js').makeBot.toString();
+      await page.evaluate((src) => {
+        window.__recPlayMake = () => new Function('R', 'return (' + src + ')')(window.RissetRules)({ cover: window.TroyDebug.game.T.COVER_MODE === true });
+      }, src);
+    }
     await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse }) => {
       window.__recStepTest = !!stepTest;   // --step-test：第 1 區改成離拍起步累積腳步樣本（不喘氣引起注意）
       // --horse-test（11/11，木馬共鳴 C2）：頁面要用 ?lab=horse 開（record.mjs 的 --page）；前半段站在木馬旁、後半段站到 30 公尺外
@@ -158,11 +166,27 @@ export default {
       if (!st.failAt) { st.failAt = s.wall; api.log('fail', g.failReason); }
       if (s.wall - st.failAt > 1500) {   // 失敗畫面停 1.5 秒後按 R；程式玩家狀態歸零（重新引起注意、重新安撫）
         for (const k of Object.keys(st)) delete st[k];
+        window.__recPlay = null;
         api.press('KeyR'); api.log('retry');
       }
       return;
     }
     if (g.phase !== 'play') { api.releaseAll(); return; }
+    // --play-through：完美踩拍玩家的輸出轉成按鍵（移動方向→視角＋W；屏息→空白；安撫→Q；衝刺→Shift；暗殺→點 E；城門→按住 E）
+    if (window.__recPlayMake) {
+      if (!window.__recPlay) window.__recPlay = window.__recPlayMake();
+      const inp = window.__recPlay(g) || {};
+      const mv = !!(inp.mx || inp.mz);
+      if (mv) D.V.yaw = Math.atan2(-inp.mx, -inp.mz);
+      D.V.pitch = g.zone === 1 ? -0.35 : -0.12;
+      api.set('KeyW', mv); api.set('KeyS', false);
+      api.set('Space', !!inp.breath && !mv);
+      if (inp.calm) { api.press('KeyQ'); api.log('calm_press', {}); }
+      if (inp.dash) { if (!st.dashT || t - st.dashT > 0.5) { st.dashT = t; api.press('ShiftLeft'); } }
+      if (inp.takedown) { if (!st.tdT || t - st.tdT > 0.3) { st.tdT = t; api.press('KeyE'); api.log('takedown_press'); } }
+      else api.set('KeyE', !!inp.interact);
+      return;
+    }
     D.V.yaw = -Math.PI / 2; D.V.pitch = g.zone === 1 ? -0.35 : -0.12;   // 面向東：W＝往城門方向
 
     let fwd = 0, breath = false;
