@@ -10,9 +10,12 @@
     --accent-blue: #4aa8d8;
     --accent-red: #d94a4a;
     --accent-torch: #ff9d3b;
+    --touch-h: 0px;   /* 觸控按鈕列的高度（觸控模式時由 .touch 設定），頁面底部留空給它 */
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* 手機：取消雙擊縮放與 300 毫秒點擊延遲 */
+  html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 
   body {
     background: var(--bg-dark);
@@ -181,7 +184,57 @@
     font-size: 12px;
     color: #e5eaf5;
   }
+
+  /* 開始畫面：手機的聲音要等使用者點一下才能開（瀏覽器規定），鍵盤按任何鍵也算 */
+  .start-gate {
+    position: absolute; inset: 0; z-index: 110;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(10, 11, 16, 0.86); text-align: center; padding: 16px;
+  }
+  .start-gate[hidden] { display: none; }
+  .start-gate .btn-big { font-size: 20px; padding: 14px 32px; border-radius: 8px; background: #3a3220; border-color: var(--accent-gold); color: #fff3d6; }
+  .start-gate small { color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+
+  /* 觸控按鈕列：固定在畫面底部，左「前進（按住）」、右「換層」，上排小按鈕「重來」「聲部譜」 */
+  .touch-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+    display: none;
+    grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(10, 11, 16, 0.94); border-top: 1px solid var(--border-color);
+  }
+  body.touch .touch-bar { display: grid; }
+  .touch-only { display: none; }
+  body.touch .touch-only { display: inline; }
+  body.touch { --touch-h: 168px; padding-bottom: calc(var(--touch-h) + 12px + env(safe-area-inset-bottom, 0px)); }
+  .touch-bar .row-small { grid-column: 1 / -1; display: flex; gap: 10px; }
+  .touch-bar button {
+    touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    border-radius: 10px; border: 1px solid #3d4563; background: #1c2133; color: var(--text-main);
+    font-family: inherit;
+  }
+  .touch-bar .row-small button { flex: 1; height: 44px; font-size: 15px; }
+  .touch-bar .row-small button[aria-pressed="false"] { color: var(--text-dim); }
+  .touch-bar .pad { height: 104px; font-size: 22px; font-weight: 700; line-height: 1.25; }
+  .touch-bar .pad small { display: block; font-size: 12px; font-weight: 400; color: var(--text-dim); }
+  .touch-bar #tWalk.on { background: #24304a; border-color: var(--accent-blue); }
+  .touch-bar #tSwitch { background: #2a2416; border-color: #6b5a33; }
+  .touch-bar #tSwitch.flash { background: #5a4a22; border-color: var(--accent-gold); }
+
+  @media (max-width: 600px) {
+    body { padding: 8px; }
+    .sandbox-container { gap: 8px; }
+    .hint-banner { font-size: 14px; padding: 8px 12px; min-height: 0; }
+    .slider-row { grid-template-columns: 1fr 44px; }
+    .slider-row label { grid-column: 1 / -1; }
+    .panel-title { flex-wrap: wrap; gap: 6px; }
+    .overlay-title { font-size: 22px; }
+    .overlay-modal { gap: 10px; padding: 12px; }
+    .overlay-stats { padding: 8px 14px; font-size: 13px; line-height: 1.6; max-height: 60%; overflow: auto; }
+  }
 </style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <div class="sandbox-container">
   <!-- 提示文字列 -->
@@ -195,7 +248,11 @@
     <div class="overlay-modal" id="overlayModal">
       <div class="overlay-title" id="overlayTitle">順利通過</div>
       <div class="overlay-stats" id="overlayDetails"></div>
-      <button class="btn" onclick="restartGame()">按 R 鍵重新開始</button>
+      <button class="btn" id="btnOverlayRestart">重新開始（R）</button>
+    </div>
+    <div class="start-gate" id="startGate">
+      <button class="btn btn-big" id="btnStart">點一下開始</button>
+      <small>請戴耳機。<span class="kb-only">鍵盤：按住 W 前進、Q 換層、R 重來（按任何鍵也能開始）。</span><span class="touch-only">左下按住「前進」，右下按「換層」。</span></small>
     </div>
   </div>
 
@@ -205,7 +262,7 @@
     <div class="panel-box">
       <div class="panel-title">
         <span>數值狀態面板</span>
-        <span style="font-size:12px; color:var(--text-dim);">操作：<span class="key-pill">W</span> 前行 / <span class="key-pill">Q</span> 換層 / <span class="key-pill">R</span> 重來</span>
+        <span style="font-size:12px; color:var(--text-dim);">操作：<span class="key-pill">W</span> 前行 / <span class="key-pill">Q</span> 換層 / <span class="key-pill">R</span> 重來<span class="touch-only">；觸控：底部按鈕</span></span>
       </div>
       <div class="readout-row">
         <span class="readout-label">目前聲部年齡 u / 音量 / 拍距</span>
@@ -286,6 +343,16 @@
   </div>
 </div>
 
+<!-- 觸控按鈕（手機）：按下的時刻和鍵盤走同一條路（pointerdown，用聲音時鐘記），不等 click -->
+<div class="touch-bar" id="touchBar">
+  <div class="row-small">
+    <button type="button" id="tRestart">重來</button>
+    <button type="button" id="tAid" aria-pressed="true">聲部譜：開</button>
+  </div>
+  <button type="button" class="pad" id="tWalk">前進<small>按住</small></button>
+  <button type="button" class="pad" id="tSwitch">換層<small>兩條鼓同時落下時按</small></button>
+</div>
+
 <script src="rules.js"></script>
 <script src="audio.js"></script>
 <script>
@@ -314,6 +381,14 @@
 
   var canvas = document.getElementById('viewCanvas');
   var ctx2d = canvas.getContext('2d');
+  // 手機直式：畫布內部寬度改 480（高度不變），顯示出來高一倍、字大一倍；繪圖都照 canvas.width 排，不用另外改
+  function fitCanvas() {
+    var vw = Math.min(window.innerWidth || 960, document.documentElement.clientWidth || 960);
+    var want = vw < 600 ? 480 : 960;
+    if (canvas.width !== want) canvas.width = want;
+  }
+  fitCanvas();
+  window.addEventListener('resize', fitCanvas);
 
   // 音訊與規則實例
   var audioCtx = null;
@@ -337,9 +412,17 @@
     caught: false
   };
 
+  // 觸控模式：手指當主要輸入的裝置（手機、平板）自動開；?touch=1 強制開、?touch=0 強制關。鍵盤一直都能用
+  var touchMode = params.get('touch') === '1' ||
+    (params.get('touch') !== '0' && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window)));
+  if (touchMode) document.body.classList.add('touch');
+
   function setHint(text) {
     var box = document.getElementById('hintBox');
-    if (box) box.textContent = text;
+    if (!box) return;
+    // 規則層的提示寫的是鍵盤按鍵；觸控模式改成畫面上的按鈕名稱（規則檔不動）
+    if (touchMode && text) text = text.replace(/按住 W/g, '按住「前進」').replace(/按 Q/g, '按「換層」');
+    box.textContent = text;
   }
 
   // 取得目前滑桿設定參數
@@ -383,8 +466,12 @@
   };
 
   window.toggleAid = function (enabled) {
-    visualAid = enabled;
+    visualAid = !!enabled;
+    document.getElementById('aidToggle').checked = visualAid;
+    var b = document.getElementById('tAid');
+    if (b) { b.setAttribute('aria-pressed', visualAid ? 'true' : 'false'); b.textContent = '聲部譜：' + (visualAid ? '開' : '關'); }
   };
+  window.toggleAid(visualAid);
 
   function initAudioIfNeeded() {
     if (!audioCtx) {
@@ -507,17 +594,48 @@
     modal.style.display = 'flex';
   }
 
-  // 鍵盤輸入監聽
+  // ---------- 輸入：鍵盤和觸控走同一條路 ----------
+  // 換層的時刻用聲音時鐘記：currentTime − 輸出延遲 − 事件從發生到處理的時間（evt.timeStamp，夾在 0～0.1 秒；
+  // 觸控事件常晚一兩幀才送到，不扣掉會被算成按晚）
+  function markSwitch(evt) {
+    initAudioIfNeeded();
+    if (!audioCtx) return;
+    var lag = 0;
+    if (evt && typeof evt.timeStamp === 'number' && evt.timeStamp > 0 && window.performance) {
+      lag = Math.max(0, Math.min(0.1, (performance.now() - evt.timeStamp) / 1000));
+    }
+    switchTriggerTime = audioCtx.currentTime - (audioCtx.outputLatency || 0) - lag;
+  }
+  function setWalk(on) {
+    keysDown.walk = !!on;
+    var b = document.getElementById('tWalk');
+    if (b) b.classList.toggle('on', keysDown.walk);
+  }
+
+  // 開始：手機要使用者的手勢才能出聲。點開始（或按任何鍵）→ 開聲音、從頭來
+  var started = false;
+  function begin() {
+    initAudioIfNeeded();
+    document.getElementById('startGate').hidden = true;
+    if (!started) { started = true; restartGame(); }
+  }
+  function onGatePress(evt) { evt.preventDefault(); begin(); }
+  document.getElementById('btnStart').addEventListener('pointerdown', onGatePress);
+  document.getElementById('startGate').addEventListener('pointerdown', onGatePress);
+  // iOS 有時要在放開（touchend／click）時才肯開聲音，多試一次
+  ['touchend', 'click'].forEach(function (type) {
+    document.addEventListener(type, function () { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { passive: true });
+  });
+
+  // 鍵盤
   window.addEventListener('keydown', function (evt) {
+    if (!started) begin();
     initAudioIfNeeded();
     if (evt.code === 'KeyW' || evt.key === 'w' || evt.key === 'W' || evt.key === 'ArrowUp') {
-      keysDown.walk = true;
+      setWalk(true);
     }
     if ((evt.code === 'KeyQ' || evt.key === 'q' || evt.key === 'Q') && !evt.repeat) {
-      if (audioCtx) {
-        var latency = audioCtx.outputLatency || 0;
-        switchTriggerTime = audioCtx.currentTime - latency;
-      }
+      markSwitch(evt);
     }
     if (evt.code === 'KeyR' || evt.key === 'r' || evt.key === 'R') {
       restartGame();
@@ -526,9 +644,39 @@
 
   window.addEventListener('keyup', function (evt) {
     if (evt.code === 'KeyW' || evt.key === 'w' || evt.key === 'W' || evt.key === 'ArrowUp') {
-      keysDown.walk = false;
+      setWalk(false);
     }
   });
+
+  // 觸控按鈕：pointerdown 就算（不等 click），擋掉長按選單、捲動與縮放
+  function press(id, down, up) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', function (evt) {
+      evt.preventDefault();
+      if (!started) begin();
+      try { el.setPointerCapture(evt.pointerId); } catch (e) {}
+      down(evt);
+    });
+    if (up) ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (type) {
+      el.addEventListener(type, function () { up(); });
+    });
+    el.addEventListener('contextmenu', function (evt) { evt.preventDefault(); });
+  }
+  press('tWalk', function () { setWalk(true); }, function () { setWalk(false); });
+  press('tSwitch', function (evt) {
+    markSwitch(evt);
+    var b = document.getElementById('tSwitch');
+    b.classList.add('flash');
+    setTimeout(function () { b.classList.remove('flash'); }, 120);
+  });
+  press('tRestart', function () { restartGame(); });
+  press('tAid', function () { window.toggleAid(!visualAid); });
+  press('btnOverlayRestart', function () { restartGame(); });
+  document.getElementById('touchBar').addEventListener('touchmove', function (evt) { evt.preventDefault(); }, { passive: false });
+  // 切到別的 App 或分頁時放開「前進」，免得回來時人自己一直走
+  document.addEventListener('visibilitychange', function () { if (document.hidden) setWalk(false); });
+  window.addEventListener('blur', function () { setWalk(false); });
 
   // 繪圖核心
   function render(nowT) {
@@ -709,13 +857,13 @@
 
       // 現在騎的聲部外框加亮
       if (isRidden) {
-        ctx2d.strokeStyle = 'var(--accent-gold)';
+        ctx2d.strokeStyle = '#e2b764';   // 畫布不認 CSS 變數，直接寫色碼
         ctx2d.lineWidth = 2;
         ctx2d.strokeRect(1, rowY, w - 2, rowH - 4);
       }
 
       // 聲部名稱與音量標籤
-      ctx2d.fillStyle = isRidden ? 'var(--accent-gold)' : 'var(--text-dim)';
+      ctx2d.fillStyle = isRidden ? '#e2b764' : '#7a849e';
       ctx2d.font = '11px monospace';
       var vLabel = v
         ? ('聲部 #' + v.id + ' (u=' + v.u.toFixed(2) + ' / 音量=' + v.gain.toFixed(2) + (isRidden ? ' [目前踩著]' : '') + ')')
