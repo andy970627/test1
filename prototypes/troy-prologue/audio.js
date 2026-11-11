@@ -174,6 +174,12 @@
     HORSE_BOOM_R: 25,          // 木馬共鳴：離木馬中心這麼多公尺外聽不到【假設】
     HORSE_BOOM_GAIN: 0.5,      // 木馬共鳴：貼著木馬時的音量【假設】
     HORSE_BOOM_DELAY: 0.07,    // 共鳴比那一擊晚多久（秒）
+    // C3 結尾（horse_signal）：同伴從暗門落地的時間和畫面的 CIN_FALL、CIN_GAP 同值（index.html），落地聲才對得上
+    HORSE_LAND_FALL: 0.4,      // 收到 horse_signal 後第一人落地（秒）
+    HORSE_LAND_GAP: 0.45,      // 每人間隔（秒）
+    HORSE_LAND_N: 4,           // 落地人數
+    HORSE_SIGNAL_THEME_AT: 0.9,// 那一擊後多久接主題動機（里拉琴前四音，和腹中 belly_ready 同一句）
+    HORSE_SIGNAL_FADE: 0.3,    // 演出被跳過時收掉的時間（秒）
     HORSE_BOOM_MIX: 7,         // 木馬共鳴音色內部的混音倍數（GAIN 是設計常數，這個是聲音層調成「貼著木馬那一擊後 0.5 秒 300～1200 Hz 比 30 公尺外厚 ≥ 3 dB」用的；離線 6 倍 +3.1、8 倍 +4.4）
     // 喇叭可聽度（11/08）
     PRE_BLIND_GAIN: 0.4,       // 盲區預告：木魚兩聲的音量（COVER_MODE 下再乘規則的 visualAid）
@@ -245,7 +251,7 @@
     gravel: 'gravel', companiongasp: 'companionGasp', whispernow: 'whisperNow', growl: 'growl', latchclick: 'latchClick',
     blind: 'blind', gap: 'blind',
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
-    bellyhush: 'bellyHush', bellyready: 'bellyReady', trapdooropen: 'trapdoorOpen',
+    bellyhush: 'bellyHush', bellyready: 'bellyReady', trapdooropen: 'trapdoorOpen', horsesignal: 'horseSignal',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
   // risset.js 的 game.out sfx 名稱：alert alerted alert_over breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
@@ -817,6 +823,18 @@
       noise(dest, t, 'bandpass', 380, 1.0, 0.5 * g, 0.004, 0.35);
       noise(dest, t + 0.005, 'bandpass', 750, 1.4, 0.6 * g, 0.002, 0.2);    // 木板 600～900 Hz
       tone(dest, t + 0.005, 'sine', 820, 760, 0.05, 0.15 * g, 0.002, 0.15);
+    }
+    // C3 結尾：horse_signal 的聲音（共鳴、落地、主題）全走 sigBus，演出被跳過時 stopHorseSignal() 一次收掉；那一擊本身照常走節奏線
+    var sigBus = ctx.createGain(); sigBus.gain.value = 1; sigBus.connect(master);
+    function stopHorseSignal(fade) {
+      var now = ctx.currentTime, d = fade == null ? C.HORSE_SIGNAL_FADE : Math.max(0.01, +fade);
+      sigBus.gain.cancelScheduledValues(now); sigBus.gain.setValueAtTime(sigBus.gain.value, now); sigBus.gain.linearRampToValueAtTime(0, now + d);
+      if (log) log.push({ type: 'horseSignalStop', t: now });
+    }
+    function horseLand(t, k) {            // 一個人從暗門落到石地上：悶的一聲＋一點碎石（輕，k 越後面越輕一點）
+      noise(sigBus, t, 'lowpass', 420, 0.8, 0.22 * k, 0.003, 0.14);
+      tone(sigBus, t, 'sine', 130, 80, 0.08, 0.2 * k, 0.002, 0.16);
+      noise(sigBus, t + 0.03, 'bandpass', 2200, 1.5, 0.05 * k, 0.002, 0.05);
     }
     function bellyLPOn(now) {
       if (horse.lp === 'on') return;
@@ -1627,6 +1645,16 @@
       bellyReady: function (t) {          // 刻痕亮滿：四個音連成主題動機的開頭（里拉琴）
         for (var i = 0; i < 4; i++) lyre(cueBus, t + i * 0.2, THEME.notes[i].midi, C.LATCH_VEL);
       },
+      horseSignal: function (t, d) {      // C3 結尾：城門開後的下一擊，木馬共鳴（固定最大音量，鏡頭正看著木馬）＋同伴依序落地＋主題動機
+        if (!horseOn()) return;
+        var now = ctx.currentTime;
+        sigBus.gain.cancelScheduledValues(now); sigBus.gain.setValueAtTime(1, now);   // 上一次被收掉的話重新打開
+        horseBoom(sigBus, t, C.HORSE_BOOM_GAIN);   // 玩家在城門口、遠超過 HORSE_BOOM_R，距離算出來是 0，這一次照貼著木馬發
+        var t0 = t + (d && isFinite(d.delay) ? Math.max(0, +d.delay) : 0);
+        for (var i = 0; i < C.HORSE_LAND_N; i++) horseLand(t0 + C.HORSE_LAND_FALL + i * C.HORSE_LAND_GAP, 1 - i * 0.08);
+        for (var j = 0; j < 4; j++) lyre(sigBus, t + C.HORSE_SIGNAL_THEME_AT + j * 0.2, THEME.notes[j].midi, C.LATCH_VEL);
+        if (log) log.push({ type: 'horseSignal', t: t });
+      },
       trapdoorOpen: function (t) {        // 同伴趁那一擊拉開木栓：木栓滑開（摩擦往上掃）＋卡到底一聲；低通在 BELLY_OPEN_SEC 內打開
         var f = noise(cueBus, t, 'bandpass', 500, 2, 0.25, 0.01, 0.35); f.frequency.exponentialRampToValueAtTime(1400, t + 0.35);
         tone(cueBus, t + 0.36, 'triangle', 260, 180, 0.05, 0.3, 0.002, 0.15);
@@ -2003,6 +2031,7 @@
       },
       setListener: setListener,
       // 木馬（HORSE_MODE）：試驗場面板用。setBellyLowpass(true｜false｜null＝照規則自動)；horseInfo() 讀距離、共鳴音量、低通狀態
+      stopHorseSignal: stopHorseSignal,   // C3 結尾演出被跳過（畫面 cinFinish）時呼叫：0.3 秒內收掉共鳴、落地、主題
       setBellyLowpass: function (v) { horse.lpForce = (v == null) ? null : !!v; if (lastState) horseUpdate(lastState, ctx.currentTime); },
       horseInfo: function () {
         return { on: horseOn(), inBelly: horse.inBelly, lowpass: horse.lp === 'on', lowpassHz: C.BELLY_LOWPASS_HZ, lowpassForce: horse.lpForce,
@@ -2013,7 +2042,7 @@
       cue: function (name, arg) {
         if (dead || !name) return false;
         var data = {}, when = null;
-        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
+        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost', 'delay'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
         if (typeof name === 'object') {
           var ev = name; take(ev); take(ev.data);
           name = ev.a != null ? ev.a : (ev.name || ev.sfx || ev.cue);
@@ -2030,7 +2059,7 @@
       },
       cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
                  'alert', 'alerted', 'alertOver', 'caught', 'takedown', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
-                 'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen',
+                 'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen', 'horseSignal',
                  'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },

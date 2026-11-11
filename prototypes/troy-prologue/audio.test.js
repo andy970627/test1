@@ -36,3 +36,13 @@ test('木馬腹中常數：低通 1200 Hz、四格里拉琴音往上', () => {
   assert.strictEqual(ns.length, 4);
   for (let i = 1; i < ns.length; i++) assert.ok(ns[i] > ns[i - 1], '里拉琴音要往上');
 });
+
+test('C3 結尾：同伴落地時間和畫面的 CIN_FALL、CIN_GAP、CIN_N 同值（落地聲才對得上）', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const m = html.match(/CIN_GAP\s*=\s*([\d.]+)\s*,\s*CIN_FALL\s*=\s*([\d.]+)[^;]*CIN_N\s*=\s*(\d+)/);
+  assert.ok(m, 'index.html 找不到 CIN_GAP／CIN_FALL／CIN_N');
+  assert.strictEqual(C.HORSE_LAND_GAP, +m[1]);
+  assert.strictEqual(C.HORSE_LAND_FALL, +m[2]);
+  assert.strictEqual(C.HORSE_LAND_N, +m[3]);
+});

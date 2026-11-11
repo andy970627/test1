@@ -233,3 +233,15 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - 畫面：`?lab=belly` 面板的低通那行接 `audio.setBellyLowpass` 與 `horseInfo()`；`?lab=horse` 面板顯示 `horseInfo().dist`、`boomGain`。
     - 規則：還沒有 `?lab=horse` 入口（`createLevel` 只認 `lab: 'belly'`）。
     - 錄音與工具：共鳴量測要站到木馬旁和 30 公尺外，量法用那一擊後 0.5 秒能量，不用峰值。
+- **11/11：木馬第 3 批（C3 結尾）聲音已做**（未提交；改 `audio.js`，`audio.test.js` 加 1 條）：
+  - `horse_signal`（規則在城門開後下一個掩護窗開頭發；只在 HORSE_MODE 開）：那一擊照常走節奏線。另發：
+    - 木馬共鳴：固定用 `HORSE_BOOM_GAIN`。玩家在城門口，按距離算會是 0，這一次照貼著木馬發。
+    - 同伴 4 人依序落地：`HORSE_LAND_FALL` 0.4＋i×`HORSE_LAND_GAP` 0.45 秒，和畫面的 CIN_FALL、CIN_GAP 同值，有測試檢查兩邊一致。
+    - 0.9 秒後接主題前四音（里拉琴，和腹中 `belly_ready` 同一句）。
+  - 以上全走 `sigBus`。新介面 `stopHorseSignal(fade)`：0.3 秒內收掉，下一次 `horse_signal` 自動重新打開。事件若帶 `delay`，落地時間照它延後。
+  - 驗證：
+    - 全套 302 過（301＋1）。
+    - 離線：結尾那一擊照常（6.00 秒的重合擊）。那一擊加共鳴整體 +7.3 dB；6.8 秒呼叫收掉後，後面兩段和「沒發」相同（−28.8 dB）；開關關著收到 `horse_signal` 也不發聲。
+    - 開關關著比提交版：兩版各頻段 0.000 dB。
+    - 錄音 `out/horse3-off-cover` 全過。`compare-bands.mjs` 對 `horse2-off-cover`：第 2 區差 0.1～1.0 dB；第 1 區差大，是兩段程式玩家在那裡發生的事不同（起疑 2 次對 1 次），而且只有 5～7 秒。
+  - 要轉畫面：`cinFinish()`（跳過與自然演完都會呼叫）加一行 `audio.stopHorseSignal && audio.stopHorseSignal()`。自然演完時主題已在收尾，收掉不突兀。
