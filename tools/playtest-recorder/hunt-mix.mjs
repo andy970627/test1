@@ -10,7 +10,7 @@
  *    從喊聲（沒有喊聲時用進入「逃」的那一刻）起 2 秒內密度要到「逃的時候的穩定值」的九成；之後 5 秒內每秒密度和穩定值差不超過一成。
  * 2. 躲：1200 Hz 以上的平均能量，躲比逃低 ≥ 10 dB（各自去掉切換後 1 秒；只算衛兵總線比總輸出低 15 dB 以上的幀＝只有鼓）。
  * 3. 躲：追兵在 2～4 公尺時，每 0.25 秒衛兵總線峰值，比同一段鼓的峰值（總輸出、衛兵低 10 dB 以上的段）高 ≥ 3 dB。
- * 4. 躲：起音落在「踩得上」（sm 為真）的那些，峰值比其他起音高 ≥ 4 dB（同樣只算只有鼓的時候）。
+ * 4. 躲：每段連續的「踩得上」（sm 為真）時段裡最響的起音，比每段其他時段裡最響的起音高 ≥ 4 dB（同樣只算只有鼓的時候；所有起音的平均差另列）。
  * 起音偵測在每秒 25 拍左右會漏掉一部分（兩拍間隔 40 毫秒、鼓的尾音沒退完），密度是下限。
  */
 import fs from 'node:fs';
@@ -88,13 +88,17 @@ export function huntMix(dir) {
   const step3 = med(bv.filter((b) => b.d != null && +b.d >= 2 && +b.d <= 4 && b.gp > -90).map((b) => b.gp));
   // 4. 躲：踩得上的起音 vs 其他
   const hideOn = onsets.filter((o) => { const s = at(o.t), s2 = at(o.t + 0.03); return s && s2 && s.hm === 'hide' && settled(o.t) && quiet(s) && quiet(s2); });
-  const smOn = hideOn.filter((o) => at(o.t).sm === true).map((o) => o.pk), smOff = hideOn.filter((o) => at(o.t).sm === false).map((o) => o.pk);
+  // 「踩得上」的時段很寬，裡面也有小拍；改成每一段連續的 sm 真／假時段各取最響的那個起音再比（＝踩得上的那一拍 vs 其他拍裡最響的）
+  const runs = []; let cur = null;
+  for (const o of hideOn) { const v = at(o.t).sm; if (v == null) continue; if (!cur || cur.v !== v || o.t - cur.end > 0.5) { cur = { v, pk: o.pk, end: o.t }; runs.push(cur); } else { cur.pk = Math.max(cur.pk, o.pk); cur.end = o.t; } }
+  const smOn = runs.filter((r) => r.v).map((r) => r.pk), smOff = runs.filter((r) => !r.v).map((r) => r.pk);
+  const allOn = hideOn.filter((o) => at(o.t).sm === true).map((o) => o.pk), allOff = hideOn.filter((o) => at(o.t).sm === false).map((o) => o.pk);
   const secHide = TL.filter((s) => s.hm === 'hide').length ? r1(bv.length * 0.25) : 0;
   return {
     calls: callRows, escapeSteadyPerSec: steady == null ? null : +steady.toFixed(1), escapeSecs: escSec.length,
     hiEscDb: r1(hiEsc), hiHideDb: r1(hiHide), hiDiffDb: hiEsc != null && hiHide != null ? r1(hiEsc - hiHide) : null,
     hideSec: secHide, drumHideDb: r1(drumHide), step3Db: r1(step3), stepOverDrumDb: drumHide != null && step3 != null ? r1(step3 - drumHide) : null,
-    maskedPkDb: r1(med(smOn)), otherPkDb: r1(med(smOff)), maskedN: smOn.length, otherN: smOff.length, maskedOverDb: smOn.length && smOff.length ? r1(med(smOn) - med(smOff)) : null
+    maskedPkDb: r1(med(smOn)), otherPkDb: r1(med(smOff)), maskedN: smOn.length, otherN: smOff.length, maskedOverDb: smOn.length && smOff.length ? r1(med(smOn) - med(smOff)) : null, allOverDb: allOn.length && allOff.length ? r1(med(allOn) - med(allOff)) : null
   };
 }
 
@@ -110,7 +114,7 @@ function main(argv) {
   for (const c of r.calls) console.log(`   ${c.t} 秒起：每秒 ${c.perSec.join('、')}；到九成 ${c.reachSec ?? '沒到'} 秒；第 3～${c.secs + 2} 秒最大偏差 ${c.maxDev}`);
   console.log(`2 躲：1200 Hz 以上 逃 ${r.hiEscDb}、躲 ${r.hiHideDb} dB，差 ${r.hiDiffDb}（要 ≥ 10）→ ${ok(r.hiDiffDb == null ? null : r.hiDiffDb >= 10)}`);
   console.log(`3 躲：追兵 2～4 公尺腳步 ${r.step3Db}、同段鼓峰值 ${r.drumHideDb}，差 ${r.stepOverDrumDb}（要 ≥ 3）→ ${ok(r.stepOverDrumDb == null ? null : r.stepOverDrumDb >= 3)}（躲 ${r.hideSec} 秒）`);
-  console.log(`4 躲：踩得上的起音 ${r.maskedPkDb}（${r.maskedN}）、其他 ${r.otherPkDb}（${r.otherN}），差 ${r.maskedOverDb}（要 ≥ 4）→ ${ok(r.maskedOverDb == null ? null : r.maskedOverDb >= 4)}`);
+  console.log(`4 躲：踩得上時段最響的起音 ${r.maskedPkDb}（${r.maskedN} 段）、其他時段最響 ${r.otherPkDb}（${r.otherN} 段），差 ${r.maskedOverDb}（要 ≥ 4；所有起音平均比 ${r.allOverDb}）→ ${ok(r.maskedOverDb == null ? null : r.maskedOverDb >= 4)}`);
   return 0;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main(process.argv.slice(2));
