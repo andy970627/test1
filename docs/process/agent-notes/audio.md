@@ -298,3 +298,10 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
   - 原因：**不是走動，是設計上第 4 區就沒有木魚了**。殘響掩護版的木魚預告會乘上規則的 `visualAid`（`risset.js` 的 `visualAidFor`：第 0～2 區 1、第 3 區 0.5、第 4 區 0；設計席 7.9），`audio.js` 的 `preBlind` 在 va < 0.02 時整個不響。
   - 對時間：第 2 區兩次 +21 dB（峰值 −28）；第 3 區兩次 +15 dB（峰值 −32～−33，比第 2 區低約 5 dB，和 va 0.5 的 −6 dB 相符）；第 4 區（23.3 秒起）四次 +3.9～+6.8 dB，峰值 −42～−46，只是鼓聲本身的起伏。報告裡「2/8 次低於 6 dB」就是第 4 區那四次中的兩次。
   - 建議給錄音與工具角色：`preBlindMid` 檢查只算 visualAid > 0 的盲區（或第 4 區另列），否則殘響掩護版跑完全流程一定判不過。聲音這邊不用改。
+- **11/11 晚：跑、蹲、屏息聽的聲音**（未提交；`audio.js` +100、`audio.test.js` +3 條；設計 `2026-11-11-companion-mechanics.md` 第 7.3 A1／A2／C1、7.4；規則 6b24827）：
+  - 開關：`movesOn()`＝`RK().MOVES_MODE === true`。所有新聲音、屏息聽、蹲走變輕都只在開著時；關著時鼓拍、衛兵 panner 照舊直接接 `rhythmBus`／`guardOut`（不經新節點），新事件直接 return。
+  - 跑：`runStep{masked}`：masked＝悶的一下（`RUN_MASKED_GAIN` 0.09，峰值 −37 dB）；沒蓋住＝清楚腳步 ×`RUN_LOUD_MUL` 1.3＋腳跟低悶＋碎石＋最近 8 m 衛兵吸氣（峰值 −0.9 dB，走路離拍 −2.2）。`runStart` 用力吸一口、`runStop` 吐長氣；跑的時候每 `RUN_PANT_GAP` 0.5 秒輕喘（update 看 `state.player.running`）。
+  - 蹲：`step_masked`／`step_loud` 帶 `crouch: true` → ×`CROUCH_STEP_MUL` 0.5、合拍的低通再悶一點；離拍的衛兵吸氣只在 `CROUCH_R`（讀規則，1.2 m）內。峰值：合拍 −45.2（站 −42.2）、離拍 −8.2（站 −2.2）。`crouchOn`／`crouchOff` 衣料聲很輕（−33 dB）。
+  - C1 屏息聽（`state.player.breathing`）：一般鼓拍改走 `beatBus`，屏息時 −`LISTEN_DUCK_DB` 6 dB（規則沒這個常數，用本檔的）；重合擊照舊直接進 `rhythmBus`，**不退**。衛兵 panner 接 `guardListen` +6 dB（腳步和呼吸一起，衛兵聲只有這兩種），側向距離 ×`LISTEN_WIDEN` 2（`guardPos`）。退後時間常數 0.08、回復 0.06（放開 0.3 秒後 0.997）。`listenInfo()` 給試驗場看狀態。
+  - 驗證：開關關著（沒有 MOVES_MODE 或 false，屏息中、有衛兵、發新事件）和改之前波形差 ≤ 1.9e-5（自己比 1.2e-5～3.1e-5），排程紀錄完全相同。開著：一般鼓拍屏息時 −6.00／−5.73 dB；最響的一擊峰值屏息前後都是 0.905，比屏息時其他時間高 14.3 dB。全套 317 過。
+  - 沒做到的：衛兵聲 +6 dB 只用節點音量驗（`listenInfo`），渲染時測試場景的衛兵聲太小、被暗示聲蓋住，量不出來；要用錄音工具在 `?lab=listen` 量。

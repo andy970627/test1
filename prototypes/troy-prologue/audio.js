@@ -145,6 +145,17 @@
     STEP_MASKED_GAIN: 0.05,    // 被鼓聲蓋過的腳步
     STEP_LOUD_GAIN: 0.55,      // 清楚的腳步
     ALERTED_DRONE_GAIN: 0.04,  // 高度警覺嗡鳴峰值（11/10 從草稿的 0.18 降下來：0.18 時整體比鼓聲還響約 10 dB）
+    // 搭配動作（規則 T.MOVES_MODE 開時才用；docs/design/2026-11-11-companion-mechanics.md 第 7.3、7.4 節）
+    LISTEN_DUCK_DB: 6,         // C1 屏息聽：鼓聲退後幾 dB、衛兵聲提高同樣的量（規則有 T.LISTEN_DUCK_DB 就用規則的）
+    LISTEN_WIDEN: 2,           // C1：衛兵聲的左右距離放大幾倍（只放大側向，前後不動）
+    LISTEN_ATTACK: 0.08,       // C1：開始屏息後退後的時間常數（秒）
+    LISTEN_RELEASE: 0.06,      // C1：放開後回復的時間常數（5 倍＝0.3 秒內回到 99%）
+    RUN_MASKED_GAIN: 0.09,     // 跑步被最響的一擊蓋住的那一步（比合拍走路 0.05 重一點，跑本來就重）
+    RUN_LOUD_MUL: 1.3,         // 沒被蓋住的跑步：清楚腳步的幾倍
+    RUN_PANT_GAP: 0.5,         // 跑的時候每幾秒喘一口
+    RUN_PANT_GAIN: 0.05,       // 喘氣音量（輕，不蓋鼓）
+    CROUCH_STEP_MUL: 0.5,      // 蹲走腳步的音量倍數（−6 dB）
+    CROUCH_STARTLE_R: 1.2,     // 蹲走離拍時，衛兵「被聽到」的吸氣只在這個距離內（規則 CROUCH_R；規則有就用規則的）
     STEP_CRUNCH_GAIN: 0.6,     // 不合拍腳步的碎石「喀嚓」（1～4 kHz，喇叭也清楚；單獨量 1～4 kHz 峰值約 −25 dB，和一下鼓點相當或更亮）
     // 殘響掩護（11/10，核心方向甲；規則 T.COVER_MODE 為真時才用）
     COVER_HIT_GAIN: 0.9,       // 交接重合擊的厚擊（300～1200 Hz）音量
@@ -269,6 +280,7 @@
     blind: 'blind', gap: 'blind',
     preblind: 'preBlind', blindsoon: 'preBlind', preblindcue: 'preBlind',
     bellyhush: 'bellyHush', bellyready: 'bellyReady', trapdooropen: 'trapdoorOpen', horsesignal: 'horseSignal',
+    runstart: 'runStart', runstep: 'runStep', runstop: 'runStop', crouchon: 'crouchOn', crouchoff: 'crouchOff',
     win: 'win', victory: 'win', gate: 'win', open: 'win', gateopen: 'win'
   };
   // risset.js 的 game.out sfx 名稱：alert alerted alert_over breath_in breath_out calm_ok calm_bad calm_done caught checkpoint
@@ -1176,6 +1188,22 @@
     var timer = null, dead = false;
     var gateM = new Gate(musicGate.gain, C.MUSIC_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
     var guardOut = ctx.createGain(); guardOut.gain.value = 1; guardOut.connect(master);   // 衛兵 3D 聲音（盲區壓低、不全靜音）
+    // 搭配動作（MOVES_MODE）。C1 屏息聽：一般鼓拍改走 beatBus（屏息時退後），最響的一擊（重合擊）照舊直接進 rhythmBus、不退；
+    // 衛兵的 panner 改接 guardListen（屏息時提高）。開關關著時鼓拍和衛兵照舊直接接 rhythmBus／guardOut，路徑和以前一模一樣
+    function movesOn() { var K = RK(); return !!(K && K.MOVES_MODE === true); }
+    var beatBus = ctx.createGain(); beatBus.gain.value = 1; beatBus.connect(rhythmBus);
+    var guardListen = ctx.createGain(); guardListen.gain.value = 1; guardListen.connect(guardOut);
+    var listen = { on: false, amt: 0 };   // amt：側向放大用（0 或 1，panner 自己有 0.03 秒平滑）
+    function listenDb() { var K = RK(); return (K && isFinite(K.LISTEN_DUCK_DB)) ? +K.LISTEN_DUCK_DB : C.LISTEN_DUCK_DB; }
+    function setListen(on, now) {
+      if (on === listen.on) return;
+      listen.on = on; listen.amt = on ? 1 : 0;
+      var k = Math.pow(10, listenDb() / 20), tc = on ? C.LISTEN_ATTACK : C.LISTEN_RELEASE;
+      beatBus.gain.cancelScheduledValues(now); beatBus.gain.setTargetAtTime(on ? 1 / k : 1, now, tc);
+      guardListen.gain.cancelScheduledValues(now); guardListen.gain.setTargetAtTime(on ? k : 1, now, tc);
+      if (log) log.push({ type: 'listen', on: on, t: now });
+    }
+    var run = { on: false, nextPant: 0 };
     var gateG = new Gate(guardOut.gain, C.GUARD_BLIND_FLOOR, C.MUSIC_FALL, C.MUSIC_RISE);
 
     // ---------- 暗示聲（設計文件 2026-11-07-hint-guidance.md 第 2.1、2.2 節）【改編】 ----------
@@ -1309,7 +1337,7 @@
             if (g < gMin) continue;                             // 音量不抖（A3）：實際響度 ∝ 規則 gain
             var le = log ? { type: 'beat', k: k, n: n, c: c, t: t, p: p, g: g } : null;
             if (le) log.push(le);
-            (function (x, g, pm) { addEvent(key, P, rhythmBus, function (tt, out) { playHit(out, x, tt, g, pm); }, true, le); })(illTimbre(x), g, ill.u ? illPitch(c, k, p, nL) : 0);
+            (function (x, g, pm) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, x, tt, g, pm); }, true, le); })(illTimbre(x), g, ill.u ? illPitch(c, k, p, nL) : 0);
           }
         }
       }
@@ -1475,7 +1503,7 @@
     var voices = [];
     function newVoice() {
       var g = ctx.createGain(); g.gain.value = 0;
-      var p = makePanner(); g.connect(p); p.connect(guardOut);
+      var p = makePanner(); g.connect(p); p.connect(movesOn() ? guardListen : guardOut);
       var v = { id: null, input: g, p: p, freeAt: 0, lx: 0, lz: 0, lt: 0, speed: 0, nextStep: 0, nextBreath: 0 };
       voices.push(v);
       return v;
@@ -1494,6 +1522,11 @@
       tone(v.input, t + inh + 0.1, 'sawtooth', 96, 82, 0.8, 0.008 * k, 0.1, fast ? 0.5 : 0.9);
     }
     var guardP = 0;
+    function guardPos(x, z) {               // C1 屏息聽：把衛兵相對你的側向距離放大 LISTEN_WIDEN 倍（右方向＝(cos yaw, −sin yaw)）
+      if (!listen.amt) return [x, z];
+      var rx = Math.cos(lis.yaw), rz = -Math.sin(lis.yaw), lat = (x - lis.x) * rx + (z - lis.z) * rz, w = (C.LISTEN_WIDEN - 1) * listen.amt;
+      return [x + w * lat * rx, z + w * lat * rz];
+    }
     function updateGuards(list, now) {
       var cand = [], i;
       for (i = 0; i < list.length; i++) {
@@ -1519,8 +1552,8 @@
           if (!v) return;
           v.id = c.id; v.lx = c.q.x; v.lz = c.q.z; v.lt = now; v.speed = 0;
           v.nextStep = now + Math.random() * 0.3; v.nextBreath = now + 0.4 + Math.random() * 2;
-          setPos(v.p, c.q.x, 1, c.q.z, now, true);
-        } else setPos(v.p, c.q.x, 1, c.q.z, now, false);
+          var gp0 = guardPos(c.q.x, c.q.z); setPos(v.p, gp0[0], 1, gp0[1], now, true);
+        } else { var gp1 = guardPos(c.q.x, c.q.z); setPos(v.p, gp1[0], 1, gp1[1], now, false); }
         var dt = now - v.lt;
         if (dt > 0.03) {
           var sp = Math.sqrt((c.q.x - v.lx) * (c.q.x - v.lx) + (c.q.z - v.lz) * (c.q.z - v.lz)) / dt;
@@ -1549,8 +1582,8 @@
     }
     // 不合拍的腳步被聽到（11/08）：最近 8 公尺內出聲中的衛兵短促吸一口氣、喉嚨「嗯？」，呼吸與腳步節奏被打斷；
     // 走衛兵自己的 3D 聲道（有方向、隨距離變小，盲區照 gateG 壓低）
-    function guardStartle(t) {
-      var best = null, bd = 8;
+    function guardStartle(t, maxD) {
+      var best = null, bd = maxD > 0 ? maxD : 8;
       for (var i = 0; i < voices.length; i++) {
         var v = voices[i]; if (v.id == null) continue;
         var d = Math.sqrt((v.lx - lis.x) * (v.lx - lis.x) + (v.lz - lis.z) * (v.lz - lis.z));
@@ -1708,7 +1741,8 @@
       },
       step: function (t) { stepSound(cueBus, t, 1); },   // 腳步：赤腳／皮鞋踩石板
       stepMasked: function (t, d) {       // 合拍的腳步：被鼓聲蓋過，極小聲、更悶
-        noise(cueBus, t, 'lowpass', 260 + Math.random() * 60, 0.8, C.STEP_MASKED_GAIN, 0.003, 0.06);
+        var ck = movesOn() && d && d.crouch === true;   // 蹲走（MOVES_MODE）：再輕一半、更悶
+        noise(cueBus, t, 'lowpass', (ck ? 200 : 260) + Math.random() * 60, 0.8, C.STEP_MASKED_GAIN * (ck ? C.CROUCH_STEP_MUL : 1), 0.003, 0.06);
         // 木馬腹中練習（方向 A）：起步踩準亮一格（start: true、n＝第幾格），多一個往上的里拉琴音；續步不加
         if (horseOn() && d && d.start === true && isFinite(d.n) && d.n > 0) {
           var ns = C.BELLY_STEP_NOTES; lyre(cueBus, t + 0.01, ns[clamp(d.n | 0, 1, ns.length) - 1], C.BELLY_STEP_VEL);
@@ -1745,7 +1779,55 @@
         CUES._creak(t + 0.1, 0.18);
         bellyLPOpen(t);
       },
+      // ---------- 搭配動作（MOVES_MODE；規則只在開關開著時發這些事件） ----------
+      _crouchLoud: function (t, d) {      // 蹲走離拍：同一種腳步＋碎石，整體 −6 dB；衛兵吸氣只在 CROUCH_R 內（規則的聲音半徑）
+        var dest = cueBus, k = C.CROUCH_STEP_MUL, K = RK();
+        if (d && isFinite(d.x) && isFinite(d.z)) { var p = selfPanner(); setPos(p, +d.x, 0.05, +d.z, ctx.currentTime, true); dest = ctx.createGain(); dest.gain.value = 1; dest.connect(p); }
+        stepSound(dest, t, k * C.STEP_LOUD_GAIN / 0.45);
+        var cg = C.STEP_CRUNCH_GAIN * k;
+        for (var i = 0; i < 3; i++) tone(cueBus, t + 0.004 + i * 0.012, 'sine', 1500 + Math.random() * 2000, 0, 0, cg * 0.5, 0.001, 0.03);
+        noise(cueBus, t + 0.004, 'bandpass', 1800, 0.8, cg * 2.2, 0.001, 0.05);
+        noise(cueBus, t + 0.012, 'bandpass', 2800, 1.0, cg * 1.8, 0.001, 0.07);
+        guardStartle(t + 0.12, (K && isFinite(K.CROUCH_R)) ? +K.CROUCH_R : C.CROUCH_STARTLE_R);
+      },
+      runStep: function (t, d) {          // 跑步：masked＝在最響的一擊的掩護窗內，被蓋住（悶的一下）；否則重重一步＋碎石＋最近的衛兵吸氣
+        if (!movesOn()) return;
+        if (d && d.masked === true) {
+          noise(cueBus, t, 'lowpass', 300 + Math.random() * 60, 0.8, C.RUN_MASKED_GAIN, 0.003, 0.07);
+          return;
+        }
+        var dest = cueBus;
+        if (d && isFinite(d.x) && isFinite(d.z)) { var p = selfPanner(); setPos(p, +d.x, 0.05, +d.z, ctx.currentTime, true); dest = ctx.createGain(); dest.gain.value = 1; dest.connect(p); }
+        stepSound(dest, t, C.RUN_LOUD_MUL * C.STEP_LOUD_GAIN / 0.45);
+        tone(dest, t, 'sine', 120, 70, 0.06, 0.25, 0.002, 0.1);             // 腳跟砸地的低悶一下
+        var cg = C.STEP_CRUNCH_GAIN * C.RUN_LOUD_MUL;
+        for (var i = 0; i < 5; i++) tone(cueBus, t + 0.004 + i * 0.01, 'sine', 1500 + Math.random() * 2000, 0, 0, cg * 0.5, 0.001, 0.03);
+        noise(cueBus, t + 0.004, 'bandpass', 1800, 0.8, cg * 2.2, 0.001, 0.05);
+        noise(cueBus, t + 0.012, 'bandpass', 2800, 1.0, cg * 1.8, 0.001, 0.07);
+        guardStartle(t + 0.12);
+      },
+      runStart: function (t) {            // 開始跑：短促用力吸一口氣＋衣擺甩動
+        if (!movesOn()) return;
+        var f = noise(cueBus, t, 'bandpass', 900, 1.2, 0.12, 0.02, 0.16); f.frequency.exponentialRampToValueAtTime(1700, t + 0.16);
+        noise(cueBus, t + 0.05, 'bandpass', 3200, 0.8, 0.04, 0.03, 0.18);
+        run.on = true; run.nextPant = t + C.RUN_PANT_GAP;
+      },
+      runStop: function (t) {             // 停下：吐一口長氣
+        if (!movesOn()) return;
+        var f = noise(cueBus, t, 'lowpass', 1200, 0.8, 0.1, 0.03, 0.45); f.frequency.exponentialRampToValueAtTime(420, t + 0.45);
+        run.on = false;
+      },
+      crouchOn: function (t) {            // 蹲下：衣料摩擦、膝蓋輕觸地（很輕）
+        if (!movesOn()) return;
+        noise(cueBus, t, 'bandpass', 2200, 0.9, 0.035, 0.02, 0.14);
+        noise(cueBus, t + 0.1, 'lowpass', 300, 0.8, 0.05, 0.003, 0.05);
+      },
+      crouchOff: function (t) {           // 站起：衣料摩擦往上
+        if (!movesOn()) return;
+        var f = noise(cueBus, t, 'bandpass', 1800, 0.9, 0.03, 0.03, 0.15); f.frequency.exponentialRampToValueAtTime(2800, t + 0.15);
+      },
       stepLoud: function (t, d) {         // 不合拍的腳步：清楚，有 {x, z} 就放在那個位置（3D）
+        if (movesOn() && d && d.crouch === true) { CUES._crouchLoud(t, d); return; }   // 蹲走離拍：輕一半，只有很近的衛兵聽到
         var dest = cueBus;
         if (d && isFinite(d.x) && isFinite(d.z)) {
           var p = selfPanner(); setPos(p, +d.x, 0.05, +d.z, ctx.currentTime, true);
@@ -2108,12 +2190,21 @@
         guardP = s.cycle && isFinite(s.cycle.p) && !s.cycle.blind ? clamp(+s.cycle.p, 0, 1) : 0;
         updateRoute(s, now);
         // 衛兵 3D：倒下、非作用中的靜音；沒有衛兵清單就全部淡掉
+        // 搭配動作：屏息聽（屏息中＝state.player.breathing）、跑的時候喘氣；開關關著時兩個都不動
+        var mv = movesOn(), pl = s.player;
+        setListen(!!(mv && pl && pl.breathing && s.phase !== 'over'), now);
+        if (mv && pl && pl.running && run.on && now >= run.nextPant) {
+          var pf = noise(cueBus, now + 0.02, 'bandpass', 800, 1.1, C.RUN_PANT_GAIN, 0.03, 0.18); pf.frequency.exponentialRampToValueAtTime(500, now + 0.2);
+          run.nextPant = now + C.RUN_PANT_GAP * (0.9 + Math.random() * 0.2);
+        }
         if (s.guards && s.guards.length != null) updateGuards(s.guards, now);
         horseUpdate(s, now);   // 木馬：開關關著時只把 dist 設成無限大，什麼都不改
         // 立刻補排一次（新外推、新盲區），不等下一個 tick
         scheduleTo(now + C.LOOKAHEAD, now);
       },
       setListener: setListener,
+      // 搭配動作 C1：屏息聽的狀態（試驗場、測試用）：on、鼓拍線音量、衛兵線音量、衛兵 panner 有幾個接在 guardListen
+      listenInfo: function () { return { on: listen.on, beat: beatBus.gain.value, guard: guardListen.gain.value, voices: voices.length }; },
       // 木馬（HORSE_MODE）：試驗場面板用。setBellyLowpass(true｜false｜null＝照規則自動)；horseInfo() 讀距離、共鳴音量、低通狀態
       // 加速感試聽（聲音測試頁）：setIllusion({ timbre: true|false, bell: true|false })；null＝回到現行。illusionInfo() 給面板讀數
       // 第二輪：{ u: true, pitch, rise, roll, shep }；u 開時 6 層（ILL_U_LAYERS）、同一種鼓
@@ -2135,7 +2226,7 @@
       cue: function (name, arg) {
         if (dead || !name) return false;
         var data = {}, when = null;
-        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost', 'delay'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
+        function take(o) { if (!o || typeof o !== 'object') return; ['index', 'x', 'z', 'hunt', 'n', 'need', 'start', 'cost', 'delay', 'masked', 'crouch'].forEach(function (f) { if (o[f] != null && data[f] == null) data[f] = o[f]; }); }
         if (typeof name === 'object') {
           var ev = name; take(ev); take(ev.data);
           name = ev.a != null ? ev.a : (ev.name || ev.sfx || ev.cue);
@@ -2152,7 +2243,7 @@
       },
       cueNames: ['breathIn', 'breathOut', 'gasp', 'step', 'stepMasked', 'stepLoud', 'latch', 'latchStep', 'down', 'bell', 'preBlind', 'blind', 'win',
                  'alert', 'alerted', 'alertOver', 'caught', 'takedown', 'takedownFail', 'calmOk', 'calmBad', 'calmDone', 'checkpoint', 'dash', 'escape', 'trapdoor',
-                 'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen', 'horseSignal',
+                 'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen', 'horseSignal', 'runStart', 'runStep', 'runStop', 'crouchOn', 'crouchOff',
                  'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },

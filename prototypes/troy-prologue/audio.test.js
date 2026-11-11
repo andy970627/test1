@@ -51,3 +51,22 @@ test('C3 結尾的共鳴不超過錄音驗過的貼近音量（2.5 m，那時共
   assert.ok(A.horseBoomGain(C.HORSE_SIGNAL_REF_M) <= A.horseBoomGain(2.5));
   assert.ok(C.HORSE_SIGNAL_REF_M > 0);
 });
+
+// 搭配動作（MOVES_MODE）：docs/design/2026-11-11-companion-mechanics.md 第 7.3 節
+test('屏息聽：鼓聲退 6 dB、放開後 0.3 秒內回到 99%（回復時間常數 × 5 ≤ 0.3）', () => {
+  assert.strictEqual(C.LISTEN_DUCK_DB, 6);
+  assert.ok(C.LISTEN_RELEASE * 5 <= 0.3 + 1e-9);
+  assert.ok(C.LISTEN_WIDEN >= 1);
+});
+
+test('蹲走：腳步比站著輕（音量倍數 ≤ 0.5），衛兵吸氣的距離和規則 CROUCH_R 同值', () => {
+  assert.ok(C.CROUCH_STEP_MUL > 0 && C.CROUCH_STEP_MUL <= 0.5);
+  const R = require('./risset.js');
+  assert.strictEqual(C.CROUCH_STARTLE_R, R.T.CROUCH_R);
+});
+
+test('跑：被蓋住的那一步比沒被蓋住的輕很多（≤ −15 dB），沒被蓋住的比走路的清楚腳步重', () => {
+  const loud = C.RUN_LOUD_MUL * C.STEP_LOUD_GAIN;
+  assert.ok(20 * Math.log10(C.RUN_MASKED_GAIN / loud) <= -15);
+  assert.ok(C.RUN_LOUD_MUL > 1);
+});
