@@ -85,6 +85,9 @@
 - 2026-11-10 N1 兩版不能直接比：殘響掩護版多算「p > HIGH_P 而且範圍內沒人看得到你」為主動，定義本身就變寬了（見 `activeNow`）。
 - 2026-11-10 指令要用絕對路徑：一次 `cat >> risset.test.js` 在預設資料夾執行，在共用 worktree 根目錄多生出一個檔（已刪）。在 pr10wt 工作時，每段指令都先 `cd` 到絕對路徑。
 - 2026-11-10 總控可能在你改到一半時提交：731392f 把還沒接上程式的 `COVER_MODE` 常數一起提交了。回訊時說清楚哪些改動已在提交裡、哪些還沒。
+- 2026-11-11 `T.MOVES_MODE` 預設 true（搭配動作）：測試檔的 `OLD` 改成 `{COVER_MODE: false, MOVES_MODE: false}`，舊版回歸測試連同搭配動作一起關掉；「7.4 文字表」那條改用 `K0 = {…K, MOVES_MODE: false}`。關著時 `hintsFor` 不產生 `crouch` 這一則（數字白名單測試會掃全部提示）。新測試用 `mvs()`／`mvOff()`。整夜驗證要重現報告版得加 `--moves 0`。
+- 2026-11-11 程式玩家讀的是上一幀的狀態：「只在掩護窗按住 Shift」的玩家，窗剛結束那一幀還按著，會跑出一步在窗外（被聽到）。要預留一幀（窗剩不到 1/30 秒就放）。凡是「窗內才做」的程式玩家都有這個問題。
+- 2026-11-11 規則沒有視線遮擋：衛兵看不看得到只看距離、視野角、陰影，牆不擋視線。搭配動作的矮掩體（`low: true`）是唯一的遮擋，而且只在蹲著時算。
 - 2026-11-09 工作位置：規則工作階段改檔一律在 worktree `C:\Users\恩\test1\.claude\worktrees\openrouter-api-key-setup-383957`（分支 `claude/gracious-bardeen-vwo4rr`），不要碰 `C:\Users\恩\test1` 主資料夾（寫檔鉤子會擋）。
 
 ## 4. 驗證方式
@@ -173,3 +176,13 @@
 
 - 2026-11-11（規則）木馬第 3 批 C3 規則部分，共用 worktree 未提交：選第一種做法（等掩護窗）。過關後 `step` 本來就會先推進循環時鐘才返回，所以在 `phase !== 'play'` 那個分支裡偵測「窗剛開」：`HORSE_MODE` 且 `win` 且 `gate.open` 時，開門後第一個掩護窗開頭發一次 `horse_signal {x, z}`（`level.horse` 中心 8.5, 15）。`phase` 轉 win 的時機與通關時間都不變；前提是畫面在 win 之後繼續呼叫 `g.step`（最多約一個循環）。測試 +1（慢時、窗前一刻、窗內開門三種；開關關著不發）。全套 301 條全過。
   - 交卷檢查：開關關著全套 301 條全過（原有測試沒動）；整夜驗證 500 局 8 列和 `c1d4aa3` 逐字相同；沒動聲音。
+
+- 2026-11-11（規則）搭配動作第 1 步（設計文件 `2026-11-11-companion-mechanics.md` 第 7 節），共用 worktree 未提交：
+  - `risset.js`：`MOVES_MODE: true`（預設開，`?moves=0` 關）＋ `RUN_HOLD` 0.2、`RUN_SPEED_MUL` 2、`RUN_R` 8、`RUN_STEP_GAP` 0.3（規格沒寫，暫擬）、`CROUCH_SPEED_MUL` 0.5、`CROUCH_STEP_WIN` 0.16、`CROUCH_R` 1.2。輸入多 `run`、`crouch`（按住）；`dash` 仍是按下那一幀。
+  - 跑：按住 Shift 滿 `RUN_HOLD` 且有方向鍵才跑；每 `RUN_STEP_GAP` 一步 `run_step {x, z, masked}`，掩護窗（含前沿寬限）內 masked；窗外 `RUN_R` 內巡邏的衛兵 `makeAlerted(…,'run')`，已警覺或起疑的 `startHunt(…,'run')`；跑的時候不發一般腳步。屏息不能跑；蹲著按 Shift 站起來跑。新死因 `run`。
+  - 蹲：速度減半；起步判定寬度 `CROUCH_STEP_WIN`（`stepMasked`、`nearestMaskBeat` 多一個 `win` 參數）；離拍腳步只傳 `CROUCH_R`（`heardStep` 與 COVER 的 `heardMove` 都用）；腳步帶 `crouch: true`；矮掩體（雕像台座、貨堆、水缸、石墩，牆資料 `low: true`）蹲著時擋視線；蹲著不能暗殺、推門閂，可以屏息。
+  - 提示：`dash` 講點一下與按住；`breath` 補「屏住時聽得到衛兵的腳步在哪。」；新 `crouch`。第 3 區進區先教 `crouch`，`takedown` 改到隔 `HINT_GAP` 秒後的真掩護窗，屏息再隔 `HINT_GAP` 秒（關著照舊）。
+  - 試驗場 `lab: 'run'`（區 2）、`'crouch'`、`'listen'`（區 3）：開 `MOVES_MODE`、`DYNAMIC` false、衛兵照常、出口擋住。
+  - 測試 +9；全套（含 `tools/telemetry`）312 條全過。`overnight-sim.mjs` 加 `--moves 0|1`。
+  - 7.5（各 100 局）：完美 43.9 秒；全程蹲 100%、100.9 秒（2.30 倍）過；亂跑 0% 通關、每局警覺 2.43（要 ≥ 3）沒過（一條命，警覺兩次左右就被抓）；只趁最響一擊跑 100%、42.6 秒（0.97 倍，要 ≤ 0.8）沒過（一局只跑約 2 秒）；σ0.12 站著 91%／44.4 秒／警覺 0.56，一半局蹲 90%／72.6 秒／0.34，全蹲 84%／101.7 秒／0.30。門檻沒調、判定寬度沒調，交設計席。
+  - 交卷檢查：開關關著原有測試照過（只改 `OLD` 與文字表那條的常數來源）；整夜驗證 `--moves 0` 500 局 8 列和 `c1d4aa3` 逐字相同；`--moves 1` 同一批程式玩家 8 列也逐字相同（它們不蹲、不按住 Shift）；沒動聲音、畫面。

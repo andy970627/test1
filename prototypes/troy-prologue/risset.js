@@ -82,7 +82,17 @@
     HORSE_MODE: false,
     BELLY_STEPS_NEED: 4,  // 木馬腹中練習：亮滿幾格，同伴才在下一個掩護窗替你拉開暗門。只有「起步」算數（第 1.1 節）【假設，待量】
     BELLY_MISS_COST: 1,   // 木馬腹中練習：起步踩歪扣幾格（最少扣到 0）【第 1.1 節；0、1、4 實測後取三條驗收都過的最小值】
-    COVER_EAR_P: 0,       // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
+    // 11/11 搭配動作（docs/design/2026-11-11-companion-mechanics.md 第 7 節）：跑（按住 Shift）、蹲走（按住 C）。
+    // 預設開（和木馬不同）；網址 ?moves=0 關。關著時所有路徑和報告版（c1d4aa3）完全一樣。新常數都是假設值。
+    MOVES_MODE: true,
+    RUN_HOLD: 0.2,        // 按住 Shift 超過這麼多秒才算跑（點一下仍是衝刺）
+    RUN_SPEED_MUL: 2,     // 跑的速度 = WALK × 2
+    RUN_R: 8,             // 掩護窗外跑的每一步，這麼遠內的衛兵進高度警覺（已警覺的轉追殺）
+    RUN_STEP_GAP: 0.3,    // 跑步的步距秒數（規格沒寫，規則角色暫擬）
+    CROUCH_SPEED_MUL: 0.5, // 蹲走速度 = WALK × 0.5
+    CROUCH_STEP_WIN: 0.16, // 蹲走時起步判定寬度（取代 STEP_WIN）
+    CROUCH_R: 1.2,        // 蹲走離拍的腳步聲傳多遠（站著走是 STEP_R）
+    COVER_EAR_P: 0,      // 殘響掩護：相位高於它才適用「踩在鼓點上聽不見」；0 ＝全程（設計席 7.1）；設 0.6 就回到 11/10 晚的行為
     CYCLE: 10,            // 固定模式（DYNAMIC = false）的循環秒數；也是舊函式 phaseAt 等的預設週期
     DYNAMIC: true,        // 越危險越快（第 8.1 節）；false = 固定 CYCLE 秒
     CYCLE_FAR: 12,        // 附近沒有衛兵時的目標循環長度
@@ -411,9 +421,10 @@
     return out;
   }
   /** 時間 t 的腳步是否被鼓聲蓋過：±STEP_WIN 秒內有音量 ≥ MASK_GAIN 的拍點。 */
-  function stepMasked(t, game) {
+  function stepMasked(t, game, win) {
     const K = (game && game.T) || T;
-    return beatsBetween(t - K.STEP_WIN - 1e-9, t + K.STEP_WIN + 1e-9, game, { minGain: K.MASK_GAIN }).length > 0;
+    const w = win == null ? K.STEP_WIN : win;   // 蹲走時傳 CROUCH_STEP_WIN
+    return beatsBetween(t - w - 1e-9, t + w + 1e-9, game, { minGain: K.MASK_GAIN }).length > 0;
   }
   /**
    * 腳步跟著鼓走（審議 A 席：腳步掩護方向要對）。上一步在 lastT，下一步落在哪：
@@ -427,9 +438,10 @@
     return bs.length ? { t: bs[0].t, beatT: bs[0].t } : { t: hi, beatT: null };
   }
   /** 時間 t 附近（±STEP_WIN）最近的可聽拍時間，沒有 = null（起步那一步的 beatT）。 */
-  function nearestMaskBeat(t, game) {
+  function nearestMaskBeat(t, game, win) {
     const K = (game && game.T) || T;
-    const bs = beatsBetween(t - K.STEP_WIN - 1e-9, t + K.STEP_WIN + 1e-9, game, { minGain: K.MASK_GAIN });
+    const w = win == null ? K.STEP_WIN : win;
+    const bs = beatsBetween(t - w - 1e-9, t + w + 1e-9, game, { minGain: K.MASK_GAIN });
     if (!bs.length) return null;
     let best = bs[0];
     for (const b of bs) if (Math.abs(b.t - t) < Math.abs(best.t - t)) best = b;
@@ -474,18 +486,25 @@
   // 文字裡的數字一律從常數生成（hintsFor(K)），改常數提示跟著變，不會「說一套做一套」（修 R3、審議 1.5 節第 2 項）。
   /** 秒數的寫法：整數照印，小數去掉尾零（0.6、2.4、1.5）。 */
   const num = (v) => (Number.isInteger(v) ? String(v) : String(+v.toFixed(2)));
+  /** 速度倍率的說法（由常數生成）：2 →「快一倍」、0.5 →「慢一半」，其他照印倍數。 */
+  const speedText = (m) => (m === 2 ? '快一倍' : m === 0.5 ? '慢一半' : '變成平常的 ' + num(m) + ' 倍');
   function hintsFor(K) {
     K = K || T;
     const cover = !!K.COVER_MODE;   // 殘響掩護版：鼓聲不斷，時機改說「最響的那一擊」（文字照設計席 7.4）
-    return {
-      breath: cover ? '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。'
-        : '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。',
+    const moves = !!K.MOVES_MODE;   // 搭配動作（第 7 節）：dash 講兩種用法、breath 補一句、多一則 crouch
+    const listen = moves ? '屏住時聽得到衛兵的腳步在哪。' : '';
+    const runDash = '按住 Shift 可以跑，速度' + speedText(K.RUN_SPEED_MUL) + '，但只有' + (cover ? '那一擊' : '斷掉的那一瞬間') +
+      '蓋得住跑步聲；平常跑，' + num(K.RUN_R) + ' 公尺內的衛兵都會警覺。';
+    const H = {
+      breath: (cover ? '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。'
+        : '節奏越快，衛兵越敏銳。節奏快起來時按住空白鍵屏住呼吸，不要動。') + listen,
       blind: cover ? '所有的鼓同時落下的那一擊最響，餘韻約 ' + num(K.BLIND_LEN) + ' 秒。這段時間衛兵什麼都察覺不到——趁這時移動。'
         : '聽到節奏「斷掉、重來」的那一瞬間，衛兵什麼都察覺不到——趁這時移動。',
       trapdoor: '木馬前端有一道暗門，走到那裡就能爬下去。',
       belly: '站定，等鼓點，再踏出去。站定後的第一步踩在鼓點上才亮一格，亮滿 ' + num(K.BELLY_STEPS_NEED) + ' 格，同伴就替你開門。',   // HORSE_MODE 的木馬腹中（第 1.1 節：只算起步；規則角色暫擬，畫面角色可改）
       gasp: '憋太久，喘出聲了！屏息最多約 ' + num(K.BREATH_MAX) + ' 秒，節奏慢下來時記得換氣。',
-      dash: cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
+      dash: moves ? (cover ? '最響的那一擊落下時點一下 Shift，可以快速衝出一小段。' : '節奏斷掉的瞬間點一下 Shift，可以快速衝出一小段。') + runDash
+        : cover ? '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。'
         : '節奏斷掉的瞬間按 Shift，可以快速衝出一小段。平常按沒有用。',
       panic: '有衛兵起疑了！別跟著急促的節奏亂按。聽最底下那聲很慢的低音，每響一下按一次 Q，對準 ' + num(K.CALM_NEED) + ' 次；' + num(K.CALM_TIMEOUT) + ' 秒內要完成。',
       alerted: '衛兵高度警覺了！' + num(K.ALERTED_DURATION) + ' 秒內別再動、別出聲，否則就會被追殺。',
@@ -500,6 +519,10 @@
         : '衛兵起疑時，兩聲低音正中間有一小段安靜，那時可以移動。',
       fake: '有時鼓聲只是換手，並沒有斷：沒有那聲預告，就不要動。'
     };
+    // 蹲走（只有開關開時才有這一則；關著時提示表和報告版一模一樣）
+    if (moves) H.crouch = '按住 C 蹲著走，速度' + speedText(K.CROUCH_SPEED_MUL) + '；起步不必那麼準（鼓點前後 ' + num(K.CROUCH_STEP_WIN) +
+      ' 秒內都算），離拍的腳步聲也只傳約 ' + num(K.CROUCH_R) + ' 公尺。蹲著時，水缸、貨堆這類矮東西擋得住衛兵的視線。要暗殺、推門閂得先站起來。';
+    return H;
   }
   const HINTS = hintsFor(T);
   // ---------- 暗示階梯（設計文件 2026-11-07-hint-guidance.md 第 1、2.1 節）----------
@@ -553,6 +576,7 @@
     return {
     move_high: K.COVER_MODE ? '節奏最快時，你的腳步沒踩在鼓點上，衛兵聽見了' : '節奏最快時你動了，衛兵聽見了',
     loud: '你發出的聲音太大，衛兵聽見了',
+    run: '你在鼓聲蓋不住的時候跑，衛兵聽見了',   // 搭配動作 A1（MOVES_MODE）
     calm_fast: '安撫時按得太急',
     calm_off: '安撫時沒對準那聲慢慢的低音',
     calm_slow: '安撫得太慢，衛兵喊了人',
@@ -571,20 +595,22 @@
   }
   function buildLevel() {
     const R = (x0, z0, x1, z1, name) => ({ x0, z0, x1, z1, name });
+    // 矮掩體（搭配動作 A2）：low: true 的牆，蹲著時擋得住衛兵視線；只有 MOVES_MODE 開著才讀
+    const LOW = (x0, z0, x1, z1, name) => ({ x0, z0, x1, z1, name, low: true });
     const walls = [
       // 外框
       R(-1, -1, 61, 0, '北界'), R(-1, 30, 61, 31, '南界'), R(-1, 0, 0, 30, '西界'), R(60, 0, 61, 30, '城門牆'),
       // 區 1／2 之間：木馬停在廣場西緣
       // 區 2 神殿廣場
       R(19, 2, 27, 8, '神殿'),
-      R(21, 12.5, 23, 14.5, '雕像台座'),
+      LOW(21, 12.5, 23, 14.5, '雕像台座'),
       R(30, 0, 31, 18, '廣場東牆（北段）'), R(30, 27, 31, 30, '廣場東牆（南段）'),
       // 區 3 窄巷：北邊是城牆根的屋舍，南邊是倉庫
       R(31, 0, 46, 17, '屋舍'), R(31, 28, 46, 30, '倉庫'),
-      R(35, 24.5, 37, 28, '貨堆'), R(40, 18, 41.5, 21, '水缸'),
+      LOW(35, 24.5, 37, 28, '貨堆'), LOW(40, 18, 41.5, 21, '水缸'),
       R(46, 0, 47, 17, '巷口北牆'), R(46, 28, 47, 30, '巷口南牆'),
       // 區 4 城門
-      R(52, 13, 53.5, 17, '石墩')
+      LOW(52, 13, 53.5, 17, '石墩')
     ];
     const shadows = [
       R(5, 14.2, 11.8, 15.8, '木馬腹中'),
@@ -691,20 +717,26 @@
     const oT = opts.T || {};
     if (oT.BLIND_LEN == null && oT.BLIND != null) K.BLIND_LEN = oT.BLIND;
     K.BLIND = K.BLIND_LEN;
-    // 試驗場（opts.T 可再覆寫）：兩個都是木馬開關開、循環固定、沒有衛兵。
-    //   ?lab=belly：只有腹中；爬下暗門就算過關。
-    //   ?lab=horse（第 3 節 C2）：從第 2 區開始自由走，不會過關也不會失敗（出口擋住、沒有衛兵）；木馬陰影照開關邏輯加入。
-    const lab = (opts.lab === 'belly' || opts.lab === 'horse') ? opts.lab : null;
-    if (lab) { if (oT.HORSE_MODE == null) K.HORSE_MODE = true; if (oT.DYNAMIC == null) K.DYNAMIC = false; }
+    // 試驗場（opts.T 可再覆寫）：都是循環固定。
+    //   ?lab=belly：木馬開關開、沒有衛兵；只有腹中；爬下暗門就算過關。
+    //   ?lab=horse（第 3 節 C2）：木馬開關開、沒有衛兵；從第 2 區開始自由走，不會過關也不會失敗（出口擋住）；木馬陰影照開關邏輯加入。
+    //   ?lab=run／crouch／listen（搭配動作第 7.4 節）：MOVES_MODE 開、衛兵照常（要看得到驚動與否）、出口擋住；
+    //     run 在第 2 區（空曠的廣場），crouch、listen 在第 3 區（有水缸、貨堆）。被抓照常失敗，畫面層 retry 回起點。
+    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3 };
+    const lab = LABS[opts.lab] ? opts.lab : null;
+    const horseLab = lab === 'belly' || lab === 'horse';
+    if (horseLab && oT.HORSE_MODE == null) K.HORSE_MODE = true;
+    if (lab && !horseLab && oT.MOVES_MODE == null) K.MOVES_MODE = true;
+    if (lab && oT.DYNAMIC == null) K.DYNAMIC = false;
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
     let level = opts.level || buildLevel();
-    if (lab) level = Object.assign({}, level, { guards: [] });
+    if (horseLab) level = Object.assign({}, level, { guards: [] });
     if (K.HORSE_MODE) {
       const hs = horseShadowFor(level);
       if (hs && !level.shadows.some((s) => s.name === hs.name)) level = Object.assign({}, level, { shadows: level.shadows.concat([hs]) });
     }
     const t0 = opts.t0 || 0;
-    const startZone = lab === 'belly' ? 1 : lab === 'horse' ? 2 : Math.max(0, Math.min(4, opts.startZone | 0));
+    const startZone = lab ? LABS[lab] : Math.max(0, Math.min(4, opts.startZone | 0));
 
     const g = {
       T: K,
@@ -753,6 +785,8 @@
     let dashHintGate = null;  // 殘響掩護教學：最響的一擊提示出過之後的循環；衝刺提示等到下一個掩護窗
     let horseSignalSent = false; // C3：城門開了之後，下一個掩護窗開頭發一次 horse_signal
     let horsePrevBlind = true; // 木馬腹中練習：上一幀是否在掩護窗（偵測「窗剛開」那一幀；開局當作在窗裡，不會一開局就開門）
+    let crouchHintAt = null;  // 搭配動作：第 3 區先教蹲走（進區），隔 HINT_GAP 秒後的掩護窗再教暗殺
+    let runStepT = -1e9;      // 搭配動作：上一個跑步步的音訊時間
     let breathHintAt = null;  // 殘響掩護教學：第 3 區暗殺提示出現的時間；屏息提示至少隔 HINT_GAP 秒、等節奏快起來
     let huntCause = null;
     let clockT = null;    // 循環時鐘上次推進到的音訊時間
@@ -765,6 +799,8 @@
     const HTXT = (opts.T || lab) ? hintsFor(K) : HINTS;
     const LADDER = opts.T ? hintLadderFor(K) : HINT_LADDER;
     const CZ = opts.T ? causesFor(K) : CAUSES;
+    const RUN_MSG = '跑步聲傳開了——衛兵高度警覺！';
+    const RUN_HUNT_MSG = '又聽到跑步聲——衛兵衝過來！';
     const MOVE_HIGH_MSG = K.COVER_MODE ? '節奏最快的時候腳步露了聲——被發現了！' : '節奏最快的時候亂動——被發現了！';
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HTXT[key]); } };
@@ -793,7 +829,7 @@
     function makePlayer(z) {
       const s = level.zones[z].start;
       return { x: s.x, z: s.z, y: s.y || 0, yaw: s.yaw || 0, breathing: false, breathT: 0, breathLock: false,
-        hidden: false, moving: false, inBelly: !!level.zones[z].belly };
+        hidden: false, moving: false, inBelly: !!level.zones[z].belly, running: false, crouching: false, runHeld: 0 };
     }
     function makeGuard(d) {
       const p0 = d.route[0], p1 = d.route[1] || p0;
@@ -830,7 +866,8 @@
         // 殘響掩護版（總控 11/10 夜）：踩拍走 → 最響的一擊（衝刺、暗殺） → 被看見與屏息 → 警戒
         if (z === 1) hint(K.HORSE_MODE ? 'belly' : 'step');          // 木馬腹中：踩著鼓點走，腳步被蓋過（HORSE_MODE：連續踩準幾步才開門）
         if (z === 2) { blindHintGate = null; dashHintGate = null; }  // 神殿廣場：第一個掩護窗教最響的一擊，下一個教衝刺
-        if (z === 3) { hint('takedown'); breathHintAt = null; }      // 窄巷：最響的一擊暗殺；之後教被看見與屏息
+        // 窄巷：最響的一擊暗殺；之後教被看見與屏息。MOVES_MODE：進區先教蹲走（那裡有水缸、貨堆），暗殺改到隔 HINT_GAP 秒後的掩護窗
+        if (z === 3) { if (K.MOVES_MODE) { hint('crouch'); crouchHintAt = null; } else hint('takedown'); breathHintAt = null; }
         if (z === 4) hint('gate');
       } else {
         if (z === 1) { hint('breath'); blindHintGate = null; }
@@ -867,6 +904,23 @@
       b.yaw = yawTo(dx, dz);
       moveBody(b, dx / d * s, dz / d * s);
       return d - s;
+    }
+    /** 線段 a→b 是否穿過矩形 r（slab 法）。 */
+    function segHitsRect(ax, az, bx, bz, r) {
+      let u0 = 0, u1 = 1;
+      for (const [a, d, lo, hi] of [[ax, bx - ax, r.x0, r.x1], [az, bz - az, r.z0, r.z1]]) {
+        if (Math.abs(d) < 1e-12) { if (a < lo || a > hi) return false; continue; }
+        let s0 = (lo - a) / d, s1 = (hi - a) / d;
+        if (s0 > s1) { const k = s0; s0 = s1; s1 = k; }
+        u0 = Math.max(u0, s0); u1 = Math.min(u1, s1);
+        if (u0 > u1) return false;
+      }
+      return true;
+    }
+    /** 搭配動作 A2：蹲著時，衛兵到玩家之間有矮掩體（low: true）就看不到。 */
+    function lowCover(q, pl) {
+      for (const w of level.walls) if (w.low && segHitsRect(q.x, q.z, pl.x, pl.z, w)) return true;
+      return false;
     }
     function isHidden(pl) {
       if (pl.inBelly) return true;
@@ -907,6 +961,7 @@
       // 11/10 複審：之前 msg 和 hint 都發 HTXT.alerted，同一句出現兩次。改成 msg 說「發生了什麼」（每次進入都發，
       // 只有腳步露聲才有；大聲沒有另外的訊息），hint 說「接下來怎麼辦」（第一次）。
       if (cause === 'move_high') emit('msg', MOVE_HIGH_MSG);
+      if (cause === 'run') emit('msg', RUN_MSG);
       hint('alerted');
     }
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
@@ -947,7 +1002,8 @@
         breath: !!i.breath, dash: !!i.dash, takedown: !!i.takedown, calm: !!i.calm,
         calmAt: Number.isFinite(i.calmAt) ? i.calmAt : null,
         actAt: Number.isFinite(i.actAt) ? i.actAt : null,   // 按鍵當下的音訊時間（衝刺、暗殺、門閂、安撫用）
-        interact: !!i.interact, start: !!i.start
+        interact: !!i.interact, start: !!i.start,
+        run: !!i.run, crouch: !!i.crouch   // 搭配動作：Shift、C 是否按住（dash 仍是「按下那一刻」）
       };
     }
     // ----- 循環時鐘（越危險越快） -----
@@ -1095,6 +1151,20 @@
         if (!inp.breath) pl.breathLock = false;
       }
 
+      // 搭配動作（MOVES_MODE）：按住 Shift 超過 RUN_HOLD 而且有方向鍵 = 跑（屏息時不能跑）；按住 C = 蹲（跑的時候站起來）
+      let running = false, crouching = false;
+      if (K.MOVES_MODE) {
+        pl.runHeld = inp.run && !pl.breathing ? (pl.runHeld || 0) + dt : 0;
+        running = pl.runHeld >= K.RUN_HOLD - 1e-9 && Math.hypot(inp.mx, inp.mz) > 1e-6;
+        crouching = inp.crouch && !running;
+        if (running !== !!pl.running) emit('sfx', running ? 'run_start' : 'run_stop', { x: pl.x, z: pl.z });
+        if (crouching !== !!pl.crouching) emit('sfx', crouching ? 'crouch_on' : 'crouch_off', { x: pl.x, z: pl.z });
+        pl.running = running; pl.crouching = crouching;
+      }
+      const speed = running ? K.WALK * K.RUN_SPEED_MUL : crouching ? K.WALK * K.CROUCH_SPEED_MUL : K.WALK;
+      const stepWin = crouching ? K.CROUCH_STEP_WIN : undefined;
+      const stepX = (o) => (crouching ? Object.assign(o, { crouch: true }) : o);   // 蹲走的腳步事件多帶 crouch: true
+
       // 移動與衝刺（屏息時不能動）
       const ox = pl.x, oz = pl.z;
       let walked = false;
@@ -1104,7 +1174,7 @@
         if (len > 1) { mx /= len; mz /= len; }
         if (len > 1e-6) {
           const bx = pl.x, bz = pl.z;
-          moveBody(pl, mx * K.WALK * dt, mz * K.WALK * dt);
+          moveBody(pl, mx * speed * dt, mz * speed * dt);
           walked = Math.hypot(pl.x - bx, pl.z - bz) > 1e-6;
         }
         if (inp.dash) {
@@ -1131,14 +1201,23 @@
       // 之後每一步對齊 nextStepAt 預測的下一個可聽拍（被蓋過）；STEP_GAP × STEP_GAP_MAX 內沒拍就照時間落一步（出聲）。
       // 事件 step_masked／step_loud 帶 {x, z, beatT}，beatT = 對齊到的拍時間（沒有 = null）。
       let stepLoud = false;
-      if (walked) {
+      let runLoud = false;   // 搭配動作 A1：這一幀有一步掩護窗外的跑步（RUN_R 內的衛兵進高度警覺）
+      if (walked && running) {
+        // 跑：每 RUN_STEP_GAP 秒一步；掩護窗（含前沿寬限）內的步不算出聲，其餘都算。不走一般腳步（不發 step_masked／step_loud）
+        if (t - runStepT >= K.RUN_STEP_GAP - 1e-9) {
+          runStepT = t; lastStepT = t;
+          const masked = !!(blind || lead);
+          runLoud = !masked;
+          emit('sfx', 'run_step', { x: pl.x, z: pl.z, masked });
+        }
+      } else if (walked) {
         let stepNow = null;   // {masked, beatT}
         if (!walking && t - lastStepT >= K.STEP_GAP * K.STEP_GAP_MIN - 1e-9) {
-          const masked = stepMasked(t, g);
-          stepNow = { masked, beatT: masked ? nearestMaskBeat(t, g) : null, start: true };   // 起步：站定後踏出的第一步
+          const masked = stepMasked(t, g, stepWin);
+          stepNow = { masked, beatT: masked ? nearestMaskBeat(t, g, stepWin) : null, start: true };   // 起步：站定後踏出的第一步
         } else {
           const nx = nextStepAt(lastStepT, g);
-          if (t >= nx.t - 1e-9) stepNow = nx.beatT != null ? { masked: true, beatT: nx.beatT } : { masked: stepMasked(t, g), beatT: null };
+          if (t >= nx.t - 1e-9) stepNow = nx.beatT != null ? { masked: true, beatT: nx.beatT } : { masked: stepMasked(t, g, stepWin), beatT: null };
         }
         if (stepNow) {
           lastStepT = t;
@@ -1151,16 +1230,16 @@
             stepLoud = false;
             if (stepNow.masked) {
               if (start && !B.ready) B.n = Math.min(B.need, B.n + 1);
-              emit('sfx', 'step_masked', { x: pl.x, z: pl.z, beatT: stepNow.beatT, n: B.n, need: B.need, start });
+              emit('sfx', 'step_masked', stepX({ x: pl.x, z: pl.z, beatT: stepNow.beatT, n: B.n, need: B.need, start }));
               if (start && !B.ready && B.n >= B.need) { B.ready = true; emit('sfx', 'belly_ready'); }
             } else if (start) {
               if (!B.ready) B.n = Math.max(0, B.n - K.BELLY_MISS_COST);
-              emit('sfx', 'belly_hush', { x: pl.x, z: pl.z, n: B.n, need: B.need, cost: K.BELLY_MISS_COST });
+              emit('sfx', 'belly_hush', stepX({ x: pl.x, z: pl.z, n: B.n, need: B.need, cost: K.BELLY_MISS_COST }));
             } else {
-              emit('sfx', 'step_loud', { x: pl.x, z: pl.z, beatT: null, start: false });
+              emit('sfx', 'step_loud', stepX({ x: pl.x, z: pl.z, beatT: null, start: false }));
             }
           } else
-          emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', { x: pl.x, z: pl.z, beatT: stepNow.beatT });
+          emit('sfx', stepNow.masked ? 'step_masked' : 'step_loud', stepX({ x: pl.x, z: pl.z, beatT: stepNow.beatT }));
           if (g.hunted) {
             if (stepNow.masked) {
               g.huntSteps++;
@@ -1210,7 +1289,7 @@
       // 致命一擊
       // 站在門閂旁時，E 只算推門閂，不算暗殺
       const atLatch = g.zone === 4 && !g.gate.open && level.gate && Math.hypot(pl.x - level.gate.latch.x, pl.z - level.gate.latch.z) <= K.LATCH_R;
-      if (inp.takedown && !pl.inBelly && !atLatch) {
+      if (inp.takedown && !pl.inBelly && !atLatch && !crouching) {   // 蹲著不能暗殺（要站起來）
         let best = null, bd = Infinity;
         for (const q of g.guards) {
           if (!q.active) continue;
@@ -1232,7 +1311,7 @@
 
       // 城門門閂（按住 interact）
       g.gate.pushing = false;
-      if (g.zone === 4 && inp.interact && !g.gate.open) {
+      if (g.zone === 4 && inp.interact && !g.gate.open && !crouching) {   // 蹲著推不了門閂
         const L = level.gate.latch;
         if (Math.hypot(pl.x - L.x, pl.z - L.z) <= K.LATCH_R) {
           if (pAt(actT) <= K.GATE_LOW_P) {   // 按住的判定用按鍵當下的相位
@@ -1292,8 +1371,15 @@
       }
       // 殘響掩護版：窄巷的暗殺提示之後隔 HINT_GAP 秒，等節奏快起來（被看見最危險的時候）才教屏息
       if (K.COVER_MODE && g.zone === 3) {
-        if (breathHintAt == null) breathHintAt = t;
-        if (!blind && p > K.HIGH_P && t - breathHintAt >= K.HINT_GAP) hint('breath');
+        // MOVES_MODE：進區教了蹲走，隔 HINT_GAP 秒後的掩護窗（暗殺有效的時候）才教暗殺；屏息再隔 HINT_GAP 秒
+        if (K.MOVES_MODE && !g.hintsShown.takedown) {
+          if (crouchHintAt == null) crouchHintAt = t;
+          if (blind && !c.alertBlind && t - crouchHintAt >= K.HINT_GAP) hint('takedown');   // 真的掩護窗（起疑時的低音空檔另有提示）
+        }
+        if (g.hintsShown.takedown) {
+          if (breathHintAt == null) breathHintAt = t;
+          if (!blind && p > K.HIGH_P && t - breathHintAt >= K.HINT_GAP) hint('breath');
+        }
       }
       if (c.alertBlind && blind && g.panic.count > 0) hint('alertBlind');
       if (!c.alertBlind && c.fake && t - c.start < K.BLIND_LEN) hint('fake');   // 第一次假驟降時說明
@@ -1316,28 +1402,30 @@
         const toward = Math.atan2(pl.x - q.x, pl.z - q.z); // 與 forward 同一參考：比較方向向量夾角
         const fa = Math.atan2(f.x, f.z);
         const inFov = d < 1e-6 || angDiff(toward, fa) <= K.FOV;
-        const seen = !pl.hidden && d <= r && inFov;
+        const seen = !pl.hidden && d <= r && inFov && !(crouching && lowCover(q, pl));   // 蹲著時矮掩體擋視線
         const mv = moved && !lead;   // 盲區前沿的寬限：移動照盲區規則，不算 move_high、不累積疑心
         // 4A 的 M7 只改 R_BASE／R_GAIN，不做感知分級：移動聲、呼吸聲仍以整個 r(p) 判定（分級是 4B 的事）
         // 殘響掩護（COVER_MODE）第 2 條（設計席 7.1：p > COVER_EAR_P，預設全程）：耳朵可以用鼓聲騙——
         // 踩在可聽拍上的腳步（step_masked）聽不見；出聲的腳步（step_loud）才算，後果和舊版一樣：
         // p ≤ HIGH_P 時是 STEP_R 內加 SUSP_STEP（heardStep 那一行），p > HIGH_P 時 r(p) 內進高度警覺。被看見（seen）照舊。
         const coverEar = !!K.COVER_MODE && p > K.COVER_EAR_P;
-        const heardMove = mv && d <= r && (!coverEar || (stepLoud && p > K.HIGH_P));
+        const hearR = crouching ? Math.min(r, K.CROUCH_R) : r;   // 蹲走：離拍的聲音只傳 CROUCH_R
+        const heardMove = mv && d <= hearR && (!coverEar || (stepLoud && p > K.HIGH_P));
         const heardBreath = !pl.breathing && !moved && d <= r * K.BREATH_HEAR;
         const heardLoud = loud && d <= Math.max(r, K.LOUD_R);
-        const heardStep = stepLoud && d < K.STEP_R;
+        const heardStep = stepLoud && d < (crouching ? K.CROUCH_R : K.STEP_R);
+        const heardRun = runLoud && d <= K.RUN_R;   // 搭配動作 A1：掩護窗外的跑步
 
         if (q.state === 'hunted') {
-          if (seen || heardMove || heardLoud || heardStep || (!pl.hidden && !blind)) q.lastKnown = { x: pl.x, z: pl.z };
+          if (seen || heardMove || heardLoud || heardStep || heardRun || (!pl.hidden && !blind)) q.lastKnown = { x: pl.x, z: pl.z };
           continue;
         }
         if (q.state === 'alerted') {
           if (q.lookAt) q.yaw = yawTo(q.lookAt.x - q.x, q.lookAt.z - q.z);
           const moveHigh = p > K.HIGH_P && mv && (heardMove || seen);
-          if (heardLoud || moveHigh) {
-            const msg = heardLoud ? '那聲音太大了——衛兵衝過來！' : MOVE_HIGH_MSG;
-            startHunt(q, heardLoud ? 'loud' : 'move_high', msg);
+          if (heardLoud || moveHigh || heardRun) {
+            const msg = heardLoud ? '那聲音太大了——衛兵衝過來！' : heardRun ? RUN_HUNT_MSG : MOVE_HIGH_MSG;
+            startHunt(q, heardLoud ? 'loud' : heardRun ? 'run' : 'move_high', msg);
             continue;
           }
           if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
@@ -1362,6 +1450,11 @@
             else startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
           }
           else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
+          continue;
+        }
+        if (heardRun) {   // 不分快慢：巡邏的進高度警覺，起疑（安撫中）的直接追殺
+          if (q.state === 'patrol') makeAlerted(q, t, 'run');
+          else startHunt(q, 'run', RUN_HUNT_MSG);
           continue;
         }
         if (heardStep && q.grace <= 0) { q.susp += K.SUSP_STEP; hint('step'); hintFail('step'); }
@@ -1449,7 +1542,7 @@
           if (K.HORSE_MODE && !g.belly.open) reached = false;      // 腹中練習：同伴還沒拉開木栓，暗門不開
           if (pl.x > Z.belly.x0 + 2 && (!K.HORSE_MODE || g.belly.open)) hint('trapdoor');
         } else if (Z.exit.kind === 'rect') reached = inRect(pl.x, pl.z, Z.exit.rect);
-        if (lab === 'horse') reached = false;                    // 試驗場：自由走，不離開第 2 區
+        if (lab && lab !== 'belly') reached = false;             // 試驗場：自由走，不離開起始區
         if (reached) {
           if (g.hunted) hint('lockedExit');
           else {

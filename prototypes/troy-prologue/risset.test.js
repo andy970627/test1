@@ -9,7 +9,8 @@ const DT = 1 / 60;
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 /** 舊規則測試用：固定 10 秒循環（T.DYNAMIC = false），時間點和第 6.2 節一樣好算。 */
 /** 11/10 起 T.COVER_MODE 預設 true（殘響掩護）。既有測試是舊盲區版的回歸測試，一律用 COVER_MODE = false；新版另外寫（檔尾）。 */
-const OLD = { COVER_MODE: false };
+// 11/11 搭配動作：MOVES_MODE 預設開。舊版（報告引用的版本）連同搭配動作一起關掉
+const OLD = { COVER_MODE: false, MOVES_MODE: false };
 /** 舊模式的提示文字（OH／OL 是預設常數產生的，現在是殘響掩護版）。 */
 const OH = R.hintsFor(Object.assign({}, R.T, OLD));
 const OL = R.hintLadderFor(Object.assign({}, R.T, OLD));
@@ -2211,7 +2212,8 @@ test('11/10 設計席 7.1：COVER_EAR_P = 0，慢的時候踩著鼓點走也聽�
 });
 
 test('11/10 設計席 7.4：殘響掩護版的提示文字表（數字由常數生成）；舊版不變', () => {
-  const H = R.hintsFor(K), L = R.hintLadderFor(K), C = R.causesFor(K);
+  const K0 = Object.assign({}, K, { MOVES_MODE: false });   // 11/11：這張表是報告版（搭配動作關著）的文字
+  const H = R.hintsFor(K0), L = R.hintLadderFor(K0), C = R.causesFor(K0);
   const n = (v) => String(v);
   assert.equal(H.blind, '所有的鼓同時落下的那一擊最響，餘韻約 ' + n(K.BLIND_LEN) + ' 秒。這段時間衛兵什麼都察覺不到——趁這時移動。');
   assert.equal(H.step, '踩著鼓點走，腳步聲會被鼓聲蓋過，衛兵聽不出來——但他看得見你。起步要踩在鼓點上，之後腳步會自己跟著鼓走；離拍起步、或鼓很稀疏時，身邊的衛兵聽得到。');
@@ -2723,4 +2725,333 @@ test('11/11 木馬 C3：開關開時，城門開了（當下就是 win）之後�
   const ev = [];
   while (u < 30) { u += DT; off.step(u, {}); ev.push(...off.drain()); }
   assert.ok(!ev.some((e) => e.a === 'horse_signal'));
+});
+
+// ---------------- 11/11 搭配動作第 1 步（MOVES_MODE：A1 跑、A2 蹲走、C1 屏息聽的提示；docs/design/2026-11-11-companion-mechanics.md 第 7 節） ----------------
+
+/** 搭配動作開（預設）、殘響掩護、固定 10 秒循環的關卡（t0 = 0：掩護窗在 [0, 0.6)、[10, 10.6)…）。 */
+const mvs = (o = {}) => R.createLevel(Object.assign({}, o, { T: Object.assign({ DYNAMIC: false }, o.T || {}) }));
+const mvOff = (o = {}) => mvs(Object.assign({}, o, { T: Object.assign({ MOVES_MODE: false }, o.T || {}) }));
+/** 從 t 推到 t1，回傳 {t, ev}（ev 含 sfx 與 msg，附發生時間）。 */
+function runAll(g, t, t1, inputFn) {
+  const ev = [];
+  while (t < t1 - 1e-9 && g.phase === 'play') {
+    t = Math.min(t1, t + DT);
+    g.step(t, inputFn ? inputFn(g, t) : {});
+    for (const e of g.drain()) ev.push(Object.assign({ t }, e));
+  }
+  return { t, ev };
+}
+
+test('11/11 搭配動作：MOVES_MODE 預設開、新常數存在；開關關著時按住 Shift、C 都沒有作用（速度、事件、提示表和報告版一樣）', () => {
+  assert.equal(K.MOVES_MODE, true, '預設開（和木馬不同）');
+  assert.equal(K.HORSE_MODE, false, '木馬維持預設關');
+  for (const k of ['RUN_HOLD', 'RUN_SPEED_MUL', 'RUN_R', 'RUN_STEP_GAP', 'CROUCH_SPEED_MUL', 'CROUCH_STEP_WIN', 'CROUCH_R']) assert.ok(Number.isFinite(K[k]) && K[k] > 0, k);
+  assert.deepEqual([K.RUN_HOLD, K.RUN_SPEED_MUL, K.RUN_R, K.CROUCH_SPEED_MUL, K.CROUCH_STEP_WIN, K.CROUCH_R], [0.2, 2, 8, 0.5, 0.16, 1.2]);
+  const g = allDown(mvOff({ startZone: 2 }));
+  place(g, 14, 22);
+  let t = 2; g.step(t, {}); g.drain();
+  const r = runAll(g, t, t + 1, () => ({ mx: 1, run: true, crouch: true }));
+  assert.ok(Math.abs(g.player.x - 14 - K.WALK * 1) < 0.05, `照走路速度：${g.player.x}`);
+  assert.ok(!r.ev.some((e) => /^(run_|crouch_)/.test(e.a)), '沒有跑、蹲事件');
+  assert.ok(r.ev.filter((e) => e.a === 'step_masked' || e.a === 'step_loud').every((e) => !('crouch' in e)), '腳步不帶 crouch');
+  assert.ok(!g.player.running && !g.player.crouching);
+  const H0 = R.hintsFor(Object.assign({}, K, { MOVES_MODE: false }));
+  assert.ok(!('crouch' in H0), '關著時沒有蹲走提示');
+  assert.equal(H0.dash, '最響的那一擊落下時按 Shift，可以快速衝出一小段。平常按沒有用。');
+  assert.equal(H0.breath, '節奏越快，衛兵越敏銳。來不及躲開時，按住空白鍵屏住呼吸，站著別動。');
+  // 矮掩體欄位在牆資料裡（四個），但只有開關開才讀
+  assert.deepEqual(R.buildLevel().walls.filter((w) => w.low).map((w) => w.name).sort(), ['水缸', '石墩', '貨堆', '雕像台座'].sort());
+});
+
+test('11/11 A1 跑：點一下 Shift 仍是衝刺；按住超過 RUN_HOLD 才跑（run_start、速度 × RUN_SPEED_MUL、放開 run_stop）；屏息不能跑；蹲著按 Shift 站起來跑', () => {
+  // 點一下（按住不到 RUN_HOLD）：掩護窗裡衝 DASH 公尺，不會開始跑
+  const g = allDown(mvs({ startZone: 2 }));
+  place(g, 14, 22);
+  let t = 9.9; g.step(t, {}); t = 10.05; g.step(t, {}); g.drain();
+  const x0 = g.player.x;
+  let r = runAll(g, t, t + 0.1, (gg, tt) => ({ mx: 1, dash: tt < t + DT * 1.5, run: true }));
+  t = r.t;
+  assert.ok(r.ev.some((e) => e.a === 'dash'), '衝刺照舊');
+  assert.ok(!r.ev.some((e) => e.a === 'run_start'), '按住不到 RUN_HOLD 不算跑');
+  assert.ok(g.player.x - x0 >= K.DASH, `衝了 ${K.DASH} 公尺：${(g.player.x - x0).toFixed(2)}`);
+  // 按住超過 RUN_HOLD：開始跑，速度兩倍
+  const g2 = allDown(mvs({ startZone: 2 }));
+  place(g2, 14, 22);
+  t = 2; g2.step(t, {}); g2.drain();
+  r = runAll(g2, t, t + K.RUN_HOLD + 0.05, () => ({ mx: 1, run: true }));
+  t = r.t;
+  const st = r.ev.find((e) => e.a === 'run_start');
+  assert.ok(st && st.t - 2 >= K.RUN_HOLD - DT - 1e-9 && st.t - 2 <= K.RUN_HOLD + DT * 1.5, `按住約 RUN_HOLD 秒後 run_start：${st && st.t}`);
+  assert.ok(g2.player.running);
+  const xa = g2.player.x;
+  r = runAll(g2, t, t + 0.5, () => ({ mx: 1, run: true }));
+  t = r.t;
+  assert.ok(Math.abs((g2.player.x - xa) - K.WALK * K.RUN_SPEED_MUL * 0.5) < 0.05, `跑速：${(g2.player.x - xa).toFixed(3)}`);
+  const rs = r.ev.filter((e) => e.a === 'run_step');
+  assert.ok(rs.length >= 1 && rs.every((e) => e.masked === false && Number.isFinite(e.x) && Number.isFinite(e.z)), '掩護窗外的跑步步 masked: false，帶 x、z');
+  assert.ok(!r.ev.some((e) => e.a === 'step_masked' || e.a === 'step_loud'), '跑的時候不發一般腳步');
+  r = runAll(g2, t, t + DT, () => ({ mx: 1 }));
+  t = r.t;
+  assert.ok(r.ev.some((e) => e.a === 'run_stop') && !g2.player.running, '放開 Shift → run_stop');
+  // 屏息時不能跑
+  r = runAll(g2, t, t + 0.5, () => ({ mx: 1, run: true, breath: true }));
+  t = r.t;
+  assert.ok(!r.ev.some((e) => e.a === 'run_start') && !g2.player.running, '屏息不能跑');
+  // 蹲著按 Shift：站起來跑
+  r = runAll(g2, t, t + 0.3, () => ({ crouch: true }));
+  t = r.t;
+  assert.ok(r.ev.some((e) => e.a === 'crouch_on') && g2.player.crouching);
+  r = runAll(g2, t, t + K.RUN_HOLD + 0.1, () => ({ mx: -1, crouch: true, run: true }));
+  assert.ok(r.ev.some((e) => e.a === 'crouch_off') && r.ev.some((e) => e.a === 'run_start'));
+  assert.ok(g2.player.running && !g2.player.crouching, '跑的時候站著');
+});
+
+test('11/11 A1 跑：掩護窗外跑，RUN_R 內的衛兵進高度警覺、再聽到轉追殺；RUN_R 外沒事；掩護窗（含前沿寬限）內跑的步不算出聲', () => {
+  // 窗外：6 公尺（RUN_R 內）背對的衛兵
+  const g = mvs({ startZone: 2 });
+  const q = solo(g, 'g2a', 25, 22, R.yawTo(0, 1));
+  place(g, 19, 22);
+  let t = 2; g.step(t, {}); g.drain();
+  let r = runAll(g, t, t + K.RUN_HOLD + 0.1, () => ({ mx: 1, run: true }));   // 朝背對的衛兵跑（一直在 RUN_R 內）
+  t = r.t;
+  assert.equal(q.state, 'alerted', '第一步跑步聲 → 高度警覺');
+  assert.ok(r.ev.some((e) => e.type === 'msg' && /跑步聲/.test(e.a)), '訊息說是跑步聲');
+  r = runAll(g, t, t + K.RUN_STEP_GAP + 0.05, () => ({ mx: 1, run: true }));
+  assert.ok(g.hunted && q.state === 'hunted', '已警覺再聽到跑步聲 → 追殺');
+  // RUN_R 外：9.5 公尺，往遠處跑
+  const g2 = mvs({ startZone: 2 });
+  const q2 = solo(g2, 'g2a', 25, 22, R.yawTo(0, 1));
+  place(g2, 15.5, 22);
+  t = 2; g2.step(t, {}); g2.drain();
+  r = runAll(g2, t, t + 1, () => ({ mx: -1, run: true }));
+  assert.ok(r.ev.filter((e) => e.a === 'run_step').length >= 2);
+  assert.equal(q2.state, 'patrol', 'RUN_R 外聽不到');
+  // 窗內：先站著按住 Shift（按住就開始計時），前沿寬限一到才按方向鍵——一動就是跑；到窗尾放開
+  const g3 = mvs({ startZone: 2 });
+  const q3 = solo(g3, 'g2a', 25, 22, R.yawTo(0, 1));
+  place(g3, 19, 22);
+  t = 9.5; g3.step(t, {}); g3.drain();
+  const go = 10 - K.BLIND_LEAD_GRACE + 0.01, hold0 = go - K.RUN_HOLD - 0.05;
+  r = runAll(g3, t, 10 + K.BLIND_LEN - 0.03, (gg, tt) => (tt >= go ? { mx: -1, run: true } : tt >= hold0 ? { run: true } : {}));
+  t = r.t;
+  const rs = r.ev.filter((e) => e.a === 'run_step');
+  assert.ok(rs.length >= 2 && rs.every((e) => e.masked === true), `窗內的跑步步都 masked：${JSON.stringify(rs.map((e) => [e.t.toFixed(3), e.masked]))}`);
+  r = runAll(g3, t, t + 0.5, () => ({}));
+  assert.equal(q3.state, 'patrol', '窗內跑不驚動');
+});
+
+test('11/11 A2 蹲走：按住 C 蹲（crouch_on／off），速度 × CROUCH_SPEED_MUL；起步判定放寬到 CROUCH_STEP_WIN；離拍腳步只傳 CROUCH_R；腳步帶 crouch: true', () => {
+  const g = allDown(mvs({ startZone: 2 }));
+  place(g, 14, 22);
+  let t = 2; g.step(t, {}); g.drain();
+  let r = runAll(g, t, t + 0.1, () => ({ crouch: true }));
+  t = r.t;
+  assert.ok(r.ev.some((e) => e.a === 'crouch_on') && g.player.crouching);
+  const x0 = g.player.x;
+  r = runAll(g, t, t + 1, () => ({ mx: 1, crouch: true }));
+  t = r.t;
+  assert.ok(Math.abs((g.player.x - x0) - K.WALK * K.CROUCH_SPEED_MUL) < 0.05, `蹲走速度：${(g.player.x - x0).toFixed(3)}`);
+  const steps = r.ev.filter((e) => e.a === 'step_masked' || e.a === 'step_loud');
+  assert.ok(steps.length >= 1 && steps.every((e) => e.crouch === true), '蹲走的腳步帶 crouch: true');
+  r = runAll(g, t, t + DT, () => ({}));
+  t = r.t;
+  assert.ok(r.ev.some((e) => e.a === 'crouch_off') && !g.player.crouching);
+  // 起步判定：找一個「離可聽拍 STEP_WIN 以外、CROUCH_STEP_WIN 以內」的時刻，蹲著起步被蓋過、站著起步出聲
+  // 衛兵在 2 公尺（STEP_R 內、CROUCH_R 外）背對：站著出聲他聽得到，蹲著聽不到
+  const pair = [true, false].map((crouch) => {
+    const gg = mvs({ startZone: 2 });
+    const q = solo(gg, 'g2a', 30, 12, R.yawTo(0, 1));
+    place(gg, 20, 22);
+    let u = 2; gg.step(u, {});
+    while (u < 30 && !(R.stepMasked(u + DT, gg, K.CROUCH_STEP_WIN) && !R.stepMasked(u + DT, gg))) { u += DT; gg.step(u, crouch ? { crouch: true } : {}); }
+    assert.ok(u < 30, '找得到這種時刻');
+    q.x = 20; q.z = 24; q.susp = 0;                 // 起步前一刻才把衛兵放到背後 2 公尺
+    gg.drain();
+    u += DT; gg.step(u, crouch ? { mx: 1, crouch: true } : { mx: 1 });
+    const ev = gg.drain().filter((e) => e.type === 'sfx');
+    return { ev, q, p: gg.cycle.p };
+  });
+  const [cr, st] = pair;
+  const cs = cr.ev.find((e) => e.a === 'step_masked' || e.a === 'step_loud');
+  const ss = st.ev.find((e) => e.a === 'step_masked' || e.a === 'step_loud');
+  assert.equal(cs && cs.a, 'step_masked', '蹲著起步：CROUCH_STEP_WIN 內算踩準');
+  assert.equal(cs.crouch, true);
+  assert.equal(ss && ss.a, 'step_loud', '站著同一刻起步：出聲');
+  assert.ok(st.q.susp > 0 || st.q.state === 'alerted', '站著出聲，2 公尺的衛兵聽到');
+  // 蹲著離拍：只傳 CROUCH_R
+  const g3 = mvs({ startZone: 2 });
+  const q3 = solo(g3, 'g2a', 30, 12, R.yawTo(0, 1));
+  place(g3, 20, 22);
+  let u = 2; g3.step(u, { crouch: true });
+  while (u < 30 && R.stepMasked(u + DT, g3, K.CROUCH_STEP_WIN)) { u += DT; g3.step(u, { crouch: true }); }
+  q3.x = 20; q3.z = 24; q3.susp = 0; g3.drain();
+  u += DT; g3.step(u, { mx: 1, crouch: true });
+  const ev3 = g3.drain().filter((e) => e.type === 'sfx');
+  assert.ok(ev3.some((e) => e.a === 'step_loud' && e.crouch), '蹲著離拍：step_loud（crouch: true）');
+  assert.ok(q3.susp === 0 && q3.state === 'patrol', `2 公尺外聽不到蹲走的離拍聲：${q3.susp} ${q3.state}`);
+  q3.x = g3.player.x; q3.z = g3.player.z + 1; q3.susp = 0;   // 1 公尺：聽得到
+  while (u < 40 && R.stepMasked(u + DT, g3, K.CROUCH_STEP_WIN)) { u += DT; g3.step(u, { crouch: true }); }
+  u = runAll(g3, u, u + 0.6, () => ({ crouch: true })).t;
+  while (u < 40 && R.stepMasked(u + DT, g3, K.CROUCH_STEP_WIN)) { u += DT; g3.step(u, { crouch: true }); }
+  q3.x = g3.player.x; q3.z = g3.player.z + 1; q3.susp = 0; g3.drain();
+  u += DT; g3.step(u, { mx: 1, crouch: true });
+  assert.ok(g3.drain().some((e) => e.a === 'step_loud'), '又一次離拍起步');
+  assert.ok(q3.susp > 0 || q3.state === 'alerted', `CROUCH_R 內聽得到：${q3.susp} ${q3.state}`);
+});
+
+test('11/11 A2 矮掩體：蹲著時水缸擋住衛兵視線（站著擋不住頭）；開關關著蹲也沒用', () => {
+  const look = (make, crouch) => {
+    const g = make({ startZone: 3 });
+    const q = solo(g, 'g3b', 44.5, 19.5, R.yawTo(-1, 0));   // 面向西，中間隔著水缸（x 40～41.5、z 18～21）
+    place(g, 38.5, 19.5);                                   // 6 公尺
+    let t = 6.6; g.step(t, crouch ? { crouch: true } : {});
+    assert.ok(R.radiusAt(g.cycle.p, false, g.T) > 6.2 && !g.player.hidden, '在感知範圍內、不在陰影');
+    t = run(g, t, 7.2, () => (crouch ? { crouch: true } : {}));
+    return q;
+  };
+  const cr = look(mvs, true), st = look(mvs, false), off = look(mvOff, true);
+  assert.ok(cr.susp === 0 && cr.state === 'patrol', `蹲著：看不到（${cr.susp}）`);
+  assert.ok(st.susp > 0 || st.state !== 'patrol', `站著：看得到（${st.susp} ${st.state}）`);
+  assert.ok(off.susp > 0 || off.state !== 'patrol', `開關關著：蹲也看得到（${off.susp} ${off.state}）`);
+  // 中間沒有矮掩體：蹲著照樣看得到
+  const g = mvs({ startZone: 3 });
+  const q = solo(g, 'g3b', 44.5, 23, R.yawTo(-1, 0));
+  place(g, 38.5, 23);
+  let t = 6.6; g.step(t, { crouch: true });
+  run(g, t, 7.2, () => ({ crouch: true }));
+  assert.ok(q.susp > 0 || q.state !== 'patrol', '沒有掩體，蹲著也看得到');
+});
+
+test('11/11 A2：蹲著不能暗殺、推門閂（要站起來）；可以蹲著屏息', () => {
+  const td = (crouch) => {
+    const g = mvs({ startZone: 3 });
+    const q = solo(g, 'g3a', 39, 23, R.yawTo(1, 0));
+    place(g, 38, 23);
+    let t = 9.5; g.step(t, crouch ? { crouch: true } : {});
+    t = run(g, t, 10.1, () => (crouch ? { crouch: true } : {}));
+    t += DT; g.step(t, crouch ? { crouch: true, takedown: true } : { takedown: true });
+    return { q, ev: sfx(g) };
+  };
+  const a = td(true), b = td(false);
+  assert.ok(a.q.state !== 'down' && !a.ev.includes('takedown') && !a.ev.includes('takedown_fail'), '蹲著按 E 沒有反應');
+  assert.equal(b.q.state, 'down', '站著照常暗殺');
+  const latch = (crouch) => {
+    const g = allDown(mvs({ startZone: 4 }));
+    place(g, 58.6, 15);
+    let t = 2; g.step(t, {});
+    run(g, t, 3, () => (crouch ? { crouch: true, interact: true } : { interact: true }));
+    return g.gate.progress;
+  };
+  assert.equal(latch(true), 0, '蹲著推不了門閂');
+  assert.ok(latch(false) > 0.9);
+  const g = allDown(mvs({ startZone: 2 }));
+  let t = 2; g.step(t, {});
+  run(g, t, 3, () => ({ crouch: true, breath: true }));
+  assert.ok(g.player.crouching && g.player.breathing, '蹲著屏息');
+});
+
+test('11/11 搭配動作提示：dash 講點一下與按住兩種用法、breath 補「聽得到衛兵的腳步」、crouch 由常數生成；第 3 區進區先教蹲走，暗殺改到隔 HINT_GAP 秒後的掩護窗；關著照舊', () => {
+  const H = R.hintsFor(K);
+  assert.ok(H.dash.includes('點一下 Shift') && H.dash.includes('按住 Shift') && H.dash.includes(K.RUN_R + ' 公尺') && H.dash.includes('快一倍'), H.dash);
+  assert.ok(H.breath.endsWith('屏住時聽得到衛兵的腳步在哪。'), H.breath);
+  assert.ok(H.crouch.includes('按住 C') && H.crouch.includes('慢一半') && H.crouch.includes(String(K.CROUCH_STEP_WIN)) && H.crouch.includes(String(K.CROUCH_R) + ' 公尺'), H.crouch);
+  const H2 = R.hintsFor(Object.assign({}, K, { CROUCH_R: 1.5, RUN_R: 10, CROUCH_STEP_WIN: 0.2, RUN_SPEED_MUL: 1.5 }));
+  assert.ok(H2.crouch.includes('1.5 公尺') && H2.crouch.includes('0.2 秒') && H2.dash.includes('10 公尺') && H2.dash.includes('1.5 倍'), '改常數文字跟著變');
+  for (const s of [H.dash, H.crouch, H.breath]) assert.ok(!/斷/.test(s), '殘響掩護版不說「斷」');
+  // 第 3 區教學順序
+  const g = allDown(mvs({ startZone: 3 }));
+  const HT = R.hintsFor(g.T);
+  const got = [];
+  for (const e of g.drain()) if (e.type === 'hint') got.push({ a: e.a, t: 0 });
+  let t = 0; g.step(t, {});
+  while (t < 40) { t += DT; g.step(t, {}); for (const e of g.drain()) if (e.type === 'hint') got.push({ a: e.a, t, blind: g.cycle.blind }); }
+  const keyOf = (a) => Object.keys(HT).find((k) => HT[k] === a);
+  assert.equal(keyOf(got[0].a), 'crouch', `進區先教蹲走：${got.map((x) => keyOf(x.a)).join(' → ')}`);
+  const td = got.find((x) => keyOf(x.a) === 'takedown');
+  assert.ok(td && td.blind && td.t >= K.HINT_GAP, '暗殺在隔 HINT_GAP 秒後的掩護窗');
+  const br = got.find((x) => keyOf(x.a) === 'breath');
+  assert.ok(br && br.t - td.t >= K.HINT_GAP, '屏息再隔 HINT_GAP 秒');
+  const off = allDown(mvOff({ startZone: 3 }));
+  const H0 = R.hintsFor(off.T);
+  const first = off.drain().filter((e) => e.type === 'hint').map((e) => e.a);
+  assert.deepEqual(first, [H0.takedown], '關著：進區就教暗殺');
+});
+
+test('11/11 搭配動作試驗場 lab: run／crouch／listen：各自開 MOVES_MODE、固定循環、衛兵照常、出口擋住；run 在第 2 區，crouch、listen 在第 3 區；木馬開關不動', () => {
+  for (const [lab, zone] of [['run', 2], ['crouch', 3], ['listen', 3]]) {
+    const g = R.createLevel({ lab, T: { MOVES_MODE: undefined } });
+    const g1 = R.createLevel({ lab });
+    for (const x of [g1]) {
+      assert.equal(x.lab, lab); assert.equal(x.zone, zone); assert.equal(x.phase, 'play');
+      assert.equal(x.T.MOVES_MODE, true); assert.equal(x.T.DYNAMIC, false); assert.equal(x.T.HORSE_MODE, false);
+      assert.ok(x.guards.some((q) => q.active), '衛兵照常');
+    }
+    assert.ok(g);
+    // 出口擋住：走到出口也不換區
+    const Z = g1.level.zones[zone].exit;
+    allDown(g1);
+    let t = 1; g1.step(t, {});
+    place(g1, (Z.rect.x0 + Z.rect.x1) / 2, (Z.rect.z0 + Z.rect.z1) / 2);
+    t += DT; g1.step(t, {});
+    assert.equal(g1.zone, zone, `${lab}：不離開起始區`);
+    // opts.T 可以覆寫
+    assert.equal(R.createLevel({ lab, T: { MOVES_MODE: false } }).T.MOVES_MODE, false);
+  }
+  // 木馬試驗場不受影響
+  const b = R.createLevel({ lab: 'belly' });
+  assert.equal(b.zone, 1); assert.equal(b.T.HORSE_MODE, true); assert.equal(b.guards.length, 0);
+});
+
+/** 7.5 的程式玩家：完美踩拍 makeBot({cover: true}) 外面再包一層。kind：
+ *   'crouch'：一直按住 C（只有暗殺、推門閂那一幀站起來）；
+ *   'runRandom'：不看時機，有方向鍵就按住 Shift；
+ *   'runCover'：只在掩護窗按住 Shift（窗開前 RUN_HOLD 秒先按，窗一開就跑起來；窗快結束就放），其餘照走。 */
+function makeMovesBot(kind, opts = {}) {
+  const inner = makeBot(Object.assign({ cover: true }, opts));
+  return function (g) {
+    const out = inner(g);
+    const moving = !!(out.mx || out.mz);
+    if (kind === 'crouch') out.crouch = !out.takedown && !out.interact;
+    else if (kind === 'runRandom') out.run = moving;
+    else if (kind === 'runCover') {
+      const c = g.cycle, K2 = g.T;
+      const soon = !c.alertBlind && !g.hunted && Number.isFinite(c.blindFrom) && c.blindFrom - g.time <= K2.RUN_HOLD && c.blindFrom > g.time;
+      // 窗剩不到 1/30 秒就放開：它讀的是上一幀的狀態，下一幀可能已在窗外（幀率抖動最多 1/30 秒）；人也會提早放
+      const inWin = c.blind && c.blindTo - g.time > 1 / 30;
+      out.run = !!(inWin || soon) && !g.panic.active;
+    }
+    return out;
+  };
+}
+
+test('11/11 搭配動作 7.5 驗收（只量、門檻是假設）：全程蹲、亂跑、只趁最響一擊跑各 100 局；σ0.12 一半局蹲走的對照', () => {
+  const N = 100;
+  const pct = (v) => (v * 100).toFixed(0) + '%';
+  const fmt = (s) => `通關 ${pct(s.winRate)}、通關時間中位 ${Number.isFinite(s.tMed) ? s.tMed.toFixed(1) : '—'} 秒、每局進高度警覺 ${s.alerted.toFixed(2)} 次、卡關區 ${JSON.stringify(s.stuck)}`;
+  const perfect = stats(true, () => makeBot({ cover: true }), N);
+  const crouch = stats(true, () => makeMovesBot('crouch'), N);
+  const runR = stats(true, () => makeMovesBot('runRandom'), N);
+  const runC = stats(true, () => makeMovesBot('runCover'), N);
+  const s12 = stats(true, (seed) => makeBot({ cover: true, sigma: 0.12, seed }), N);
+  const s12half = stats(true, (seed) => (seed % 2 === 0 ? makeMovesBot('crouch', { sigma: 0.12, seed }) : makeBot({ cover: true, sigma: 0.12, seed })), N);
+  const s12crouch = stats(true, (seed) => makeMovesBot('crouch', { sigma: 0.12, seed }), N);
+  console.log('[11/11 搭配動作 7.5，各 ' + N + ' 局，一條命，MOVES_MODE 開]');
+  console.log('  完美踩拍走路（對照）：' + fmt(perfect));
+  console.log('  全程蹲：' + fmt(crouch));
+  console.log('  亂跑：' + fmt(runR));
+  console.log('  只趁最響一擊跑：' + fmt(runC));
+  console.log('  σ0.12 全站著：' + fmt(s12));
+  console.log('  σ0.12 一半局蹲走（偶數種子蹲）：' + fmt(s12half));
+  console.log('  σ0.12 全蹲（參考）：' + fmt(s12crouch));
+  const ok = (b) => (b ? '過' : '⚠ 沒過');
+  const c1 = crouch.winRate > 0 && crouch.tMed >= 1.6 * perfect.tMed;
+  const c2 = runR.alerted >= 3 && !(runR.tMed < perfect.tMed);
+  const c3 = runC.tMed <= 0.8 * perfect.tMed && runC.alerted <= perfect.alerted;
+  console.log(`  全程蹲：能通關、時間 ÷ 完美 = ${(crouch.tMed / perfect.tMed).toFixed(2)}（要 ≥ 1.6）→ ${ok(c1)}`);
+  console.log(`  亂跑：每局警覺 ${runR.alerted.toFixed(2)}（要 ≥ 3）、時間 ÷ 完美 = ${Number.isFinite(runR.tMed) ? (runR.tMed / perfect.tMed).toFixed(2) : '沒有通關局'}（不比完美快）→ ${ok(c2)}`);
+  console.log(`  只趁最響一擊跑：時間 ÷ 完美 = ${(runC.tMed / perfect.tMed).toFixed(2)}（要 ≤ 0.8）、每局警覺 ${runC.alerted.toFixed(2)}（不比完美 ${perfect.alerted.toFixed(2)} 多）→ ${ok(c3)}`);
+  // 門檻是假設：不合先回報，不調判定寬度。這裡只擋程式壞掉（數字要有意義）
+  for (const s of [perfect, crouch, runR, runC, s12, s12half, s12crouch]) assert.ok(s.winRate >= 0 && s.winRate <= 1 && s.alerted >= 0);
+  assert.equal(perfect.winRate, 1, '開關開著，完美踩拍照樣 100%（它不會蹲也不會按住 Shift）');
 });

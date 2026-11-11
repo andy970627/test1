@@ -5,6 +5,7 @@
  *   node tools/telemetry/overnight-sim.mjs --n 20                # 小樣本試跑
  *   node tools/telemetry/overnight-sim.mjs --modes cover --bots forward,sigma12 --n 100
  *   node tools/telemetry/overnight-sim.mjs --out 結果.json        # 另存 JSON（給 overnight-report.mjs）
+ *   node tools/telemetry/overnight-sim.mjs --moves 0              # 搭配動作（跑、蹲）關掉＝報告版（c1d4aa3）；不給就照規則檔預設（11/11 起預設開）
  *
  * 每局一條命（第一次失敗就結束，和規則測試 runGame 相同），最多 420 秒；seed 1..N，t0 與幀率抖動由 seed 決定（同 seed 同一局）。
  * 輸出：通關率、通關時間中位數、每局平均進高度警覺次數、N1（主動時間比例，每局平均；自己規則與同一把尺兩種）、死因分布（g.failCode；逾時記 timeout）、各區平均停留秒數、走到窄巷／城門的比例。
@@ -72,24 +73,25 @@ export function formatTable(results) {
 }
 
 function main(argv) {
-  const o = { n: 500, modes: 'cover,gap', bots: 'forward,perfect,sigma12,sigma25', out: null };
+  const o = { n: 500, modes: 'cover,gap', bots: 'forward,perfect,sigma12,sigma25', out: null, T: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--n') o.n = +argv[++i];
     else if (a === '--modes') o.modes = argv[++i];
     else if (a === '--bots') o.bots = argv[++i];
     else if (a === '--out') o.out = argv[++i];
+    else if (a === '--moves') o.T = Object.assign({}, o.T, { MOVES_MODE: argv[++i] !== '0' });
     else if (a === '-h' || a === '--help') { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]); return 0; }
   }
   const t0 = Date.now(), results = [];
   for (const m of o.modes.split(',')) for (const b of o.bots.split(',')) {
     const t1 = Date.now();
-    const stats = runBatch(m, b, o.n, { onProgress: (i) => process.stderr.write(`  ${m}/${b} ${i}/${o.n}\r`) });
+    const stats = runBatch(m, b, o.n, { T: o.T, onProgress: (i) => process.stderr.write(`  ${m}/${b} ${i}/${o.n}\r`) });
     results.push({ mode: m, bot: b, stats, sec: +((Date.now() - t1) / 1000).toFixed(1) });
     process.stderr.write(`[overnight-sim] ${m}/${b}：${o.n} 局，通關 ${pct(stats.winRate)}，N1 ${pct(stats.n1)}（${((Date.now() - t1) / 1000).toFixed(0)} 秒）\n`);
   }
   const doc = { created: new Date().toISOString(), rules: path.relative(process.cwd(), Bots.RULES_PATH), n: o.n, command: 'node tools/telemetry/overnight-sim.mjs ' + argv.join(' '),
-    rev: pickRev(), constants: pickT(), totalSec: +((Date.now() - t0) / 1000).toFixed(1), results };
+    rev: pickRev(), constants: pickT(o.T), totalSec: +((Date.now() - t0) / 1000).toFixed(1), results };
   if (o.out) { fs.mkdirSync(path.dirname(path.resolve(o.out)), { recursive: true }); fs.writeFileSync(o.out, JSON.stringify(doc, null, 1)); }
   console.log(formatTable(results));
   return 0;
@@ -104,8 +106,8 @@ function pickRev() {
   } catch (e) { return null; }
 }
 /** 記下這次跑的規則常數（報告要寫清楚是哪一版規則量的）。 */
-function pickT() {
-  const T = Bots.R.T, keys = ['COVER_MODE', 'COVER_EAR_P', 'HIGH_P', 'R_BASE', 'R_GAIN', 'BLIND_LEN', 'STEP_WIN', 'MASK_GAIN', 'SUSP_MOVE', 'SUSP_STEP', 'ALERTED_DURATION'];
+function pickT(over) {
+  const T = Object.assign({}, Bots.R.T, over || {}), keys = ['MOVES_MODE', 'COVER_MODE', 'COVER_EAR_P', 'HIGH_P', 'R_BASE', 'R_GAIN', 'BLIND_LEN', 'STEP_WIN', 'MASK_GAIN', 'SUSP_MOVE', 'SUSP_STEP', 'ALERTED_DURATION'];
   return Object.fromEntries(keys.filter(k => k in T).map(k => [k, T[k]]));
 }
 
