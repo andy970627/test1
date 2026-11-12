@@ -53,10 +53,10 @@ input[type=range] { flex:1; }
   </section>
   <section>
     <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 10.1 節，第三輪）</b>
-    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="u1">U1 六層、淡到零（對照）</option><option value="v0">V0 不放最響的一擊</option><option value="v1">V1 最響一擊不固定</option><option value="v2">V2 加假的</option><option value="v3">V3 最響一擊拉回來</option><option value="v4">V4 三對二</option></select></label>
+    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="u1">U1 六層、淡到零（對照）</option><option value="v0">V0 不放最響的一擊</option><option value="v1">V1 最響一擊不固定</option><option value="v2">V2 加假的</option><option value="v3">V3 最響一擊拉回來</option><option value="v4">V4 三對二</option><option value="g1">遊戲版第一步（新鼓聲）</option><option value="g2">遊戲版第二步（新鼓聲＋三對二強拍）</option></select></label>
     <label>層數 <select id="illL"><option value="6" selected>6</option><option value="8">8</option></select></label>
     <label>循環 <select id="illT"><option value="10" selected>10 秒（原本）</option><option value="12">12 秒（附近沒有衛兵）</option><option value="6">6 秒（危險）</option><option value="20">20 秒</option></select></label>
-    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=u1|v0|v1|v2|v3|v4&amp;cycle=12|6|20&amp;layers=6|8。</div>
+    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=u1|v0|v1|v2|v3|v4|g1|g2&amp;cycle=12|6|20&amp;layers=6|8。</div>
     <label><input id="vnext" type="checkbox"> 顯示離下一次最響一擊幾秒</label> <label><input id="vreal" type="checkbox"> 顯示這一次是真的還是假的</label>（試聽時先關著）
     <div class="note" id="vinfo"></div>
     <div class="note" id="illinfo">—</div>
@@ -91,7 +91,7 @@ input[type=range] { flex:1; }
       cycle: { T: T, t0: t0, p: audio.phase(), blind: audio.isBlind(), index: Math.floor((now - t0) / T) },
       alarm: +$('alarm').value, hunted: hunted,
       zone: +$('zone').value,
-      T: { COVER_MODE: $('cover').checked, BLIND_LEN: 0.6 },   // 聲音層讀 state.T.COVER_MODE 切殘響掩護
+      T: Object.assign({ COVER_MODE: $('cover').checked, BLIND_LEN: 0.6 }, GAME[$('ill').value] || {}),   // 聲音層讀 state.T.COVER_MODE 切殘響掩護；遊戲版再帶新鼓聲的開關與每圈拍數
       bass: { period: per, nextBeat: t0 + Math.ceil((now - t0) / per) * per }
     });
     // 木馬：開的時候才放 HORSE_MODE、玩家位置、木馬範圍（關的時候和以前一樣，不帶這些欄位）
@@ -105,7 +105,9 @@ input[type=range] { flex:1; }
   // 加速感試聽：版本 → 聲音層 setIllusion；循環長度換了就重建聲音層（試聽頁的循環固定，不跟規則）
   var ILL = { now: {}, s1: { timbre: true }, s2: { bell: true }, s3: { timbre: true, bell: true },   // s1、s2 只留網址相容
     u1: { u: true }, u2: { u: true, pitch: true }, u3: { u: true, pitch: true, rise: true, shep: true }, u4: { u: true, pitch: true, roll: true },   // s3、u2～u4 只留網址相容
-    v0: { u: true, noHit: true }, v1: { u: true, v: true }, v2: { u: true, v: true, fake: true }, v3: { u: true, v: true, v3: true }, v4: { u: true, v: true, v4: true } };
+    v0: { u: true, noHit: true }, v1: { u: true, v: true }, v2: { u: true, v: true, fake: true }, v3: { u: true, v: true, v3: true }, v4: { u: true, v: true, v4: true },
+    g1: {}, g2: {} };   // 遊戲版：不用試聽參數，改走遊戲的新鼓聲（state.T 帶 MOVES_MODE、DRUMS；g2 再帶 RISSET_M 6），和遊戲同一套程式與常數
+  var GAME = { g1: { MOVES_MODE: true, DRUMS: 'new', RISSET_M: 7 }, g2: { MOVES_MODE: true, DRUMS: 'new', RISSET_M: 6 } };
   // 那一擊比前後一秒高幾 dB：分析器每幀記輸出峰值，那一擊過後一秒算（前後一秒取最大的那一格；那一擊取落下後 0.15 秒內）
   var tapA = null, tapBuf = null, pkLog = [], vProm = [], vDone = {};
   function tapFrame() {

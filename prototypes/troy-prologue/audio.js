@@ -229,6 +229,7 @@
     DN_SIG_L: 1.26,            // 鐘形寬度（以「層」為單位；U1 的 0.21 × 6）；中心對準規則各層的中心
     DN_SCALE: 0.9,             // 整體音量倍數（每個瞬間各條總和先縮放回規則的總和，再乘這個；1 時拍子變密、整段比舊版大 3.1 dB）
     DN_MIN_GAIN: 0.003,        // 低於這個音量的拍不排（約 −50 dB，進退場淡到零）
+    // 第二步「三對二的強拍」（同文件第 13.3 節）：新鼓聲、不在追殺時。比例照第三輪試聽 V4（V4_SCALE、V4_ACC_A、V4_ACC_B、音色），每圈拍數讀 state.T.RISSET_M
     DN_ROLL_CAP: 0.4,          // 每圈末（ILL_ROLL_FROM 起）最快那條漸強的終點：min(最大聲那條, 總和 × 0.4)
     DN_ROLL_MUL: 0.5,          // 漸強終點再乘這個值（V3 的做法：漸強的最後幾拍是那一擊前一秒內最響的）
     DN_PRE: 1, DN_PRE_DB: -9,  // 那一擊之前 DN_PRE 秒，全部鼓一起退 DN_PRE_DB（一起退，各拍的相對大小不變，踩得上的拍照樣聽得到）
@@ -805,6 +806,19 @@
       }
       return g;
     }
+    // 第二步「三對二的強拍」：新鼓聲、不在追殺（第 18 節逃／躲照舊）。每條鼓自己的拍子六拍一組：第 0、2、4 拍加一下較低的鼓（×V4_ACC_A），
+    // 第 0、3 拍加一下拍手（×V4_ACC_B）；都只是在已有的拍子上換一種鼓加重，跟著那條鼓的音量（含那一擊前後的處理）。每圈拍數照 state.T.RISSET_M
+    function dnStep2() { var K = lastState && lastState.T; return !!(K && K.DRUMS !== 'old' && (K.DRUMS === 'new' || K.MOVES_MODE === true) && K.RISSET_M === 6) && hm.mode === 'none' && !hm.back && !st.hunted; }
+    function dnAccents(key, P, t, k, m, g0) {
+      var dest = movesOn() ? beatBus : rhythmBus, specs = [], mm = ((m % 6) + 6) % 6;
+      if (mm % 2 === 0) specs.push(['A', C.V4_ACC_A_X, g0 * C.V4_ACC_A, C.V4_ACC_A_PM]);
+      if (mm % 3 === 0) specs.push(['B', C.V4_ACC_B_X, g0 * C.V4_ACC_B, 0]);
+      specs.forEach(function (sp) {
+        if (sp[2] < C.DN_MIN_GAIN || evs[key + sp[0]]) return;
+        var le = log ? { type: 'accent', which: sp[0], k: k, n: m, t: t, g: sp[2] } : null; if (le) log.push(le);
+        addEvent(key + sp[0], P, dest, function (tt, out) { playHit(out, sp[1], tt, sp[2], sp[3]); }, true, le);
+      });
+    }
     function scheduleBeatsNew(from, end, ws) {
       var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + 2;
       if (tables.length < nL) refreshTables();
@@ -824,7 +838,10 @@
             if (g < C.DN_MIN_GAIN) continue;
             var le = log ? { type: 'beat', k: k, n: nn, c: c, t: t, p: p, g: g, drums: 'new' } : null;
             if (le) log.push(le);
-            (function (g) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, C.ILL_TIMBRE_X, tt, g); }, true, le); })(g);
+            var s2 = dnStep2(), gm = s2 ? g * C.V4_SCALE : g;   // 第二步：主鼓 ×0.6
+            if (le) le.g = gm;
+            (function (g) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, C.ILL_TIMBRE_X, tt, g); }, true, le); })(gm);
+            if (s2) dnAccents(key, P, t, k, k < 0 ? n : nn, g * C.V4_SCALE);
           }
         }
       }
@@ -989,7 +1006,7 @@
       try {
         if (typeof Rr.beatPhases === 'function') {
           for (k = 0; k < nk; k++) {
-            var r = Rr.beatPhases(k), tab;
+            var r = Rr.beatPhases(k, undefined, RK() || undefined), tab;   // 帶遊戲狀態：每圈拍數讀 state.T.RISSET_M（新鼓聲第二步是 6）
             if (r && typeof r === 'object' && typeof r.length === 'number') tab = Array.prototype.slice.call(r);
             else { tab = []; for (i = 0; i < 8192; i++) { var v = Rr.beatPhases(k, i); if (typeof v !== 'number' || !isFinite(v) || v >= 1 - 1e-12) break; tab.push(v); } }
             out.push(validTab(tab) ? tab : null);
@@ -2518,6 +2535,7 @@
         var now = ctx.currentTime, k = 0.08;
         lastState = s;
         if (!tabFromRules && getRules()) refreshTables();
+        else if (!(ill && ill.u) && tables[0] && tables[0].length !== ruleM()) refreshTables();   // 每圈拍數變了（第二步 7→6）就重建表
         // 規則常數：盲區長度 BLIND_LEN（舊名 BLIND）；警戒時的盲區長度（有專用常數就用，沒有同 BLIND_LEN）
         var K = s.T && typeof s.T === 'object' ? s.T : null;
         var bl = K ? (K.BLIND_LEN != null ? +K.BLIND_LEN : +K.BLIND) : (isFinite(s.blindLen) ? +s.blindLen : NaN);
