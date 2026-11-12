@@ -48,9 +48,11 @@ export default {
     if (o.playThrough) {
       const { createRequire } = await import('node:module');
       const src = createRequire(import.meta.url)('../../telemetry/troy-bots.js').makeBot.toString();
-      await page.evaluate((src) => {
-        window.__recPlayMake = () => new Function('R', 'return (' + src + ')')(window.RissetRules)({ cover: window.TroyDebug.game.T.COVER_MODE === true });
-      }, src);
+      // --sigma <秒>／--seed <整數>（11/12，模仿真人）：起步誤差，和 makeBot 的 opts.sigma／opts.seed 同義；不給就是完美踩拍
+      const human = { sigma: o.sigma ? +o.sigma : 0, seed: o.seed ? +o.seed : 1 };
+      await page.evaluate(({ src, human }) => {
+        window.__recPlayMake = () => new Function('R', 'return (' + src + ')')(window.RissetRules)(Object.assign({ cover: window.TroyDebug.game.T.COVER_MODE === true }, human.sigma ? human : {}));
+      }, { src, human });
     }
     // --listen-test（11/11，屏息聽 C1）：頁面用 ?lab=listen 開。聲音層建立前掛分接點，量衛兵線（guardListen）與一般鼓拍線（beatBus）進出的音量差與左右，
     // 不受「衛兵聲在總輸出裡太小」影響。找法：衛兵 PannerNode 接上、而且往下 guardOut → master 都是 GainNode 的那條＝guardListen；guardOut 之後建立的第一個 GainNode＝beatBus。
