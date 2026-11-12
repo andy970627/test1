@@ -144,7 +144,7 @@ export default {
         return r;
       };
     });
-    await page.evaluate(({ cycle, phaseBar, cover, stepTest, horse, listenT, labBot }) => {
+    await page.evaluate(({ cycle, phaseBar, cover, aid, tel, stepTest, horse, listenT, labBot }) => {
       window.__recListenTest = listenT; window.__recLabBot = labBot;
       window.__recStepTest = !!stepTest;   // --step-test：第 1 區改成離拍起步累積腳步樣本（不喘氣引起注意）
       // --horse-test（11/11，木馬共鳴 C2）：頁面要用 ?lab=horse 開（record.mjs 的 --page）；前半段站在木馬旁、後半段站到 30 公尺外
@@ -158,9 +158,14 @@ export default {
         }
         sel.value = String(cycle);
       }
+      // --aid on|off|auto（11/12，提示全開版影片）：視覺輔助（預設自動：第 2 區減半、之後關）；--tel：畫面顯示試玩數據摘要
+      const aidSel = document.getElementById('oAid');
+      if (aid && aidSel) { aidSel.value = aid; aidSel.dispatchEvent(new Event('change', { bubbles: true })); }
+      const telBox = document.getElementById('oTel');
+      if (tel && telBox) { telBox.checked = true; telBox.dispatchEvent(new Event('change', { bubbles: true })); }
       const ph = document.getElementById('oPhase');
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
-    }, { cycle, phaseBar: o.phaseBar !== false, cover, stepTest: !!o.stepTest,
+    }, { cycle, phaseBar: o.phaseBar !== false, cover, aid: ['on', 'off', 'auto'].includes(o.aid) ? o.aid : null, tel: !!o.tel, stepTest: !!o.stepTest,
       labBot: o.labBot || null, listenT: o.listenTest ? { period: +(o.listenPeriod || 2.5) } : null, horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
     await page.click('#btnStart');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
