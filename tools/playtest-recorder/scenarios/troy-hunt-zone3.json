@@ -1,0 +1,11 @@
+[
+  { "waitFor": "window.TroyDebug.game.zone >= 3", "timeout": 40 },
+  { "wait": 400 },
+  { "mark": "第 3 區：關掉程式玩家，跑一秒故意被聽到" },
+  { "bot": false },
+  { "down": "ShiftLeft" }, { "down": "KeyW" },
+  { "waitFor": "window.TroyDebug.game.hunted", "timeout": 1.2 },
+  { "up": "KeyW" }, { "up": "ShiftLeft" },
+  { "mark": "追殺開始（或沒觸發），交回程式玩家去逃、躲" },
+  { "bot": true }
+]
