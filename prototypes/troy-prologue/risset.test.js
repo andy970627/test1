@@ -3194,7 +3194,8 @@ test('11/11 搭配動作 7.5／第 9 節驗收（只量、門檻是假設）：�
   for (const s of [perfect, crouch, runR, runD, runC, s12, s12half, s12crouch]) assert.ok(s.winRate >= 0 && s.winRate <= 1 && s.alerted >= 0);
   // 第 12 節後：100 局裡 seed 52 會在窄巷站崗衛兵面前第三次起疑 → 直接高度警覺 → 被追上（第 9 點本來就要擋「站在他面前一直安撫」）。
   // 這是程式玩家等暗殺時站太近，不是規則壞掉，所以只擋 ≥ 99%。
-  assert.ok(perfect.winRate >= 0.99, `開關開著，完美踩拍 ${perfect.winRate}（要 ≥ 99%）`);
+  // 11/12 加速錯覺第二步（新鼓聲每圈 6 拍）後：100 局有 2 局（seed 1、88）在窄巷被同一名衛兵第三次注意到 → 直接追殺，和 7.8 那條同一類（設計席已接受 ≥ 98%）
+  assert.ok(perfect.winRate >= 0.98, `開關開著，完美踩拍 ${perfect.winRate}（要 ≥ 98%）`);
 });
 
 // ---------------- 11/11 搭配動作第 8 節（STEP_R 隨開關、久站影子的引導；docs/design/2026-11-11-companion-mechanics.md 第 8 節） ----------------
@@ -4194,4 +4195,38 @@ test('11/12 使用者回報：移動中先按住空白鍵——照常走，不�
   for (let k = 0; k < 5; k++) { u += DT; o.step(u, { mx: 1 }); }
   u += DT; o.step(u, { mx: 1, breath: true });
   assert.ok(o.player.breathing, '報告版照舊');
+});
+
+test('11/12 加速錯覺第二步：新鼓聲時 g.T.RISSET_M = 6（每圈拍數 7 → 6）；?drums=old、開關關著照舊 7；直接給 opts.T.RISSET_M 的以它為準；只按住前進不看時機的程式玩家，起步踩準比例不比 7 拍時高 5 個百分點以上', () => {
+  assert.equal(K.RISSET_M, 7, '常數表不動（報告版）');
+  assert.equal(K.RISSET_M_NEW, 6);
+  assert.equal(R.createLevel({}).T.RISSET_M, 6, '預設（新動作開、新鼓聲）');
+  assert.equal(R.createLevel({ T: { DRUMS: 'old' } }).T.RISSET_M, 7, '?drums=old');
+  assert.equal(R.createLevel({ T: { MOVES_MODE: false } }).T.RISSET_M, 7, '?moves=0');
+  assert.equal(R.createLevel({ T: { RISSET_M: 5 } }).T.RISSET_M, 5);
+  // 只按住前進、不看時機：走一段隨機 0.3～1.2 秒、停一段隨機 0.3～1.2 秒，量「起步那一步」踩準的比例
+  const startRate = (T, seed) => {
+    const g = allDown(R.createLevel({ startZone: 2, seed, T: Object.assign({ DYNAMIC: false }, T) }));
+    const rng = R.mulberry32(seed * 13 + 5);
+    let t = (seed * 0.731) % 10; g.step(t, {});
+    let ok = 0, n = 0, until = t, moving = false, dir = 1, fresh = false;
+    const t1 = t + 600;
+    while (n < 60 && t < t1) {
+      if (t >= until) {
+        moving = !moving; until = t + 0.3 + rng() * 0.9;
+        if (moving) { fresh = true; if (g.player.x > 26 || g.player.x < 14) dir = g.player.x > 26 ? -1 : 1; }
+      }
+      t += DT; g.step(t, moving ? { mx: dir } : {});
+      for (const e of g.drain()) {
+        if (e.a !== 'step_masked' && e.a !== 'step_loud') continue;
+        if (fresh) { n++; if (e.a === 'step_masked') ok++; fresh = false; }   // 停下後的第一步＝起步
+      }
+    }
+    assert.ok(n >= 30, `起步次數 ${n}`);
+    return ok / n;
+  };
+  let r7 = 0, r6 = 0;
+  for (let s = 1; s <= 10; s++) { r7 += startRate({ RISSET_M: 7 }, s) / 10; r6 += startRate({}, s) / 10; }
+  console.log(`[11/12 加速錯覺第二步] 只按住前進不看時機，起步踩準：7 拍 ${(r7 * 100).toFixed(1)}%、6 拍 ${(r6 * 100).toFixed(1)}%（差 ${((r6 - r7) * 100).toFixed(1)} 個百分點，要 < 5）`);
+  assert.ok(r6 - r7 < 0.05, `6 拍不能比 7 拍高 5 個百分點以上：${(r7 * 100).toFixed(1)}% → ${(r6 * 100).toFixed(1)}%`);
 });

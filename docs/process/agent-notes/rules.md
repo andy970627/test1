@@ -49,6 +49,8 @@
 - 事件 `g.out`：`{type:'msg'|'sfx'|'hint', a, ...}`。sfx 名稱：`pre_blind`、`step_masked`／`step_loud`（帶 `x, z, beatT`）、`calm_ok`／`calm_bad`（帶 `index`）、`calm_done`、`latch_step`（`index` 0～7）、`latch`、`gate_open`、`breath_in/out`、`gasp`、`dash`、`takedown(_fail)`、`alert`、`hunt`、`escape`、`caught`、`trapdoor`、`checkpoint`。
 - 聲音層讀的規則函式：`RissetRules.T`、`beatPhases`、`layerGain`、`beatsBetween`；**另外會找 `blindWindows(a, b, game)`，但規則沒有匯出**（見陷阱）。
 
+- 2026-11-12 加速錯覺 13.3 第二步：新鼓聲（`MOVES_MODE` 開且 `T.DRUMS` 不是 'old'）時，這一局的 `g.T.RISSET_M` 是 6（常數 `RISSET_M_NEW`），其他情況 7。聲音從 `state.T.RISSET_M` 讀，不要讀 `RissetRules.T`（那是常數表，永遠 7）。
+
 ### 比箭 Risset 版
 - 聲音：`follow(heart)` 後每 25 ms 補排 0.4 秒內的拍，讀 `heartBeatsBetween`、`heartAt`；畫面每幀讀 `round.heart`／`round.hb`。
 - 事件名稱：`string`、`strung`、`slip`、`heart`、`drop`、`heckle`、`fire`、`pass`、`result`、`cancel`、`stop`；暗示事件 `{type:'hint', key, level, text（第 2 階起）, keys（第 3 階）}`。
@@ -272,3 +274,8 @@
 - 2026-11-12（規則）第 18.7 節，共用 worktree 未提交：`MOVES_MODE` 開、`T.DRUMS` 不是 'old'、追殺中、不在影子裡、不是最響一擊時，腳步一律算出聲（`step_loud`、`beatT` null），躲進影子恢復照拍點；`?drums=old` 與報告版照舊。自動檢查 +1（逃的步踩得上 0、影子裡持續走 100% 對得上、舊鼓聲與報告版照舊）。整關和 17.4 幾乎一樣（完美 8／14、σ0.12 37／70、σ0.25 41／102，17.4 是 40／102；整夜 σ0.25 92.0% → 91.8%）：逃的時候追兵本來就知道你在哪，多出聲的步沒有新資訊，差別只在「被追的人在空地上踩歪會讓其他巡邏的衛兵聽到」。`--moves 0` 和 `c1d4aa3` 逐字相同；全套 346 條全過。
 
 - 2026-11-12（規則）使用者回報「停下時不能提前按空白鍵直接銜接」：規則原本是移動中一按空白鍵就當幀屏息並停住，所以沒辦法「邊走邊先按好、一停就屏息」。開關開時改成：有移動輸入且還沒在屏息 → 先不屏息照常走（`breathWait`）；沒有移動輸入的那一幀立刻屏息；已在屏息中照舊（按方向鍵不動）；喘的時候照舊不能屏息、喘完空白鍵還按著就進屏息。報告版照舊。畫面（index.html）每幀送 `breath: k('Space') || mouseBreath`（按住狀態），沒有擋。A1 跑那條「屏息不能跑」改成先站著屏住再按 Shift。測試 +1；全套 347 條全過；`--moves 0` 和 `c1d4aa3` 逐字相同，`--moves 1` 和上一版逐字相同。
+
+- 2026-11-12（規則）加速錯覺 13.3 第二步（三對二的強拍，規則那一半），共用 worktree 未提交：新常數 `RISSET_M_NEW` 6；`createLevel` 在新鼓聲時把這一局的 `RISSET_M` 換成 6（給 `opts.T.RISSET_M` 的以它為準）；`?moves=0`、`?drums=old` 照舊 7。踩得上的拍照舊由 `MASK_GAIN` 從規則的四層篩，拍數只少不多。
+  - 只按住前進、不看時機（走停各 0.3～1.2 秒）起步踩準：7 拍 42.7%、6 拍 35.7%（−7.0 個百分點，要 < +5，過）。
+  - 和第一步並排（整夜 500 局 `--moves 1` 主模式）：完美 98.4% → 95.0%、σ0.12 92.6% → 88.2%（通關時間中位 45.4 → 60.4 秒）、σ0.25 91.8% → 87.8%（45.5 → 68.3 秒）。被追殺的局因追殺而輸：完美 8／14 → 25／29（86%）、σ0.12 37／70 → 59／120（49%）、σ0.25 41／102 → 61／126（48%）。完美失敗仍全在窄巷（200 局 3 → 6 局，2 局是第三次注意到）；出聲步比例 10.7% → 12.2%（拍少了、踩不到的步多了）。
+  - 7.5 那條完美改 ≥ 98%（seed 1、88 窄巷第三次注意到）。測試 +1；全套 348 條全過；`--moves 0` 和 `c1d4aa3` 逐字相同。

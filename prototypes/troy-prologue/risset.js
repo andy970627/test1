@@ -135,6 +135,7 @@
     CLOCK_MAX_GAP: 30,    // 兩幀相隔超過這麼多秒（分頁休眠）就不分段平滑，直接接上
     RISSET_LAYERS: 4,     // Risset 打擊層數（聲音層同值）
     RISSET_M: 7,          // 最慢層每循環拍數
+    RISSET_M_NEW: 6,      // 加速錯覺 13.3 第二步（三對二的強拍）：新鼓聲（MOVES_MODE 開、T.DRUMS 不是 'old'）時這一局的 RISSET_M；?moves=0、?drums=old 照舊 7
     BELL_SIGMA: 0.22,     // 層音量鐘形曲線寬度（4 層時；追殺 5 層時按層距等比例縮成 0.22 × 4/5）
     BEAT_MIN_GAIN: 0.02,  // 低於這個音量的拍不排、不算
     HUNT_LAYERS: 5,       // 追殺時的層數（多一層 k = 4 純金屬）；5 層都走鐘形曲線，沒有固定底限，交接才連續（修 R1）
@@ -790,6 +791,9 @@
     if (lab && oT.DYNAMIC == null) K.DYNAMIC = false;
     // 搭配動作第 8 節：開關開著時，這一局的 STEP_R 換成 MOVES_STEP_R（g.T.STEP_R 就是實際半徑；直接給 opts.T.STEP_R 的以它為準）
     if (K.MOVES_MODE && oT.STEP_R == null) K.STEP_R = K.MOVES_STEP_R;
+    // 加速錯覺 13.3 第二步：新鼓聲時每圈拍數 7 → 6（g.T.RISSET_M 就是實際值，聲音從 state.T 讀；直接給 opts.T.RISSET_M 的以它為準）。
+    // 「踩得上的拍」照舊由 MASK_GAIN 從規則的四層裡篩，拍數只會少不會多（13.2 的陷阱碰不到）
+    if (K.MOVES_MODE && K.DRUMS !== 'old' && oT.RISSET_M == null) K.RISSET_M = K.RISSET_M_NEW;
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
     let level = opts.level || buildLevel();
     if (horseLab) level = Object.assign({}, level, { guards: [] });
