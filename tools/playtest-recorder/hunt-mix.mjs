@@ -91,7 +91,9 @@ export function huntMix(dir, opts = {}) {
   const hideOn = onsets.filter((o) => { const s = at(o.t), s2 = at(o.t + 0.03); return s && s2 && s.hm === maskMode && settled(o.t) && quiet(s) && quiet(s2) && (maskMode !== 'none' || (s.phase === 'play' && !s.alert)); });
   // 「踩得上」的時段很寬，裡面也有小拍；改成每一段連續的 sm 真／假時段各取最響的那個起音再比（＝踩得上的那一拍 vs 其他拍裡最響的）
   const runs = []; let cur = null;
-  for (const o of hideOn) { const v = at(o.t).sm; if (v == null) continue; if (!cur || cur.v !== v || o.t - cur.end > 0.5) { cur = { v, pk: o.pk, end: o.t }; runs.push(cur); } else { cur.pk = Math.max(cur.pk, o.pk); cur.end = o.t; } }
+  // sm 是每幀取樣（20～30 毫秒一筆）；起音前一幀和後一幀的 sm 不一樣＝落在時段邊界、分不出屬於哪邊，丟掉（11/12：6 拍時邊界上的大拍被錯貼成「其他」）
+  const after = (t) => { for (const s of TL) if (s.t > t) return s; return null; };
+  for (const o of hideOn) { const v = at(o.t).sm, nx = after(o.t); if (v == null || !nx || nx.sm !== v) continue; if (!cur || cur.v !== v || o.t - cur.end > 0.5) { cur = { v, pk: o.pk, end: o.t, start: o.t, tPk: o.t }; runs.push(cur); } else { if (o.pk > cur.pk) { cur.pk = o.pk; cur.tPk = o.t; } cur.end = o.t; } }
   const smOn = runs.filter((r) => r.v).map((r) => r.pk), smOff = runs.filter((r) => !r.v).map((r) => r.pk);
   const allOn = hideOn.filter((o) => at(o.t).sm === true).map((o) => o.pk), allOff = hideOn.filter((o) => at(o.t).sm === false).map((o) => o.pk);
   const secHide = TL.filter((s) => s.hm === 'hide').length ? r1(bv.length * 0.25) : 0;
@@ -99,11 +101,36 @@ export function huntMix(dir, opts = {}) {
     calls: callRows, escapeSteadyPerSec: steady == null ? null : +steady.toFixed(1), escapeSecs: escSec.length,
     hiEscDb: r1(hiEsc), hiHideDb: r1(hiHide), hiDiffDb: hiEsc != null && hiHide != null ? r1(hiEsc - hiHide) : null,
     hideSec: secHide, drumHideDb: r1(drumHide), step3Db: r1(step3), stepOverDrumDb: drumHide != null && step3 != null ? r1(step3 - drumHide) : null,
-    maskedPkDb: r1(med(smOn)), otherPkDb: r1(med(smOff)), maskedN: smOn.length, otherN: smOff.length, maskedOverDb: smOn.length && smOff.length ? r1(med(smOn) - med(smOff)) : null, allOverDb: allOn.length && allOff.length ? r1(med(allOn) - med(allOff)) : null
+    maskedPkDb: r1(med(smOn)), otherPkDb: r1(med(smOff)), maskedN: smOn.length, otherN: smOff.length, maskedOverDb: smOn.length && smOff.length ? r1(med(smOn) - med(smOff)) : null, allOverDb: allOn.length && allOff.length ? r1(med(allOn) - med(allOff)) : null,
+    ...(opts.debug ? { runs, onsets } : {})
   };
 }
 
-function main(argv) {
+/**
+ * 4b. 逐拍量法（11/12，取代「每段最響的起音」當主要判定）：規則 beatsBetween 產生的每一拍（同一時間的各層合併），
+ * 錄音裡 [−5, +25] 毫秒的取樣峰值；那一拍前後兩幀的 sm 一致才算，依 sm 分成「踩得上」和「踩不上」，各取中位相減。
+ * 只看規則拍，不受「不在任何規則拍上」的起音影響（11/12 查到兩版各約 270 個／2 分鐘，會把「其他時段最響」撐住）。
+ * 和聲音角色的離線模擬同一種切法；差別在這裡是實際輸出的峰值（含前一拍的尾巴與其他聲音），所以數字會比排程音量小。
+ */
+export async function beatLift(dir, opts = {}) {
+  const { default: P } = await import(new URL('./profiles/troy-prologue.mjs', import.meta.url).href);
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+  const J = JSON.parse(fs.readFileSync(path.join(dir, 'timeline.json'), 'utf8')), TL = J.timeline || J;
+  if (!TL.some((s) => s.sm != null)) return null;
+  const E = P.expectedBeats(TL, meta).filter((e) => e.kind === 'risset' && !e.tail && !e.hunt);
+  const { sr, x } = readWav(path.join(dir, meta.audio.file || 'audio.wav')), T0 = meta.audio.startAudioTime;
+  const pk = (t) => { const a = Math.max(0, Math.round((t - T0 - 0.005) * sr)), z = Math.min(x.length, Math.round((t - T0 + 0.025) * sr)); let m = 0; for (let i = a; i < z; i++) { const v = Math.abs(x[i]); if (v > m) m = v; } return 20 * Math.log10(m + 1e-9); };
+  let lo = 0; const near = (t) => { while (lo < TL.length - 1 && TL[lo + 1].t <= t) lo++; return [TL[lo], TL[Math.min(TL.length - 1, lo + 1)]]; };
+  const byT = new Map(); for (const e of E) { const k = e.t.toFixed(4); const o = byT.get(k) || { t: e.t, w: 0 }; o.w += e.w; byT.set(k, o); }
+  const mode = opts.mode || 'none', on = [], off = [];
+  for (const o of [...byT.values()].sort((a, b) => a.t - b.t)) {
+    const [s0, s1] = near(o.t); if (!s0 || s0.t > o.t || s0.phase !== 'play' || s0.alert || s0.blind || (s0.hm != null && s0.hm !== mode) || s0.sm == null || s0.sm !== s1.sm) continue;
+    (s0.sm ? on : off).push(pk(o.t));
+  }
+  return { maskedN: on.length, otherN: off.length, maskedDb: r1(med(on)), otherDb: r1(med(off)), liftDb: on.length && off.length ? r1(med(on) - med(off)) : null };
+}
+
+async function main(argv) {
   const dir = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--mask-mode');
   if (!dir) { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]); return 1; }
   const mi = argv.indexOf('--mask-mode'), r = huntMix(dir, { maskMode: mi >= 0 ? argv[mi + 1] : undefined });
@@ -116,6 +143,8 @@ function main(argv) {
   console.log(`2 躲：1200 Hz 以上 逃 ${r.hiEscDb}、躲 ${r.hiHideDb} dB，差 ${r.hiDiffDb}（要 ≥ 10）→ ${ok(r.hiDiffDb == null ? null : r.hiDiffDb >= 10)}`);
   console.log(`3 躲：追兵 2～4 公尺腳步 ${r.step3Db}、同段鼓峰值 ${r.drumHideDb}，差 ${r.stepOverDrumDb}（要 ≥ 3）→ ${ok(r.stepOverDrumDb == null ? null : r.stepOverDrumDb >= 3)}（躲 ${r.hideSec} 秒）`);
   console.log(`4 ${mi >= 0 && argv[mi + 1] === "none" ? "平常" : "躲"}：踩得上時段最響的起音 ${r.maskedPkDb}（${r.maskedN} 段）、其他時段最響 ${r.otherPkDb}（${r.otherN} 段），差 ${r.maskedOverDb}（要 ≥ 4；所有起音平均比 ${r.allOverDb}）→ ${ok(r.maskedOverDb == null ? null : r.maskedOverDb >= 4)}`);
+  const bl = await beatLift(dir, { mode: mi >= 0 ? argv[mi + 1] : 'hide' });
+  if (bl) console.log(`4b 逐拍：踩得上的規則拍 ${bl.maskedDb} dB（${bl.maskedN} 拍）、踩不上 ${bl.otherDb} dB（${bl.otherN} 拍），差 ${bl.liftDb}（要 ≥ 4）→ ${ok(bl.liftDb == null ? null : bl.liftDb >= 4)}`);
   return 0;
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main(process.argv.slice(2));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).then((c) => { process.exitCode = c; });
