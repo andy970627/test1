@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* 第 18 節追殺聲音的驗收（docs/design/2026-11-11-companion-mechanics.md 18.5，門檻【假設】）
  *
- *   node tools/playtest-recorder/hunt-mix.mjs <錄音資料夾> [--json]
+ *   node tools/playtest-recorder/hunt-mix.mjs <錄音資料夾> [--json] [--mask-mode none]   # --mask-mode none：第 4 條改量平常巡邏（比新鼓聲各版）
  *
  * 要用 --lab-bot hunt（或任何有被追殺的錄音）錄；時間軸每幀有 hm（none｜escape｜hide，照 audio.js huntUpdate 的判法）、sm（起步踩不踩得上）、
  * lg（衛兵總線峰值 gp，要分接點）。事件 cue:hunt_call＝喊聲。
@@ -31,7 +31,8 @@ function readWav(f) {
 /** 一階高通（RC），回傳新陣列 */
 function hp(x, sr, fc) { const a = 1 / (1 + 2 * Math.PI * fc / sr), y = new Float32Array(x.length); let px = 0, py = 0; for (let i = 0; i < x.length; i++) { py = a * (py + x[i] - px); px = x[i]; y[i] = py; } return y; }
 
-export function huntMix(dir) {
+export function huntMix(dir, opts = {}) {
+  const maskMode = opts.maskMode || 'hide';   // 第 4 條量哪個狀態（none＝平常巡邏，比新鼓聲各版）
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
   const J = JSON.parse(fs.readFileSync(path.join(dir, 'timeline.json'), 'utf8'));
   const TL = (J.timeline || J).filter((s) => s.hm != null), EV = J.events || [];
@@ -87,7 +88,7 @@ export function huntMix(dir) {
   const drumHide = med(bv.filter((b) => b.gp < b.mp - 10).map((b) => b.mp));
   const step3 = med(bv.filter((b) => b.d != null && +b.d >= 2 && +b.d <= 4 && b.gp > -90).map((b) => b.gp));
   // 4. 躲：踩得上的起音 vs 其他
-  const hideOn = onsets.filter((o) => { const s = at(o.t), s2 = at(o.t + 0.03); return s && s2 && s.hm === 'hide' && settled(o.t) && quiet(s) && quiet(s2); });
+  const hideOn = onsets.filter((o) => { const s = at(o.t), s2 = at(o.t + 0.03); return s && s2 && s.hm === maskMode && settled(o.t) && quiet(s) && quiet(s2) && (maskMode !== 'none' || (s.phase === 'play' && !s.alert)); });
   // 「踩得上」的時段很寬，裡面也有小拍；改成每一段連續的 sm 真／假時段各取最響的那個起音再比（＝踩得上的那一拍 vs 其他拍裡最響的）
   const runs = []; let cur = null;
   for (const o of hideOn) { const v = at(o.t).sm; if (v == null) continue; if (!cur || cur.v !== v || o.t - cur.end > 0.5) { cur = { v, pk: o.pk, end: o.t }; runs.push(cur); } else { cur.pk = Math.max(cur.pk, o.pk); cur.end = o.t; } }
@@ -103,9 +104,9 @@ export function huntMix(dir) {
 }
 
 function main(argv) {
-  const dir = argv.find((a) => !a.startsWith('--'));
+  const dir = argv.find((a, i) => !a.startsWith('--') && argv[i - 1] !== '--mask-mode');
   if (!dir) { console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]); return 1; }
-  const r = huntMix(dir);
+  const mi = argv.indexOf('--mask-mode'), r = huntMix(dir, { maskMode: mi >= 0 ? argv[mi + 1] : undefined });
   if (!r) { console.log('時間軸沒有 hm（要用新版設定檔錄）'); return 1; }
   if (argv.includes('--json')) { console.log(JSON.stringify(r, null, 1)); return 0; }
   const ok = (b) => (b == null ? '—' : b ? '過' : '不過');
@@ -114,7 +115,7 @@ function main(argv) {
   for (const c of r.calls) console.log(`   ${c.t} 秒起：每秒 ${c.perSec.join('、')}；到九成 ${c.reachSec ?? '沒到'} 秒；第 3～${c.secs + 2} 秒最大偏差 ${c.maxDev}`);
   console.log(`2 躲：1200 Hz 以上 逃 ${r.hiEscDb}、躲 ${r.hiHideDb} dB，差 ${r.hiDiffDb}（要 ≥ 10）→ ${ok(r.hiDiffDb == null ? null : r.hiDiffDb >= 10)}`);
   console.log(`3 躲：追兵 2～4 公尺腳步 ${r.step3Db}、同段鼓峰值 ${r.drumHideDb}，差 ${r.stepOverDrumDb}（要 ≥ 3）→ ${ok(r.stepOverDrumDb == null ? null : r.stepOverDrumDb >= 3)}（躲 ${r.hideSec} 秒）`);
-  console.log(`4 躲：踩得上時段最響的起音 ${r.maskedPkDb}（${r.maskedN} 段）、其他時段最響 ${r.otherPkDb}（${r.otherN} 段），差 ${r.maskedOverDb}（要 ≥ 4；所有起音平均比 ${r.allOverDb}）→ ${ok(r.maskedOverDb == null ? null : r.maskedOverDb >= 4)}`);
+  console.log(`4 ${mi >= 0 && argv[mi + 1] === "none" ? "平常" : "躲"}：踩得上時段最響的起音 ${r.maskedPkDb}（${r.maskedN} 段）、其他時段最響 ${r.otherPkDb}（${r.otherN} 段），差 ${r.maskedOverDb}（要 ≥ 4；所有起音平均比 ${r.allOverDb}）→ ${ok(r.maskedOverDb == null ? null : r.maskedOverDb >= 4)}`);
   return 0;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main(process.argv.slice(2));
