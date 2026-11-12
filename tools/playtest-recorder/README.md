@@ -32,6 +32,7 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90
 - `--cover cover|gap`（木馬之夜）：鼓聲模式。`cover`＝不中斷（殘響掩護，規則 `T.COVER_MODE = true`，預設）；`gap`＝留空檔（舊盲區版）。第 1 項檢查依模式換量法
 - `--audible`：讓瀏覽器真的從喇叭出聲（預設 `--mute-audio` 靜音輸出裝置，錄音不受影響）；網址一律加 `nolock=1`，不鎖滑鼠
 - `--cycle <秒>`：放慢遊戲循環（木馬之夜會同時交給規則與聲音；報告會註明「放慢」）
+- `--human-cam`（木馬之夜，11/12）：畫面改用模擬人類的視角（轉頭有延遲與緩衝、走路偶爾瞄旁邊或衛兵、停下或躲著時看向最近的衛兵、手持晃動）。只換畫出來的鏡頭，移動與判定照舊讀程式玩家的方向，所以路線與數字和沒開時一樣；`--seed` 決定瞄的時機。報告影片用
 - `--no-bot`：不掛程式玩家；`--scenario <劇本.json>`：照劇本按鍵（可和程式玩家並用）
 - `--width/--height`、`--render-scale 0.5`：畫面大小與 WebGL 內部解析度
 - `--antialias`：保留遊戲的反鋸齒（預設關掉，提高無頭幀率）

@@ -54,6 +54,58 @@ export default {
         window.__recPlayMake = () => new Function('R', 'return (' + src + ')')(window.RissetRules)(Object.assign({ cover: window.TroyDebug.game.T.COVER_MODE === true }, human.sigma ? human : {}));
       }, { src, human });
     }
+    // --human-cam（11/12，報告影片）：只換「畫出來的視角」，模仿真人轉頭。遊戲邏輯照舊讀 V.yaw（程式玩家要走的方向），
+    // 畫圖那一刻才換成平滑、會落後、會東張西望的視角，畫完換回；所以路線、判定、數字和沒開時一樣。
+    // 規則：移動時視角用彈簧追移動方向（約 0.25 秒跟上、每秒最多轉 4.5 弧度），每 3～6 秒瞄一下旁邊或附近衛兵；
+    // 停下或躲著時看向最近的衛兵；加一點手持晃動。重來、結尾動畫時不介入。
+    if (o.humanCam) await page.evaluate((seed) => {
+      let r = (Math.abs(seed | 0) * 7919 + 17) % 233280 || 1;
+      const rnd = () => { r = (r * 9301 + 49297) % 233280; return r / 233280; };
+      const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+      const lookYaw = (pl, x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));   // 前方 (−sin yaw, −cos yaw)
+      const H = window.__humanCam = { yaw: null, pitch: 0, vy: 0, vp: 0, last: 0, px: 0, pz: 0, gUntil: 0, gOff: 0, gGuard: false, next: 2 + rnd() * 3, ph: [0, 1, 2, 3].map(() => rnd() * 6.283) };
+      // three r128 的 render 是渲染器物件自己的方法（攔原型攔不到），改用場景的 onBeforeRender：
+      // 它在鏡頭矩陣更新之後、真正畫之前呼叫，所以改完角度要自己 updateMatrixWorld。下一幀遊戲會重設鏡頭角度，不必換回。
+      const scene = window.TroyDebug.scene;
+      const prev = scene.onBeforeRender;
+      scene.onBeforeRender = function (ren, sc, cam) {
+        if (prev) prev.apply(this, arguments);
+        const D = window.TroyDebug, g = D && D.game, V = D && D.V;
+        if (!g || !V || !cam || !cam.isPerspectiveCamera || g.phase !== 'play' || !g.player) { H.yaw = null; return; }
+        H.frames = (H.frames || 0) + 1;
+        const now = performance.now() / 1000, pl = g.player;
+        if (H.yaw == null || Math.hypot(pl.x - H.px, pl.z - H.pz) > 2) { H.yaw = V.yaw; H.pitch = V.pitch; H.vy = H.vp = 0; H.last = now; H.px = pl.x; H.pz = pl.z; H.t0 = now; }
+        const dt = Math.min(0.1, Math.max(0.001, now - H.last)); H.last = now;
+        const moving = Math.hypot(pl.x - H.px, pl.z - H.pz) / dt > 0.3; H.px = pl.x; H.pz = pl.z;
+        let q = null, qd = 14;
+        for (const o of g.guards || []) if (o.active) { const d = Math.hypot(o.x - pl.x, o.z - pl.z); if (d < qd) { qd = d; q = o; } }
+        const t = now - H.t0;
+        let ty = V.yaw, tp = V.pitch;
+        if (moving) {
+          if (now > H.next && now > H.gUntil) {   // 走路時偶爾瞄一眼：附近有衛兵就瞄衛兵，不然往左右看一下
+            H.gGuard = !!q && qd < 10 && Math.abs(wrap(lookYaw(pl, q.x, q.z) - V.yaw)) < 1.7;
+            H.gOff = (rnd() < 0.5 ? -1 : 1) * (0.3 + rnd() * 0.3);
+            H.gUntil = now + 0.5 + rnd() * 0.5; H.next = H.gUntil + 3 + rnd() * 3;
+          }
+          if (now < H.gUntil) ty = H.gGuard && q ? lookYaw(pl, q.x, q.z) : V.yaw + H.gOff;
+          if (g.hunted && q && now < H.gUntil) ty = lookYaw(pl, q.x, q.z);
+        } else if (q) { ty = lookYaw(pl, q.x, q.z) + 0.08 * Math.sin(t * 0.5 + H.ph[0]); tp = V.pitch + 0.05; }
+        else ty = V.yaw + 0.3 * Math.sin(t * 0.9 + H.ph[1]);
+        // 彈簧（臨界阻尼）追目標，限制轉速；再疊手持晃動
+        const k = 60, c = 2 * Math.sqrt(k);
+        H.vy += (k * wrap(ty - H.yaw) - c * H.vy) * dt; H.vy = Math.max(-4.5, Math.min(4.5, H.vy)); H.yaw = wrap(H.yaw + H.vy * dt);
+        H.vp += (k * (tp - H.pitch) - c * H.vp) * dt; H.pitch += H.vp * dt;
+        const jy = 0.012 * Math.sin(t * 0.7 + H.ph[2]) + 0.006 * Math.sin(t * 1.9 + H.ph[3]);
+        const jp = 0.02 * Math.sin(t * 0.43 + H.ph[3]) + 0.006 * Math.sin(t * 1.3 + H.ph[0]);
+        cam.rotation.x = cam.rotation.x - V.pitch + H.pitch + jp;   // 保留遊戲自己的跑步前傾
+        cam.rotation.y = H.yaw + jy;
+        cam.updateMatrixWorld();
+        // 統計（錄影報告用）：一幀轉超過 0.3 弧度（約 17 度）的硬轉次數，原本視角對人類視角
+        const S = H.stat || (H.stat = { n: 0, rawJumps: 0, camJumps: 0, lastV: V.yaw, lastC: cam.rotation.y });
+        S.n++; if (Math.abs(wrap(V.yaw - S.lastV)) > 0.3) S.rawJumps++; if (Math.abs(wrap(cam.rotation.y - S.lastC)) > 0.3) S.camJumps++;
+        S.lastV = V.yaw; S.lastC = cam.rotation.y;
+      };
+    }, o.seed ? +o.seed : 1);
     // --listen-test（11/11，屏息聽 C1）：頁面用 ?lab=listen 開。聲音層建立前掛分接點，量衛兵線（guardListen）與一般鼓拍線（beatBus）進出的音量差與左右，
     // 不受「衛兵聲在總輸出裡太小」影響。找法：衛兵 PannerNode 接上、而且往下 guardOut → master 都是 GainNode 的那條＝guardListen；guardOut 之後建立的第一個 GainNode＝beatBus。
     if (o.listenTest || o.labBot) await page.evaluate(() => {
