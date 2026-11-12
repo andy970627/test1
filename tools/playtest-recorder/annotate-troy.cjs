@@ -52,7 +52,7 @@ for (const it of items) {
   if (it.obs) { const nxo = items.find((j) => j !== it && j.obs && j.t > it.t); const od = nxo ? Math.min(it.dur + 1, nxo.t - it.t - 0.05) : it.dur + 1; const so = it.t; busyO = so + od; L.push(`Dialogue: 0,${ts(so)},${ts(so + od)},Obs,,0,0,0,,【觀察】${it.obs}`); }
 }
 const end = +process.argv[4];
-L.push(`Dialogue: 0,${ts(end - 13)},${ts(end)},End,,0,0,0,,【還沒成立的】Risset 加速錯覺：11/11 真耳朵覺得「其實是不同層疊加」\\N三個原因：聽得到的速度停在每分鐘約 97 拍、音色跟著速度走、最響一擊標出循環起點\\N新鼓聲第一步已進遊戲，第二、三步在報告後`);
+L.push(`Dialogue: 0,${ts(end - 13)},${ts(end)},End,,0,0,0,,【還沒成立的】Risset 加速錯覺：舊鼓聲時真耳朵覺得「其實是不同層疊加」\\N新鼓聲（六層同一種鼓）已進遊戲，11/12 聽過仍沒有加速感\\N原因之一：最響的一擊固定在每圈起點；三對二強拍、讓這一擊不固定在報告後做`);
 L.push(`Dialogue: 0,0:00:00.00,${ts(end)},Ver,,0,0,0,,木馬之夜｜版本 fef840c｜跑蹲版（?moves 預設開）・新鼓聲・視覺輔助全開｜程式玩家（模擬人類視角），第 3 區故意跑步引來追殺`);
 const F = 'WenQuanYi Zen Hei';
 fs.writeFileSync(out, `[Script Info]
