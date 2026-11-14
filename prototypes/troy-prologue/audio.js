@@ -256,6 +256,12 @@
     V4_ACC_B_X: 0.625,         // 強拍 B 的音色：純拍手（1.2 kHz）
     ILL_U8_CENTER: 0.5, ILL_U8_SIG: 0.225,   // 8 層：兩端 −43 dB、同時聽得到 4～5 條
     ILL_U8_M_DIV: 2,           // 8 層時每圈拍數除以 2（7→4、V4 6→3），最大聲那條的速度和 6 層差不多，只比層數
+    // 第三步試聽 G2、G3（docs/design/2026-11-12-free-hit-schedule.md 第 2、3 節；只有試聽頁會開 setIllusion({ free: true })，遊戲不走這條）：
+    // 新鼓聲的最響一擊不在每圈起點，改照自己的時間表，釘在規則「踩得上的拍裡最慢那條」的一拍（對齊點）上，用圈當單位
+    F_GAP_MIN: 0.6, F_GAP_MAX: 1.4,   // 上一擊之後抽一個目標（圈），取目標之後的第一個對齊點（使用者 11/14 選「平均和現在一樣」，同文件 10.1）
+    F_FIRST: 0.5,              // 第一擊：開始後 0.5 圈之後的第一個對齊點（同文件 3.2 HIT_FIRST）
+    F_ROLL_LEAD: 2.5,          // 越打越密：那一擊之前 2.5 秒起（不超過和上一擊間隔的一半；同文件 3.4 HIT_ROLL_LEAD）
+    F_SEED: 20261112,          // 時間表的固定亂數種子（同一個網址每次聽到的順序一樣）
     ILL_ROLL_FROM: 0.75,       // U4：最快那條從循環這個位置起不淡出，漸強到和最大聲那條一樣大，最響的一擊落下時拿掉
     // 木馬（規則 T.HORSE_MODE 開時才用；docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C2）
     BELLY_LOWPASS_HZ: 1200,    // 腹中隔著木板聽鼓：節奏線只留這以下（框鼓、木框敲擊都還在，筆電喇叭聽得到）【假設】
@@ -773,7 +779,7 @@
     function minGain() { var K = RK(); return (K && isFinite(K.BEAT_MIN_GAIN)) ? +K.BEAT_MIN_GAIN : C.MIN_GAIN; }
     // 第 k 層在相位 p 的音量：以規則的 layerGain 為準（追殺時 5 層都走鐘形），沒有規則才用備援鐘形
     // ---------- 加速感試聽（聲音測試頁專用；ill 全為預設時，所有分支都不走，輸出和以前逐樣本相同） ----------
-    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false, v: false, fake: false, v3: false, v4: false, noHit: false };
+    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false, v: false, fake: false, v3: false, v4: false, noHit: false, free: false };
     function ownBell(k, p, nL) { var K = RK(), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA; return bell((k + p) / nL, sig * nLayers() / nL); }
     function asymBell(x) { var d = x - C.ILL_CENTER, sg = d > 0 ? C.ILL_SIG_FAST : C.ILL_SIG_SLOW; return Math.exp(-(d / sg) * (d / sg)); }
     // S2：鐘形改成左右不對稱（偏快），再把每個瞬間的四層總和縮放回現行的總和——形狀照新的走，整體音量的起伏和現行一樣
@@ -795,6 +801,7 @@
     function dnGains(p, hunted) { return newDrumGains(p, baseLayerCount(hunted), function (k, pp) { return curGain(k, pp, hunted); }); }
     function dnGain(j, p, t, c, hunted) {
       var gs = dnGains(p, hunted), nS = gs.length, g = gs[j];
+      if (ill.free) return fGain(j, t, gs, hunted);   // 第三步試聽 G2、G3：那一擊與預告照時間表，每圈起點不再發生任何事
       if (j === nS - 1 && p >= C.ILL_ROLL_FROM && !hunted) {   // 每圈末最快那條越打越密衝進那一擊（U4；追殺時不做，第 18 節）
         var S = 0, gm = 0; for (var i = 0; i < nS; i++) { S += gs[i]; gm = Math.max(gm, gs[i]); }
         var g0 = dnGains(C.ILL_ROLL_FROM, hunted)[nS - 1], tgt = Math.min(gm, C.DN_ROLL_CAP * S) * C.DN_ROLL_MUL, u = (p - C.ILL_ROLL_FROM) / (1 - C.ILL_ROLL_FROM);
@@ -818,6 +825,75 @@
         var le = log ? { type: 'accent', which: sp[0], k: k, n: m, t: t, g: sp[2] } : null; if (le) log.push(le);
         addEvent(key + sp[0], P, dest, function (tt, out) { playHit(out, sp[1], tt, sp[2], sp[3]); }, true, le);
       });
+    }
+    // ---------- 第三步試聽 G2、G3：最響一擊自己的時間表（只有 setIllusion({ free: true }) 會走；遊戲不呼叫，輸出不變） ----------
+    // 每一擊記成累計相位 P（哪一圈的哪一拍），一圈長度變了時刻跟著移（和現行釘在 p = 0 同一種做法，重排機制沿用）
+    var fEv = [], fRng = 0, fP0 = 0, fN = 0;
+    function fReset() { fEv = []; fRng = C.F_SEED | 0; fN = 0; fP0 = Pof(ctx.currentTime); }
+    function fRand() { var a = fRng; a = a + 0x6D2B79F5 | 0; fRng = a; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+    function fSlowest(p) {              // 相位 p 時「踩得上的拍」（規則的層、音量 ≥ MASK_GAIN）裡最慢的那一層
+      var K = RK(), mg = (K && isFinite(K.MASK_GAIN)) ? +K.MASK_GAIN : 0.3, nR = baseLayerCount(false);
+      for (var k = 0; k < nR; k++) if (curGain(k, p, false) >= mg) return k;
+      return 0;
+    }
+    function fAlignAfter(P0) {          // P0 之後第一個對齊點（那一拍是最慢那條踩得上的拍，所以所有踩得上的拍同時落下）
+      var nR = baseLayerCount(false);
+      if (tables.length < nR) refreshTables();
+      for (var c = Math.floor(P0); c <= Math.floor(P0) + 3; c++) {
+        var best = Infinity;
+        for (var k = 0; k < nR; k++) {
+          var tab = tables[k]; if (!tab) continue;
+          for (var n = lowerBound(tab, P0 - c); n < tab.length; n++) if (fSlowest(tab[n]) === k) { best = Math.min(best, c + tab[n]); break; }
+        }
+        if (best < Infinity) return best;
+      }
+      return Infinity;
+    }
+    function fExtend(Pb) {              // 時間表排到累計相位 Pb 之後一擊
+      var guard = 0;
+      while ((!fEv.length || fEv[fEv.length - 1].P < Pb) && guard++ < 64) {
+        var last = fEv.length ? fEv[fEv.length - 1] : null;
+        var tgt = last ? last.P + C.F_GAP_MIN + (C.F_GAP_MAX - C.F_GAP_MIN) * fRand() : fP0 + C.F_FIRST;
+        var P = fAlignAfter(tgt);
+        if (!isFinite(P)) break;
+        fEv.push({ P: P, id: 'h' + (++fN), target: tgt });
+      }
+    }
+    function fAround(t) {               // t 時的上一擊（含剛好落在 t 的那一擊）與下一擊；時刻與預告開始照現在的外推算
+      fExtend(Pof(t) + 2);
+      var prev = null, next = null, prevT = null;
+      for (var i = 0; i < fEv.length; i++) {
+        var th = tAt(fEv[i].P);
+        if (th <= t + 1e-6) { prev = fEv[i]; prevT = th; continue; }
+        var from = prevT != null ? prevT : tAt(fP0);
+        next = { t: th, id: fEv[i].id, P: fEv[i].P, rollFrom: th - Math.min(C.F_ROLL_LEAD, (th - from) / 2) };
+        break;
+      }
+      return { prev: prev ? { t: prevT, id: prev.id, P: prev.P } : null, next: next };
+    }
+    function fGain(j, t, gs, hunted) {  // 新鼓聲第 j 條的音量：預告（最快那條漸強）、那一擊之後讓開、之前一起退，全部改看時間表
+      var nS = gs.length, g = gs[j], a = fAround(t);
+      if (hunted) return g;
+      if (j === nS - 1 && a.next && t >= a.next.rollFrom) {
+        var S = 0, gm = 0; for (var i = 0; i < nS; i++) { S += gs[i]; gm = Math.max(gm, gs[i]); }
+        var g0 = dnGains(frac(Pof(a.next.rollFrom)), hunted)[nS - 1], tgt = Math.min(gm, C.DN_ROLL_CAP * S) * C.DN_ROLL_MUL, u = (t - a.next.rollFrom) / (a.next.t - a.next.rollFrom);
+        if (tgt > g) g = g0 > 0 ? Math.max(g, g0 * Math.pow(tgt / g0, u)) : tgt * u;
+      }
+      if (coverMode()) {
+        if (a.prev && t - a.prev.t < C.DN_CLEAR_AFTER) return 0;
+        if (a.next && a.next.t - t < C.DN_PRE) g *= Math.pow(10, C.DN_PRE_DB / 20);
+      }
+      return g;
+    }
+    function fWindows(a, b) {
+      fExtend(Pof(b) + 1); var out = [];
+      for (var i = 0; i < fEv.length; i++) { var s = tAt(fEv[i].P); if (s + BL > a && s < b) out.push({ s: s, e: s + BL, id: fEv[i].id }); }
+      return out;
+    }
+    function fInfo(t) {                 // 面板：上一擊、下一擊、預告開始、間隔（圈）
+      var a = fAround(t);
+      return { prevT: a.prev ? a.prev.t : null, prevId: a.prev ? a.prev.id : null, nextT: a.next ? a.next.t : null, nextId: a.next ? a.next.id : null,
+        rollFrom: a.next ? a.next.rollFrom : null, gapCyc: a.prev && a.next ? +(a.next.P - a.prev.P).toFixed(2) : null, blindLen: BL };
     }
     function scheduleBeatsNew(from, end, ws) {
       var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + 2;
@@ -974,7 +1050,7 @@
       var endDb = me > 0 && ge[nL - 1] > 0 ? +(20 * Math.log10(ge[nL - 1] / me)).toFixed(1) : -99;   // 循環結尾那一刻最快那條（相對最大聲那條）
       return { T: +T.toFixed(2), p: +p.toFixed(3), loudBpm: Math.round(bpm(iMax)), fastBpm: Math.round(bpm(iFast)), audible: nAud, endDb: endDb, layers: nL,
         layersDb: gs.map(function (g) { return mx > 0 && g > 0 ? +(20 * Math.log10(g / mx)).toFixed(1) : -99; }),
-        timbre: ill.timbre, bell: ill.bell, v: ill.v ? vInfo(t) : null };
+        timbre: ill.timbre, bell: ill.bell, v: ill.v ? vInfo(t) : null, free: ill.free ? fInfo(t) : null };
     }
     function vInfo(t) {                 // 下一次最響一擊（或假的）還有幾秒、真假、隔幾個對齊點；上一次的時間
       vExtend(t + 30); var nx = null, last = null;
@@ -1048,6 +1124,7 @@
     function windowsBetween(a, b) {
       if (ill && ill.noHit) return [];      // V0（第 12 節）：不放最響的一擊——沒有窗，就沒有重合擊、迴盪、變亮，鼓也不會被窗擋掉
       if (ill && ill.v) return vWindows(a, b);     // 第三輪試聽：最響的一擊照 V 的時間表，不在循環起點
+      if (ill && ill.free && dnOn() && !st.hunted) return fWindows(a, b);   // 第三步試聽 G2、G3：最響一擊照自己的時間表
       var out = [], i, Rr = getRules();
       if (Rr && typeof Rr.blindWindows === 'function' && lastState) {
         try {
@@ -2701,6 +2778,7 @@
         var wasV = ill.v; ill.v = ill.u && !!o.v; ill.fake = ill.v && !!o.fake; ill.v3 = ill.v && !!o.v3; ill.v4 = ill.v && !!o.v4; ill.noHit = ill.u && !ill.v && !!o.noHit;
         if (!ill.u) tabFromRules = false;   // 回到現行：下一次 update 重新讀規則的表
         if (ill.v && !wasV) vReset(ctx.currentTime);
+        var wasF = ill.free; ill.free = !ill.u && !!o.free; if (ill.free && !wasF) fReset();   // 第三步試聽 G2、G3（新鼓聲才有效）
         var sh = !!o.shep; if (sh !== ill.shep) { ill.shep = sh; rampTo(shepBus.gain, layerOn.shepard ? (sh ? 1 : mz.mix.shep) : 0, 0.5); }
         refreshTables(); replan(ctx.currentTime);
       },
