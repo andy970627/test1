@@ -6,8 +6,8 @@
 |---|---|---|
 | 規則 | `rules.md` | `prototypes/*/risset.js`、`rules.js`、`vengeance.js` 與各自 `*.test.js` |
 | 聲音 | `audio.md` | `prototypes/*/audio.js` |
-| 畫面 | `view.md` | `prototypes/*/index.html`、`prototypes/nav.js`、`prototypes/telemetry.js` |
-| 錄音與工具 | `tools.md` | `tools/playtest-recorder/`、`tools/telemetry/`、`tools/build-itch.*`、`.github/workflows/` |
+| 畫面（有需要才開） | `view.md` | `prototypes/*/index.html`、`prototypes/nav.js`、`prototypes/telemetry.js` |
+| 量測與驗收（原「錄音與工具」） | `tools.md` | `tools/playtest-recorder/`、`tools/telemetry/`、`tools/build-itch.*`、`.github/workflows/` |
 
 每份筆記的固定段落：
 1. 檔案結構與入口（哪個函式是主迴圈、常數表在哪）。
@@ -21,3 +21,8 @@
 - 測完立刻關分頁（最後一個也關）、停掉自己起的伺服器。
 - 起因：11/10 測試時遊戲鎖住使用者滑鼠、聲音一直播（使用者判斷是 agy 用自己的瀏覽器工具開了遊戲頁）。
 - **派 agy 的簡報一律寫「不准開瀏覽器、不准開網頁遊戲」**；agy 只讀檔改檔。
+
+## 分工調整（使用者 11/14 採用，依據 `docs/process/architecture-review-2026-11-14.md` 第 3、4 節）
+- **量測與驗收**（原「錄音與工具」，筆記檔名照舊 `tools.md`）：負責「這個數字算不算數」。量法有疑義時**有權要求重量**，其他角色在它確認量法前不得為了過門檻改聲音或規則。每條驗收寫明「量的是什麼、量不到什麼」。起因：11/12 聲音角色試四種改法都不過，最後才發現是量法錯。
+- **跟聽感有關的改動，先給使用者聽再量**：加速感、聽不聽得出、好不好認這類，先做試聽版請使用者聽（總控用選擇題問、寫進 `playtest-notes.md`），聽過才寫進遊戲、才訂門檻。起因：11/14 量測全過，使用者仍說「速度不夠快所以都很明顯」。
+- **畫面角色有需要才開**：不常駐；有畫面工作時由總控派工，接手先讀 `view.md`。起因：11/12 起零提交。
