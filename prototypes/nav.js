@@ -91,7 +91,8 @@
   /**
    * 在頁面上掛導覽：
    *   opts.switchLink：右上角固定一個「回試玩切換台」小連結（預設 true；遊戲頁畫面上已有按鈕的傳 false）
-   *   opts.help：說明側欄內容 { title, what: [], watch: [], panel: [[字, 意思]], questions: [], src: [] }；沒有就不掛側欄
+   *   opts.help：說明側欄內容 { title, brief: [[標籤, 內容]], what: [], watch: [], panel: [[字, 意思]], questions: [], src: [] }；沒有就不掛側欄
+   *     brief 是開頭三行（測什麼／怎麼操作／看哪個數字，操作那行按鍵寫最前面），放在側欄最上面
    *   opts.open：側欄一開始打開（預設收起；使用者開關過就記住這一頁的選擇）
    *   opts.key：切換側欄的按鍵 code（例如 'KeyH'），在輸入框裡打字時不理
    *   opts.switchInto：把「回試玩切換台」放進這個元素的最前面（不浮在畫面上）；有它就不放右上角那個
@@ -132,6 +133,12 @@
       var ul = el(ordered ? 'ol' : 'ul');
       arr.forEach(function (t) { ul.appendChild(el('li', null, t)); });
       side.appendChild(ul);
+    }
+    if (H.brief && H.brief.length) {               // 開頭三行：測什麼、怎麼操作、看哪個數字
+      side.appendChild(el('h3', null, '先看這三行'));
+      var bd = el('dl', 'odnav-brief');
+      H.brief.forEach(function (r) { bd.appendChild(el('dt', null, r[0])); bd.appendChild(el('dd', null, r[1])); });
+      side.appendChild(bd);
     }
     list('這頁在試什麼', H.what);
     list('注意聽、注意看', H.watch);

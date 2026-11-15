@@ -192,6 +192,8 @@
     background: rgba(10, 11, 16, 0.86); text-align: center; padding: 16px;
   }
   .start-gate[hidden] { display: none; }
+  .start-gate .lab-brief { max-width: 560px; text-align: left; font-size: 13px; line-height: 1.6; border-left: 3px solid var(--accent-gold); background: rgba(8, 9, 14, .82); padding: 8px 12px; } /* 開頭三行 */
+  .start-gate .lab-brief b { color: var(--accent-gold); }
   .start-gate .btn-big { font-size: 20px; padding: 14px 32px; border-radius: 0; background: var(--accent-gold); border-color: var(--accent-gold); color: #1a1008; }
   .start-gate small { color: var(--text-dim); font-size: 13px; line-height: 1.6; }
 
@@ -251,6 +253,11 @@
       <button class="btn" id="btnOverlayRestart">重新開始（R）</button>
     </div>
     <div class="start-gate" id="startGate">
+      <div class="lab-brief" id="labBrief">
+        <div><b>測</b>：只靠耳朵，聽不聽得出底下的慢鼓進來了、在對的那一拍換過去</div>
+        <div><b>操作</b>：W 按住前進・Q 換層・R 重來（手機：左下「前進」、右下「換層」）</div>
+        <div><b>看</b>：「最近換層偏差」幾毫秒（正數是按晚）、火把顏色（黃轉紅＝疑心升高）</div>
+      </div>
       <button class="btn btn-big" id="btnStart">點一下開始</button>
       <small>請戴耳機。<span class="kb-only">鍵盤：按住 W 前進、Q 換層、R 重來（按任何鍵也能開始）。</span><span class="touch-only">左下按住「前進」，右下按「換層」。</span></small>
     </div>
@@ -1042,6 +1049,11 @@
 (function () {
   var HELP = {
     "title": "換層試驗場",
+    "brief": [
+      ["測", "只靠耳朵，聽不聽得出底下的慢鼓進來了、在對的那一拍換過去"],
+      ["操作", "W 按住前進・Q 換層・R 重來（手機：左下「前進」、右下「換層」）"],
+      ["看", "「最近換層偏差」幾毫秒（正數是按晚）、火把顏色（黃轉紅＝疑心升高）"]
+    ],
     "what": [
       "按住前進，腳步落在你踩的那條鼓上；它會越來越快，跟不上前要在對的那一拍換到底下的慢鼓（換層）。",
       "真正要回答的是：只靠耳朵，聽不聽得出慢鼓進來了。"
