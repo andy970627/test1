@@ -49,7 +49,28 @@
 - 事件 `g.out`：`{type:'msg'|'sfx'|'hint', a, ...}`。sfx 名稱：`pre_blind`、`step_masked`／`step_loud`（帶 `x, z, beatT`）、`calm_ok`／`calm_bad`（帶 `index`）、`calm_done`、`latch_step`（`index` 0～7）、`latch`、`gate_open`、`breath_in/out`、`gasp`、`dash`、`takedown(_fail)`、`alert`、`hunt`、`escape`、`caught`、`trapdoor`、`checkpoint`。
 - 聲音層讀的規則函式：`RissetRules.T`、`beatPhases`、`layerGain`、`beatsBetween`；**另外會找 `blindWindows(a, b, game)`，但規則沒有匯出**（見陷阱）。
 
-- 2026-11-12 加速錯覺 13.3 第二步：新鼓聲（`MOVES_MODE` 開且 `T.DRUMS` 不是 'old'）時，這一局的 `g.T.RISSET_M` 是 6（常數 `RISSET_M_NEW`），其他情況 7。聲音從 `state.T.RISSET_M` 讀，不要讀 `RissetRules.T`（那是常數表，永遠 7）。
+- 2026-11-12 加速錯覺 13.3 第二步：新鼓聲（`MOVES_MODE` 開且 `T.DRUMS` 不是 'old'）時，這一局的 `g.T.RISSET_M` 是 6（常數 `RISSET_M_NEW`），其他情況 7。聲音從 `state.T.RISSET_M` 讀，不要讀 `RissetRules.T`（那是常數表，永遠 7）。（11/15 已退回：一律 7，`RISSET_M_NEW` 已刪。）
+- 2026-11-15 `DRIVE`（期末版企劃 `docs/design/2026-11-15-final-gdd.md` 第 3 節）：
+  - 每幀讀 `g.drive`：0.30～1.00；`T.DRIVE_MODE` 關時是 null。
+  - 每幀讀 `g.driveInfo`：`{seg, segT, hunted, pre, enter, fixed}`，給試驗場面板。
+  - 規則在每幀 `g.step` 跑完之後才算，不發事件、不用亂數，任何判定都不讀它。
+  - 網址 `?drive=0` 要由畫面層轉成 `opts.T.DRIVE_MODE = false`，規則不讀網址。
+  - 純函式 `RissetRules.driveFor(段, 該段經過秒數, 是否追殺中, 追殺前的值, o?, K?)`。`o` 可給 `{enter, huntT, endT, endFrom}`。
+  - 現有區對應企劃的段（`T.DRIVE_ZONE_SEG`）：
+
+    | 區 | 企劃的段 | 起→止 | 目標時長 |
+    |---|---|---|---|
+    | 0 開場 | 序 | 0.30 固定 | — |
+    | 1 木馬腹中 | 段 1 木馬腹中 | 0.30→0.35 | 60 秒 |
+    | 2 神殿廣場 | 段 3 神殿廣場 | 0.45→0.60 | 80 秒 |
+    | 3 城牆下的窄巷 | 段 5 窄巷 | 0.70→0.80 | 70 秒 |
+    | 4 城門 | 段 7 城門 | 0.90→1.00 | 70 秒 |
+
+    段 2 木馬下、4 慶宴的街、6 沒有火的後街還沒做，所以換區時會跳過一段，靠「換段 4 秒滑上」補（例：腹中 0.35 → 廣場 0.45）。新區做好後只改這張對應表。
+  - 試驗場 `createLevel({lab: 'drive'})`：第 2 區、衛兵全放倒、出口擋住。入口如下（畫面層接按鍵與面板，`index.html` 的 `LAB` 清單要加 `drive`）：
+    - `g.labDriveSeg(n)`：切到段 0～8，照換段規則滑；null 回到照區算。
+    - `g.labDriveSet(v)`：直接定值（夾在範圍內）；null 放開。
+    - `g.labDriveHunt(true/false)`：假裝追殺開始或甩掉，只影響 `DRIVE`；null 回到照遊戲。
 
 ### 比箭 Risset 版
 - 聲音：`follow(heart)` 後每 25 ms 補排 0.4 秒內的拍，讀 `heartBeatsBetween`、`heartAt`；畫面每幀讀 `round.heart`／`round.hb`。
@@ -349,3 +370,16 @@
     - 一般取樣 200 次：蓋住 94 次，0 次有人來；沒蓋住 106 次，106 次都有人來。
   - 測試改成讓玩家先躲進影子、彈弦位置另外給。原因：上一版有 112 個時刻衛兵已經先發現站在空地的玩家、跑去查看，沒列入計算；現在 200 個時刻全部列入。
   - 全套 185 條全過。`g.noise` 沒有遊戲路徑會呼叫，整夜數字不受影響，沒有重跑。
+
+- 2026-11-15 `DRIVE` 規則那一半（期末版企劃第 3 節）：
+  - 新增純函式 `driveFor`、`game.drive`／`game.driveInfo`、`T.DRIVE_*` 常數、試驗場 `?lab=drive` 的規則入口。介面與區段對應表見第 2 節。
+  - 不影響判定的證明：
+    - 整夜 500 局 `--moves 1` 和改前 HEAD 逐字相同：完美 98.4%／44.0 秒、σ0.12 92.6%／45.4 秒、σ0.25 91.8%／45.5 秒。
+    - `--moves 0` 和 c1d4aa3 逐字相同。
+    - 另有 Node 測試：同一局 `DRIVE_MODE` 開與關，事件逐條相同。
+  - 新增 6 條測試：段內直線升、只增不減、換段不跳、追殺 2 秒到頂、甩掉 4 秒滑回、重來回段起、範圍不出界、試驗場入口；整局 σ0.25 × 12 局逐幀檢查。全套 191 條全過。
+  - 自己決定、要確認的三點：
+    - 甩掉後滑回的是「沒被追殺時這一刻該有的值」，比追殺前的值略高，因為段內時間在追殺中照走。這樣才符合只增不減。
+    - 神殿廣場對應段 3（企劃的段 2 木馬下目前沒有獨立的區）。
+    - `driveFor` 多收一個選填的 `o`（進段值、追殺秒數、甩掉秒數），因為滑動要知道時間；前四個參數照企劃。
+  - 畫面角色要做：`?drive=0` 轉成 `T.DRIVE_MODE = false`；`LAB` 清單加 `drive`；試驗場面板與按鍵。

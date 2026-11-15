@@ -113,6 +113,17 @@
     CHECK_BREATH_RATE: 0.3, // 聽到沒屏住的呼吸（SEARCH_BREATH_R 內）：疑心每秒 +0.3，朝你走
     CHECK_DECAY: 0.1,     // 沒看到、沒聽到時疑心每秒退多少
     CHECK_STOP_R: 2.5,    // 第 17.2 節：查看離目標這麼近就停下張望（改目標時也一樣）；規則角色可在 2～3 內調
+    // 11/15 期末版企劃第 3 節：DRIVE（快鼓的推力，0.30～1.00）。規則只算、放 game.drive，任何判定都不讀它；聲音讀它定快鼓音量，畫面可讀它做氣氛。
+    DRIVE_MODE: true,      // 關掉（網址 ?drive=0，由畫面層轉成 T.DRIVE_MODE = false）時 game.drive = null
+    DRIVE_MIN: 0.3,        // 範圍下限（起點不放 0；0.30 是假設，要聽）
+    DRIVE_MAX: 1,
+    // 企劃第 2 節表格：段 0 序～8 終，每段 [起, 止, 目標時長（秒）]；序、終不能操作，值固定
+    DRIVE_SEGS: [[0.3, 0.3, 30], [0.3, 0.35, 60], [0.35, 0.45, 40], [0.45, 0.6, 80], [0.6, 0.7, 80], [0.7, 0.8, 70], [0.8, 0.9, 80], [0.9, 1, 70], [1, 1, 30]],
+    DRIVE_RISE_MUL: 1.5,   // 花該段目標時長的 1.5 倍升到「止」，到了就停
+    DRIVE_ENTER_SLIDE: 4,  // 換段時低於該段「起」：這麼多秒滑上去
+    DRIVE_HUNT_RISE: 2,    // 追殺：這麼多秒升到 DRIVE_MAX
+    DRIVE_HUNT_FALL: 4,    // 甩掉：這麼多秒滑回
+    DRIVE_ZONE_SEG: [0, 1, 3, 5, 7], // 現有各區 → 企劃的段（區 0 開場＝序、1 木馬腹中＝段 1、2 神殿廣場＝段 3、3 窄巷＝段 5、4 城門＝段 7；新段 2、4、6 還沒做）
     NOISE_R: 8,           // 11/15 弓弦引開 g.noise：沒被蓋住時，這麼近的衛兵（取最近一名）會來查看【假設】；比腳步兩倍（5）大，?lab=check 的衛兵在 6 公尺
     HUNT_START_DELAY: 0.8, // 第 17.2 節：疑心滿、追殺開始時先喊一聲（hunt_call），這段時間追兵站著不動；規則角色可在 0.6～1.0 內調
     CALL_LOOK_ONLY: false, // 第 16.1 節方向 (a)：追殺開始的喊聲叫來的衛兵只轉頭看、不走過來（查看的「走過去」跳過）
@@ -245,6 +256,39 @@
     const off = t - beat;
     const next = anchor + Math.ceil((t - anchor) / period - 1e-9) * period;
     return { beat, off, ok: off >= -win - 1e-9 && off <= win + late + 1e-9, next };
+  }
+  // ---------- DRIVE（期末版企劃 2026-11-15-final-gdd.md 第 3 節） ----------
+  /**
+   * 純函式：這一刻的 DRIVE 值（DRIVE_MIN～DRIVE_MAX）。任何判定都不讀它。
+   *   seg：段號 0～8（K.DRIVE_SEGS 的索引），或直接給 {from, to, dur}；segT：該段經過秒數（重來歸零）；
+   *   hunted：是否追殺中；preHunt：追殺開始那一刻的值（沒有就當 DRIVE_MIN）。
+   *   o（選填）：enter＝進這一段那一刻的值（低於「起」就 DRIVE_ENTER_SLIDE 秒滑上去；高於「起」就不往下掉）；
+   *     huntT＝追殺已經幾秒（沒給＝已到頂）；endT＝甩掉後幾秒、endFrom＝甩掉那一刻的值（endT < DRIVE_HUNT_FALL 時從 endFrom 滑回）。
+   * 段內：from + (to − from) × min(1, segT ÷ (dur × DRIVE_RISE_MUL))，到「止」就停。
+   * 追殺：preHunt 起 DRIVE_HUNT_RISE 秒直線升到 DRIVE_MAX。甩掉：DRIVE_HUNT_FALL 秒滑回「沒被追殺時這一刻該有的值」
+   *   （段內時間在追殺中照走，所以滑回的值 ≥ 追殺前的值）。只有甩掉和重來（segT 歸零、不給 enter）會往下。
+   */
+  function driveFor(seg, segT, hunted, preHunt, o, K) {
+    K = K || T; o = o || {};
+    const lo = K.DRIVE_MIN, hi = K.DRIVE_MAX;
+    const clamp = (v) => Math.max(lo, Math.min(hi, v));
+    const S = typeof seg === 'object' && seg ? seg : (() => { const r = K.DRIVE_SEGS[Math.max(0, Math.min(K.DRIVE_SEGS.length - 1, seg | 0))]; return { from: r[0], to: r[1], dur: r[2] }; })();
+    const st = Math.max(0, segT || 0);
+    const span = S.dur * K.DRIVE_RISE_MUL;
+    let v = S.from + (S.to - S.from) * (span > 0 ? Math.min(1, st / span) : 1);
+    if (o.enter != null) {
+      if (o.enter < S.from) v = o.enter + (v - o.enter) * Math.min(1, st / K.DRIVE_ENTER_SLIDE);   // 兩個因子都只增 → 整段只增、開頭不跳
+      else v = Math.max(v, o.enter);
+    }
+    v = clamp(v);
+    if (hunted) {
+      const p = clamp(preHunt == null ? lo : preHunt);
+      return o.huntT == null ? hi : clamp(p + (hi - p) * Math.min(1, Math.max(0, o.huntT) / K.DRIVE_HUNT_RISE));
+    }
+    if (o.endT != null && o.endFrom != null && o.endT < K.DRIVE_HUNT_FALL) {
+      return clamp(o.endFrom + (v - o.endFrom) * Math.max(0, o.endT) / K.DRIVE_HUNT_FALL);
+    }
+    return v;
   }
   // ---------- 越危險越快（第 8.1 節） ----------
   /** 區域基準倍率：區 1 = 1，每往城門一區 ×ZONE_MUL。 */
@@ -782,7 +826,10 @@
     //     g.labNotice(x, z) 在指定位置製造一次「被聽到」（他過來查看那一點）。出口擋住。
     //   ?lab=walk（第 11.4 節）：第 2 區，一名衛兵在玩家要走的路中間來回巡邏；循環固定；STEP_MODE 預設 'stride'（P1），
     //     opts.T.STEP_MODE = 'manual' 切 P1＋P2、'glide' 切回現狀。玩家從 (15, 20) 往東走到 (29, 20)，非得穿過他的圈。
-    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2, check: 2, walk: 2 };
+    //   ?lab=drive（期末版企劃第 3 節驗收第 5 條）：第 2 區、沒有衛兵、出口擋住；DRIVE 開。
+    //     g.labDriveSeg(n) 切到段 n（0～8，照換段規則滑）、null 回到照區算；g.labDriveSet(v) 直接定值、null 放開；
+    //     g.labDriveHunt(true/false) 假裝追殺開始／甩掉（只影響 DRIVE）、null 回到照遊戲。g.driveInfo 給面板顯示。
+    const LABS = { belly: 1, horse: 2, run: 2, crouch: 3, listen: 3, hunt: 2, check: 2, walk: 2, drive: 2 };
     const lab = LABS[opts.lab] ? opts.lab : null;
     const horseLab = lab === 'belly' || lab === 'horse';
     if (horseLab && oT.HORSE_MODE == null) K.HORSE_MODE = true;
@@ -982,6 +1029,9 @@
       }
     }
     if (lab === 'walk') setupWalkLab();
+    /** ?lab=drive 的場景：第 2 區起點，衛兵全部放倒（只聽 DRIVE，不會被追殺）。 */
+    function setupDriveLab() { for (const q of g.guards) { q.state = 'down'; q.active = false; } }
+    if (lab === 'drive') setupDriveLab();
     if (lab === 'check') {
       setupCheckLab();
       /** 試驗場按鈕：在 (x, z) 製造一次被聽到（巡邏中的衛兵過來查看）。 */
@@ -2001,6 +2051,7 @@
       if (lab === 'hunt') setupHuntLab();
       if (lab === 'check') setupCheckLab();
       if (lab === 'walk') setupWalkLab();
+      if (lab === 'drive') setupDriveLab();
       // 循環時鐘不重設：相位保持連續（聲音已排好的拍不會錯位），長度自己平滑逼近新目標
       emit('msg', '從「' + level.zones[z].name + '」重新開始。');
       g.alarm = 0;
@@ -2044,6 +2095,44 @@
       return { t, kind, masked, cover, by };
     };
 
+    // ----- DRIVE（期末版企劃第 3 節）：每幀在規則跑完之後才算，只寫 g.drive／g.driveInfo，不發事件、不碰亂數；任何判定都不讀它 -----
+    const DS = { seg: null, segStart: 0, enter: null, hunted: false, huntStart: 0, pre: null, endAt: null, endFrom: null,
+      retries: g.retries, labSeg: null, labSet: null, labHunt: null };
+    g.drive = K.DRIVE_MODE ? K.DRIVE_MIN : null;
+    g.driveInfo = null;
+    function driveSegNow() {
+      if (DS.labSeg != null) return DS.labSeg;
+      if (g.phase === 'intro') return 0;
+      const m = K.DRIVE_ZONE_SEG;
+      return m[Math.max(0, Math.min(m.length - 1, g.zone | 0))];
+    }
+    function updateDrive() {
+      if (!K.DRIVE_MODE) { g.drive = null; g.driveInfo = null; return; }
+      const t = g.time == null ? 0 : g.time;
+      if (g.retries !== DS.retries) {   // 重來：回到該段的「起」（不滑、不帶追殺）
+        DS.retries = g.retries; DS.seg = null; DS.enter = null; DS.hunted = false; DS.pre = null; DS.endAt = null; DS.endFrom = null;
+      }
+      const seg = driveSegNow();
+      if (seg !== DS.seg) { DS.enter = DS.seg == null ? null : g.drive; DS.seg = seg; DS.segStart = t; }
+      const hunted = DS.labHunt != null ? DS.labHunt : !!g.hunted;
+      if (hunted && !DS.hunted) { DS.pre = g.drive; DS.huntStart = t; DS.endAt = null; DS.endFrom = null; }
+      else if (!hunted && DS.hunted) { DS.endFrom = g.drive; DS.endAt = t; }
+      DS.hunted = hunted;
+      const segT = t - DS.segStart;
+      let v = driveFor(seg, segT, hunted, DS.pre, { enter: DS.enter, huntT: hunted ? t - DS.huntStart : null,
+        endT: DS.endAt == null ? null : t - DS.endAt, endFrom: DS.endFrom }, K);
+      if (DS.labSet != null) v = DS.labSet;
+      g.drive = v;
+      g.driveInfo = { seg, segT, hunted, pre: DS.pre, enter: DS.enter, fixed: DS.labSet != null };
+    }
+    const stepRules = g.step;
+    g.step = function (t, input) { stepRules(t, input); updateDrive(); return g; };
+    if (lab === 'drive') {
+      g.labDriveSeg = function (n) { DS.labSeg = n == null ? null : Math.max(0, Math.min(K.DRIVE_SEGS.length - 1, n | 0)); return g; };
+      g.labDriveSet = function (v) { DS.labSet = v == null ? null : Math.max(K.DRIVE_MIN, Math.min(K.DRIVE_MAX, +v)); return g; };
+      g.labDriveHunt = function (on) { DS.labHunt = on == null ? null : !!on; return g; };
+    }
+
     /** 畫面層每幀取走事件。 */
     g.drain = function () { return g.out.splice(0, g.out.length); };
 
@@ -2054,7 +2143,7 @@
     T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES, causesFor,
     createLevel, buildLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
-    zoneMul, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
+    zoneMul, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
     stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
     forward, yawTo, angDiff, inRect, mulberry32
   };

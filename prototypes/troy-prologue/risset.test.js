@@ -4295,3 +4295,168 @@ test('11/15 加速錯覺第二步退回（設計第 13 節）：每圈拍數一�
   assert.equal(R.createLevel({ T: { MOVES_MODE: false } }).T.RISSET_M, 7, '?moves=0');
   assert.equal(R.createLevel({ T: { RISSET_M: 5 } }).T.RISSET_M, 5);
 });
+
+// ---------- 11/15 期末版企劃第 3 節：DRIVE（driveFor 純函式與 game.drive） ----------
+test('11/15 DRIVE driveFor：段內直線升、1.5 倍目標時長到「止」就停；範圍 0.30～1.00；序與終固定', () => {
+  const S = K.DRIVE_SEGS;
+  assert.equal(S.length, 9);
+  for (let s = 1; s <= 7; s++) {
+    const [from, to, dur] = S[s];
+    assert.ok(near(R.driveFor(s, 0, false, null), from), '段 ' + s + ' 開頭＝起');
+    assert.ok(near(R.driveFor(s, dur * 0.75, false, null), (from + to) / 2), '段 ' + s + ' 一半時間＝中點');
+    assert.ok(near(R.driveFor(s, dur * 1.5, false, null), to), '段 ' + s + ' 1.5 倍＝止');
+    assert.ok(near(R.driveFor(s, dur * 10, false, null), to), '段 ' + s + ' 待很久也停在止');
+    if (s < 7) assert.ok(near(to, S[s + 1][0]), '段 ' + s + ' 的止＝下一段的起');
+  }
+  assert.ok(near(R.driveFor(0, 99, false, null), 0.3));
+  assert.ok(near(R.driveFor(8, 0, false, null), 1));
+  assert.ok(near(R.driveFor({ from: 0.5, to: 0.7, dur: 10 }, 7.5, false, null), 0.6), '可以直接給 {from, to, dur}');
+  // 範圍不出界：亂給的值都夾在 0.30～1.00
+  const rnd = R.mulberry32(5);
+  for (let i = 0; i < 2000; i++) {
+    const s = Math.floor(rnd() * 9), st = rnd() * 300 - 20, h = rnd() < 0.3;
+    const v = R.driveFor(s, st, h, rnd() * 2 - 0.5, { enter: rnd() < 0.5 ? rnd() * 1.4 - 0.2 : null, huntT: h ? rnd() * 5 - 1 : null,
+      endT: rnd() < 0.5 ? rnd() * 6 - 1 : null, endFrom: rnd() * 1.6 - 0.3 });
+    assert.ok(v >= 0.3 - 1e-12 && v <= 1 + 1e-12, '出界：' + v);
+  }
+});
+
+test('11/15 DRIVE driveFor：只增不減（段內、換段滑上）；換段不跳（4 秒滑上）；追殺 2 秒到頂、甩掉 4 秒滑回', () => {
+  const S0 = (s) => K.DRIVE_SEGS[s][0];
+  // 段內與換段：每 0.01 秒取樣，都不往下
+  for (let s = 1; s <= 7; s++) for (const enter of [null, 0.3, S0(s) - 0.15, S0(s) + 0.05]) {
+    let prev = -1;
+    for (let st = 0; st <= K.DRIVE_SEGS[s][2] * 2; st += 0.01) {
+      const v = R.driveFor(s, st, false, null, { enter });
+      assert.ok(v >= prev - 1e-12, '段 ' + s + ' enter ' + enter + ' 在 ' + st.toFixed(2) + ' 秒往下');
+      prev = v;
+    }
+  }
+  // 換段不跳：進段 3（起 0.45）時才 0.35 → 開頭仍是 0.35，4 秒後跟上段內的值，中間每 0.01 秒最多動 0.01 × 0.1
+  assert.ok(near(R.driveFor(3, 0, false, null, { enter: 0.35 }), 0.35), '換段那一刻不跳');
+  assert.ok(near(R.driveFor(3, 4, false, null, { enter: 0.35 }), R.driveFor(3, 4, false, null)), '4 秒滑上');
+  let prev = 0.35;
+  for (let st = 0.01; st <= 6; st += 0.01) { const v = R.driveFor(3, st, false, null, { enter: 0.35 }); assert.ok(v - prev <= 0.01 * 0.1 + 1e-9, '滑太快'); prev = v; }
+  // 進段時已高於「起」：不往下掉
+  assert.ok(near(R.driveFor(3, 0, false, null, { enter: 0.5 }), 0.5));
+  // 追殺：pre 起 2 秒直線升到 1.00；沒給 huntT＝已到頂
+  assert.ok(near(R.driveFor(3, 10, true, 0.5, { huntT: 0 }), 0.5), '追殺開始那一刻不跳');
+  assert.ok(near(R.driveFor(3, 10, true, 0.5, { huntT: 1 }), 0.75));
+  assert.ok(near(R.driveFor(3, 10, true, 0.5, { huntT: 2 }), 1), '2 秒到頂');
+  assert.ok(near(R.driveFor(3, 10, true, 0.5, { huntT: 9 }), 1));
+  assert.ok(near(R.driveFor(3, 10, true, 0.5), 1));
+  // 甩掉：從甩掉那一刻的值 4 秒滑回「沒被追殺時這一刻該有的值」
+  const back = R.driveFor(3, 20, false, null);
+  assert.ok(near(R.driveFor(3, 20, false, null, { endT: 0, endFrom: 1 }), 1), '甩掉那一刻不跳');
+  assert.ok(near(R.driveFor(3, 20, false, null, { endT: 2, endFrom: 1 }), (1 + back) / 2));
+  assert.ok(near(R.driveFor(3, 20, false, null, { endT: 4, endFrom: 1 }), back), '4 秒滑回');
+});
+
+/** 跑一局（σ 0.25 程式玩家，會被追殺、會失敗；失敗就重來，最多 6 次），每幀記 {t, d, zone, hunted, retries}。 */
+function driveRun(seed, T) {
+  const t0 = (seed * 1.37) % 10;
+  const g = R.createLevel({ t0, seed, T: Object.assign({ COVER_MODE: true }, T || {}) });
+  const bot = makeBot({ cover: true, sigma: 0.25, seed });
+  const jr = R.mulberry32(seed * 7 + 3);
+  let t = 2; const rec = [];
+  g.step(t, {}); rec.push({ t, d: g.drive, zone: g.zone, hunted: g.hunted, retries: g.retries });
+  g.step(t, { start: true });
+  while ((g.phase === 'play' || g.phase === 'intro') && t < 400) {
+    t += seed % 2 ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : DT;
+    g.step(t, bot(g)); g.drain();
+    rec.push({ t, d: g.drive, zone: g.zone, hunted: g.hunted, retries: g.retries });
+    if (g.phase === 'fail' && g.retries < 6) g.retry();
+  }
+  return rec;
+}
+
+test('11/15 DRIVE game.drive（整局，程式玩家 σ0.25 × 12 局）：範圍不出界；只增不減（甩掉與重來除外）；每幀變化有上限（換段不跳）；追殺開始 2 秒內到 1.00', () => {
+  let hunts = 0, zoneChanges = 0, retries = 0;
+  const slope = (K.DRIVE_MAX - K.DRIVE_MIN) / K.DRIVE_HUNT_RISE;   // 最陡的是追殺升（0.35／秒）
+  for (let seed = 1; seed <= 12; seed++) {
+    const rec = driveRun(seed);
+    let endAt = -1e9;
+    for (let i = 1; i < rec.length; i++) {
+      const a = rec[i - 1], b = rec[i], dt = b.t - a.t;
+      assert.ok(b.d >= 0.3 - 1e-12 && b.d <= 1 + 1e-12, '出界 ' + b.d);
+      if (b.retries !== a.retries) { retries++; continue; }   // 重來：回該段起（可以往下）
+      if (a.zone !== b.zone) zoneChanges++;
+      if (a.hunted && !b.hunted) endAt = b.t;
+      if (!a.hunted && b.hunted) hunts++;
+      assert.ok(Math.abs(b.d - a.d) <= slope * dt + 1e-9, 'seed ' + seed + ' 在 ' + b.t.toFixed(2) + ' 跳了 ' + (b.d - a.d).toFixed(4));
+      if (b.d < a.d - 1e-12) assert.ok(!b.hunted && b.t - endAt <= K.DRIVE_HUNT_FALL + dt + 1e-9, 'seed ' + seed + ' 在 ' + b.t.toFixed(2) + ' 不是甩掉卻往下');
+    }
+    // 追殺開始後 2 秒（多給一幀）一定到 1.00（中途沒甩掉、沒重來的話）
+    for (let i = 1; i < rec.length; i++) {
+      if (rec[i - 1].hunted || !rec[i].hunted || rec[i - 1].retries !== rec[i].retries) continue;
+      const h0 = rec[i].t;
+      for (let j = i; j < rec.length && rec[j].hunted && rec[j].retries === rec[i].retries; j++) {
+        if (rec[j].t - h0 >= K.DRIVE_HUNT_RISE + 1 / 30) { assert.ok(near(rec[j].d, 1), 'seed ' + seed + ' 追殺 2 秒還沒到頂：' + rec[j].d); break; }
+      }
+    }
+  }
+  assert.ok(hunts >= 3, '取樣裡要有追殺（' + hunts + '）');
+  assert.ok(zoneChanges >= 12, '取樣裡要有換區（' + zoneChanges + '）');
+  assert.ok(retries >= 1, '取樣裡要有重來（' + retries + '）');
+});
+
+test('11/15 DRIVE 重來回到該段的「起」；DRIVE_MODE 關（?drive=0）時 game.drive = null；開場（序）是 0.30；現有區對應企劃的段', () => {
+  const g = R.createLevel({ startZone: 3 });
+  let t = 1;
+  for (; t < 40; t += DT) g.step(t, {});
+  assert.ok(g.drive > K.DRIVE_SEGS[5][0] + 0.01, '窄巷待 39 秒會升：' + g.drive);
+  g.phase = 'fail'; g.retry(); g.step(t, {});
+  assert.ok(near(g.drive, K.DRIVE_SEGS[5][0]), '重來回到段 5 的起：' + g.drive);
+  const off = R.createLevel({ startZone: 2, T: { DRIVE_MODE: false } });
+  for (let u = 1; u < 5; u += DT) off.step(u, {});
+  assert.equal(off.drive, null);
+  const intro = R.createLevel({});
+  intro.step(1, {}); intro.step(30, {});
+  assert.equal(intro.phase, 'intro');
+  assert.ok(near(intro.drive, 0.3));
+  assert.deepEqual(K.DRIVE_ZONE_SEG, [0, 1, 3, 5, 7]);
+  const z4 = R.createLevel({ startZone: 4 }); z4.step(1, {}); z4.step(1 + DT, {});
+  assert.equal(z4.driveInfo.seg, 7);
+});
+
+test('11/15 DRIVE 不影響判定：同一局 DRIVE_MODE 開與關，事件逐條相同（程式玩家 σ0.25 × 6 局）', () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const ev = (on) => {
+      const t0 = (seed * 1.37) % 10;
+      const g = R.createLevel({ t0, seed, T: { COVER_MODE: true, DRIVE_MODE: on } });
+      const bot = makeBot({ cover: true, sigma: 0.25, seed });
+      let t = 2; const out = [];
+      g.step(t, {}); g.step(t, { start: true });
+      while ((g.phase === 'play' || g.phase === 'intro') && t < 300) { t += DT; g.step(t, bot(g)); for (const e of g.drain()) out.push(JSON.stringify(e)); }
+      return out.concat([g.phase, t.toFixed(4), g.player.x.toFixed(6), g.player.z.toFixed(6)]);
+    };
+    assert.deepEqual(ev(true), ev(false), 'seed ' + seed);
+  }
+});
+
+test('11/15 DRIVE 試驗場 ?lab=drive：第 2 區、沒有衛兵、出口擋住；可切段、直接定值、假裝追殺', () => {
+  const g = R.createLevel({ lab: 'drive' });
+  assert.equal(g.lab, 'drive');
+  assert.equal(g.zone, 2);
+  assert.ok(g.guards.every((q) => !q.active));
+  let t = 1;
+  const run = (sec) => { const end = t + sec; for (; t < end; t += DT) g.step(t, {}); };
+  run(1);
+  assert.equal(g.driveInfo.seg, 3);
+  assert.ok(near(g.drive, 0.45, 0.002));
+  g.labDriveSeg(6); run(0.5);
+  assert.equal(g.driveInfo.seg, 6);
+  assert.ok(g.drive < 0.8, '換到段 6 不跳：' + g.drive);
+  run(4);
+  assert.ok(g.drive >= 0.8 - 1e-9, '4 秒滑上段 6 的起：' + g.drive);
+  g.labDriveHunt(true); run(2.05);
+  assert.ok(near(g.drive, 1), '假裝追殺 2 秒到頂');
+  g.labDriveHunt(false); run(4.05);
+  assert.ok(g.drive < 0.9 && g.drive >= 0.8, '甩掉 4 秒滑回：' + g.drive);
+  g.labDriveSet(0.55); run(0.1);
+  assert.ok(near(g.drive, 0.55)); assert.equal(g.driveInfo.fixed, true);
+  g.labDriveSet(2); run(0.1); assert.ok(near(g.drive, 1), '定值也夾在範圍內');
+  g.labDriveSet(null); g.labDriveSeg(null); run(0.1);
+  assert.equal(g.driveInfo.seg, 3); assert.equal(g.driveInfo.fixed, false);
+  assert.equal(R.createLevel({}).labDriveSeg, undefined, '只有 ?lab=drive 才有這些入口');
+});
