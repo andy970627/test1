@@ -93,7 +93,7 @@ const list = document.getElementById('list');
 ITEMS.forEach((it, i) => {
   const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
   let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
-  it.links.forEach(([t, u]) => { h += `<a href="${u}" target="_blank" rel="noopener">${t} ↗</a>`; });
+  it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
   h += '</div>';
   it.qs.forEach(([q, hint, opts, def], k) => {
     const name = it.id + '-' + k;
