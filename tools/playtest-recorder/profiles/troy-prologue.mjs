@@ -175,7 +175,7 @@ export default {
       const T = g.T;
       // audioConst 只留聲音層自己的行為參數（低音餘音長度：巡邏時聲音刻意不排會拖進盲區的低音拍）；
       // 拍點公式與音量常數不再從聲音層拿，期望拍由規則檔產生。rulesT＝遊戲實際用的整份規則常數（含選單覆寫）
-      const rulesT = {}; for (const k in T) if (typeof T[k] === 'number' || typeof T[k] === 'boolean') rulesT[k] = T[k];
+      const rulesT = {}; for (const k in T) if (typeof T[k] === 'number' || typeof T[k] === 'boolean' || typeof T[k] === 'string') rulesT[k] = T[k];
       // coverMode：遊戲實際用的鼓聲模式（rulesT.COVER_MODE 也有；規則檔沒有這個常數時為 false＝舊盲區版）
       return { audioConst: { BASS_TAIL: C.BASS_TAIL }, rulesT, coverMode: T.COVER_MODE === true,
         rules: { CYCLE: T.CYCLE, DYNAMIC: T.DYNAMIC, BLIND: T.BLIND_LEN != null ? T.BLIND_LEN : T.BLIND, BASS_PERIOD: T.BASS_PERIOD, BASS_WIN: T.BASS_WIN,
