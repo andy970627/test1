@@ -4218,23 +4218,25 @@ test('11/15 提示：蹲走提示寫按住 Alt，提示與試驗場說明裡不�
   assert.ok(!/['「][^'\n]*按住 C[^A-Za-z]/.test(src), '字串裡沒有「按住 C」');
 });
 
-test('11/15 弓弦引開 g.noise（?lab=check）：落在踩得上的拍上 0 次查看、拍外 100% 有衛兵朝玩家位置來查看；已在查看就改朝這裡；NOISE_R 外沒人來', () => {
+test('11/15 弓弦引開 g.noise（?lab=check）：落在踩得上的拍上或掩護窗裡 0 次查看（設計 11-14 第 9 節）、其他 100% 有衛兵朝玩家位置來查看；已在查看就改朝這裡；NOISE_R 外沒人來', () => {
   let on = 0, off = 0;
   for (let k = 0; k < 200; k++) {
     const g = R.createLevel({ lab: 'check' });
     const q = g.guards.find((o) => o.id === 'g2b');
-    let t = 0; g.step(t, {});
+    let t = 0; g.step(t, {}); place(g, 28.25, 25.25);   // 躲在影子裡，衛兵不會先注意到人；彈弦的位置另外給（原點，離衛兵 6 公尺）
     const t0 = 0.5 + k * 0.0973;
     while (t < t0) { t += DT; g.step(t, {}); }
     if (q.state !== 'patrol') continue;
     g.drain();
-    const px = g.player.x, pz = g.player.z;
+    const px = 28.25, pz = 21.5;
     const r = g.noise({ t, x: px, z: pz, kind: 'bow' });
     const ev = g.drain();
     const n = ev.find((e) => e.a === 'noise');
     assert.ok(n && n.kind === 'bow' && n.masked === r.masked);
     const cs = ev.filter((e) => e.a === 'check_start');
-    assert.equal(r.masked, R.stepMasked(t, g), '用 stepMasked 判');
+    const inWin = R.blindWindows(t - 1, t + 1, g).some((w) => (t >= w.from - 1e-9 && t < w.to) || (w.kind === 'blind' && t < w.from && w.from - t <= g.T.BLIND_LEAD_GRACE + 1e-9));
+    assert.equal(r.masked, R.stepMasked(t, g) || inWin, '拍上（stepMasked）或掩護窗裡');
+    assert.equal(r.cover, R.stepMasked(t, g) ? 'beat' : inWin ? 'blind' : null);
     if (r.masked) { on++; assert.equal(cs.length, 0, `拍上 t=${t.toFixed(3)} 不該有人來`); assert.equal(r.by, null); }
     else {
       off++;
@@ -4243,14 +4245,34 @@ test('11/15 弓弦引開 g.noise（?lab=check）：落在踩得上的拍上 0 �
       assert.equal(q.state, 'checking');
     }
   }
-  console.log(`[11/15 弓弦引開] 拍上 ${on} 次（查看 0）、拍外 ${off} 次（全部有人來）`);
+  console.log(`[11/15 弓弦引開] 蓋住（拍上或掩護窗）${on} 次（查看 0）、沒蓋住 ${off} 次（全部有人來）`);
   assert.ok(on >= 10 && off >= 10, `兩種都要有樣本：拍上 ${on}、拍外 ${off}`);
+  // 掩護窗裡、離那一擊超過 STEP_WIN（stepMasked 判成沒蓋住）的彈弦：0 次查看
+  let inside = 0;
+  for (let k = 0; k < 40; k++) {
+    const g = R.createLevel({ lab: 'check' });
+    const q = g.guards.find((o) => o.id === 'g2b');
+    let t = 0; g.step(t, {}); place(g, 28.25, 25.25);   // 躲在影子裡，衛兵不會先注意到人；彈弦的位置另外給（原點，離衛兵 6 公尺）
+    while (t < 2 + k * 0.53) { t += DT; g.step(t, {}); }
+    // 走到下一段一般掩護窗裡、離窗頭 STEP_WIN 之後的某一點
+    while (!(g.cycle.blind && !g.cycle.alertBlind && t - g.cycle.start > g.T.STEP_WIN + 0.02 + (k % 5) * 0.08)) { t += DT; g.step(t, {}); }
+    if (q.state !== 'patrol' || R.stepMasked(t, g)) continue;
+    g.drain();
+    const r = g.noise({ t, x: 28.25, z: 21.5 });
+    assert.ok(r.masked && r.cover === 'blind' && r.by === null, `掩護窗內 t−窗頭 = ${(t - g.cycle.start).toFixed(3)}`);
+    assert.equal(g.drain().filter((e) => e.a === 'check_start').length, 0);
+    assert.equal(q.state, 'patrol');
+    inside++;
+  }
+  console.log(`[11/15 弓弦引開] 掩護窗內、離那一擊超過 STEP_WIN 且不在拍上：${inside} 次，查看 0`);
+  assert.ok(inside >= 15, `掩護窗內樣本 ${inside}`);
   // 已在查看：改朝新的位置走
   const g = R.createLevel({ lab: 'check' });
   const q = g.guards.find((o) => o.id === 'g2b');
   let t = 0; g.step(t, {});
   g.labNotice(20, 15);
-  let tt = t; while (R.stepMasked(tt, g)) tt += 0.01;
+  const covered = (u, gg) => R.stepMasked(u, gg) || R.blindWindows(u - 1, u + 1, gg).some((w) => (u >= w.from - 1e-9 && u < w.to) || (w.kind === 'blind' && u < w.from && w.from - u <= gg.T.BLIND_LEAD_GRACE + 1e-9));
+  let tt = t; while (covered(tt, g)) tt += 0.01;
   g.drain();
   const r = g.noise({ t: tt, x: 27, z: 20 });
   assert.equal(r.by, 'g2b');
@@ -4259,7 +4281,7 @@ test('11/15 弓弦引開 g.noise（?lab=check）：落在踩得上的拍上 0 �
   // NOISE_R 外：沒人來
   const g2 = R.createLevel({ lab: 'check' });
   g2.step(0, {});
-  let u = 0; while (R.stepMasked(u, g2)) u += 0.01;
+  let u = 0; while (covered(u, g2)) u += 0.01;
   const q2 = g2.guards.find((o) => o.id === 'g2b');
   const r2 = g2.noise({ t: u, x: q2.x + g2.T.NOISE_R + 1, z: q2.z });
   assert.ok(!r2.masked && r2.by === null && q2.state === 'patrol');

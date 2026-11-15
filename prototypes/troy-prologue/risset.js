@@ -2010,17 +2010,22 @@
     /**
      * 11/15 弓弦引開（第一批原型；設計 2026-11-14-style-and-input-ideas.md 第 1.3 節、agent-notes/audio.md 弓弦那段）：
      * 玩家在時刻 t、位置 (x, z) 發出一聲（kind 目前只有 'bow'＝空彈弓弦）。只給 ?lab=check 用，預設版不呼叫。
-     *   被蓋住＝stepMasked(t)（±STEP_WIN 內有踩得上的拍）：什麼都不發生。
+     *   被蓋住＝stepMasked(t)（±STEP_WIN 內有踩得上的拍），或落在掩護窗裡（含一般掩護窗前 BLIND_LEAD_GRACE 寬限）：什麼都不發生。
      *   沒蓋住：NOISE_R 內最近的衛兵朝 (x, z) 來查看（聲音從你身上發出，他會朝你來）——
      *     巡邏中 → 進查看（check_start，cause 'noise'）；已在查看 → 改朝這裡走（check_retarget，why 'noise'）；其他狀態不理。
-     * 事件 sfx 'noise' {kind, x, z, masked, by}；回傳 {t, kind, masked, by}（by＝來查看的衛兵 id，沒有＝null）。
+     * 事件 sfx 'noise' {kind, x, z, masked, cover, by}；回傳 {t, kind, masked, cover, by}（cover：'beat'｜'blind'｜null）（by＝來查看的衛兵 id，沒有＝null）。
      */
     g.noise = function (o) {
       o = o || {};
       const t = o.t == null ? (g.time == null ? 0 : g.time) : o.t;
       const pl = g.player, x = o.x == null ? (pl ? pl.x : 0) : o.x, z = o.z == null ? (pl ? pl.z : 0) : o.z, kind = o.kind || 'bow';
       if (g.phase !== 'play') return null;
-      const masked = stepMasked(t, g);
+      // 11/15 設計席裁決（2026-11-14-style-and-input-ideas.md 第 9 節）：落在掩護窗裡也算蓋住，整段 BLIND_LEN 都算（和跑、衝刺、暗殺一致；
+      // 一般掩護窗前 BLIND_LEAD_GRACE 的寬限也照衝刺、暗殺算進來）。cover：'beat'＝拍上、'blind'＝掩護窗、null＝沒蓋住
+      const inBlind = blindWindows(t - blindLen(K) - 0.01, t + K.BLIND_LEAD_GRACE + 1e-9, g)
+        .some((w) => (t >= w.from - 1e-9 && t < w.to) || (w.kind === 'blind' && t < w.from && w.from - t <= K.BLIND_LEAD_GRACE + 1e-9));
+      const cover = stepMasked(t, g) ? 'beat' : inBlind ? 'blind' : null;
+      const masked = cover != null;
       let by = null;
       if (!masked) {
         let best = null, bd = Infinity;
@@ -2035,8 +2040,8 @@
           else retargetCheck(best, t, { x, z }, 'noise');
         }
       }
-      emit('sfx', 'noise', { kind, x, z, masked, by });
-      return { t, kind, masked, by };
+      emit('sfx', 'noise', { kind, x, z, masked, cover, by });
+      return { t, kind, masked, cover, by };
     };
 
     /** 畫面層每幀取走事件。 */
