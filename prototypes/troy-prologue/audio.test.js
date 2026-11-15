@@ -144,3 +144,32 @@ test('敲暗號回應：貼著木馬等於 KNOCK_REPLY_GAIN、單調遞減、R �
   assert.strictEqual(A.knockReplyGain(5, 10, 1), 0.5);
   assert.strictEqual(C.KNOCK_REPLY_R, 20, '和試驗場「20 公尺外同伴聽不到」同一個數');
 });
+
+// 催促 DRIVE（設計 2026-11-12-free-hit-schedule 第 13.2 節；試聽頁 H0～H4）
+test('催促 DRIVE：0 時前 nL + 2 條和現行新鼓聲完全相同、多的三條是 0', () => {
+  const R = require('./risset.js'), K = Object.assign({}, R.T, { RISSET_M: 7 }), rg = (k, pp) => R.layerGain(k, pp, false, K);
+  for (const p of [0, 0.13, 0.5, 0.87]) {
+    const a = A.driveDrumGains(p, 4, rg, 0, K.MASK_GAIN).g, b = A.newDrumGains(p, 4, rg);
+    for (let j = 0; j < 6; j++) assert.ok(Math.abs(a[j] - b[j]) < 1e-12, `p=${p} j=${j}`);
+    assert.deepStrictEqual(a.slice(6), [0, 0, 0]);
+  }
+});
+
+test('催促 DRIVE：0～1 時踩得上的拍音量不動、都 ≥ 最大聲那條 0.4 倍；1 時最大聲那條快約四倍；最上面那條淡到零', () => {
+  const R = require('./risset.js'), K = Object.assign({}, R.T, { RISSET_M: 7 }), rg = (k, pp) => R.layerGain(k, pp, false, K);
+  for (const d of [0, 0.25, 0.5, 0.75, 1]) {
+    let pos = 0;
+    for (let i = 0; i < 1000; i++) {
+      const p = i / 1000, g = A.driveDrumGains(p, 4, rg, d, K.MASK_GAIN).g, base = A.newDrumGains(p, 4, rg), mx = Math.max(...g);
+      pos += g.indexOf(mx) + p;
+      for (let k = 0; k < 4; k++) {
+        if (rg(k, p) < K.MASK_GAIN) continue;
+        assert.ok(Math.abs(g[k + 1] - base[k + 1]) < 1e-12, `d=${d} p=${p} 第 ${k} 層被動到`);
+        assert.ok(g[k + 1] >= 0.4 * mx, `d=${d} p=${p} 第 ${k} 層 ${g[k + 1].toFixed(3)} < 0.4 × ${mx.toFixed(3)}`);
+      }
+    }
+    if (d === 1) assert.ok(pos / 1000 > 4.8, `最大聲平均位置 ${pos / 1000}（現行約 3，多 2 層＝快四倍）`);
+    const top = A.driveDrumGains(1 - 1e-9, 4, rg, d, K.MASK_GAIN).g;
+    assert.ok(top[8] <= 0.01 * Math.max(...top), `d=${d} 最上面那條退場 ${top[8]}`);
+  }
+});

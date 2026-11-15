@@ -229,7 +229,14 @@
     DN_SIG_L: 1.26,            // 鐘形寬度（以「層」為單位；U1 的 0.21 × 6）；中心對準規則各層的中心
     DN_SCALE: 0.9,             // 整體音量倍數（每個瞬間各條總和先縮放回規則的總和，再乘這個；1 時拍子變密、整段比舊版大 3.1 dB）
     DN_MIN_GAIN: 0.003,        // 低於這個音量的拍不排（約 −50 dB，進退場淡到零）
-    // 第二步「三對二的強拍」（同文件第 13.3 節）：新鼓聲、不在追殺時。比例照第三輪試聽 V4（V4_SCALE、V4_ACC_A、V4_ACC_B、音色），每圈拍數讀 state.T.RISSET_M
+    // 催促 DRIVE（設計 2026-11-12-free-hit-schedule 第 13.2 節；只有試聽頁 setDrive 會開，遊戲預設 0、輸出不變）：
+    // 在新鼓聲最快那條上面再疊兩條（兩倍、四倍快）＋最上面一條淡到零的；不是踩得上的拍的那幾條，音量往「中心往快的一邊移 2 層」的鐘形過去
+    DRIVE_SHIFT: 2,            // DRIVE = 1 時鐘形中心往快的一邊移幾層（2 層＝最明顯的鼓快四倍）
+    DRIVE_PEAK: 1.3,           // 疊上去那幾條的峰值＝現在最大聲那條 × 這個值（但不超過「最輕的踩得上的拍 ÷ 0.4」× 0.95，守 0.4 倍檢查）【假設】
+    DRIVE_MIN_GAIN: 0.01,      // 疊上去的快層低於這個音量就不排（太密的拍省下來，約 −40 dB）
+    DRIVE_LOW_X: 0.12,         // 踩得上的拍在 DRIVE = 1 時的音色（playHit 的速度位置；0＝低鼓、0.375＝框鼓）：較低較厚
+    DRIVE_HIGH_X: 0.55,        // 其他鼓在 DRIVE = 1 時的音色：框鼓偏手拍，較亮較急
+    // 第二步「三對二的強拍」11/14 退回（設計 2026-11-12-free-hit-schedule 第 13 節）：新鼓聲不再加強拍、主鼓不再 ×0.6；每圈拍數照舊讀 state.T.RISSET_M
     DN_ROLL_CAP: 0.4,          // 每圈末（ILL_ROLL_FROM 起）最快那條漸強的終點：min(最大聲那條, 總和 × 0.4)
     DN_ROLL_MUL: 0.5,          // 漸強終點再乘這個值（V3 的做法：漸強的最後幾拍是那一擊前一秒內最響的）
     DN_PRE: 1, DN_PRE_DB: -9,  // 那一擊之前 DN_PRE 秒，全部鼓一起退 DN_PRE_DB（一起退，各拍的相對大小不變，踩得上的拍照樣聽得到）
@@ -405,6 +412,26 @@
     for (j = 0; j < nS; j++) { var d = ((j + p) / nS - 0.5) / sx; g.push(Math.exp(-d * d)); sa += g[j]; }
     for (j = 0; j < nS; j++) g[j] = sa > 0 ? g[j] * sc / sa * C.DN_SCALE : 0;
     return g;
+  }
+  // 催促 DRIVE（13.2）：新鼓聲 nL + 5 條的音量。第 j 條＝規則第 j − 1 層（j = nL + 2、nL + 3 是再快兩倍、四倍的層，j = nL + 4 是淡到零的那條）。
+  // 規則認定踩得上的拍（規則音量 ≥ maskGain）原封不動用 newDrumGains 的值；其他條從原本的音量往「中心移 DRIVE_SHIFT·drive 層」的鐘形過去。
+  // 踩得上與否用規則音量在門檻附近（0.6～1 倍門檻）平滑過渡，免得跨門檻時音量跳一下。回傳 { g, w }（w＝每條「當作踩得上的拍」的權重）
+  function driveDrumGains(p, nL, ruleGain, drive, maskGain) {
+    var d = Math.max(0, Math.min(1, +drive || 0)), mg = maskGain == null ? 0.3 : +maskGain, nS = nL + 2, N = nL + 5;
+    var base = newDrumGains(p, nL, ruleGain), g = [], w = [], j, mx = 0, minM = Infinity, sb = 0;
+    for (j = 0; j < nS; j++) mx = Math.max(mx, base[j]);
+    for (j = 0; j < N; j++) {
+      var k = j - 1, rg = (k >= 0 && k < nL) ? ruleGain(k, p) : 0, wj = Math.max(0, Math.min(1, (rg - 0.6 * mg) / (0.4 * mg)));
+      w.push(wj); if (rg >= mg && j < nS) minM = Math.min(minM, base[j]);
+    }
+    var pk = mx * C.DRIVE_PEAK; if (minM < Infinity) pk = Math.min(pk, minM / 0.4 * 0.95);
+    var c = nS / 2 + C.DRIVE_SHIFT * d, dA = Math.min(1, 2 * d);   // 中心照 DRIVE 等速移；音量在 DRIVE 0.5 就換到新鐘形（0.5 時最明顯的鼓已快兩倍）
+    for (j = 0; j < N; j++) {
+      var b = j < nS ? base[j] : 0, x = (j + p - c) / C.DN_SIG_L, bell = pk * Math.exp(-x * x);
+      var mix = (1 - dA) * b + dA * bell;
+      g.push(w[j] * b + (1 - w[j]) * mix);
+    }
+    return { g: g, w: w };
   }
   function phaseAt(t, T, t0) { return frac((t - t0) / T); }
   // 第 k 層、第 c 個循環的所有拍點（絕對時間），規則與測試可用
@@ -811,7 +838,7 @@
     function minGain() { var K = RK(); return (K && isFinite(K.BEAT_MIN_GAIN)) ? +K.BEAT_MIN_GAIN : C.MIN_GAIN; }
     // 第 k 層在相位 p 的音量：以規則的 layerGain 為準（追殺時 5 層都走鐘形），沒有規則才用備援鐘形
     // ---------- 加速感試聽（聲音測試頁專用；ill 全為預設時，所有分支都不走，輸出和以前逐樣本相同） ----------
-    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false, v: false, fake: false, v3: false, v4: false, noHit: false, free: false };
+    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false, v: false, fake: false, v3: false, v4: false, noHit: false, free: false, drive: 0 };
     function ownBell(k, p, nL) { var K = RK(), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA; return bell((k + p) / nL, sig * nLayers() / nL); }
     function asymBell(x) { var d = x - C.ILL_CENTER, sg = d > 0 ? C.ILL_SIG_FAST : C.ILL_SIG_SLOW; return Math.exp(-(d / sg) * (d / sg)); }
     // S2：鐘形改成左右不對稱（偏快），再把每個瞬間的四層總和縮放回現行的總和——形狀照新的走，整體音量的起伏和現行一樣
@@ -830,7 +857,16 @@
       if (dnSlowSrc !== tables[0]) { dnSlowSrc = tables[0]; dnSlow = tables[0] ? tables[0].filter(function (v, i) { return i % 2 === 0; }) : null; }
       return dnSlow;
     }
-    function dnGains(p, hunted) { return newDrumGains(p, baseLayerCount(hunted), function (k, pp) { return curGain(k, pp, hunted); }); }
+    function dnGains(p, hunted) {
+      var rg = function (k, pp) { return curGain(k, pp, hunted); };
+      if (ill.drive > 0 && !hunted) return driveDrumGains(p, baseLayerCount(hunted), rg, ill.drive, maskG()).g;   // 13.2 試聽：多三條
+      return newDrumGains(p, baseLayerCount(hunted), rg);
+    }
+    function maskG() { var K = RK(); return (K && isFinite(K.MASK_GAIN)) ? +K.MASK_GAIN : 0.3; }
+    function driveTimbre(j, p, nL) {    // 踩得上的拍（權重 w）→ 較低較厚；其他 → 較亮；都隨 DRIVE 從原本的框鼓過去
+      var w = driveDrumGains(p, nL, function (k, pp) { return curGain(k, pp, false); }, ill.drive, maskG()).w[j] || 0, d = ill.drive;
+      return C.ILL_TIMBRE_X + d * (w * (C.DRIVE_LOW_X - C.ILL_TIMBRE_X) + (1 - w) * (C.DRIVE_HIGH_X - C.ILL_TIMBRE_X));
+    }
     function dnGain(j, p, t, c, hunted) {
       var gs = dnGains(p, hunted), nS = gs.length, g = gs[j];
       if (ill.free) return fGain(j, t, gs, hunted);   // 第三步試聽 G2、G3：那一擊與預告照時間表，每圈起點不再發生任何事
@@ -844,19 +880,6 @@
         if (tAt(c + 1) - t < C.DN_PRE) g *= Math.pow(10, C.DN_PRE_DB / 20);
       }
       return g;
-    }
-    // 第二步「三對二的強拍」：新鼓聲、不在追殺（第 18 節逃／躲照舊）。每條鼓自己的拍子六拍一組：第 0、2、4 拍加一下較低的鼓（×V4_ACC_A），
-    // 第 0、3 拍加一下拍手（×V4_ACC_B）；都只是在已有的拍子上換一種鼓加重，跟著那條鼓的音量（含那一擊前後的處理）。每圈拍數照 state.T.RISSET_M
-    function dnStep2() { var K = lastState && lastState.T; return !!(K && K.DRUMS !== 'old' && (K.DRUMS === 'new' || K.MOVES_MODE === true) && K.RISSET_M === 6) && hm.mode === 'none' && !hm.back && !st.hunted; }
-    function dnAccents(key, P, t, k, m, g0) {
-      var dest = movesOn() ? beatBus : rhythmBus, specs = [], mm = ((m % 6) + 6) % 6;
-      if (mm % 2 === 0) specs.push(['A', C.V4_ACC_A_X, g0 * C.V4_ACC_A, C.V4_ACC_A_PM]);
-      if (mm % 3 === 0) specs.push(['B', C.V4_ACC_B_X, g0 * C.V4_ACC_B, 0]);
-      specs.forEach(function (sp) {
-        if (sp[2] < C.DN_MIN_GAIN || evs[key + sp[0]]) return;
-        var le = log ? { type: 'accent', which: sp[0], k: k, n: m, t: t, g: sp[2] } : null; if (le) log.push(le);
-        addEvent(key + sp[0], P, dest, function (tt, out) { playHit(out, sp[1], tt, sp[2], sp[3]); }, true, le);
-      });
     }
     // ---------- 第三步試聽 G2、G3：最響一擊自己的時間表（只有 setIllusion({ free: true }) 會走；遊戲不呼叫，輸出不變） ----------
     // 每一擊記成累計相位 P（哪一圈的哪一拍），一圈長度變了時刻跟著移（和現行釘在 p = 0 同一種做法，重排機制沿用）
@@ -928,10 +951,10 @@
         rollFrom: a.next ? a.next.rollFrom : null, gapCyc: a.prev && a.next ? +(a.next.P - a.prev.P).toFixed(2) : null, blindLen: BL };
     }
     function scheduleBeatsNew(from, end, ws) {
-      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + 2;
+      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + (ill.drive > 0 && !st.hunted ? 5 : 2);   // DRIVE：多疊三條
       if (tables.length < nL) refreshTables();
       var M0 = tables[0] ? tables[0].length : ruleM();
-      while (tables.length < nL + 1) tables.push(ownTable(tables.length, M0));   // 最上面那條：規則表再往上一層（拍數照第 0 層擴展）
+      while (tables.length < nS - 1) tables.push(ownTable(tables.length, M0));   // 最上面那條：規則表再往上一層（拍數照第 0 層擴展）；DRIVE 時再多三層
       for (var j = 0; j < nS; j++) {
         var k = j - 1, tab = dnTab(k);
         if (!tab) continue;
@@ -943,13 +966,11 @@
             if (t < from || t >= end || inWins(t, ws) || gateR.forced) continue;
             var g = dnGain(j, p, t, c, st.hunted);
             if (hm.mode !== 'none' || hm.back) { var hk = hideKeep(k, p, st.hunted); g *= hk * rissetFade(t); if (hk < 1 && g < C.HIDE_OTHER_MIN) continue; }   // 第 18 節：躲、甩掉
-            if (g < C.DN_MIN_GAIN) continue;
+            if (g < C.DN_MIN_GAIN || (j >= nL + 2 && g < C.DRIVE_MIN_GAIN)) continue;   // DRIVE 疊上去的快層門檻較高（太密）
             var le = log ? { type: 'beat', k: k, n: nn, c: c, t: t, p: p, g: g, drums: 'new' } : null;
             if (le) log.push(le);
-            var s2 = dnStep2(), gm = s2 ? g * C.V4_SCALE : g;   // 第二步：主鼓 ×0.6
-            if (le) le.g = gm;
-            (function (g) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, C.ILL_TIMBRE_X, tt, g); }, true, le); })(gm);
-            if (s2) dnAccents(key, P, t, k, k < 0 ? n : nn, g * C.V4_SCALE);
+            var xT = ill.drive > 0 && !st.hunted ? driveTimbre(j, p, nL) : C.ILL_TIMBRE_X;   // 13.2 試聽：踩得上的拍換較低較厚的鼓、疊上去的快層較亮
+            (function (g, x) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(g, xT);
           }
         }
       }
@@ -2737,6 +2758,8 @@
       bowDraw: bowDraw, bowRelease: bowRelease, bowPluck: bowPluck, bowCancel: bowCancel, bowInfo: bowInfo,
       // 敲暗號（畫面角色 ?lab=horse 用；預設版不呼叫）
       knock: knock, horseReply: horseReply,
+      // 催促 DRIVE 試聽（13.2；只有試聽頁呼叫，遊戲預設 0）：0～1，可每幀呼叫（不重排已排好的拍，之後的拍照新值）
+      setDrive: function (v) { ill.drive = Math.max(0, Math.min(1, +v || 0)); }, getDrive: function () { return ill.drive; },
       phase: function (t) { return frac(Pof(t == null ? ctx.currentTime : t)); },
       cyclePhase: function (t) { return Pof(t == null ? ctx.currentTime : t); },   // 累計相位（測試用）
       timeAtPhase: function (P) { return tAt(P); },
@@ -3028,5 +3051,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
 });

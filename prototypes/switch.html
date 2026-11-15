@@ -9,10 +9,21 @@
 /* 顏色照設計系統「Odyssey 音樂系列」tokens */
 :root { --night:#07080c; --panel:#0e0f15; --control:#12131a; --on-fire:#1a1008; --line:#2a2c38; --ash:#d6cfc2; --dim:#8a8478; --fire:#f0a85a; }
 body { margin:0; background:var(--night); color:var(--ash); font:15px/1.6 "Noto Sans TC", system-ui, sans-serif; }
-main { max-width:760px; margin:0 auto; padding:20px 16px 48px; }
-h1 { color:var(--fire); font-size:22px; margin:0 0 4px; }
+main { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
+/* 電腦螢幕：左欄整關與試聽、右欄試驗場清單；窄螢幕回單欄 */
+.grid { display:grid; gap:12px; align-items:start; }
+@media (min-width: 960px) { .grid { grid-template-columns: 1fr 1fr; } }
+.grid section { margin-bottom:0; }
+.col { display:grid; gap:12px; }
+.labs { display:grid; gap:6px; }
+.labs a { display:grid; grid-template-columns: 11em 1fr; gap:2px 12px; align-items:baseline; background:var(--control); border:1px solid var(--line); color:var(--ash); text-decoration:none; padding:7px 10px; }
+.labs a:hover { border-color:var(--fire); }
+.labs a b { font-weight:600; color:var(--fire); }
+.labs a span { color:var(--dim); font-size:13px; }
+.labs h3 { margin:8px 0 2px; font-size:13px; color:var(--dim); font-weight:600; letter-spacing:.1em; }
+h1 { color:var(--fire); font-size:26px; margin:0 0 4px; }
 h2 { font-size:16px; margin:0 0 8px; color:var(--fire); }
-p.note { color:var(--dim); font-size:13px; margin:0 0 16px; }
+p.note { color:var(--dim); font-size:14px; margin:0 0 16px; }
 section { background:var(--panel); border:1px solid var(--line); border-radius:0; padding:12px 14px; margin-bottom:12px; }
 label { display:inline-flex; align-items:center; gap:6px; margin:4px 14px 4px 0; }
 select { background:var(--control); color:var(--ash); border:1px solid var(--line); border-radius:0; padding:3px 6px; font:inherit; }
@@ -28,33 +39,21 @@ small { color:var(--dim); }
   <h1>試玩切換台</h1>
   <p class="note">本機用（要先開本機伺服器）。每個按鈕都在新分頁打開；遊戲裡的實驗開關（相位條、試玩數據摘要等）仍在開場字卡右邊。</p>
 
+  <div class="grid">
+  <div class="col">
   <section>
     <h2>木馬之夜：整關</h2>
-    <label><select id="moves"><option value="">跑蹲版（預設，按住 Shift 跑、C 蹲）</option><option value="0">報告版（?moves=0，報告數字用這個）</option></select></label><br>
+    <label><select id="moves"><option value="">跑蹲版（預設，按住 Shift 跑、Alt 蹲）</option><option value="0">報告版（?moves=0，報告數字用這個）</option></select></label><br>
     <label><input type="checkbox" id="drums"> 舊鼓聲（?drums=old；報告版本來就是舊鼓聲）</label><br>
     <label><input type="checkbox" id="horse"> 木馬新內容（腹中練習、木馬陰影、共鳴、結尾回頭）</label><br>
     <label>從第 <select id="zone"><option value="">0（開場）</option><option>1</option><option>2</option><option>3</option><option>4</option></select> 區開始</label>
     <label><input type="checkbox" id="tel"> 記錄試玩數據</label>
     <label><input type="checkbox" id="mute"> 靜音</label>
     <label><input type="checkbox" id="clean"> 錄影模式（不帶出存過的除錯開關、不放說明欄）</label><br>
+    <label><input type="checkbox" id="reveal"> 照亮場景版（?reveal=1：平常很暗，最響的一擊照出衛兵；[ ] 調暗度）</label><br>
     <a class="btn go" id="play" target="_blank">開始玩</a> <code id="url"></code>
   </section>
 
-  <section>
-    <h2>木馬之夜：試驗場</h2>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=belly">腹中練習</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=horse">木馬共鳴＋敲暗號（T）</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=run">跑</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=crouch">蹲</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=listen">屏息聽</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=hunt">追殺</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=check">查看</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=flash">最響一擊照亮場景</a>
-    <br>走法：<a class="btn" target="_blank" href="troy-prologue/index.html?lab=walk&amp;step=glide">P0 現狀</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=walk&amp;step=stride">P1 步子跟著鼓</a>
-    <a class="btn" target="_blank" href="troy-prologue/index.html?lab=walk&amp;step=manual">P2 圈內自己踩</a>
-    <br><small>試驗場裡按 H（或畫面右邊的「說明」）打開說明欄：這一頁在試什麼、面板數字的意思、試玩題目。</small>
-  </section>
 
   <section>
     <h2>加速感試聽</h2>
@@ -77,6 +76,28 @@ small { color:var(--dim); }
     <h2>其他</h2>
     <a class="btn" target="_blank" href="index.html">原本的總首頁</a>
   </section>
+  </div>
+  <div class="col">
+  <section>
+    <h2>木馬之夜：試驗場</h2>
+    <div class="labs">
+      <a target="_blank" href="troy-prologue/index.html?lab=belly"><b>腹中練習</b><span>站定後的第一步有沒有踩在鼓點上</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=horse"><b>木馬共鳴＋敲暗號</b><span>T 跟著拍敲，三下＝引開、兩下＝現在；共鳴隨距離變小</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=run"><b>跑</b><span>Shift 按住跑：只有最響的一擊蓋得住</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=crouch"><b>蹲</b><span>Alt 按住蹲：慢但輕，矮東西擋得住視線</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=listen"><b>屏息聽</b><span>空白鍵按住：聽衛兵從哪個方向來</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=hunt"><b>追殺</b><span>聽追兵的腳步，躲開他的搜索</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=check"><b>查看</b><span>N／M 製造聲響，讓走過來查看的衛兵找不到你</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=flash"><b>最響一擊照亮場景</b><span>那一擊照出衛兵輪廓（整關版勾左邊「照亮場景版」）</span></a>
+      <h3>走法（比三種）</h3>
+      <a target="_blank" href="troy-prologue/index.html?lab=walk&amp;step=glide"><b>P0 現狀</b><span>按住滑著走</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=walk&amp;step=stride"><b>P1 步子跟著鼓</b><span>按住走，一步落在一個鼓點</span></a>
+      <a target="_blank" href="troy-prologue/index.html?lab=walk&amp;step=manual"><b>P2 圈內自己踩</b><span>靠近衛兵時一步按一下</span></a>
+    </div>
+    <small>試驗場裡按 H（或畫面右邊的「說明」）打開說明欄；每頁開場與面板最上面有「測／操作／看」三行。</small>
+  </section>
+  </div>
+  </div>
 </main>
 <script>
 const $ = id => document.getElementById(id);
@@ -89,6 +110,7 @@ function gameUrl() {
   if ($('tel').checked) q.set('telemetry', '1');
   if ($('mute').checked) q.set('mute', '1');
   if ($('clean').checked) q.set('clean', '1');
+  if ($('reveal').checked) q.set('reveal', '1');
   const s = q.toString();
   return 'troy-prologue/index.html' + (s ? '?' + s : '');
 }
@@ -97,7 +119,7 @@ function refresh() {
   $('listen').href = 'troy-prologue/audio-test.html?ill=' + $('ill').value + '&cycle=' + $('cyc').value;
 }
 // 記住上次的選擇（只存在這台電腦的瀏覽器；存不了就用預設）
-const KEYS = ['moves', 'drums', 'horse', 'zone', 'tel', 'mute', 'clean', 'ill', 'cyc'];
+const KEYS = ['moves', 'drums', 'horse', 'zone', 'tel', 'mute', 'clean', 'reveal', 'ill', 'cyc'];
 try { const s = JSON.parse(localStorage.getItem('switch-board') || '{}'); KEYS.forEach(k => { if (k in s) { const el = $(k); if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; } }); } catch (e) {}
 document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', () => {
   refresh();

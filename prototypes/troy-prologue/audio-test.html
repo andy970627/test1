@@ -5,6 +5,15 @@
 :root { --night:#07080c; --panel:#0e0f15; --control:#12131a; --on-fire:#1a1008; --line:#2a2c38; --ash:#d6cfc2; --dim:#8a8478; --fire:#f0a85a; --alarm:#c23a2c; --moon:#9fb0d8; }
 body { margin:0; background:var(--night); color:var(--ash); font:15px/1.6 "Noto Sans TC", system-ui, sans-serif; }
 main { max-width:820px; margin:0 auto; padding:20px 16px 40px; }
+/* 寬螢幕版面（畫面角色 11/15，只動版面）：開始／音量橫跨上方；下面左欄節奏圖（捲動時黏在上方）、右欄其他面板；窄螢幕照舊單欄 */
+@media (min-width: 1200px) {
+  main { max-width:1360px; display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(0, 1fr); column-gap:16px; grid-auto-flow:row dense; align-items:start; }
+  main > :not(section) { grid-column:1 / -1; }
+  main > section:nth-of-type(1) { grid-column:1 / -1; }
+  main > section:nth-of-type(2) { grid-column:1; }
+  main > section:nth-of-type(2) { grid-row:span 6; position:sticky; top:12px; }
+  main > section:nth-of-type(n+3) { grid-column:2; }
+}
 h1 { font-size:20px; margin:0 0 4px; color:var(--fire); }
 p.note { color:var(--dim); margin:0 0 16px; font-size:13px; }
 section { background:var(--panel); border:1px solid var(--line); border-radius:0; padding:12px 14px; margin-bottom:12px; }
@@ -57,18 +66,19 @@ input[type=range] { flex:1; }
   </section>
   <section>
     <b>加速感試聽（設計 2026-11-11-illusion-not-heard 第 10.1 節，第三輪）</b>
-    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="G0">G0 遊戲現在的鼓</option><option value="G1">G1 遊戲現在的鼓（一圈 4.5～6.5 秒來回變）</option><option value="G2">G2 最響一擊解開（第一步的鼓）</option><option value="G3">G3 最響一擊解開＋三對二（第二步的鼓）</option><option value="u1">U1 六層、淡到零（對照）</option><option value="v0">V0 不放最響的一擊</option><option value="v1">V1 最響一擊不固定</option><option value="v2">V2 加假的</option><option value="v3">V3 最響一擊拉回來</option><option value="v4">V4 三對二</option><option value="g1">遊戲版第一步（新鼓聲）</option><option value="g2">遊戲版第二步（新鼓聲＋三對二強拍）</option></select></label>
+    <label>版本 <select id="ill"><option value="now" selected>現行</option><option value="H0">H0 遊戲現在的鼓（每圈 7 拍）</option><option value="H1">H1 催促 0.5</option><option value="H2">H2 催促 1</option><option value="H3">H3 催促 60 秒內 0 升到 1</option><option value="H4">H4 催促分四階、每 15 秒一階</option><option value="G0">G0 已暫緩・遊戲的鼓（第二步）</option><option value="G1">G1 已暫緩・一圈 4.5～6.5 秒來回</option><option value="G2">G2 已暫緩・最響一擊解開（第一步的鼓）</option><option value="G3">G3 已暫緩・最響一擊解開＋三對二</option><option value="u1">U1 六層、淡到零（對照）</option><option value="v0">V0 不放最響的一擊</option><option value="v1">V1 最響一擊不固定</option><option value="v2">V2 加假的</option><option value="v3">V3 最響一擊拉回來</option><option value="v4">V4 三對二</option><option value="g1">遊戲版第一步（新鼓聲）</option><option value="g2">遊戲版第二步（新鼓聲＋三對二強拍）</option></select></label>
     <label>層數 <select id="illL"><option value="6" selected>6</option><option value="8">8</option></select></label>
     <label>循環 <select id="illT"><option value="10" selected>10 秒（原本）</option><option value="12">12 秒（附近沒有衛兵）</option><option value="6">6 秒（遊戲裡的實況）</option><option value="20">20 秒</option></select></label>
-    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=G0|G1|G2|G3|u1|v0|v1|v2|v3|v4|g1|g2&amp;cycle=12|6|20&amp;layers=6|8。G0、G2、G3、V4 預設一圈 6 秒（遊戲裡實際 5～6.5 秒），「循環」選單可切 12 秒（網址 &amp;cycle=12）；G1 在 4.5～6.5 秒之間 40 秒來回一次。G0～G3 用的是遊戲的規則常數（risset.js），和遊戲同一套鼓。</div>
+    <div class="note">選了試聽版會打開殘響掩護（保留最響的一擊）。沒有衛兵、沒有判定，只聽。網址可帶 ?ill=H0|H1|H2|H3|H4|G0|G1|G2|G3|u1|v0|v1|v2|v3|v4|g1|g2&amp;cycle=12|6|20&amp;layers=6|8。H0～H4（設計第 13 節：催促 DRIVE 在最快那條上面疊兩倍、四倍快的層，踩得上的拍不動、換較低較厚的鼓）和 G0、G2、G3、V4 預設一圈 6 秒（遊戲裡實際 5～6.5 秒），「循環」選單可切 12 秒（網址 &amp;cycle=12）；G1 在 4.5～6.5 秒之間 40 秒來回一次。G0～G3 用的是遊戲的規則常數（risset.js），和遊戲同一套鼓。</div>
     <label><input id="vnext" type="checkbox"> 顯示離下一次最響一擊幾秒</label> <label><input id="vreal" type="checkbox"> 顯示這一次是真的還是假的</label>（試聽時先關著）
     <div class="note" id="vinfo"></div>
+    <div class="note" id="driveNow"></div>
     <div class="note" id="illinfo">—</div>
   </section>
   <section>
     <b>「衝」（設計 2026-11-12-free-hit-schedule 第 2 節；只量時機，不接任何規則）</b>
     <div><button id="dash">衝（F 鍵）</button> <button id="dashClear">清除紀錄</button></div>
-    <div class="note">G0～G3 播的時候按。聽到越打越密、覺得最響的一擊要來了就按。掩護窗＝那一擊起 0.6 秒，前面 0.15 秒也算（寬限）。已經扣掉耳機或喇叭的輸出延遲。</div>
+    <div class="note">H0～H4、G0～G3 播的時候按。聽到越打越密、覺得最響的一擊要來了就按。掩護窗＝那一擊起 0.6 秒，前面 0.15 秒也算（寬限）。已經扣掉耳機或喇叭的輸出延遲。</div>
     <div class="note" id="dashCyc">—</div>
     <div class="note" id="dashSum">—</div>
     <div class="note" id="dashLog"></div>
@@ -132,13 +142,21 @@ input[type=range] { flex:1; }
   var ILL = { now: {}, s1: { timbre: true }, s2: { bell: true }, s3: { timbre: true, bell: true },   // s1、s2 只留網址相容
     u1: { u: true }, u2: { u: true, pitch: true }, u3: { u: true, pitch: true, rise: true, shep: true }, u4: { u: true, pitch: true, roll: true },   // s3、u2～u4 只留網址相容
     v0: { u: true, noHit: true }, v1: { u: true, v: true }, v2: { u: true, v: true, fake: true }, v3: { u: true, v: true, v3: true }, v4: { u: true, v: true, v4: true },
-    g1: {}, g2: {}, G0: {}, G1: {}, G2: { free: true }, G3: { free: true } };   // 遊戲版：不用試聽參數，改走遊戲的新鼓聲（state.T 帶 MOVES_MODE、DRUMS；g2 再帶 RISSET_M 6），和遊戲同一套程式與常數
+    g1: {}, g2: {}, G0: {}, G1: {}, G2: { free: true }, G3: { free: true }, H0: {}, H1: {}, H2: {}, H3: {}, H4: {} };   // 遊戲版：不用試聽參數，改走遊戲的新鼓聲（state.T 帶 MOVES_MODE、DRUMS；g2 再帶 RISSET_M 6），和遊戲同一套程式與常數
   var GAME = { g1: { MOVES_MODE: true, DRUMS: 'new', RISSET_M: 7 }, g2: { MOVES_MODE: true, DRUMS: 'new', RISSET_M: 6 } };
   // 第三步試聽 G0～G3（設計 2026-11-12-free-hit-schedule 第 2 節）：state.T 用遊戲開局時的整份規則常數（不帶網址參數的預設：新動作開、新鼓聲、每圈 6 拍＝第二步），
   // 不是只帶幾個開關——鐘形的寬度、踩得上的門檻、盲區長度都和遊戲同一份。G2 換回第一步的鼓（每圈 7 拍、沒有三對二），G3 是第二步的鼓；兩版都把最響一擊解開。
   var GAME_T = GAME_RULES ? GAME_RULES.createLevel({ T: { COVER_MODE: true } }).T : null;
   if (GAME_T) { GAME.G0 = GAME_T; GAME.G1 = GAME_T; GAME.G2 = Object.assign({}, GAME_T, { RISSET_M: 7 }); GAME.G3 = GAME_T; }
-  function isG(v) { v = v || $('ill').value; return /^G[0-3]$/.test(v) && !!GAME_T; }
+  // 13.3 試聽 H0～H4（設計 2026-11-12-free-hit-schedule 第 13 節）：遊戲的規則常數、每圈 7 拍（第二步退回）、一圈 6 秒；催促 DRIVE 由頁面每幀算好交給聲音層
+  if (GAME_T) ['H0', 'H1', 'H2', 'H3', 'H4'].forEach(function (h) { GAME[h] = Object.assign({}, GAME_T, { RISSET_M: 7 }); });
+  function driveOf(v, el) {            // 這一版此刻的催促值（el＝開始後幾秒）
+    if (v === 'H1') return 0.5; if (v === 'H2') return 1;
+    if (v === 'H3') return Math.min(1, el / 60);
+    if (v === 'H4') return Math.min(1, Math.floor(el / 15) / 4);   // 0 → 0.25 → 0.5 → 0.75 → 1（第 60 秒到頂，和 H3 同時）
+    return 0;
+  }
+  function isG(v) { v = v || $('ill').value; return /^(G[0-3]|H[0-4])$/.test(v) && !!GAME_T; }
   // G 版的循環時鐘：照規則 advanceClock 的做法，相位累加 p += dt ÷ T，T 每秒最多變 CYCLE_RATE 逼近目標；每幀把 anchor 傳給聲音層（和遊戲一樣）。
   // G0、G2、G3 目標固定（循環選單 6 或 12 秒）；G1 目標在 4.5～6.5 秒之間 40 秒來回一次（像衛兵慢慢靠近又走開）
   // 設計 11.3（11/14）：遊戲裡一圈實際只有 5～6.5 秒，所以 G0、G2、G3、V4 預設 6 秒、可切 12 秒；G1 在 4.5～6.5 秒之間來回
@@ -182,7 +200,7 @@ input[type=range] { flex:1; }
     if (q.get('layers') === '8') $('illL').value = '8';
   })();
   var builtG = null;
-  function want6(v) { return /^G[0-3]$/.test(v) || v === 'v4'; }
+  function want6(v) { return /^(G[0-3]|H[0-4])$/.test(v) || v === 'v4'; }
   var lastIll = $('ill').value;
   $('ill').onchange = function () {
     if (this.value !== 'now') $('cover').checked = true;
@@ -241,7 +259,7 @@ input[type=range] { flex:1; }
     if (dashHist.length > 20) dashHist.shift();
   }
   function doDash(ev) {
-    if (!ctx || !audio || !isG()) { $('dashSum').textContent = '先選 G0～G3 並按「開始」'; return; }
+    if (!ctx || !audio || !isG()) { $('dashSum').textContent = '先選 H0～H4 或 G0～G3 並按「開始」'; return; }
     var t = heardTime(ev), h = hitsAround(t), BLv = (GAME_T && GAME_T.BLIND_LEN) || 0.6, GR = (GAME_T && GAME_T.BLIND_LEAD_GRACE) || 0.15;
     var dPrev = h.prev != null ? t - h.prev : Infinity, dNext = h.next != null ? h.next - t : Infinity;
     var near = dPrev <= dNext ? { hit: h.prev, roll: h.prevRoll, d: dPrev } : { hit: h.next, roll: h.nextRoll, d: -dNext };   // d：正＝按晚了（那一擊之後），負＝按早了
@@ -323,9 +341,11 @@ input[type=range] { flex:1; }
     $('cues').appendChild(b);
   });
   function frame() {
+    if (audio.setDrive) { var dv = isG() ? driveOf($('ill').value, CK ? audio.now() - CK.t0 : 0) : 0; audio.setDrive(dv); }   // H 版的催促（其他版本 0）
     var s = state(); audio.update(s); noteRolls(); bowFrame();
     var p = s.cycle.p;
     $('readout').firstChild.nodeValue = 'p = ' + p.toFixed(3) + '　一圈 ' + (+s.cycle.T).toFixed(2) + ' 秒　';
+    if ($('driveNow')) $('driveNow').textContent = /^H/.test($('ill').value) ? '催促 DRIVE = ' + audio.getDrive().toFixed(2) + (/^H[34]$/.test($('ill').value) ? '（開始後 ' + Math.max(0, audio.now() - CK.t0).toFixed(0) + ' 秒）' : '') : '';
     if ($('dashCyc')) $('dashCyc').textContent = '目前一圈 ' + (+s.cycle.T).toFixed(2) + ' 秒' + ($('ill').value === 'G1' ? '（G1：4.5～6.5 秒來回）' : isG() || $('ill').value === 'v4' ? '（循環選單切 6／12 秒；網址 &cycle=6|12）' : '');
     $('blind').textContent = s.cycle.blind ? '盲區' : '—';
     $('blind').className = s.cycle.blind ? 'yes' : '';
@@ -373,7 +393,8 @@ input[type=range] { flex:1; }
     // 新鼓聲（遊戲版 g1、g2、G0～G3）：聲音有規則層數 + 2 條（最下面是第 0 層的隔拍、最上面多一層），各條音量從最近 1.5 秒的拍子算
     var dn = log.some(function (e) { return e.type === 'beat' && e.drums === 'new' && e.t > now - 2; }), ROW = function (e) { return dn ? e.k + 1 : e.k; };
     if (dn) {
-      nL = (ii ? ii.layers : 4) + 2;
+      var mxr = 0; log.forEach(function (e) { if (e.type === 'beat' && e.drums === 'new' && e.t > now - 2) mxr = Math.max(mxr, e.k + 2); });
+      nL = Math.max((ii ? ii.layers : 4) + 2, mxr);
       var rg = []; log.forEach(function (e) { if (e.type === 'beat' && e.drums === 'new' && e.t > now - 1.5 && e.t <= now) { var r0 = e.k + 1; rg[r0] = Math.max(rg[r0] || 0, e.g); } });
       var rm = 1e-9; for (var r2 = 0; r2 < nL; r2++) rm = Math.max(rm, rg[r2] || 0);
       ii = Object.assign({}, ii || {}, { layersDb: [] }); for (var r1 = 0; r1 < nL; r1++) ii.layersDb.push(rg[r1] > 0 ? 20 * Math.log10(rg[r1] / rm) : -99);
@@ -434,7 +455,9 @@ input[type=range] { flex:1; }
     c.strokeStyle = 'rgba(214,207,194,.7)'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(X(now), top - 4); c.lineTo(X(now), bot + 4); c.stroke();
     c.fillStyle = '#8a8478'; c.textBaseline = 'top'; c.fillText('現在', X(now) - 14, bot + 6); c.fillText('6 秒前', L, bot + 6);
     $('rhAud').innerHTML = '聽得到 <b>' + aud + '</b> 條（共 ' + nL + ' 層）';
-    $('rhLoud').innerHTML = ii ? '最大聲那條 <b>第 ' + (loud + 1) + ' 條</b>・每分鐘 ' + ii.loudBpm + ' 拍' : '';
+    var bpmL = ii ? ii.loudBpm : 0;
+    if (dn && ii) { var Mx = ((GAME[$('ill').value] || {}).RISSET_M) || 7, Tc = +s.cycle.T || ii.T; bpmL = Math.round(60 * Mx * Math.LN2 / Tc * Math.pow(2, loud - 1 + (+s.cycle.p || 0))); }   // 新鼓聲：第 r 條＝規則第 r − 1 層（DRIVE 疊上去的也照這個算）
+    $('rhLoud').innerHTML = ii ? '最大聲那條 <b>第 ' + (loud + 1) + ' 條</b>・每分鐘 ' + bpmL + ' 拍' : '';
     $('rhVer').textContent = '版本：' + verName() + '・一圈 ' + (ii ? ii.T : s.cycle.T) + ' 秒';
   }
 })();
@@ -495,7 +518,11 @@ input[type=range] { flex:1; }
       ]
     ],
     "questions": [
-      "同一版用一圈 6 秒和 12 秒各聽一次（循環選單），哪一個有加速感？",
+      "H1、H2 哪一個的鼓才算夠快？還是都不夠？",
+      "H3 有沒有一路越來越快的感覺？H4 一階一階跳，和 H3 連續升，哪個比較好？",
+      "速度上去之後，還聽不聽得出「又從頭來了」？",
+      "底下那條讓你踩的低鼓，在 H2 還聽不聽得清楚？最響的一擊在 H2 還認不認得？",
+      "（以下 G 版已暫緩）同一版用一圈 6 秒和 12 秒各聽一次（循環選單），哪一個有加速感？",
       "G0 單獨聽，有沒有一直在變快的感覺？",
       "G1 和 G0 比，加速感變多、變少、還是一樣？",
       "G2 聽不聽得出「又從頭來了」？有沒有加速感？G3 比 G2 更像一直變快嗎？",
@@ -512,7 +539,7 @@ input[type=range] { flex:1; }
     ],
     "src": [
       "2026-11-11-illusion-not-heard.md 第 10.1、11.3、12 節",
-      "2026-11-12-free-hit-schedule.md 第 2、3 節（G0～G3、衝）"
+      "2026-11-12-free-hit-schedule.md 第 13 節（H0～H4、催促 DRIVE）；第 2、3 節（G0～G3、衝，已暫緩）"
     ]
   } });
 })();

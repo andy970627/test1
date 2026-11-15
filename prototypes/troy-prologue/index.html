@@ -91,7 +91,8 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .card .lead { font-family: var(--display); font-size: 17px; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
 .keys dt { color: var(--fire); white-space: nowrap; }
-.keys dd { margin: 0; min-width: 0; }
+.keys dd { margin: 0; min-width: 0; line-height: 1.55; }
+.card h3.sect { margin: 6px 0 0; font: 600 13px/1 var(--display); letter-spacing: .2em; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 6px; }   /* 開場分區：操作｜設定 */
 fieldset { border: 1px solid var(--line); padding: 10px 14px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
 legend { font-family: var(--display); color: var(--fire); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
 label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
@@ -107,7 +108,7 @@ button:hover { filter: brightness(1.12); }
 #intro .row.start { position: sticky; bottom: calc(-24px - var(--sb)); margin: 0 -16px calc(-24px - var(--sb)); padding: 18px 16px calc(20px + var(--sb));
   background: linear-gradient(to bottom, rgba(5, 6, 10, 0), rgba(5, 6, 10, .96) 38%); z-index: 1; }
 @media (min-width: 900px) {
-  #intro .card { max-width: 1080px; grid-template-columns: 1.05fr 1fr; gap: 14px 40px; align-items: start; }
+  #intro .card { max-width: 1200px; grid-template-columns: 1fr 1fr; gap: 14px 48px; align-items: start; }
   #intro .card .row.start { grid-column: 1 / -1; justify-content: center; }
   #intro .card p { line-height: 1.7; }
 }
@@ -137,7 +138,7 @@ button:hover { filter: brightness(1.12); }
 #music button { font-size: 14px; padding: 5px 12px; }
 #music #trackName { font-size: 13px; color: var(--dim); overflow-wrap: anywhere; min-width: 0; }
 #music #trackName.ok { color: var(--ash); }
-#music .note { font-size: 12px; color: var(--dim); margin: 0; }
+#music .note { font-size: 13px; color: var(--dim); margin: 0; }
 #music input[type=range] { width: 120px; }
 @media (max-width: 640px) {
   #whisper { bottom: calc(118px + var(--sb)); font-size: 14px; }
@@ -150,7 +151,7 @@ button:hover { filter: brightness(1.12); }
 #telBox { border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; font-size: 14px; }
 #telBox .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
 #telBox .mlabel { color: var(--fire); }
-#telBox .note, .telNote { font-size: 12px; color: var(--dim); margin: 0; line-height: 1.6; }
+#telBox .note, .telNote { font-size: 13px; color: var(--dim); margin: 0; line-height: 1.6; }
 .btnExport { font-size: 14px; padding: 5px 12px; }
 #survey { border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; text-align: left; font-size: 14px; max-width: 560px; width: 100%; }
 #survey legend { color: var(--fire); padding: 0 4px; }
@@ -196,7 +197,7 @@ button:hover { filter: brightness(1.12); }
 <div class="hud" id="labPanel" hidden></div>
 <div class="hud" id="flashCtl" hidden><label>暗度 <input type="range" id="flashDarkR" min="0" max="0.95" step="0.05" value="0.7"> <span id="flashDarkV">0.70</span></label> <span class="dim">（[ ] 調整）</span></div>
 <div class="hud" id="stepRing" hidden><canvas width="64" height="64"></canvas><span></span></div>
-<div class="hud" id="labBtns" hidden><button type="button" id="btnLabNotice">製造聲響（N）</button> <button type="button" id="btnLabNoticeSide">在旁邊 3 公尺（M）</button></div>
+<div class="hud" id="labBtns" hidden><button type="button" id="btnLabNotice">製造聲響（N）</button> <button type="button" id="btnLabNoticeSide">在旁邊 3 公尺（M）</button> <button type="button" id="btnLabBow">彈弓弦（V）</button></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
 <div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
 <div class="hud" id="phase" hidden>
@@ -219,18 +220,21 @@ button:hover { filter: brightness(1.12); }
     <p class="dim modeCover">這座城在你耳裡響著一段永遠在加速、從不停下的節奏。節奏越急，衛兵越敏銳；每一輪最重的那一擊和它的餘韻，蓋得住你的腳步和刀聲。請戴上耳機。需要鍵盤和滑鼠。</p>
     <p class="modeGap" hidden>這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，鼓點一斷，就是你移動的時候。</p>
     <p class="dim modeGap" hidden>這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
-   </div>
-   <div class="col">
+    <h3 class="sect">操作</h3>
     <dl class="keys">
       <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
-      <dt>按住 空白鍵 或 滑鼠右鍵</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
+      <dt>空白鍵／滑鼠右鍵 按住</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
       <dt id="kShiftDt">Shift</dt><dd><span class="modeCover">衝刺，只在最響的那一擊落下時有用</span><span class="modeGap" hidden>衝刺，只在節奏重來的瞬間有用</span></dd>
-      <dt class="movesOnly" hidden>按住 Shift</dt><dd class="movesOnly" id="kRun" hidden></dd>
-      <dt class="movesOnly" hidden>按住 Alt</dt><dd class="movesOnly" id="kCrouch" hidden></dd>
-      <dt>E</dt><dd>點一下＝從背後暗殺；在城門按住＝推開門閂</dd>
+      <dt class="movesOnly" hidden>Shift 按住</dt><dd class="movesOnly" id="kRun" hidden></dd>
+      <dt class="movesOnly" hidden>Alt 按住</dt><dd class="movesOnly" id="kCrouch" hidden></dd>
+      <dt class="revealOnly" hidden>[ ]</dt><dd class="revealOnly" hidden>調整暗度（照亮場景版：平常很暗，最響的一擊落下時照出衛兵）</dd>
+      <dt>E</dt><dd>點一下：從背後暗殺；在城門按住：推開門閂</dd>
       <dt class="calmOnly">Q</dt><dd class="calmOnly">衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
       <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
+   </div>
+   <div class="col">
+    <h3 class="sect">設定</h3>
     <div id="telBox" role="group" aria-label="試玩數據">
       <div class="mrow">
         <span class="mlabel">播放裝置</span>
@@ -642,7 +646,8 @@ const LAB_HELP = {
       "title": "查看",
       "what": [
         "衛兵聽到聲音會先走過來查看，不是直接追殺；試退開、躲影子、屏息，讓他走回去巡邏。",
-        "按 N（在你腳下）或 M（在你右邊 3 公尺）自己製造聲響，叫他過來。"
+        "按 N（在你腳下）或 M（在你右邊 3 公尺）自己製造聲響，叫他過來。",
+        "按 V 空彈一下弓弦：落在踩得上的拍上就被鼓聲蓋住、沒人來；沒蓋住時 8 公尺內最近的衛兵朝你當時的位置走過來查看。"
       ],
       "watch": [
         "查看分四段：轉頭（這 0.5 秒不判定，是你的反應時間）、走過來、停下來聽、走回去。",
@@ -710,7 +715,7 @@ $('oCover').addEventListener('change', coverText); coverText();
   document.querySelectorAll('.calmOnly').forEach(el => { el.hidden = on; });   // 第 13 節：開關開著拿掉安撫，Q 沒作用
   if (!on) return;
   const mul = v => (v === 2 ? '快一倍' : v === .5 ? '慢一半' : '×' + v);
-  $('kShiftDt').textContent = '點一下 Shift';
+  $('kShiftDt').textContent = 'Shift 點一下';
   $('kRun').textContent = '跑，速度' + mul(num(T.RUN_SPEED_MUL, 2)) + '。鼓慢、火暗、' + num(T.RUN_R, 8) + ' 公尺內沒有衛兵時沒人聽得見；最響的那一擊也蓋得住，其他時候附近的衛兵會警覺。';
   $('kCrouch').textContent = '蹲走，速度' + mul(num(T.CROUCH_SPEED_MUL, .5)) + '；起步不必那麼準，離拍的腳步聲傳得近。蹲著時水缸、貨堆這類矮東西擋得住視線。要暗殺、推門閂得先站起來。';
 })();
@@ -1555,7 +1560,7 @@ LAB_HELP.walk = {
 };
 // 第 3.2 節：木馬試驗場加敲暗號
 LAB_HELP.horse.title = '木馬共鳴＋敲暗號';
-LAB_HELP.horse.what.push('也試「敲暗號指揮同伴」：按 T 敲，三下＝引開（木馬傳出一聲響）、兩下＝現在；每一下都要敲在能敲的拍上，同伴才聽得懂。');
+LAB_HELP.horse.what.push('也試「敲暗號指揮同伴」：按 T 敲，三下＝引開（木馬裡回兩下）、兩下＝現在；每一下都要敲在能敲的拍上，同伴才聽得懂。');
 LAB_HELP.horse.watch.push('敲暗號跟著畫面下方的四步教學走：先看 4 秒 → 敲準 1 下 → 聽同伴示範三下再換你 → 示範兩下再換你。',
   '拍點條：圓點從右往左滑，碰到中間直線就是一拍；直線兩邊的淺帶是判定寬度。準星外圈縮到底也是那一刻。',
   '每敲一下，準星上方立刻顯示準、太早或太晚幾毫秒；條下方的短線是你敲的位置（綠＝準、橘＝歪），條上方的橘色菱形是同伴示範。',
@@ -1564,7 +1569,8 @@ LAB_HELP.horse.panel.push(['敲暗號', '正在敲／上一組每一下離拍幾
 LAB_HELP.flash = {
   "title": "最響一擊照亮場景",
   "what": [
-    "平常畫面很暗；每次最響的一擊（所有鼓同時落下的那一下）落下，半秒內照出所有衛兵的輪廓，連牆後的也看得到，然後暗回去。",
+    "平常畫面很暗，只看得到火光附近和腳邊；每次最響的一擊（所有鼓同時落下的那一下）落下，一圈光從木馬往外掃過全場，照出所有衛兵的輪廓和他面向哪邊（地上的淡扇形），連牆後的也看得到，半秒後暗回去。",
+    "整關版用網址 ?reveal=1（規格 2026-11-15-hit-reveal-spec.md）；這頁是同一套的試驗場。",
     "只動畫面，規則照舊：那一擊本來就是衛兵察覺不到的時候。"
   ],
   "watch": [
@@ -1575,7 +1581,7 @@ LAB_HELP.flash = {
   "panel": [
     [
       "暗度",
-      "暗幕的濃度，0 是不調暗；[ ] 或滑桿調整，會記住"
+      "環境光調暗多少（0 是不調暗，環境光乘 1 − 暗度；火光不受影響）；[ ] 或滑桿調整，會記住；前兩區自動少 0.15"
     ],
     [
       "最響的一擊",
@@ -1592,7 +1598,8 @@ LAB_HELP.flash = {
   ],
   "questions": [],
   "src": [
-    "2026-11-14-style-and-input-ideas.md 第 4 節"
+    "2026-11-14-style-and-input-ideas.md 第 4 節",
+    "2026-11-15-hit-reveal-spec.md 第 2～4 節"
   ]
 };
 // 第 15 節：查看這版偏兇（驗收沒過），在說明裡註明
@@ -1606,9 +1613,9 @@ const LAB_BRIEF = {
   crouch: [['測', '蹲走慢但輕；蹲著時水缸、貨堆擋得住視線'], ['操作', 'Alt 按住蹲・WASD 走到矮東西後面'], ['看', '「蹲走的步：合拍／出聲」和「矮掩體：隔著幾名」']],
   listen: [['測', '屏息時聽不聽得出衛兵從哪個方向來'], ['操作', '空白鍵 按住屏息（最多 6 秒，屏息時不能動）'], ['看', '先閉眼說出方向，再對照「最近的衛兵：在你的前／後／左／右」']],
   hunt: [['測', '被追時，聽追兵的腳步躲開他的搜索'], ['操作', 'Shift 按住跑進影子・空白鍵 屏息・WASD 踩著鼓點挪開'], ['看', '追兵「離你 n 公尺」、他腳下的圈有沒有變紅、「被聽到」幾次']],
-  check: [['測', '衛兵聽到聲音先走過來查看；讓他找不到你、走回去'], ['操作', 'N 在腳下出聲・M 在右邊 3 公尺出聲・空白鍵 屏息・WASD 退開'], ['看', '「衛兵：查看・」後面是哪一段，和「疑心 n%」；疑心滿了就轉成追殺']],
+  check: [['測', '衛兵聽到聲音先走過來查看；讓他找不到你、走回去'], ['操作', 'N 在腳下出聲・M 在右邊 3 公尺出聲・V 彈弓弦（落在拍上就蓋住）・空白鍵 屏息・WASD 退開'], ['看', '「衛兵：查看・」後面是哪一段，和「疑心 n%」；疑心滿了就轉成追殺']],
   walk: [['測', '三種走法哪個好：P0 滑著走、P1 步子跟著鼓、P2 圈內自己踩'], ['操作', 'W 按住走；P2 進圈後一步按一下方向鍵'], ['看', '「按住走的步」「圈內自己踩的步」各踩準幾步、出聲幾步']],
-  flash: [['測', '最響的一擊照出衛兵輪廓，你會不會等那一擊來看路'], ['操作', '[ ] 調暗度・WASD 走（等那一擊亮起再看路）'], ['看', '「這一次照出 n 名衛兵」和暗度']],
+  flash: [['測', '最響的一擊照出衛兵輪廓，你會不會等那一擊來看路'], ['操作', '[ ] 調暗度・WASD 走（等那一擊亮起再看路）'], ['看', '「這一次照出 n 名衛兵」和暗度；整關玩用 ?reveal=1']],
 };
 for (const k in LAB_BRIEF) if (LAB_HELP[k]) LAB_HELP[k].brief = LAB_BRIEF[k];
 function withBrief(lines) {                       // 面板：標題下面插開頭三行
@@ -2134,6 +2141,7 @@ function sync(dt, now) {
       F.light.color.copy(tmpTorchCol);
       if (F.torchMats) F.torchMats.forEach(tm => { tm.mat.color.copy(tm.orig).lerp(tmpTorchCol, .7); });
     }
+    if (flashOn() && !shouting && !hunted && G.state !== 'checking') F.light.intensity *= REVEAL.GUARD_LIGHT;   // 照亮場景：巡邏中只看得到移動的光點
     // 除錯圈：感知範圍 r(p)
     const dbg = $('oPhase').checked && !down;
     F.ring.visible = dbg; if (dbg) { const r = blind ? .01 : rp * (susp || hunted ? num(KK.ALERT_MUL, 1.3) : 1); F.ring.scale.set(r, r, r * 0 + r); F.ring.position.set(G.x, .04, G.z); }
@@ -2644,22 +2652,22 @@ function knockFrame() {
   if (far) result = '太遠了，同伴聽不到（離木馬 ' + hi.dist.toFixed(1) + ' 公尺，要 ' + KNOCK.MAX_R + ' 公尺內）';
   else if (!kind) result = n + ' 下不是暗號（三下＝引開、兩下＝現在）';
   else if (!okAll) { result = (kind === 'lure' ? '三下' : '兩下') + '，但有 ' + taps.filter(x => !x.ok).length + ' 下沒敲在拍上：同伴聽不懂'; KN.bad++; }
-  else if (kind === 'lure') { result = '認出：引開（三下）→ 木馬裡傳出一聲響'; KN.lures++; knockLure(); }
+  else if (kind === 'lure') { result = '認出：引開（三下）→ 木馬裡回了兩下'; KN.lures++; knockLure(); }
   else { result = '認出：現在（兩下）→ 這一版同伴只回應「引開」'; KN.nows++; }
   KN.last = { taps, result, kind: okAll && !far ? kind : null };
   KT.res = { text: result, ok: !!KN.last.kind, at: performance.now() };
   KN.groups.push(KN.last); if (KN.groups.length > 20) KN.groups.shift();
 }
 function knockSound(t) {                          // 敲一下的聲音：有 audio.knock 用它（t 可排在未來），舊聲音檔退回門閂的「喀」
-  try { if (typeof audio.knock === 'function') audio.knock(t); else if (t == null) audio.cue('latchClick'); } catch (e) {}
+  try { const R = audio.raw; if (R && typeof R.knock === 'function') R.knock(t); else if (t == null) audio.cue('latchClick'); } catch (e) {}
 }
 function knockLure() {
-  try { if (typeof audio.horseReply === 'function') audio.horseReply(undefined, { count: 2 }); else audio.cue('bellyHush'); } catch (e) {}   // 木馬裡同伴回兩下（有方向）；舊聲音檔退回 bellyHush
+  try { const R = audio.raw; if (R && typeof R.horseReply === 'function') R.horseReply(undefined, { count: 2 }); else audio.cue('bellyHush'); } catch (e) {}   // 木馬裡同伴回兩下（有方向）；舊聲音檔退回 bellyHush
   const L = game.level && game.level.horse;
   if (L) { const x = (L.x0 + L.x1) / 2, z = (L.z0 + L.z1) / 2; ripple(x, z, 6, 0xf0a85a, .5, 1.1); ripple(x, z, 3, 0xf0a85a, .6, .7); }
   const D = S && S.horseDust;                       // 木馬背上的灰塵抖一下（和共鳴同一套）
   if (D) { D.v = .8; for (let i = 0; i < HDUST_N; i++) { D.pos[i * 3] = D.home[i * 3]; D.pos[i * 3 + 1] = D.home[i * 3 + 1]; D.pos[i * 3 + 2] = D.home[i * 3 + 2]; D.vel[i * 3] = rand(-.3, .3); D.vel[i * 3 + 1] = rand(.4, 1.1); D.vel[i * 3 + 2] = rand(-.3, .3); } D.pts.visible = true; }
-  lag(() => showMsg('木馬裡傳出一聲響。附近若有衛兵，會轉頭看過去。'));
+  lag(() => showMsg('木馬裡回了兩下。附近若有衛兵，會轉頭看過去。'));
 }
 function knockLines() {
   const fmt = x => (x.off == null ? '附近沒有拍' : (x.off >= 0 ? '+' : '−') + Math.abs(Math.round(x.off * 1000)) + ' 毫秒') + (x.ok ? ' ✓' : ' ✗');
@@ -2704,10 +2712,12 @@ function knockDemo(n) {                           // 同伴示範：接下來 n 
   if (bs.length < n) return;
   KT.demo = bs.map(b => ({ t: b.t }));
   KT.demoUntil = bs[bs.length - 1].t + KNOCK.END;
+  const sched = !!(audio.raw && typeof audio.raw.knock === 'function');   // audio.knock(t) 直接排在拍的排程時間（ctx 時間）；舊聲音檔才用計時器到點出聲
   for (const d of KT.demo) {
-    setTimeout(() => {                            // 拍的排程時間就是 ctx 時間：排在那一拍響的同一刻
+    if (sched) knockSound(d.t);
+    setTimeout(() => {                            // 到點畫波紋
       if (LAB !== 'horse' || !game || game.phase !== 'play') return;
-      try { audio.cue('latchClick'); } catch (e) {}
+      if (!sched) knockSound();
       const L = game.level && game.level.horse;
       if (L) ripple((L.x0 + L.x1) / 2, (L.z0 + L.z1) / 2, 3, 0xf0a85a, .5, .6);
     }, Math.max(0, (d.t - actx.currentTime) * 1000));
@@ -3080,7 +3090,7 @@ function huntFrame(dt, on) {
   const el = $('pantEdge'); if (el) el.style.opacity = HV.pantV > .003 ? HV.pantV.toFixed(3) : '0';
 }
 const CHECK_PHASE = { turn: '轉頭（這 0.5 秒不判定）', walk: '走過來', listen: '停下來聽', back: '走回去' };
-const CHECK_CAUSE = { susp: '看見你一陣子', move_high: '節奏快時亂動', run: '跑步聲', loud: '大聲', call: '喊聲', hunt: '追殺中注意到', lab: '試驗場按鈕', step: '踩歪', breath: '呼吸' };
+const CHECK_CAUSE = { susp: '看見你一陣子', move_high: '節奏快時亂動', run: '跑步聲', loud: '大聲', call: '喊聲', hunt: '追殺中注意到', lab: '試驗場按鈕', step: '踩歪', breath: '呼吸', noise: '弓弦聲' };
 function checkLabLines() {
   const g = game, P = g.player || {}, T = K(), t = num(g.time, audio ? audio.now() : 0), n = HV.n;
   const q = arr(g.guards).find(o => o && o.id === 'g2b') || arr(g.guards).find(o => o && o.active !== false);
@@ -3103,7 +3113,8 @@ function checkLabLines() {
   lines.push('呼吸範圍 ' + r.toFixed(1) + ' 公尺：' + (d <= r ? (P.breathing ? '在範圍內，屏住了' : '在範圍內，聽得到！') : '不在範圍內'));
   lines.push('你：' + (P.hidden ? '在影子裡' : '在亮處') + '・' + (P.panting ? '在喘（不能屏息）' : P.breathing ? '屏息中' : '呼吸'));
   lines.push('查看 ' + n.checks + ' 次（到點 ' + n.checkArrive + '、走完 ' + n.checkOver + '）・轉成追殺 ' + n.checkToHunt + ' 次' + (n.lastCheck ? '・上次原因：' + (CHECK_CAUSE[n.lastCheck] || n.lastCheck) : ''));
-  lines.push('', 'N：在你腳下製造聲響　M：在你右邊 3 公尺', '橘圈：他要走去的點；淡圈：聽得到呼吸的範圍（變紅＝聽到了）');
+  lines.push('弓弦：彈了 ' + BW.n + ' 次・被拍蓋住 ' + BW.masked + '・傳出去 ' + BW.heard + (BW.last ? '｜上一彈：' + (BW.last.masked ? '蓋住了，沒人來' : BW.last.by != null ? '傳出去了，衛兵走過來' : '傳出去了，但 ' + num(K().NOISE_R, 8) + ' 公尺內沒有巡邏的衛兵') : ''));
+  lines.push('', 'N：在你腳下製造聲響　M：在你右邊 3 公尺　V：彈弓弦（落在拍上就被蓋住）', '橘圈：他要走去的點；淡圈：聽得到呼吸的範圍（變紅＝聽到了）');
   return lines;
 }
 function labNoticeAt(side) {
@@ -3114,9 +3125,26 @@ function labNoticeAt(side) {
 }
 $('btnLabNotice').addEventListener('click', () => labNoticeAt(false));
 $('btnLabNoticeSide').addEventListener('click', () => labNoticeAt(true));
+// 弓弦引開（2026-11-14 發想第 1.3 節；規則 g.noise 1e9c677、聲音 audio.raw.bowPluck 2bd09c7）：只在 ?lab=check
+//   按 V 空彈一下弓弦：聲音層出聲，按鍵時刻（扣掉輸出延遲＝玩家聽到的時間，和踩步同一把尺）交給規則判斷有沒有被拍蓋住；
+//   沒蓋住時 NOISE_R 內最近的衛兵朝你當時的位置來查看。腳下波紋：淡藍＝被蓋住、橘＝傳出去了
+const BW = { n: 0, masked: 0, heard: 0, last: null };
+function labBow() {
+  const g = game; if (!g || g.phase !== 'play' || !g.player || typeof g.noise !== 'function') return;
+  const R = audio && audio.raw;
+  try { if (R && typeof R.bowPluck === 'function') R.bowPluck(); else audio.cue('latchClick'); } catch (e) {}
+  const t = actx ? actx.currentTime - (actx.outputLatency || actx.baseLatency || 0) : num(g.time, 0);
+  const P = g.player; let r = null;
+  try { r = g.noise({ t, x: P.x, z: P.z, kind: 'bow' }); } catch (e) { console.warn('g.noise 失敗', e); return; }
+  if (!r) return;
+  BW.n++; if (r.masked) BW.masked++; else BW.heard++;
+  BW.last = { masked: !!r.masked, by: r.by, at: performance.now() };
+  ripple(P.x, P.z, r.masked ? 1.2 : num(K().NOISE_R, 8), r.masked ? 0x9fb0d8 : 0xff8a3a, r.masked ? .35 : .5, r.masked ? .5 : .9);
+}
+$('btnLabBow').addEventListener('click', () => labBow());
 window.addEventListener('keydown', e => {
   if (LAB !== 'check' || e.repeat) return;
-  if (e.code === 'KeyN') labNoticeAt(false); else if (e.code === 'KeyM') labNoticeAt(true);
+  if (e.code === 'KeyN') labNoticeAt(false); else if (e.code === 'KeyM') labNoticeAt(true); else if (e.code === 'KeyV') labBow();
 });
 // ============================================================
 // 走法試驗場的畫面（第 11.4、16.3、16.4 節；規則 6150e72）：只在 STEP_MODE 不是 glide 時
@@ -3298,58 +3326,126 @@ function movesLabLines(lab) {
   return lines;
 }
 // ============================================================
-// ?lab=flash：最響的一擊照亮場景（docs/design/2026-11-14-style-and-input-ideas.md 第 4 節）。只動畫面，不改規則與聲音
-//   平常整個畫面蓋一層暗幕（暗度可調，滑桿或 [ ]）；最響的一擊落下時，所有衛兵的輪廓亮 FLASH_DUR 秒（含牆後），
-//   同時暗幕退一點，像被那一擊照亮，然後暗回去。衛兵在那半秒看不到你（那一擊本來就是他們察覺不到的時候，規則照舊）
+// 最響的一擊照亮場景：規格 docs/design/2026-11-15-hit-reveal-spec.md（REVEAL_MODE，?reveal=1；預設關）。只動畫面，不改規則與聲音
+//   ?lab=flash 試驗場用同一套（借規則 run 場景）。開關關著、又不在 ?lab=flash 時，這一段完全不執行，畫面和以前一樣。
+//   平常的暗：不蓋黑幕，改成把環境光（半球光、月光）乘 1 − 暗度；火盆、火把是點光源不受影響，所以火光附近照舊看得到。
+//     前兩區（第 0、1 區）暗度少一階（REVEAL.EASY）；玩家腳邊一盞很弱的冷光（約 2 公尺）；巡邏中的衛兵火把只照亮自己一小圈
+//     （×REVEAL.GUARD_LIGHT，看得到移動的光點、看不出朝向）；查看、追殺、喊人時的火把照舊全亮、橘紅色不變。
+//   那一擊照亮：掩護窗開頭（和落塵同一處）觸發。一圈光從木馬方向往外擴（REVEAL.SWEEP 秒掃過 REVEAL.R 公尺），
+//     光圈掃到哪名衛兵，他的輪廓（只描邊，隔牆也畫）和面向的淡扇形就亮起，撐 REVEAL.HOLD、REVEAL.FADE 秒淡掉；
+//     同時環境光往回亮 REVEAL.LIFT（牆、矮掩體、影子的大輪廓）。追殺中撐與淡都減半。
 // ============================================================
-const FLASH = { DUR: .5, HOLD: .12, LIFT: .55, COL: '214, 222, 240', GLOW: '159, 176, 216', RANGE: 45 };
-const FL = { at: -1e9, n: 0, dark: .7, lastShown: 0 };
-const flashOn = () => LAB === 'flash';
-function flashTrigger() { if (!flashOn()) return; FL.at = performance.now(); FL.n++; }
-function flashEnv() {                             // 0～1：亮起 0.06 秒、撐 HOLD、之後到 DUR 淡完
-  const u = (performance.now() - FL.at) / 1000;
-  if (u < 0 || u > FLASH.DUR) return 0;
+const REVEAL_Q = URLQ.get('reveal') === '1';
+const REVEAL = { SWEEP: .25, HOLD: .5, FADE: .3, R: 60, LIFT: .6, EASY: .15, GUARD_LIGHT: .3, FEET: .55, FAN: 2.6, FAN_DEG: 50,
+  COL: '214, 222, 240', GLOW: '159, 176, 216', RING: '240, 200, 140' };
+const FLASH = { RANGE: 45 };                      // 試驗場面板：照出幾名衛兵（45 公尺內）
+const FL = { at: -1e9, n: 0, dark: .7, lastShown: 0, hunted: false };
+const RV = { hemi: null, moon: null, feet: null };
+const flashOn = () => LAB === 'flash' || REVEAL_Q;
+function flashTrigger() { if (!flashOn()) return; FL.at = performance.now(); FL.n++; FL.hunted = !!(game && game.hunted); }
+function revealEnv(delay) {                       // 0～1：從 delay 秒後亮起 0.06 秒、撐 HOLD、FADE 秒內淡完（追殺中撐與淡減半）
+  const k = FL.hunted ? .5 : 1, hold = REVEAL.HOLD * k, fade = REVEAL.FADE * k;
+  const u = (performance.now() - FL.at) / 1000 - (delay || 0);
+  if (u < 0 || u > .06 + hold + fade) return 0;
   if (u < .06) return u / .06;
-  if (u < FLASH.HOLD) return 1;
-  const k = (u - FLASH.HOLD) / (FLASH.DUR - FLASH.HOLD); return (1 - k) * (1 - k);
+  if (u < .06 + hold) return 1;
+  const q = (u - .06 - hold) / fade; return (1 - q) * (1 - q);
+}
+function revealDark() {                           // 這一區的暗度：前兩區少一階
+  const z = game ? num(game.zone, 0) : 0;
+  return clamp(FL.dark - (z <= 1 ? REVEAL.EASY : 0), 0, .95);
+}
+function revealOrigin() {                         // 光圈的中心：木馬（祭典的鼓在那邊）；這一區沒有木馬就用玩家位置
+  const L = game && game.level && game.level.horse;
+  if (L && Number.isFinite(L.x0)) return { x: (L.x0 + L.x1) / 2, z: (L.z0 + L.z1) / 2 };
+  const P = game && game.player; return { x: P ? P.x : 0, z: P ? P.z : 0 };
+}
+function revealLights(lift) {                     // 環境光乘 (1 − 暗度)，照亮時往回亮 lift
+  if (!RV.hemi || !RV.hemi.parent || !RV.moon || !RV.moon.parent) {
+    RV.hemi = RV.moon = null;
+    world.traverse(o => {
+      if (o.isHemisphereLight && !RV.hemi) RV.hemi = o;
+      else if (o.isDirectionalLight && !RV.moon) RV.moon = o;
+    });
+    for (const L of [RV.hemi, RV.moon]) if (L && L.userData.rvBase == null) L.userData.rvBase = L.intensity;
+  }
+  const base = 1 - revealDark(), mul = base + (1 - base) * lift;
+  for (const L of [RV.hemi, RV.moon]) if (L) L.intensity = L.userData.rvBase * mul;
+  if (!RV.feet) { RV.feet = new THREE.PointLight(0x8a9cc8, 0, 2.6, 2); scene.add(RV.feet); }
+  RV.feet.intensity = REVEAL.FEET * revealDark();
+  RV.feet.position.set(num(V.dx, 0), .9, num(V.dz, 0));
 }
 const FL_TMP = new THREE.Vector3();
+function flashProject(x, y, z, W, H) {
+  FL_TMP.set(x, y, z).project(camera);
+  return FL_TMP.z < 1 ? { x: (FL_TMP.x + 1) / 2 * W, y: (1 - FL_TMP.y) / 2 * H } : null;
+}
 function flashFrame(dt) {
-  const on = flashOn() && game && game.phase === 'play';
   const dk = $('flashDark'), cv = $('flashFx'), ctl = $('flashCtl');
-  if (!dk) return;
-  dk.hidden = cv.hidden = !on; ctl.hidden = !(flashOn() && game && game.phase !== 'over');
-  if (!on) return;
-  const a = flashEnv();
-  dk.style.opacity = (FL.dark * (1 - FLASH.LIFT * a)).toFixed(3);
+  if (!dk || !flashOn()) return;                  // 開關關著：完全不動（畫面和以前逐像素相同）
+  dk.hidden = true;                               // 舊的黑幕不用了（火光也會被蓋暗，規格要火光照舊）
+  ctl.hidden = !(LAB === 'flash' && game && game.phase !== 'over');
+  if (!game) return;
+  const lift = revealEnv(0) * REVEAL.LIFT;
+  revealLights(lift);
+  const on = game.phase === 'play';
+  cv.hidden = !on; if (!on) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
-  if (a <= .001) return;
+  const u = (performance.now() - FL.at) / 1000;
+  if (u < 0 || u > REVEAL.SWEEP + REVEAL.HOLD + REVEAL.FADE + .2) return;
+  const O = revealOrigin();
+  // 光圈：從木馬往外擴，掃完後淡掉
+  if (u <= REVEAL.SWEEP + .15) {
+    const r = REVEAL.R * Math.min(1, u / REVEAL.SWEEP), a = u <= REVEAL.SWEEP ? .55 : .55 * (1 - (u - REVEAL.SWEEP) / .15);
+    c.save(); c.strokeStyle = 'rgba(' + REVEAL.RING + ',' + a.toFixed(3) + ')'; c.lineWidth = 3; c.shadowColor = 'rgba(' + REVEAL.RING + ',.8)'; c.shadowBlur = 16;
+    c.beginPath(); let pen = false;
+    for (let i = 0; i <= 64; i++) {
+      const ang = i / 64 * Math.PI * 2, p = flashProject(O.x + Math.cos(ang) * r, .05, O.z + Math.sin(ang) * r, W, H);
+      if (!p) { pen = false; continue; }
+      if (pen) c.lineTo(p.x, p.y); else { c.moveTo(p.x, p.y); pen = true; }
+    }
+    c.stroke(); c.restore();
+  }
+  // 衛兵：光圈掃到才亮；只描邊（隔牆也畫）＋面向的淡扇形
   let shown = 0;
   const P = game.player;
   for (const q of arr(game.guards)) {
     if (!q || q.state === 'down' || q.active === false || !Number.isFinite(q.x)) continue;
     if (P && Math.hypot(q.x - P.x, q.z - P.z) > FLASH.RANGE) continue;
-    const pt = y => { FL_TMP.set(q.x, y, q.z).project(camera); return FL_TMP.z < 1 ? { x: (FL_TMP.x + 1) / 2 * W, y: (1 - FL_TMP.y) / 2 * H } : null; };
-    const feet = pt(0), head = pt(1.75);
+    const a = revealEnv(REVEAL.SWEEP * Math.min(1, Math.hypot(q.x - O.x, q.z - O.z) / REVEAL.R));
+    if (a <= .001) continue;
+    const feet = flashProject(q.x, 0, q.z, W, H), head = flashProject(q.x, 1.75, q.z, W, H);
     if (!feet || !head) continue;                 // 在鏡頭後面
     const h = feet.y - head.y; if (h < 4) continue;
     shown++;
+    // 面向：規則的前方是 (−sin yaw, −cos yaw)
+    const yaw = num(q.yaw, 0), fx = -Math.sin(yaw), fz = -Math.cos(yaw), half = REVEAL.FAN_DEG / 2 * Math.PI / 180;
+    const fan = [feet];
+    for (let i = 0; i <= 8; i++) {
+      const t = -half + 2 * half * i / 8, cx2 = fx * Math.cos(t) - fz * Math.sin(t), cz2 = fx * Math.sin(t) + fz * Math.cos(t);
+      const p = flashProject(q.x + cx2 * REVEAL.FAN, .05, q.z + cz2 * REVEAL.FAN, W, H); if (p) fan.push(p);
+    }
+    if (fan.length > 3) {
+      c.save(); c.fillStyle = 'rgba(' + REVEAL.COL + ',' + (.13 * a).toFixed(3) + ')';
+      c.beginPath(); c.moveTo(fan[0].x, fan[0].y); for (let i = 1; i < fan.length; i++) c.lineTo(fan[i].x, fan[i].y); c.closePath(); c.fill(); c.restore();
+    }
     const w = h * .26, hr = h * .11, cx = (feet.x + head.x) / 2;
     c.save();
-    c.shadowColor = 'rgba(' + FLASH.GLOW + ',' + (.9 * a) + ')'; c.shadowBlur = 14;
-    c.strokeStyle = 'rgba(' + FLASH.COL + ',' + (.95 * a) + ')'; c.fillStyle = 'rgba(' + FLASH.COL + ',' + (.16 * a) + ')';
+    c.shadowColor = 'rgba(' + REVEAL.GLOW + ',' + (.9 * a) + ')'; c.shadowBlur = 14;
+    c.strokeStyle = 'rgba(' + REVEAL.COL + ',' + (.95 * a) + ')';
     c.lineWidth = Math.max(1.5, h * .025);
-    // 身體（梯形）＋頭（圓）＋長矛，夠認出是個衛兵就好
+    // 身體（梯形）＋頭（圓）＋長矛：只描邊，不填實體（免得像透視外掛）
     c.beginPath();
     c.moveTo(cx - w * .5, feet.y); c.lineTo(cx - w * .62, head.y + hr * 2.4); c.lineTo(cx + w * .62, head.y + hr * 2.4); c.lineTo(cx + w * .5, feet.y); c.closePath();
-    c.fill(); c.stroke();
-    c.beginPath(); c.arc(cx, head.y + hr, hr, 0, Math.PI * 2); c.fill(); c.stroke();
+    c.stroke();
+    c.beginPath(); c.arc(cx, head.y + hr, hr, 0, Math.PI * 2); c.stroke();
     c.beginPath(); c.moveTo(cx + w * .8, feet.y); c.lineTo(cx + w * .8, head.y - hr * 1.5); c.stroke();
     c.restore();
   }
-  FL.lastShown = shown;
+  if (FL.shownN !== FL.n) { FL.shownN = FL.n; FL.curMax = 0; }   // 這一次照亮最多照出幾名
+  FL.curMax = Math.max(FL.curMax, shown); FL.lastShown = FL.curMax;
 }
 function flashSetDark(v) {
   FL.dark = clamp(Math.round(v * 20) / 20, 0, .95);
@@ -3359,6 +3455,7 @@ function flashSetDark(v) {
 }
 (function flashInit() {
   if (!flashOn()) return;
+  document.querySelectorAll('.revealOnly').forEach(e => { e.hidden = false; });   // 按鍵說明加「[ ] 調整暗度」
   let v = .7; try { const sv = parseFloat(localStorage.getItem('troy-prologue.flashDark')); if (Number.isFinite(sv)) v = sv; } catch (e) {}
   const qv = parseFloat(URLQ.get('dark')); if (Number.isFinite(qv)) v = qv;   // ?dark=0.8 可直接指定
   flashSetDark(v);
@@ -3366,18 +3463,25 @@ function flashSetDark(v) {
   ['mousedown', 'pointerdown', 'click'].forEach(t => $('flashCtl').addEventListener(t, e => e.stopPropagation()));
   window.addEventListener('keydown', e => {
     if (e.repeat) return;
-    if (e.code === 'BracketLeft') flashSetDark(FL.dark - .05); else if (e.code === 'BracketRight') flashSetDark(FL.dark + .05);
+    if (e.code !== 'BracketLeft' && e.code !== 'BracketRight') return;
+    flashSetDark(FL.dark + (e.code === 'BracketLeft' ? -.05 : .05));
+    if (LAB !== 'flash') showMsg('暗度 ' + FL.dark.toFixed(2) + '（[ ] 調整，前兩區自動少 ' + REVEAL.EASY + '）');
   });
 })();
 function flashLabLines() {
   const g = game, gs = arr(g.guards).filter(q => q && q.state !== 'down' && q.active !== false);
   const ago = FL.at > 0 ? (performance.now() - FL.at) / 1000 : null;
   return ['最響一擊照亮場景（?lab=flash，第 2 區）',
-    '暗度：' + FL.dark.toFixed(2) + '（[ ] 或下面的滑桿）',
+    '暗度：' + revealDark().toFixed(2) + '（[ ] 或下面的滑桿；環境光 ×' + (1 - revealDark()).toFixed(2) + '）',
     '最響的一擊：' + FL.n + ' 次・上一次 ' + (ago == null ? '—' : ago.toFixed(1) + ' 秒前'),
     '這一次照出：' + FL.lastShown + ' 名衛兵（' + FLASH.RANGE + ' 公尺內，含牆後）',
     '場上衛兵：' + gs.length + ' 名',
-    '', '平常很暗；那一擊落下的半秒內看得到所有衛兵', '試試看：等那一擊來看路，再趁下一擊動'];
+    '', '平常只看得到火光附近；那一擊落下，光圈從木馬掃過全場，照出所有衛兵和他們面向哪邊', '試試看：等那一擊來看路，再趁下一擊動', '整關玩：網址加 ?reveal=1'];
+}
+function labUnder() {                              // 試驗場面板下面的按鈕列與暗度滑桿：跟著面板底部排（面板長度會變），不壓到字
+  const el = $('labPanel'); if (!el || el.hidden) return;
+  let y = el.offsetTop + el.offsetHeight + 8;
+  for (const id of ['labBtns', 'flashCtl']) { const b = $(id); if (b && !b.hidden) { b.style.top = y + 'px'; y += b.offsetHeight + 6; } }
 }
 function labHud() {
   const el = $('labPanel'), g = game;
@@ -3481,7 +3585,7 @@ function ghostFrame(dt) {                        // 要在 renderer.render 之�
   el.style.transform = `translate(${((Math.sin(t * 2.3) + 1) * GHOST_PX * nz).toFixed(1)}px, ${(Math.cos(t * 1.7) * GHOST_PX * .5 * nz).toFixed(1)}px)`;
 }
 function hud(dt) {
-  labHud();
+  labHud(); labUnder();
   const g = game, P = g.player, p = curP();
   // 區名
   const z = clamp(g.zone | 0, 0, 4);
@@ -3492,7 +3596,10 @@ function hud(dt) {
   $('breathFill').style.width = ((1 - used) * 100).toFixed(1) + '%';
   $('breath').classList.toggle('on', !!P.breathing);
   $('breath').classList.toggle('low', used > .7);
-  $('breathText').textContent = P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵／右鍵）';
+  const wantBreath = !!(keys.Space || mouseBreath), cantBreath = wantBreath && !P.breathing && (P.panting || P.breathLock);   // 規則 1e9c677：喘的時候空白鍵只停下、不屏息
+  $('breathText').textContent = cantBreath ? (P.panting ? '還在喘，屏不住氣' : '喘不過氣，等一下才能屏') : P.breathing ? (used > .7 ? '快撐不住了' : '屏息中') : '屏息（空白鍵／右鍵）';
+  if (cantBreath) $('breath').classList.add('low');
+  if (cantBreath && P.panting && !HW.pantTold) { HW.pantTold = true; showMsg('還在喘，屏不住氣：人停住了，呼吸聲照樣傳得遠。喘完還按著就會屏住。'); }
   $('shade').hidden = !P.hidden;
   // 城門進度（只在城門那一區、開始推之後出現）
   const prog = gateProg(g);
