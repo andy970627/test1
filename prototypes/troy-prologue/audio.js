@@ -260,8 +260,24 @@
     // 新鼓聲的最響一擊不在每圈起點，改照自己的時間表，釘在規則「踩得上的拍裡最慢那條」的一拍（對齊點）上，用圈當單位
     F_GAP_MIN: 0.6, F_GAP_MAX: 1.4,   // 上一擊之後抽一個目標（圈），取目標之後的第一個對齊點（使用者 11/14 選「平均和現在一樣」，同文件 10.1）
     F_FIRST: 0.5,              // 第一擊：開始後 0.5 圈之後的第一個對齊點（同文件 3.2 HIT_FIRST）
-    F_ROLL_LEAD: 2.5,          // 越打越密：那一擊之前 2.5 秒起（不超過和上一擊間隔的一半；同文件 3.4 HIT_ROLL_LEAD）
+    F_ROLL_LEAD: 1.5,          // 越打越密：那一擊之前 1.5 秒起（不超過和上一擊間隔的一半；同文件 11.2 把 HIT_ROLL_LEAD 從 2.5 改 1.5，遊戲一圈實際 5～6.5 秒）
     F_SEED: 20261112,          // 時間表的固定亂數種子（同一個網址每次聽到的順序一樣）
+    // 弓弦（docs/design/2026-11-14-style-and-input-ideas.md 第 1.1、1.3 節；最小原型，只有呼叫 bowDraw／bowRelease／bowPluck 才響，預設版不呼叫）
+    BOW_FULL: 1.2,             // 拉滿要幾秒；張力 = 1 − (1 − 經過 ÷ BOW_FULL)²（一開始升得快、快滿時變慢，像弦越來越緊）【假設】
+    BOW_F0: 196, BOW_F1: 784,  // 拉弓的上升音：張力 0 → 1 從 G3 升到 G5（兩個八度，依張力等比例）【改編】
+    BOW_DRAW_GAIN: 0.07,       // 上升音的音量（很近、很小，只有自己聽得到的那種）
+    BOW_CREAK_AFTER: 0.5,      // 拉滿之後再撐幾秒，弓身開始吱嘎（會被聽到的聲音，1.1 節）
+    BOW_CREAK_GAIN: 0.18,      // 吱嘎每一下的音量（撐越久越大，最多 ×2）
+    BOW_TWANG_GAIN: 0.32,      // 放箭的弦聲（張力越大越響、越高）
+    BOW_PLUCK_HZ: 392,         // 空彈弓弦的音高（G4，清楚的一個音，1.3 節）
+    BOW_PLUCK_GAIN: 0.3,
+    BOW_CHIRP: [2400, 3600, 0.07],   // 弦聲尾端一聲很短的上滑「啾」：弦聲如燕鳴【原典第 21 卷】
+    // 敲暗號（畫面角色 ?lab=horse 試驗場；agent-notes/view.md 11/14）：只有呼叫 knock／horseReply 才響，預設版不呼叫
+    KNOCK_GAIN: 0.32,          // 指節敲木頭：短、乾（玩家自己的手，走音效匯流排）【假設】
+    KNOCK_REPLY_GAIN: 0.9,     // 木馬裡同伴回應的悶響：從木馬的位置傳來（方向照木馬，距離衰減照下一行）【假設；0.45 時 3 公尺處比同時段的鼓低 4 dB，加倍】
+    KNOCK_REPLY_R: 20,         // 離木馬幾公尺以外聽不到回應（和試驗場「20 公尺外同伴聽不到」同一個數）
+    KNOCK_REPLY_LP: 1000,      // 回應隔著木板：只留這以下（沒有「噓」的氣音）。520 時幾乎都是低頻，HRTF 分不出左右（左右只差 0.8 dB），放到 1000 並加 800 Hz 木板聲
+    KNOCK_REPLY_GAP: 0.2,      // 回應敲幾下時，每下間隔（秒）
     ILL_ROLL_FROM: 0.75,       // U4：最快那條從循環這個位置起不淡出，漸強到和最大聲那條一樣大，最響的一擊落下時拿掉
     // 木馬（規則 T.HORSE_MODE 開時才用；docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C2）
     BELLY_LOWPASS_HZ: 1200,    // 腹中隔著木板聽鼓：節奏線只留這以下（框鼓、木框敲擊都還在，筆電喇叭聽得到）【假設】
@@ -329,6 +345,22 @@
     R = R == null ? C.HORSE_BOOM_R : +R; G = G == null ? C.HORSE_BOOM_GAIN : +G;
     if (typeof d !== 'number' || !(d >= 0) || !(R > 0) || d >= R) return 0;   // null >= 0 在 JS 是真，要先擋型別
     var u = 1 - d / R; return G * u * u;
+  }
+
+  // 弓弦（1.1 節）：按住 dt 秒時的張力 0～1，與那一刻上升音的頻率。純函式，測試直接呼叫。
+  function bowTension(dt, full) {
+    full = full == null ? C.BOW_FULL : +full;
+    if (!(dt > 0) || !(full > 0)) return 0;
+    var x = Math.min(1, dt / full); return 1 - (1 - x) * (1 - x);
+  }
+  function bowPitch(tension) { var u = Math.max(0, Math.min(1, +tension || 0)); return C.BOW_F0 * Math.pow(C.BOW_F1 / C.BOW_F0, u); }
+
+  // 敲暗號：同伴回應的音量，離木馬 d 公尺；R 外為 0，之內線性衰減。距離不知道（null、壞值）就當貼著。純函式，測試直接呼叫。
+  function knockReplyGain(d, R, G) {
+    R = R == null ? C.KNOCK_REPLY_R : +R; G = G == null ? C.KNOCK_REPLY_GAIN : +G;
+    if (typeof d !== 'number' || !isFinite(d) || d < 0) return d === Infinity ? 0 : G;
+    if (!(R > 0) || d >= R) return 0;
+    return G * (1 - d / R);
   }
 
   // 各 cue 名稱與別名（規則層的 sfx 名稱不確定時都接得住）
@@ -2595,6 +2627,105 @@
     if (opts.autoStart !== false) { tick(); startTimer(); }
 
     // ---------- 對外 ----------
+    // ---------- 敲暗號：指節敲木頭、木馬裡同伴的回應（畫面角色 ?lab=horse 試驗場用）----------
+    function knock(t) {                 // 玩家敲一下：指節敲木頭，短而乾（每下音高、亮度略抖，不會像機器）
+      t = Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t);
+      var G = C.KNOCK_GAIN, j = 0.94 + 0.12 * Math.random();
+      noise(cueBus, t, 'bandpass', 2600 * j, 3, 0.55 * G, 0.0008, 0.012);          // 指節碰到木頭的「喀」
+      tone(cueBus, t, 'sine', 560 * j, 500 * j, 0.03, G, 0.001, 0.06);            // 木板本身短短的一聲
+      tone(cueBus, t, 'triangle', 1180 * j, 1100 * j, 0.02, 0.35 * G, 0.001, 0.03);
+      noise(cueBus, t, 'lowpass', 300, 0.7, 0.25 * G, 0.001, 0.03);              // 一點點厚度
+      if (log) log.push({ type: 'knock', t: t });
+      return { t: t };
+    }
+    // 同伴回應：從木馬的位置傳來（走 horseBus → horsePan，方向照遊戲傳來的木馬位置；opts.x、opts.z 給了就改用那個位置），
+    // 隔著木板的悶響、沒有氣音；距離衰減 knockReplyGain（opts.dist 沒給就用聲音層從 state 算的離木馬距離）。count 下，間隔 KNOCK_REPLY_GAP
+    function horseReply(t, opts) {
+      opts = opts || {}; t = Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t);
+      if (isFinite(opts.x) && isFinite(opts.z)) { setPos(horsePan, +opts.x, 1.5, +opts.z, ctx.currentTime, true); horse.posSet = true; }
+      var d = opts.dist != null ? +opts.dist : horse.dist, g = knockReplyGain(d), n = Math.max(1, Math.min(4, opts.count | 0 || 1));
+      var r = { t: t, gain: +g.toFixed(3), dist: isFinite(d) ? +d.toFixed(2) : null, count: n };
+      if (log) log.push(Object.assign({ type: 'horseReply' }, r));
+      if (!(g > 0)) return r;
+      var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = C.KNOCK_REPLY_LP; lp.Q.value = 0.8; lp.connect(horseBus);
+      for (var i = 0; i < n; i++) {
+        var ti = t + i * C.KNOCK_REPLY_GAP, gi = g * (i ? 0.85 : 1);
+        tone(lp, ti, 'sine', 170, 120, 0.1, gi, 0.003, 0.22);                    // 空心木箱的「咚」
+        tone(lp, ti, 'triangle', 340, 280, 0.06, 0.4 * gi, 0.002, 0.12);
+        noise(lp, ti, 'lowpass', 450, 0.8, 0.5 * gi, 0.002, 0.08);               // 指節隔著木板的悶擊
+        noise(lp, ti, 'bandpass', 800, 1.2, 0.45 * gi, 0.002, 0.06);             // 木板中頻：讓耳朵聽得出從哪邊來
+      }
+      return r;
+    }
+    // ---------- 弓弦（最小原型；docs/design/2026-11-14-style-and-input-ideas.md 第 1.1、1.3 節）----------
+    // 走音效匯流排（cueBus，玩家自己的聲音）。只有呼叫 bowDraw／bowRelease／bowPluck 才響；預設版和遊戲都不呼叫，其他聲音不受影響。
+    var bow = null;   // 拉弓中：{ t0, osc, lp, g, lfo, lfoG, creak: [音源] }
+    function bowStopNodes(b, t) {
+      try { b.g.gain.cancelScheduledValues(t); b.g.gain.setValueAtTime(b.g.gain.value || C.BOW_DRAW_GAIN, t); b.g.gain.linearRampToValueAtTime(0, t + 0.02); } catch (e) {}
+      [b.osc, b.lfo].forEach(function (o) { try { o.stop(t + 0.03); } catch (e) {} });
+      b.creak.forEach(function (o) { try { o.stop(t); } catch (e) {} });
+    }
+    function bowDraw(t) {               // 按下：上升音開始；拉滿後撐過 BOW_CREAK_AFTER 秒，弓身開始吱嘎（先排好 8 秒，放開時取消）
+      t = Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t);
+      if (bow) bowStopNodes(bow, t);
+      var osc = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lfoG = ctx.createGain();
+      osc.type = 'sawtooth'; lp.type = 'lowpass'; lp.Q.value = 2;
+      var N = 48, fc = new Float32Array(N), lc = new Float32Array(N);
+      for (var i = 0; i < N; i++) { var u = bowTension(C.BOW_FULL * i / (N - 1)); fc[i] = bowPitch(u); lc[i] = bowPitch(u) * 3; }
+      osc.frequency.setValueCurveAtTime(fc, t, C.BOW_FULL); lp.frequency.setValueCurveAtTime(lc, t, C.BOW_FULL);
+      lfo.frequency.value = 7; lfoG.gain.setValueAtTime(0, t); lfoG.gain.setValueAtTime(0, t + C.BOW_FULL); lfoG.gain.linearRampToValueAtTime(C.BOW_F1 * 0.006, t + C.BOW_FULL + 0.4);   // 拉滿後手開始抖：音高微微顫動
+      lfo.connect(lfoG); lfoG.connect(osc.frequency);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(C.BOW_DRAW_GAIN, t + 0.06);
+      osc.connect(lp); lp.connect(g); g.connect(cueBus); osc.start(t); lfo.start(t);
+      var creak = [], prevC = collect; collect = creak;
+      try {
+        var tc = t + C.BOW_FULL + C.BOW_CREAK_AFTER, k = 0;
+        while (tc < t + C.BOW_FULL + 8 && k < 80) {
+          var gk = C.BOW_CREAK_GAIN * Math.min(2, 1 + k / 12);
+          noise(cueBus, tc, 'bandpass', 520 + 260 * Math.random(), 6, gk, 0.004, 0.05 + 0.04 * Math.random());
+          tone(cueBus, tc, 'square', 150 + 40 * Math.random(), 110, 0.05, 0.25 * gk, 0.003, 0.05);
+          tc += 0.12 + 0.14 * Math.random(); k++;
+        }
+      } finally { collect = prevC; }
+      bow = { t0: t, osc: osc, lp: lp, g: g, lfo: lfo, lfoG: lfoG, creak: creak };
+      if (log) log.push({ type: 'bow', what: 'draw', t: t });
+      return { t: t };
+    }
+    function bowTwang(t, tension) {     // 放箭的弦聲：短促的「嘣」，張力越大越響、越高，尾端一聲「啾」
+      var f = bowPitch(tension) / 2, G = C.BOW_TWANG_GAIN * (0.4 + 0.6 * tension), ch = C.BOW_CHIRP;
+      noise(cueBus, t, 'bandpass', 1800, 2, 0.8 * G, 0.001, 0.03);
+      tone(cueBus, t, 'triangle', f * 1.02, f, 0.05, G, 0.002, 0.35);
+      tone(cueBus, t, 'sine', f * 2, f * 2, 0, 0.35 * G, 0.002, 0.22);
+      tone(cueBus, t + 0.01, 'sine', ch[0], ch[1], ch[2], 0.25 * G, 0.003, ch[2] + 0.03);
+    }
+    function bowRelease(t) {            // 放開：上升音收掉、弦聲。回傳放開的時刻、張力、有沒有在吱嘎（給面板與之後的規則判斷）
+      t = Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t);
+      if (!bow) return null;
+      var b = bow; bow = null;
+      var dt = t - b.t0, tension = bowTension(dt), creaking = dt >= C.BOW_FULL + C.BOW_CREAK_AFTER;
+      bowStopNodes(b, t); bowTwang(t, tension);
+      var r = { t: t, held: +dt.toFixed(3), tension: +tension.toFixed(3), pitch: Math.round(bowPitch(tension)), creaking: creaking };
+      if (log) log.push(Object.assign({ type: 'bow', what: 'release' }, r));
+      return r;
+    }
+    function bowPluck(t) {              // 空彈弓弦（1.3 節）：不搭箭彈一下，一個清楚的音。規則要拿回傳的時刻判斷落不落在拍上
+      t = Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t);
+      var f = C.BOW_PLUCK_HZ, G = C.BOW_PLUCK_GAIN, ch = C.BOW_CHIRP;
+      noise(cueBus, t, 'bandpass', 2200, 2.5, 0.5 * G, 0.001, 0.02);
+      tone(cueBus, t, 'triangle', f * 1.01, f, 0.04, G, 0.002, 0.7);
+      tone(cueBus, t, 'sine', f * 2, f * 2, 0, 0.4 * G, 0.002, 0.45);
+      tone(cueBus, t, 'sine', f * 3, f * 3, 0, 0.15 * G, 0.002, 0.25);
+      tone(cueBus, t + 0.012, 'sine', ch[0], ch[1], ch[2], 0.3 * G, 0.003, ch[2] + 0.03);
+      if (log) log.push({ type: 'bow', what: 'pluck', t: t });
+      return { t: t };
+    }
+    function bowCancel(t) { if (!bow) return; bowStopNodes(bow, Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t)); bow = null; }   // 不放箭直接收弓（沒有弦聲）
+    function bowInfo(t) {
+      t = t == null ? ctx.currentTime : t;
+      if (!bow) return { drawing: false, tension: 0 };
+      var dt = Math.max(0, t - bow.t0), u = bowTension(dt);
+      return { drawing: true, held: +dt.toFixed(2), tension: +u.toFixed(3), pitch: Math.round(bowPitch(u)), full: dt >= C.BOW_FULL, creaking: dt >= C.BOW_FULL + C.BOW_CREAK_AFTER };
+    }
     var api = {
       CONST: C,
       INSTRUMENTS: INST_NAME,
@@ -2602,6 +2733,10 @@
       get beatSource() { return tabFromRules ? 'rules' : 'audio'; },   // 拍點公式來自規則還是本檔
       isFakeAt: function (t) { var c = Math.floor(Pof(t == null ? ctx.currentTime : t)); return !!fakeC[c]; },   // 測試用：t 所在這一輪是不是假驟降
       now: function () { return ctx.currentTime; },
+      // 弓弦最小原型（試聽頁用；查看試驗場要接的話由畫面呼叫，見 agent-notes/audio.md）：預設版不呼叫，不改任何既有聲音
+      bowDraw: bowDraw, bowRelease: bowRelease, bowPluck: bowPluck, bowCancel: bowCancel, bowInfo: bowInfo,
+      // 敲暗號（畫面角色 ?lab=horse 用；預設版不呼叫）
+      knock: knock, horseReply: horseReply,
       phase: function (t) { return frac(Pof(t == null ? ctx.currentTime : t)); },
       cyclePhase: function (t) { return Pof(t == null ? ctx.currentTime : t); },   // 累計相位（測試用）
       timeAtPhase: function (P) { return tAt(P); },
@@ -2893,5 +3028,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains };
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
 });

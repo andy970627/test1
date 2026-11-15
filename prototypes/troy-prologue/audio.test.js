@@ -113,3 +113,34 @@ test('新鼓聲：最慢那條進場、最快那條退場時 ≤ −40 dB（接�
     }
   }
 });
+
+// 弓弦最小原型（docs/design/2026-11-14-style-and-input-ideas.md 第 1.1、1.3 節）
+test('弓弦：張力 0 起、BOW_FULL 秒拉滿、之後維持 1，中間單調上升', () => {
+  assert.strictEqual(A.bowTension(0), 0);
+  assert.strictEqual(A.bowTension(-1), 0);
+  assert.strictEqual(A.bowTension(C.BOW_FULL), 1);
+  assert.strictEqual(A.bowTension(C.BOW_FULL * 3), 1);
+  let prev = -1;
+  for (let t = 0; t <= C.BOW_FULL + 1e-9; t += C.BOW_FULL / 40) { const u = A.bowTension(t); assert.ok(u >= prev, `t = ${t}`); prev = u; }
+  assert.ok(A.bowTension(C.BOW_FULL / 2) > 0.5, '一開始升得快、快滿時變慢');
+});
+
+test('弓弦：上升音從 BOW_F0 到 BOW_F1、依張力等比例，壞值夾住', () => {
+  assert.strictEqual(A.bowPitch(0), C.BOW_F0);
+  assert.strictEqual(A.bowPitch(1), C.BOW_F1);
+  assert.ok(Math.abs(A.bowPitch(0.5) - Math.sqrt(C.BOW_F0 * C.BOW_F1)) < 1e-9);
+  assert.strictEqual(A.bowPitch(2), C.BOW_F1);
+  assert.strictEqual(A.bowPitch(NaN), C.BOW_F0);
+  assert.ok(C.BOW_CREAK_AFTER > 0 && C.BOW_PLUCK_HZ > 0);
+});
+
+// 敲暗號：同伴回應的距離衰減（agent-notes/view.md 11/14，?lab=horse）
+test('敲暗號回應：貼著木馬等於 KNOCK_REPLY_GAIN、單調遞減、R 公尺外 0', () => {
+  assert.strictEqual(A.knockReplyGain(0), C.KNOCK_REPLY_GAIN);
+  let prev = Infinity;
+  for (let d = 0; d <= C.KNOCK_REPLY_R + 1e-9; d += 0.5) { const g = A.knockReplyGain(d); assert.ok(g <= prev && g >= 0, `d = ${d}`); prev = g; }
+  for (const d of [C.KNOCK_REPLY_R, C.KNOCK_REPLY_R + 1, Infinity]) assert.strictEqual(A.knockReplyGain(d), 0, `d = ${d}`);
+  assert.strictEqual(A.knockReplyGain(null), C.KNOCK_REPLY_GAIN, '距離不知道：當貼著');
+  assert.strictEqual(A.knockReplyGain(5, 10, 1), 0.5);
+  assert.strictEqual(C.KNOCK_REPLY_R, 20, '和試驗場「20 公尺外同伴聽不到」同一個數');
+});
