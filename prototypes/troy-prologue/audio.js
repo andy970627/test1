@@ -229,11 +229,11 @@
     DN_SIG_L: 1.26,            // 鐘形寬度（以「層」為單位；U1 的 0.21 × 6）；中心對準規則各層的中心
     DN_SCALE: 0.9,             // 整體音量倍數（每個瞬間各條總和先縮放回規則的總和，再乘這個；1 時拍子變密、整段比舊版大 3.1 dB）
     DN_MIN_GAIN: 0.003,        // 低於這個音量的拍不排（約 −50 dB，進退場淡到零）
-    // 催促 DRIVE（設計 2026-11-12-free-hit-schedule 第 13.2 節；只有試聽頁 setDrive 會開，遊戲預設 0、輸出不變）：
+    // 催促 DRIVE（設計 2026-11-12-free-hit-schedule 第 13.2 節；期末企劃 2026-11-15-final-gdd 第 3 節進遊戲：讀 state.drive，沒有這個欄位＝0、輸出和以前逐拍相同）：
     // 在新鼓聲最快那條上面再疊兩條（兩倍、四倍快）＋最上面一條淡到零的；不是踩得上的拍的那幾條，音量往「中心往快的一邊移 2 層」的鐘形過去
     DRIVE_SHIFT: 2,            // DRIVE = 1 時鐘形中心往快的一邊移幾層（2 層＝最明顯的鼓快四倍）
     DRIVE_PEAK: 1.3,           // 疊上去那幾條的峰值＝現在最大聲那條 × 這個值（但不超過「最輕的踩得上的拍 ÷ 0.4」× 0.95，守 0.4 倍檢查）【假設】
-    DRIVE_MIN_GAIN: 0.01,      // 疊上去的快層低於這個音量就不排（太密的拍省下來，約 −40 dB）
+    DRIVE_MIN_GAIN: 0.03,      // 疊上去的快層低於這個音量就不排（約 −30 dB，壓在密鼓底下聽不到）。11/15 遊戲實測：0.01 時 drive 1 每秒 133 拍、audio.update 平均 1.9／最差 19 毫秒；0.03 → 96 拍、1.4／11.6 毫秒
     DRIVE_LOW_X: 0.12,         // 踩得上的拍在 DRIVE = 1 時的音色（playHit 的速度位置；0＝低鼓、0.375＝框鼓）：較低較厚
     DRIVE_HIGH_X: 0.55,        // 其他鼓在 DRIVE = 1 時的音色：框鼓偏手拍，較亮較急
     // 第二步「三對二的強拍」11/14 退回（設計 2026-11-12-free-hit-schedule 第 13 節）：新鼓聲不再加強拍、主鼓不再 ×0.6；每圈拍數照舊讀 state.T.RISSET_M
@@ -838,7 +838,7 @@
     function minGain() { var K = RK(); return (K && isFinite(K.BEAT_MIN_GAIN)) ? +K.BEAT_MIN_GAIN : C.MIN_GAIN; }
     // 第 k 層在相位 p 的音量：以規則的 layerGain 為準（追殺時 5 層都走鐘形），沒有規則才用備援鐘形
     // ---------- 加速感試聽（聲音測試頁專用；ill 全為預設時，所有分支都不走，輸出和以前逐樣本相同） ----------
-    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false, v: false, fake: false, v3: false, v4: false, noHit: false, free: false, drive: 0 };
+    var ill = { timbre: false, bell: false, layers: 0, u: false, pitch: false, rise: false, roll: false, shep: false, v: false, fake: false, v3: false, v4: false, noHit: false, free: false, drive: null };   // drive：試聽頁 setDrive 的值；null＝照遊戲 state.drive
     function ownBell(k, p, nL) { var K = RK(), sig = (K && K.BELL_SIGMA) || C.BELL_SIGMA; return bell((k + p) / nL, sig * nLayers() / nL); }
     function asymBell(x) { var d = x - C.ILL_CENTER, sg = d > 0 ? C.ILL_SIG_FAST : C.ILL_SIG_SLOW; return Math.exp(-(d / sg) * (d / sg)); }
     // S2：鐘形改成左右不對稱（偏快），再把每個瞬間的四層總和縮放回現行的總和——形狀照新的走，整體音量的起伏和現行一樣
@@ -859,12 +859,28 @@
     }
     function dnGains(p, hunted) {
       var rg = function (k, pp) { return curGain(k, pp, hunted); };
-      if (ill.drive > 0 && !hunted) return driveDrumGains(p, baseLayerCount(hunted), rg, ill.drive, maskG()).g;   // 13.2 試聽：多三條
+      var D = driveNow(); if (D > 0) return driveG(p, hunted).g;   // 催促 DRIVE：多疊三條（期末企劃第 3 節）
       return newDrumGains(p, baseLayerCount(hunted), rg);
     }
     function maskG() { var K = RK(); return (K && isFinite(K.MASK_GAIN)) ? +K.MASK_GAIN : 0.3; }
-    function driveTimbre(j, p, nL) {    // 踩得上的拍（權重 w）→ 較低較厚；其他 → 較亮；都隨 DRIVE 從原本的框鼓過去
-      var w = driveDrumGains(p, nL, function (k, pp) { return curGain(k, pp, false); }, ill.drive, maskG()).w[j] || 0, d = ill.drive;
+    // 催促 DRIVE（期末企劃 2026-11-15-final-gdd 第 3 節）：遊戲由規則算好放 state.drive（0.30～1.00，任何判定都不讀它）；沒有這個欄位＝關（0）。
+    // 試聽頁用 setDrive 蓋過（null 才照 state）。只在新鼓聲時有作用
+    function driveNow() {
+      if (ill.drive != null) return ill.drive;
+      var d = lastState && lastState.drive;
+      return (typeof d === 'number' && isFinite(d)) ? Math.max(0, Math.min(1, d)) : 0;
+    }
+    // 同一個相位的各條常常同時有拍（多層節奏的拍是巢狀的），每拍又要算音量與音色：照（DRIVE、追殺、層數、門檻、相位）快取，DRIVE 一變就整個清掉
+    var dCacheKey = '', dCache = {}, dCacheN = 0;
+    function driveG(p, hunted) {
+      var key = driveNow() + ':' + (hunted ? 1 : 0) + ':' + baseLayerCount(hunted) + ':' + maskG();
+      if (key !== dCacheKey || dCacheN > 4000) { dCacheKey = key; dCache = {}; dCacheN = 0; }
+      var r = dCache[p];
+      if (!r) { r = dCache[p] = driveDrumGains(p, baseLayerCount(hunted), function (k, pp) { return curGain(k, pp, !!hunted); }, driveNow(), maskG()); dCacheN++; }
+      return r;
+    }
+    function driveTimbre(j, p, nL, hunted) {   // 踩得上的拍（權重 w）→ 較低較厚；其他 → 較亮；都隨 DRIVE 從原本的框鼓過去
+      var d = driveNow(), w = driveG(p, hunted).w[j] || 0;
       return C.ILL_TIMBRE_X + d * (w * (C.DRIVE_LOW_X - C.ILL_TIMBRE_X) + (1 - w) * (C.DRIVE_HIGH_X - C.ILL_TIMBRE_X));
     }
     function dnGain(j, p, t, c, hunted) {
@@ -951,7 +967,7 @@
         rollFrom: a.next ? a.next.rollFrom : null, gapCyc: a.prev && a.next ? +(a.next.P - a.prev.P).toFixed(2) : null, blindLen: BL };
     }
     function scheduleBeatsNew(from, end, ws) {
-      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + (ill.drive > 0 && !st.hunted ? 5 : 2);   // DRIVE：多疊三條
+      var Pa = Pof(from), Pb = Pof(end), nL = layerCount(st.hunted), nS = nL + (driveNow() > 0 ? 5 : 2);   // DRIVE：多疊三條（追殺時也疊；「逃」走脈衝不經這裡，「躲」的悶住照樣疊上去）
       if (tables.length < nL) refreshTables();
       var M0 = tables[0] ? tables[0].length : ruleM();
       while (tables.length < nS - 1) tables.push(ownTable(tables.length, M0));   // 最上面那條：規則表再往上一層（拍數照第 0 層擴展）；DRIVE 時再多三層
@@ -969,7 +985,7 @@
             if (g < C.DN_MIN_GAIN || (j >= nL + 2 && g < C.DRIVE_MIN_GAIN)) continue;   // DRIVE 疊上去的快層門檻較高（太密）
             var le = log ? { type: 'beat', k: k, n: nn, c: c, t: t, p: p, g: g, drums: 'new' } : null;
             if (le) log.push(le);
-            var xT = ill.drive > 0 && !st.hunted ? driveTimbre(j, p, nL) : C.ILL_TIMBRE_X;   // 13.2 試聽：踩得上的拍換較低較厚的鼓、疊上去的快層較亮
+            var xT = driveNow() > 0 ? driveTimbre(j, p, nL, st.hunted) : C.ILL_TIMBRE_X;   // 13.2 試聽：踩得上的拍換較低較厚的鼓、疊上去的快層較亮
             (function (g, x) { addEvent(key, P, movesOn() ? beatBus : rhythmBus, function (tt, out) { playHit(out, x, tt, g); }, true, le); })(g, xT);
           }
         }
@@ -2758,8 +2774,8 @@
       bowDraw: bowDraw, bowRelease: bowRelease, bowPluck: bowPluck, bowCancel: bowCancel, bowInfo: bowInfo,
       // 敲暗號（畫面角色 ?lab=horse 用；預設版不呼叫）
       knock: knock, horseReply: horseReply,
-      // 催促 DRIVE 試聽（13.2；只有試聽頁呼叫，遊戲預設 0）：0～1，可每幀呼叫（不重排已排好的拍，之後的拍照新值）
-      setDrive: function (v) { ill.drive = Math.max(0, Math.min(1, +v || 0)); }, getDrive: function () { return ill.drive; },
+      // 催促 DRIVE：試聽頁用 setDrive(0～1) 蓋過 state.drive（可每幀呼叫，不重排已排好的拍，之後的拍照新值）；setDrive(null) 回到照 state。遊戲不呼叫，直接傳 state.drive
+      setDrive: function (v) { ill.drive = v == null ? null : Math.max(0, Math.min(1, +v || 0)); }, getDrive: function () { return driveNow(); },
       phase: function (t) { return frac(Pof(t == null ? ctx.currentTime : t)); },
       cyclePhase: function (t) { return Pof(t == null ? ctx.currentTime : t); },   // 累計相位（測試用）
       timeAtPhase: function (P) { return tAt(P); },

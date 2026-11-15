@@ -459,3 +459,15 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - 無頭瀏覽器實開試聽頁（`page-check.mjs`，`--mute-audio`＋`?mute=1`）：H0、H2、H3、G0 各跑 8 秒都 60 fps、最差一幀 22 毫秒、沒有錯誤。
     - 全套 355 過。
   - 風險：H2 每秒 125 拍，舊電腦可能吃不消（聲音斷續）；聽起來太密或太吵時，先調高 `DRIVE_MIN_GAIN` 或降 `DRIVE_PEAK`。
+- **11/15：DRIVE 進遊戲（聲音那一半；期末企劃 `2026-11-15-final-gdd.md` 第 3 節）**（未提交；`audio.js`、`audio.test.js`）：
+  - **讀法**：`driveNow()` 讀 `state.drive`（規則 2579825：0.30～1.00，`T.DRIVE_MODE` 關時 null；介面見 `rules.md` 第 2 節）；不是有限數字（null、沒有這個欄位）＝0＝關。試聽頁 `setDrive(v)` 蓋過它，`setDrive(null)` 回到照 state。只在新鼓聲有作用；畫面層要把 `?drive=0` 轉成 `T.DRIVE_MODE = false`（規則角色已寫，畫面角色接）。
+  - **做法**照試聽頁 H 版（`driveDrumGains`）：踩得上的拍音量不動、換較低較厚的鼓；上面疊兩倍、四倍快的層與一條淡到零的，音量隨 drive 變大、最大聲往快的一邊移。**追殺時也疊**（規則 5 層照算；「逃」本來就走脈衝、不經這裡）；「躲」的悶住（`hideKeep` 退 12 dB＋低通）照樣疊在新的三條上。
+  - **效能**：同一相位的各條常同時有拍，`driveG` 照（drive、追殺、層數、門檻、相位）快取音量與音色；`DRIVE_MIN_GAIN` 0.01 → **0.03**（約 −30 dB 以下壓在密鼓底下聽不到，不排）。試聽頁 H 版也跟著少排這些拍。
+  - **驗收**：
+    1. **DRIVE 關掉逐拍相同**：`audio-g-check.mjs`，環境變數 `DRIVE_OFF=1`（遊戲 `createLevel` 的 T 帶 `DRIVE_MODE: false` → `g.drive` 是 null）、`HEAD_FILE=audio.prev.js`（`git show HEAD:…/audio.js`，316393d），真遊戲模擬各 60 秒：一圈 6 秒 2106 筆、12 秒 1061 筆（拍、最響一擊的時刻、層、拍號、音量）完全相同。
+    3. **0.4 倍**：純函式掃整圈，巡邏 4 層 drive 0～1、追殺 5 層 drive 0.3／0.6／1，踩得上的拍都不動且 ≥ 最大聲 0.4 倍（新增 1 條追殺的測試，共 3 條 DRIVE 測試）。執行時（真遊戲模擬、假的 `g.drive`，每 10 秒取同一瞬間比，避開那一擊前 1 秒一起退 9 dB 的邊界）：0.3 → 1 一路升最差 0.44、固定 1 最差 0.44；照規則真的算出來的 drive（第 2 區起、沒有衛兵）0.57。
+  - **效能量測**（無頭 `--mute-audio`）：
+    - 離線遊戲模擬（真規則、有衛兵、第 2 區起，每 1/60 秒一次 `audio.update`，`audio-upd-prof.mjs`）：drive 0 平均 0.28／最差 4.4 毫秒；drive 1 每秒排 96 拍，平均 1.4、p99 5.4、最差 11.6 毫秒（0.01 門檻時 133 拍、1.9／6.6／19.4）。慢的那幾次集中在一圈長度正在變（衛兵靠近）時的重排。
+    - 真的遊戲頁 `index.html?mute=1&nolock=1`（`audio-game-load.mjs`：攔 `createAudio` 包 `update`，每幀把假 drive 放進 state，量 20 秒）：無頭沒有顯示卡，畫面本來只有 13～15 fps，看不出幀率差；`audio.update` 平均 drive 0 0.26、0.3 0.69、1 1.26 毫秒，最差 2.8／11.4／19.4 毫秒（這裡一幀要排的拍是 60 fps 時的 4 倍）。試聽頁 H2 60 fps、最差一幀 28 毫秒。
+    - 結論：一般電腦每幀多 1～2 毫秒；最快時偶爾一幀卡 10～20 毫秒（掉一幀）。真的卡就再調高 `DRIVE_MIN_GAIN`（0.06 時 73 拍、平均 1.1／最差 11 毫秒）。
+  - 全套 362 過。順手記：遊戲頁在無頭瀏覽器裡偶爾報 `Unexpected token ')'`（沒有堆疊，7 次出現 2 次，drive 0 也有），和 DRIVE 無關，來源沒查。

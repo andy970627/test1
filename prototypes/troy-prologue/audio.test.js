@@ -173,3 +173,15 @@ test('催促 DRIVE：0～1 時踩得上的拍音量不動、都 ≥ 最大聲那
     assert.ok(top[8] <= 0.01 * Math.max(...top), `d=${d} 最上面那條退場 ${top[8]}`);
   }
 });
+
+test('催促 DRIVE：追殺時（規則 5 層）也照樣疊，踩得上的拍不動、≥ 最大聲 0.4 倍', () => {
+  const R = require('./risset.js'), K = Object.assign({}, R.T, { RISSET_M: 7 }), nL = R.layerCount(true, K), rg = (k, pp) => R.layerGain(k, pp, true, K);
+  for (const d of [0.3, 0.6, 1]) for (let i = 0; i < 500; i++) {
+    const p = i / 500, g = A.driveDrumGains(p, nL, rg, d, K.MASK_GAIN).g, base = A.newDrumGains(p, nL, rg), mx = Math.max(...g);
+    assert.strictEqual(g.length, nL + 5);
+    for (let k = 0; k < nL; k++) {
+      if (rg(k, p) < K.MASK_GAIN) continue;
+      assert.ok(Math.abs(g[k + 1] - base[k + 1]) < 1e-12 && g[k + 1] >= 0.4 * mx, `d=${d} p=${p} 第 ${k} 層`);
+    }
+  }
+});
