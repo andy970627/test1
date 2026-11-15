@@ -82,7 +82,7 @@
     HORSE_MODE: false,
     BELLY_STEPS_NEED: 4,  // 木馬腹中練習：亮滿幾格，同伴才在下一個掩護窗替你拉開暗門。只有「起步」算數（第 1.1 節）【假設，待量】
     BELLY_MISS_COST: 1,   // 木馬腹中練習：起步踩歪扣幾格（最少扣到 0）【第 1.1 節；0、1、4 實測後取三條驗收都過的最小值】
-    // 11/11 搭配動作（docs/design/2026-11-11-companion-mechanics.md 第 7 節）：跑（按住 Shift）、蹲走（按住 C）。
+    // 11/11 搭配動作（docs/design/2026-11-11-companion-mechanics.md 第 7 節）：跑（按住 Shift）、蹲走（按住 Alt；11/15 由 C 改）。
     // 預設開（和木馬不同）；網址 ?moves=0 關。關著時所有路徑和報告版（c1d4aa3）完全一樣。新常數都是假設值。
     MOVES_MODE: true,
     RUN_HOLD: 0.2,        // 按住 Shift 超過這麼多秒才算跑（點一下仍是衝刺）
@@ -113,6 +113,7 @@
     CHECK_BREATH_RATE: 0.3, // 聽到沒屏住的呼吸（SEARCH_BREATH_R 內）：疑心每秒 +0.3，朝你走
     CHECK_DECAY: 0.1,     // 沒看到、沒聽到時疑心每秒退多少
     CHECK_STOP_R: 2.5,    // 第 17.2 節：查看離目標這麼近就停下張望（改目標時也一樣）；規則角色可在 2～3 內調
+    NOISE_R: 8,           // 11/15 弓弦引開 g.noise：沒被蓋住時，這麼近的衛兵（取最近一名）會來查看【假設】；比腳步兩倍（5）大，?lab=check 的衛兵在 6 公尺
     HUNT_START_DELAY: 0.8, // 第 17.2 節：疑心滿、追殺開始時先喊一聲（hunt_call），這段時間追兵站著不動；規則角色可在 0.6～1.0 內調
     CALL_LOOK_ONLY: false, // 第 16.1 節方向 (a)：追殺開始的喊聲叫來的衛兵只轉頭看、不走過來（查看的「走過去」跳過）
     // 走法試驗場（第 11.4 節，?lab=walk；不進預設版）：'glide' 現狀（按住就滑）｜'stride' P1 步子跟著鼓｜'manual' P1＋P2 火光圈內自己踩
@@ -135,7 +136,6 @@
     CLOCK_MAX_GAP: 30,    // 兩幀相隔超過這麼多秒（分頁休眠）就不分段平滑，直接接上
     RISSET_LAYERS: 4,     // Risset 打擊層數（聲音層同值）
     RISSET_M: 7,          // 最慢層每循環拍數
-    RISSET_M_NEW: 6,      // 加速錯覺 13.3 第二步（三對二的強拍）：新鼓聲（MOVES_MODE 開、T.DRUMS 不是 'old'）時這一局的 RISSET_M；?moves=0、?drums=old 照舊 7
     BELL_SIGMA: 0.22,     // 層音量鐘形曲線寬度（4 層時；追殺 5 層時按層距等比例縮成 0.22 × 4/5）
     BEAT_MIN_GAIN: 0.02,  // 低於這個音量的拍不排、不算
     HUNT_LAYERS: 5,       // 追殺時的層數（多一層 k = 4 純金屬）；5 層都走鐘形曲線，沒有固定底限，交接才連續（修 R1）
@@ -560,7 +560,7 @@
     // 第 17.4 節：第一次躲進陰影、追兵開始搜時的第二句（畫面角色定稿）
     if (moves) H.huntSearch = '他順著你進來的方向搜過來了：往旁邊躲開，他走近就按住空白鍵屏息。';
     if (moves) H.check = '他聽到了，正走過來查看：踩著鼓點退開，或躲進陰影；他走近時按住空白鍵屏息。';   // 畫面角色定稿
-    if (moves) H.crouch = '按住 C 蹲著走，速度' + speedText(K.CROUCH_SPEED_MUL) + '；起步不必那麼準（鼓點前後 ' + num(K.CROUCH_STEP_WIN) +
+    if (moves) H.crouch = '按住 Alt 蹲著走，速度' + speedText(K.CROUCH_SPEED_MUL) + '；起步不必那麼準（鼓點前後 ' + num(K.CROUCH_STEP_WIN) +
       ' 秒內都算），離拍的腳步聲也只傳約 ' + num(K.CROUCH_R) + ' 公尺。蹲著時，水缸、貨堆這類矮東西擋得住衛兵的視線。要暗殺、推門閂得先站起來。';
     return H;
   }
@@ -791,9 +791,7 @@
     if (lab && oT.DYNAMIC == null) K.DYNAMIC = false;
     // 搭配動作第 8 節：開關開著時，這一局的 STEP_R 換成 MOVES_STEP_R（g.T.STEP_R 就是實際半徑；直接給 opts.T.STEP_R 的以它為準）
     if (K.MOVES_MODE && oT.STEP_R == null) K.STEP_R = K.MOVES_STEP_R;
-    // 加速錯覺 13.3 第二步：新鼓聲時每圈拍數 7 → 6（g.T.RISSET_M 就是實際值，聲音從 state.T 讀；直接給 opts.T.RISSET_M 的以它為準）。
-    // 「踩得上的拍」照舊由 MASK_GAIN 從規則的四層裡篩，拍數只會少不會多（13.2 的陷阱碰不到）
-    if (K.MOVES_MODE && K.DRUMS !== 'old' && oT.RISSET_M == null) K.RISSET_M = K.RISSET_M_NEW;
+    // 加速錯覺第二步（新鼓聲每圈 6 拍）11/15 依設計第 13 節（2440c54）退回：每圈一律 RISSET_M 7（g.T.RISSET_M 仍是實際值，聲音從 state.T 讀）。
     const rng = opts.rng || mulberry32(opts.seed == null ? 1 : opts.seed);
     let level = opts.level || buildLevel();
     if (horseLab) level = Object.assign({}, level, { guards: [] });
@@ -870,7 +868,7 @@
     const RUN_HUNT_MSG = '又聽到跑步聲——衛兵衝過來！';
     const CHECK_AGAIN_MSG = '同一個衛兵第' + cnNum(K.CALM_MEMORY_N) + '次注意到你——這次直接衝過來！';
     const CHECK_MSG = { run: '跑步聲傳開了——衛兵走過來查看。', move_high: K.COVER_MODE ? '腳步露了聲——衛兵走過來查看。' : '你動了——衛兵走過來查看。',
-      loud: '那聲音引來了衛兵，他走過來查看。', susp: '衛兵覺得不對勁，走過來查看。' };
+      loud: '那聲音引來了衛兵，他走過來查看。', susp: '衛兵覺得不對勁，走過來查看。', noise: '弦聲傳了出去——衛兵走過來查看。' };
     const MOVE_HIGH_MSG = K.COVER_MODE ? '節奏最快的時候腳步露了聲——被發現了！' : '節奏最快的時候亂動——被發現了！';
     const emit = (type, a, extra) => g.out.push(extra ? Object.assign({ type, a }, extra) : { type, a });
     const hint = (key) => { if (!g.hintsShown[key]) { g.hintsShown[key] = true; emit('hint', HTXT[key]); } };
@@ -1226,7 +1224,7 @@
         calmAt: Number.isFinite(i.calmAt) ? i.calmAt : null,
         actAt: Number.isFinite(i.actAt) ? i.actAt : null,   // 按鍵當下的音訊時間（衝刺、暗殺、門閂、安撫用）
         interact: !!i.interact, start: !!i.start,
-        run: !!i.run, crouch: !!i.crouch   // 搭配動作：Shift、C 是否按住（dash 仍是「按下那一刻」）
+        run: !!i.run, crouch: !!i.crouch   // 搭配動作：Shift、Alt 是否按住（dash 仍是「按下那一刻」）
       };
     }
     // ----- 循環時鐘（越危險越快） -----
@@ -1365,11 +1363,13 @@
       pl.panting = panting;
       // 跑超過 RUN_PANT_AFTER 之後，停下那一幀就算喘（不能趁那一幀屏息）
       const noBreath = panting || (K.MOVES_MODE && pl.running && pl.runT > K.RUN_PANT_AFTER + 1e-9);
-      // 11/12 使用者回報：開關開著時可以「邊走邊先按住空白鍵」——有移動輸入時先不進屏息（照常走），
-      // 一停下（沒有移動輸入）的那一幀立刻進屏息，不用放開再按。已經在屏息中就照舊（按方向鍵也不會動）。報告版照舊（一按就停下屏息）。
-      const breathWait = K.MOVES_MODE && !pl.breathing && Math.hypot(inp.mx, inp.mz) > 1e-6;
+      // 11/15 使用者要求（取代 11/12 的「邊走邊按先照走、停下才屏息」）：開關開著時，按住空白鍵那一幀起立刻停下，
+      // 覆蓋走、跑、蹲的移動與衝刺（方向鍵不動、跑中斷、runHeld 歸零）；能屏息就同一幀進屏息。
+      // 跑完在喘（noBreath）或喘不過氣鎖住（breathLock）時：照樣停下，但不進屏息（照現行喘的規則）；喘完仍按著就接上屏息。
+      // 蹲的姿勢保留（只停移動）。報告版照舊（屏息時不能動；喘、鎖住時不擋移動）。
+      const stopHold = !!(K.MOVES_MODE && inp.breath);
       // 屏息
-      if (inp.breath && !pl.breathLock && !noBreath && !breathWait) {
+      if (inp.breath && !pl.breathLock && !noBreath) {
         if (!pl.breathing) { emit('sfx', 'breath_in'); pl.breathSaved = false; }
         pl.breathing = true;
         pl.breathT += dt;
@@ -1394,10 +1394,10 @@
       const inCircle = K.STEP_MODE === 'manual' && g.guards.some((q) => q.active && dist2(q, pl) <= manualR(q));
       if (inCircle !== pl.inCircle) emit('sfx', inCircle ? 'manual_on' : 'manual_off', { x: pl.x, z: pl.z });
       pl.inCircle = inCircle;
-      // 搭配動作（MOVES_MODE）：按住 Shift 超過 RUN_HOLD 而且有方向鍵 = 跑（屏息時不能跑）；按住 C = 蹲（跑的時候站起來）
+      // 搭配動作（MOVES_MODE）：按住 Shift 超過 RUN_HOLD 而且有方向鍵 = 跑（屏息時不能跑）；按住 Alt = 蹲（跑的時候站起來）
       let running = false, crouching = false;
       if (K.MOVES_MODE) {
-        pl.runHeld = inp.run && !pl.breathing ? (pl.runHeld || 0) + dt : 0;
+        pl.runHeld = inp.run && !pl.breathing && !stopHold ? (pl.runHeld || 0) + dt : 0;
         running = pl.runHeld >= K.RUN_HOLD - 1e-9 && Math.hypot(inp.mx, inp.mz) > 1e-6 && !inCircle;
         crouching = inp.crouch && !running;
         if (running !== !!pl.running) emit('sfx', running ? 'run_start' : 'run_stop', { x: pl.x, z: pl.z });
@@ -1416,11 +1416,11 @@
       const stepWin = crouching ? K.CROUCH_STEP_WIN : undefined;
       const stepX = (o) => (crouching ? Object.assign(o, { crouch: true }) : o);   // 蹲走的腳步事件多帶 crouch: true
 
-      // 移動與衝刺（屏息時不能動）
+      // 移動與衝刺（屏息時不能動；開關開著時按住空白鍵就不能動）
       const ox = pl.x, oz = pl.z;
       let walked = false;
       let strideStepNow = null;   // 走法試驗場：這一幀踏出的一步 {masked, beatT, start, manual}
-      if (!pl.breathing) {
+      if (!pl.breathing && !stopHold) {
         let mx = inp.mx, mz = inp.mz;
         const len = Math.hypot(mx, mz);
         if (len > 1) { mx /= len; mz /= len; }
@@ -2005,6 +2005,38 @@
       emit('msg', '從「' + level.zones[z].name + '」重新開始。');
       g.alarm = 0;
       return g;
+    };
+
+    /**
+     * 11/15 弓弦引開（第一批原型；設計 2026-11-14-style-and-input-ideas.md 第 1.3 節、agent-notes/audio.md 弓弦那段）：
+     * 玩家在時刻 t、位置 (x, z) 發出一聲（kind 目前只有 'bow'＝空彈弓弦）。只給 ?lab=check 用，預設版不呼叫。
+     *   被蓋住＝stepMasked(t)（±STEP_WIN 內有踩得上的拍）：什麼都不發生。
+     *   沒蓋住：NOISE_R 內最近的衛兵朝 (x, z) 來查看（聲音從你身上發出，他會朝你來）——
+     *     巡邏中 → 進查看（check_start，cause 'noise'）；已在查看 → 改朝這裡走（check_retarget，why 'noise'）；其他狀態不理。
+     * 事件 sfx 'noise' {kind, x, z, masked, by}；回傳 {t, kind, masked, by}（by＝來查看的衛兵 id，沒有＝null）。
+     */
+    g.noise = function (o) {
+      o = o || {};
+      const t = o.t == null ? (g.time == null ? 0 : g.time) : o.t;
+      const pl = g.player, x = o.x == null ? (pl ? pl.x : 0) : o.x, z = o.z == null ? (pl ? pl.z : 0) : o.z, kind = o.kind || 'bow';
+      if (g.phase !== 'play') return null;
+      const masked = stepMasked(t, g);
+      let by = null;
+      if (!masked) {
+        let best = null, bd = Infinity;
+        for (const q of g.guards) {
+          if (!q.active || (q.state !== 'patrol' && q.state !== 'checking')) continue;
+          const d = Math.hypot(q.x - x, q.z - z);
+          if (d <= K.NOISE_R && d < bd) { bd = d; best = q; }
+        }
+        if (best) {
+          by = best.id;
+          if (best.state === 'patrol') enterCheck(best, t, { x, z }, 'noise');
+          else retargetCheck(best, t, { x, z }, 'noise');
+        }
+      }
+      emit('sfx', 'noise', { kind, x, z, masked, by });
+      return { t, kind, masked, by };
     };
 
     /** 畫面層每幀取走事件。 */

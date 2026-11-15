@@ -3049,7 +3049,7 @@ test('11/11 搭配動作提示：dash 講點一下與按住兩種用法、breath
   const H = R.hintsFor(K);
   assert.ok(H.dash.includes('點一下 Shift') && H.dash.includes('按住 Shift') && H.dash.includes(K.RUN_R + ' 公尺') && H.dash.includes('快一倍'), H.dash);
   assert.ok(H.breath.endsWith('屏住時聽得到衛兵的腳步在哪。'), H.breath);
-  assert.ok(H.crouch.includes('按住 C') && H.crouch.includes('慢一半') && H.crouch.includes(String(K.CROUCH_STEP_WIN)) && H.crouch.includes(String(K.CROUCH_R) + ' 公尺'), H.crouch);
+  assert.ok(H.crouch.includes('按住 Alt') && H.crouch.includes('慢一半') && H.crouch.includes(String(K.CROUCH_STEP_WIN)) && H.crouch.includes(String(K.CROUCH_R) + ' 公尺'), H.crouch);
   const H2 = R.hintsFor(Object.assign({}, K, { CROUCH_R: 1.5, RUN_R: 10, CROUCH_STEP_WIN: 0.2, RUN_SPEED_MUL: 1.5 }));
   assert.ok(H2.crouch.includes('1.5 公尺') && H2.crouch.includes('0.2 秒') && H2.dash.includes('10 公尺') && H2.dash.includes('1.5 倍'), '改常數文字跟著變');
   for (const s of [H.dash, H.crouch, H.breath]) assert.ok(!/斷/.test(s), '殘響掩護版不說「斷」');
@@ -4160,73 +4160,116 @@ test('11/12 第 18.7 節：新鼓聲時，逃（追殺中、不在影子裡）�
   assert.ok(off.filter((s) => s.a === 'step_masked').length >= off.length - 1, '報告版照舊');
 });
 
-test('11/12 使用者回報：移動中先按住空白鍵——照常走，不屏息；一停下（沒有移動輸入）的那一幀立刻進屏息，不用放開再按；放開照常結束；喘的時候照舊不能屏息；報告版照舊一按就停下屏息', () => {
+test('11/15 使用者要求：按住空白鍵那一幀起立刻停下並屏息，覆蓋走、跑、蹲的移動與衝刺；跑中按空白鍵立刻停（跑得夠久就喘、不屏息，喘完仍按著接上）；報告版照舊', () => {
   const g = allDown(mvs({ startZone: 2 }));
   let t = 0; g.step(t, {}); place(g, 14, 22);
   for (let k = 0; k < 20; k++) { t += DT; g.step(t, { mx: 1 }); }
-  const x0 = g.player.x;
-  for (let k = 0; k < 20; k++) { t += DT; g.step(t, { mx: 1, breath: true }); }
-  assert.ok(!g.player.breathing && g.player.x > x0 + 0.5, '移動中按住空白鍵：照常走、不屏息');
   g.drain();
-  t += DT; g.step(t, { breath: true });   // 一停下
-  assert.ok(g.player.breathing, '停下那一幀立刻屏息');
+  const x0 = g.player.x, z0 = g.player.z;
+  t += DT; g.step(t, { mx: 1, breath: true });
+  assert.ok(g.player.breathing, '走路中按下空白鍵：同一幀進屏息');
+  assert.ok(Math.abs(g.player.x - x0) < 1e-9 && Math.abs(g.player.z - z0) < 1e-9 && !g.player.moving, '同一幀就停下');
   assert.ok(g.drain().some((e) => e.a === 'breath_in'));
-  const x1 = g.player.x;
-  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: 1, breath: true }); }
-  assert.ok(g.player.breathing && Math.abs(g.player.x - x1) < 1e-9, '已經在屏息中：按方向鍵也不動（照舊）');
+  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: 1, dash: k === 0, breath: true }); }
+  assert.ok(g.player.breathing && Math.abs(g.player.x - x0) < 1e-9, '按著空白鍵：方向鍵、衝刺都不動');
   t += DT; g.step(t, {});
   assert.ok(!g.player.breathing, '放開照常結束');
-  // 蹲著走也一樣
-  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: 1, crouch: true, breath: true }); }
-  assert.ok(!g.player.breathing && g.player.crouching);
-  t += DT; g.step(t, { crouch: true, breath: true });
-  assert.ok(g.player.breathing, '蹲著停下那一幀也進屏息');
+  // 蹲著走：一樣立刻停，蹲的姿勢保留
+  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: 1, crouch: true }); }
+  const x1 = g.player.x;
+  t += DT; g.step(t, { mx: 1, crouch: true, breath: true });
+  assert.ok(g.player.breathing && g.player.crouching && Math.abs(g.player.x - x1) < 1e-9, '蹲走中按空白鍵：立刻停下屏息、仍蹲著');
   t += DT; g.step(t, {});
-  // 跑超過 RUN_PANT_AFTER 後停下：喘，照舊不能屏息；喘完（空白鍵一直按著）就進屏息
-  for (let k = 0; k * DT < K.RUN_HOLD + K.RUN_PANT_AFTER + 0.3; k++) { t += DT; g.step(t, { mx: -1, run: true, breath: true }); }
-  t += DT; g.step(t, { breath: true });
-  assert.ok(g.player.panting && !g.player.breathing, '喘的時候不能屏息');
+  // 跑不到 RUN_PANT_AFTER：立刻停下並屏息，跑中斷、runHeld 歸零
+  for (let k = 0; k * DT < K.RUN_HOLD + 0.2; k++) { t += DT; g.step(t, { mx: -1, run: true }); }
+  assert.ok(g.player.running);
+  g.drain();
+  const x2 = g.player.x;
+  t += DT; g.step(t, { mx: -1, run: true, breath: true });
+  assert.ok(!g.player.running && g.player.runHeld === 0 && g.player.breathing && Math.abs(g.player.x - x2) < 1e-9, '短跑中按空白鍵：同一幀停下、屏息');
+  assert.ok(g.drain().some((e) => e.a === 'run_stop'));
+  for (let k = 0; k < 10; k++) { t += DT; g.step(t, { mx: -1, run: true, breath: true }); }
+  assert.ok(!g.player.running && g.player.runHeld === 0 && Math.abs(g.player.x - x2) < 1e-9, 'Shift 一直按著也不會再跑');
+  t += DT; g.step(t, {});
+  while (g.player.breathT > 0) { t += DT; g.step(t, {}); }
+  // 跑超過 RUN_PANT_AFTER：同一幀停下，但喘、不屏息；喘的時候仍按著空白鍵就一直停著；喘完接上屏息
+  for (let k = 0; k * DT < K.RUN_HOLD + K.RUN_PANT_AFTER + 0.3; k++) { t += DT; g.step(t, { mx: 1, run: true }); }
+  assert.ok(g.player.running);
+  const x3 = g.player.x;
+  t += DT; g.step(t, { mx: 1, run: true, breath: true });
+  assert.ok(!g.player.running && g.player.panting && !g.player.breathing && Math.abs(g.player.x - x3) < 1e-9, '久跑中按空白鍵：立刻停下、喘、不屏息');
   const until = g.player.pantUntil;
-  while (t < until + 0.1) { t += DT; g.step(t, { breath: true }); }
-  assert.ok(g.player.breathing, '喘完、空白鍵還按著 → 進屏息');
-  // 報告版：移動中一按空白鍵就停下屏息（照舊）
+  while (t < until - 0.05) { t += DT; g.step(t, { mx: 1, breath: true }); }
+  assert.ok(Math.abs(g.player.x - x3) < 1e-9 && !g.player.breathing, '喘的時候按著空白鍵：一直停著、不屏息');
+  while (t < until + 0.1) { t += DT; g.step(t, { mx: 1, breath: true }); }
+  assert.ok(g.player.breathing && Math.abs(g.player.x - x3) < 1e-9, '喘完、空白鍵還按著 → 進屏息');
+  // 報告版：照舊（一按就停下屏息）
   const o = allDown(mvOff({ startZone: 2 }));
   let u = 0; o.step(u, {}); place(o, 14, 22);
   for (let k = 0; k < 5; k++) { u += DT; o.step(u, { mx: 1 }); }
+  const ox = o.player.x;
   u += DT; o.step(u, { mx: 1, breath: true });
-  assert.ok(o.player.breathing, '報告版照舊');
+  assert.ok(o.player.breathing && Math.abs(o.player.x - ox) < 1e-9, '報告版照舊');
 });
 
-test('11/12 加速錯覺第二步：新鼓聲時 g.T.RISSET_M = 6（每圈拍數 7 → 6）；?drums=old、開關關著照舊 7；直接給 opts.T.RISSET_M 的以它為準；只按住前進不看時機的程式玩家，起步踩準比例不比 7 拍時高 5 個百分點以上', () => {
-  assert.equal(K.RISSET_M, 7, '常數表不動（報告版）');
-  assert.equal(K.RISSET_M_NEW, 6);
-  assert.equal(R.createLevel({}).T.RISSET_M, 6, '預設（新動作開、新鼓聲）');
+test('11/15 提示：蹲走提示寫按住 Alt，提示與試驗場說明裡不再出現「按住 C」', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, 'risset.js'), 'utf8');
+  assert.ok(src.includes("'按住 Alt 蹲著走"), '蹲走提示寫 Alt');
+  assert.ok(!/['「][^'\n]*按住 C[^A-Za-z]/.test(src), '字串裡沒有「按住 C」');
+});
+
+test('11/15 弓弦引開 g.noise（?lab=check）：落在踩得上的拍上 0 次查看、拍外 100% 有衛兵朝玩家位置來查看；已在查看就改朝這裡；NOISE_R 外沒人來', () => {
+  let on = 0, off = 0;
+  for (let k = 0; k < 200; k++) {
+    const g = R.createLevel({ lab: 'check' });
+    const q = g.guards.find((o) => o.id === 'g2b');
+    let t = 0; g.step(t, {});
+    const t0 = 0.5 + k * 0.0973;
+    while (t < t0) { t += DT; g.step(t, {}); }
+    if (q.state !== 'patrol') continue;
+    g.drain();
+    const px = g.player.x, pz = g.player.z;
+    const r = g.noise({ t, x: px, z: pz, kind: 'bow' });
+    const ev = g.drain();
+    const n = ev.find((e) => e.a === 'noise');
+    assert.ok(n && n.kind === 'bow' && n.masked === r.masked);
+    const cs = ev.filter((e) => e.a === 'check_start');
+    assert.equal(r.masked, R.stepMasked(t, g), '用 stepMasked 判');
+    if (r.masked) { on++; assert.equal(cs.length, 0, `拍上 t=${t.toFixed(3)} 不該有人來`); assert.equal(r.by, null); }
+    else {
+      off++;
+      assert.equal(r.by, 'g2b', `拍外 t=${t.toFixed(3)} 要有人來`);
+      assert.ok(cs.length === 1 && cs[0].cause === 'noise' && cs[0].x === px && cs[0].z === pz, '朝玩家當時的位置查看');
+      assert.equal(q.state, 'checking');
+    }
+  }
+  console.log(`[11/15 弓弦引開] 拍上 ${on} 次（查看 0）、拍外 ${off} 次（全部有人來）`);
+  assert.ok(on >= 10 && off >= 10, `兩種都要有樣本：拍上 ${on}、拍外 ${off}`);
+  // 已在查看：改朝新的位置走
+  const g = R.createLevel({ lab: 'check' });
+  const q = g.guards.find((o) => o.id === 'g2b');
+  let t = 0; g.step(t, {});
+  g.labNotice(20, 15);
+  let tt = t; while (R.stepMasked(tt, g)) tt += 0.01;
+  g.drain();
+  const r = g.noise({ t: tt, x: 27, z: 20 });
+  assert.equal(r.by, 'g2b');
+  assert.ok(g.drain().some((e) => e.a === 'check_retarget' && e.why === 'noise' && e.x === 27 && e.z === 20));
+  assert.deepEqual(q.check.target, { x: 27, z: 20 });
+  // NOISE_R 外：沒人來
+  const g2 = R.createLevel({ lab: 'check' });
+  g2.step(0, {});
+  let u = 0; while (R.stepMasked(u, g2)) u += 0.01;
+  const q2 = g2.guards.find((o) => o.id === 'g2b');
+  const r2 = g2.noise({ t: u, x: q2.x + g2.T.NOISE_R + 1, z: q2.z });
+  assert.ok(!r2.masked && r2.by === null && q2.state === 'patrol');
+});
+
+test('11/15 加速錯覺第二步退回（設計第 13 節）：每圈拍數一律 7（新鼓聲、?drums=old、?moves=0 都是）；RISSET_M_NEW 已刪；直接給 opts.T.RISSET_M 的以它為準', () => {
+  assert.equal(K.RISSET_M, 7);
+  assert.equal(K.RISSET_M_NEW, undefined, 'RISSET_M_NEW 已刪');
+  assert.equal(R.createLevel({}).T.RISSET_M, 7, '預設（新動作開、新鼓聲）');
   assert.equal(R.createLevel({ T: { DRUMS: 'old' } }).T.RISSET_M, 7, '?drums=old');
   assert.equal(R.createLevel({ T: { MOVES_MODE: false } }).T.RISSET_M, 7, '?moves=0');
   assert.equal(R.createLevel({ T: { RISSET_M: 5 } }).T.RISSET_M, 5);
-  // 只按住前進、不看時機：走一段隨機 0.3～1.2 秒、停一段隨機 0.3～1.2 秒，量「起步那一步」踩準的比例
-  const startRate = (T, seed) => {
-    const g = allDown(R.createLevel({ startZone: 2, seed, T: Object.assign({ DYNAMIC: false }, T) }));
-    const rng = R.mulberry32(seed * 13 + 5);
-    let t = (seed * 0.731) % 10; g.step(t, {});
-    let ok = 0, n = 0, until = t, moving = false, dir = 1, fresh = false;
-    const t1 = t + 600;
-    while (n < 60 && t < t1) {
-      if (t >= until) {
-        moving = !moving; until = t + 0.3 + rng() * 0.9;
-        if (moving) { fresh = true; if (g.player.x > 26 || g.player.x < 14) dir = g.player.x > 26 ? -1 : 1; }
-      }
-      t += DT; g.step(t, moving ? { mx: dir } : {});
-      for (const e of g.drain()) {
-        if (e.a !== 'step_masked' && e.a !== 'step_loud') continue;
-        if (fresh) { n++; if (e.a === 'step_masked') ok++; fresh = false; }   // 停下後的第一步＝起步
-      }
-    }
-    assert.ok(n >= 30, `起步次數 ${n}`);
-    return ok / n;
-  };
-  let r7 = 0, r6 = 0;
-  for (let s = 1; s <= 10; s++) { r7 += startRate({ RISSET_M: 7 }, s) / 10; r6 += startRate({}, s) / 10; }
-  console.log(`[11/12 加速錯覺第二步] 只按住前進不看時機，起步踩準：7 拍 ${(r7 * 100).toFixed(1)}%、6 拍 ${(r6 * 100).toFixed(1)}%（差 ${((r6 - r7) * 100).toFixed(1)} 個百分點，要 < 5）`);
-  assert.ok(r6 - r7 < 0.05, `6 拍不能比 7 拍高 5 個百分點以上：${(r7 * 100).toFixed(1)}% → ${(r6 * 100).toFixed(1)}%`);
 });
