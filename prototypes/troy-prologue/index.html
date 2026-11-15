@@ -1,21 +1,29 @@
 <title>木馬之夜</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<link rel="stylesheet" href="../ui-tokens.css">
 <style>
 /* 畫面層：規則全在 risset.js（RissetRules），聲音全在 audio.js（RissetAudio）。
    這裡只負責畫、讀輸入、把事件轉給聲音。介面極少：音樂是主角。單一深色主題（夜、火光） */
 :root {
-  --night: #07080c;
-  --panel: rgba(8, 9, 14, .82);
-  --line: #2a2c38;
-  --fire: #f0a85a;     /* 火光、強調 */
-  --ash: #d6cfc2;      /* 主要文字 */
-  --dim: #8a8478;      /* 次要文字 */
-  --warn: #e0b04a;     /* 警戒 */
-  --blood: #c23a2c;    /* 追殺 */
-  --moon: #9fb0d8;     /* 暗處、屏息 */
-  --display: "Noto Serif TC", "Songti TC", serif;
-  --text: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  /* 設計代號（方向 A「夜城訊號」，docs/design/2026-11-15-ui-design-system.md）。和 ../ui-tokens.css 同值的備援：
+     claude.ai 試玩頁載不到上一層的檔，所以這裡另抄一份；改色時兩邊一起改。七色一色一義：
+     夜空墨 頁面底｜城牆石 面板｜羊皮紙 字｜青銅 可以按的｜海青 踩得上的拍、準、安全｜火把橘 警告、查看、太早太晚｜血紅 失敗、追殺 */
+  --night: #0E1322; --stone: #232838; --parchment: #F2ECDD; --bronze: #C9A55C; --beat: #6FB3A6; --torch: #E8893B; --blood: #B02A1E;
+  --muted: rgba(242, 236, 221, .68); --rule: rgba(242, 236, 221, .14); --bronze-wash: rgba(201, 165, 92, .14);
+  --font-title: "Noto Serif TC", "Songti TC", serif;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --r-panel: 4px; --r-btn: 2px;
+  /* 舊名字對到設計代號（下面的樣式沿用舊名） */
+  --panel: rgba(35, 40, 56, .9);   /* 城牆石，疊在 3D 畫面上留一點透 */
+  --line: var(--rule);
+  --fire: var(--bronze);           /* 可以按的東西 */
+  --ash: var(--parchment);         /* 主要文字 */
+  --dim: var(--muted);             /* 次要文字 */
+  --warn: var(--torch);            /* 警戒、查看 */
+  --moon: var(--beat);             /* 屏息、身在暗處＝安全 */
+  --display: var(--font-title);
+  --text: var(--font-body);
   --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px);
   --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px);
   color-scheme: dark;
@@ -23,7 +31,12 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 [hidden] { display: none !important; }
-body { background: var(--night); color: var(--ash); font-family: var(--text); overflow: hidden; }
+body { background: var(--night); color: var(--ash); font-family: var(--text); font-variant-numeric: tabular-nums; overflow: hidden; }
+/* 按鍵：鍵帽（城牆石底、青銅細框），鍵名寫在最前面 */
+kbd, #hint .k, #failHint .k { display: inline-block; min-width: 1.9em; padding: 0 .45em; margin: 0 .1em; font: 500 .875em/1.55 var(--text); text-align: center; white-space: nowrap;
+  color: var(--parchment); background: var(--stone); border: 1px solid var(--bronze); border-bottom-width: 2px; border-radius: var(--r-btn); }
+/* 狀態字（試驗場面板）：一色一義；血紅當字對比不夠，改成血紅底＋羊皮紙字 */
+.st-beat { color: var(--beat); } .st-torch { color: var(--torch); } .st-blood { color: var(--parchment); background: var(--blood); border-radius: var(--r-btn); padding: 0 .3em; }
 body:not(.playing) .hud { display: none !important; }
 #stage { position: fixed; inset: 0; }
 canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
@@ -48,19 +61,19 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #blade { right: calc(9% + var(--sr)); bottom: calc(14% + var(--sb)); width: 120px; height: 120px; opacity: 0;
   background: radial-gradient(circle at 50% 50%, rgba(220, 235, 255, .95) 0 2px, rgba(170, 200, 255, .35) 4px, transparent 22px),
               linear-gradient(135deg, transparent 47%, rgba(200, 220, 255, .75) 49.5%, rgba(255, 255, 255, .95) 50%, rgba(200, 220, 255, .75) 50.5%, transparent 53%); }
-#whisper { left: 50%; bottom: calc(92px + var(--sb)); transform: translateX(-50%); font-family: var(--display); font-size: 16px; letter-spacing: .08em; color: #c9d2e6; text-shadow: 0 1px 3px #000, 0 0 10px #000; opacity: 0; transition: opacity .35s; white-space: nowrap; }
+#whisper { left: 50%; bottom: calc(92px + var(--sb)); transform: translateX(-50%); font-family: var(--text); font-weight: 500; font-size: 16px; letter-spacing: .04em; color: var(--parchment); text-shadow: 0 1px 3px #000, 0 0 10px #000; opacity: 0; transition: opacity .35s; white-space: nowrap; }
 #whisper i { font-style: normal; color: var(--dim); font-size: 13px; margin-right: 6px; }
 #flashDark { inset: 0; background: #000; opacity: 0; pointer-events: none; }   /* ?lab=flash：環境調暗 */
 #flashFx { inset: 0; width: 100%; height: 100%; pointer-events: none; }       /* ?lab=flash：最響一擊時的衛兵輪廓（含牆後） */
 #knockFx { inset: 0; width: 100%; height: 100%; pointer-events: none; }        /* ?lab=horse：敲暗號的拍點條與準星倒數圈 */
-.labBrief { border-left: 3px solid var(--fire); background: var(--panel); padding: 8px 12px; font-size: 14px; line-height: 1.6; }   /* 試驗場開頭三行 */
-.labBrief b { color: var(--fire); }
-#flashCtl { left: calc(18px + var(--sl)); top: 300px; pointer-events: auto; font: 12px/1.4 ui-monospace, monospace; color: #e8e0d0; background: var(--panel); padding: 4px 8px; display: flex; gap: 8px; align-items: center; }
+.labBrief { border-left: 3px solid var(--rule); background: var(--stone); border-radius: var(--r-panel); padding: 10px 14px; font-size: 14px; line-height: 1.7; }   /* 試驗場開頭三行 */
+.labBrief b { display: block; color: var(--parchment); font: 900 20px/1.3 var(--display); letter-spacing: .04em; margin-bottom: 4px; }
+#flashCtl { left: calc(18px + var(--sl)); top: 300px; pointer-events: auto; font: 12px/1.4 var(--text); color: var(--ash); background: var(--panel); border-radius: var(--r-panel); padding: 4px 8px; display: flex; gap: 8px; align-items: center; }
 #flashCtl input { width: 120px; }
 #red { inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(150, 20, 10, .75) 100%); opacity: 0; transition: opacity .3s; }
 #cross { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: var(--ash); opacity: .45; border-radius: 50%; }
-#zone { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-family: var(--display); font-size: 15px; letter-spacing: .14em; color: var(--dim); text-shadow: 0 1px 3px #000; }
-#zone b { display: block; color: var(--ash); font-size: 19px; font-weight: 600; }
+#zone { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-size: 13px; letter-spacing: .04em; color: var(--dim); text-shadow: 0 1px 3px #000; }
+#zone b { display: block; color: var(--ash); font: 900 20px/1.3 var(--display); letter-spacing: .04em; }
 #breath { left: calc(18px + var(--sl)); bottom: calc(20px + var(--sb)); display: grid; gap: 6px; width: 180px; font-size: 12px; color: var(--dim); text-shadow: 0 1px 3px #000; }
 #breath i { display: block; height: 5px; background: var(--line); position: relative; overflow: hidden; }
 #breath i b { position: absolute; inset: 0 auto 0 0; width: 100%; background: var(--moon); }
@@ -69,9 +82,8 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #shade { color: var(--moon); font-size: 12px; }
 #hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 17px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(760px, calc(100vw - 432px - 2 * var(--sl))); transition: opacity .6s; }
 @media (max-width: 840px) { #hint { width: calc(100vw - 32px); bottom: calc(84px + var(--sb)); } }
-#hint .k { display: inline-block; border: 1px solid var(--dim); padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: 14px; }
 #msgs { left: 50%; top: calc(18px + var(--st)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(640px, calc(100vw - 32px)); }
-#msgs div { background: var(--panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 5s forwards; }
+#msgs div { background: var(--panel); border-radius: var(--r-panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 5s forwards; }
 @keyframes fade { 0%, 82% { opacity: 1 } 100% { opacity: 0 } }
 #phase { right: calc(18px + var(--sr)); top: calc(16px + var(--st)); width: 220px; font-size: 11px; color: var(--dim); display: grid; gap: 4px; }
 #phase .track { position: relative; height: 8px; background: var(--line); }
@@ -80,36 +92,44 @@ canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
 #phase .mark { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--ash); left: 60%; }
 #phase .bass { position: absolute; top: -3px; width: 6px; height: 14px; margin-left: -3px; background: var(--warn); border-radius: 2px; }
 #gateBar { left: 50%; bottom: calc(70px + var(--sb)); transform: translateX(-50%); width: 160px; height: 3px; background: var(--line); }
-#gateBar b { display: block; height: 100%; width: 0; background: var(--fire); }
+#gateBar b { display: block; height: 100%; width: 0; background: var(--beat); }
 
-.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(5, 6, 10, .9); overflow-y: auto; padding: calc(24px + var(--st)) calc(16px + var(--sr)) calc(24px + var(--sb)) calc(16px + var(--sl)); z-index: 5; }
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(14, 19, 34, .95); overflow-y: auto; padding: calc(24px + var(--st)) calc(16px + var(--sr)) calc(24px + var(--sb)) calc(16px + var(--sl)); z-index: 5; }
 .card { max-width: 640px; width: 100%; display: grid; gap: 14px; }
-.card h1 { font-family: var(--display); font-weight: 900; font-size: clamp(32px, 7vw, 52px); margin: 0; color: var(--fire); letter-spacing: .12em; }
-.card h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4.5vw, 34px); margin: 0; text-wrap: balance; }
+.card h1 { font-family: var(--display); font-weight: 900; font-size: clamp(40px, 7vw, 64px); line-height: 1.15; margin: 0; color: var(--parchment); letter-spacing: .04em; }
+.card h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4.5vw, 34px); line-height: 1.15; letter-spacing: .04em; margin: 0; text-wrap: balance; }
 .card p { margin: 0; line-height: 1.8; max-width: 60ch; }
 .card .dim { color: var(--dim); font-size: 13px; }
-.card .lead { font-family: var(--display); font-size: 17px; }
+.card .lead { font-size: 17px; font-weight: 500; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
-.keys dt { color: var(--fire); white-space: nowrap; }
+.keys dt { color: var(--parchment); white-space: nowrap; }
 .keys dd { margin: 0; min-width: 0; line-height: 1.55; }
-.card h3.sect { margin: 6px 0 0; font: 600 13px/1 var(--display); letter-spacing: .2em; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 6px; }   /* 開場分區：操作｜設定 */
-fieldset { border: 1px solid var(--line); padding: 10px 14px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
-legend { font-family: var(--display); color: var(--fire); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
+.card h3.sect { margin: 6px 0 0; font: 900 16px/1.2 var(--display); letter-spacing: .04em; color: var(--parchment); border-bottom: 1px solid var(--line); padding-bottom: 6px; }   /* 開場分區：操作｜設定 */
+fieldset { border: 1px solid var(--line); border-radius: var(--r-panel); padding: 10px 14px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+legend { font-family: var(--display); font-weight: 900; color: var(--parchment); padding: 0 6px; letter-spacing: .04em; font-size: 16px; }
 label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
 input, select { accent-color: var(--fire); font: inherit; }
-select { background: #12131a; color: var(--ash); border: 1px solid var(--line); padding: 2px 6px; }
+select { background: var(--night); color: var(--ash); border: 1px solid var(--line); border-radius: var(--r-btn); padding: 2px 6px; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; }
-button { font: inherit; font-size: 16px; background: transparent; color: var(--ash); border: 1px solid var(--fire); padding: 9px 18px; cursor: pointer; }
-button.primary { background: var(--fire); color: #1a1008; font-weight: 500; }
-button:hover { filter: brightness(1.12); }
-:focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
+button { font: inherit; font-size: 16px; font-weight: 500; background: transparent; color: var(--bronze); border: 1px solid var(--bronze); border-radius: var(--r-btn); padding: 9px 18px; cursor: pointer; }
+button.primary { background: var(--bronze); color: var(--night); }
+button:hover { background: var(--bronze-wash); }
+button.primary:hover { background: var(--parchment); border-color: var(--parchment); }
+:focus-visible { outline: 2px solid var(--parchment); outline-offset: 2px; }   /* 鍵盤焦點：羊皮紙框 */
 /* 開場字卡：寬螢幕分兩欄（故事｜操作與開關）壓低高度；開始按鈕黏在畫面底部，任何尺寸都不必捲動就看得到 */
 #intro .card .col { display: grid; gap: 14px; align-content: start; min-width: 0; }
 #intro .row.start { position: sticky; bottom: calc(-24px - var(--sb)); margin: 0 -16px calc(-24px - var(--sb)); padding: 18px 16px calc(20px + var(--sb));
-  background: linear-gradient(to bottom, rgba(5, 6, 10, 0), rgba(5, 6, 10, .96) 38%); z-index: 1; }
+  background: linear-gradient(to bottom, rgba(14, 19, 34, 0), rgba(14, 19, 34, .97) 38%); z-index: 1; }
+/* 開場題字＋拍帶：寬螢幕跨兩欄（設計系統：只有開場題字與拍帶可以滿版） */
+#intro .introHead { display: grid; gap: 14px; min-width: 0; }
+#introStrip:empty, #introStrip:empty + .stripNote { display: none; }
+.stripNote { margin: -6px 0 0; font-size: 12px; color: var(--dim); }
+.stripNote i { display: inline-block; vertical-align: 1px; margin: 0 4px 0 10px; }
+.stripNote i:first-child { margin-left: 0; }
 @media (min-width: 900px) {
   #intro .card { max-width: 1200px; grid-template-columns: 1fr 1fr; gap: 14px 48px; align-items: start; }
-  #intro .card .row.start { grid-column: 1 / -1; justify-content: center; }
+  #intro .card .row.start { grid-column: 1 / -1; justify-content: flex-start; }
+  #intro .introHead { grid-column: 1 / -1; }
   #intro .card p { line-height: 1.7; }
 }
 @media (min-width: 900px) and (max-height: 760px) {
@@ -117,22 +137,21 @@ button:hover { filter: brightness(1.12); }
   #intro .card h1 { font-size: 40px; } #intro .card p { line-height: 1.6; } #intro .card .lead { font-size: 16px; }
   #intro.screen { padding-top: calc(16px + var(--st)); }
 }
-#fail h2 { color: var(--blood); font-size: clamp(20px, 3.6vw, 28px); line-height: 1.5; }
-#failHint { border-left: 2px solid var(--fire); padding: 4px 0 4px 12px; color: var(--ash); }
-#failHint .k, #hint .k { display: inline-block; border: 1px solid var(--dim); padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: 14px; }
+#fail h2 { color: var(--parchment); border-left: 4px solid var(--blood); padding-left: 14px; font-size: clamp(20px, 3.6vw, 28px); line-height: 1.5; }   /* 血紅當字對比不夠：血紅色條＋羊皮紙字 */
+#failHint { border-left: 2px solid var(--torch); padding: 4px 0 4px 12px; color: var(--ash); }
 #win { background: transparent; transition: background 3s; }
 #win.dark { background: #000; }
-#win .card { opacity: 0; transition: opacity 2.5s; text-align: center; justify-items: center; }
+#win .card { opacity: 0; transition: opacity 2.5s; }
 #win.dark .card { opacity: 1; }
-#win h2 { color: var(--fire); }
-#win .later { font-family: var(--display); font-size: clamp(22px, 4vw, 30px); letter-spacing: .3em; color: var(--ash); opacity: 0; transition: opacity 2s 2.5s; }
+#win h2 { color: var(--parchment); }
+#win .later { font-family: var(--display); font-weight: 900; font-size: clamp(22px, 4vw, 30px); letter-spacing: .04em; color: var(--ash); opacity: 0; transition: opacity 2s 2.5s; }
 #win.dark .later { opacity: 1; }
 /* 音樂層（自備配樂測試模式，設計文件 7.1） */
 #music { flex-basis: 100%; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
 #music .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
-#music .mlabel { font-size: 14px; color: var(--fire); }
+#music .mlabel { font-size: 14px; font-weight: 500; color: var(--parchment); }
 #music label.off { opacity: .45; cursor: not-allowed; }
-#music .filebtn { border: 1px solid var(--fire); padding: 5px 12px; font-size: 14px; position: relative; }
+#music .filebtn { border: 1px solid var(--bronze); color: var(--bronze); border-radius: var(--r-btn); padding: 5px 12px; font-size: 14px; position: relative; }
 #music .filebtn:focus-within { outline: 2px solid var(--fire); outline-offset: 2px; }
 #music .filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #music button { font-size: 14px; padding: 5px 12px; }
@@ -148,25 +167,28 @@ button:hover { filter: brightness(1.12); }
 }
 @media (prefers-reduced-motion: reduce) { #msgs div { animation: none; } }
 /* 試玩數據（遙測，docs/design/2026-11-08-telemetry.md）：裝置選擇、告知、快問、匯出、即時摘要 */
-#telBox { border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; font-size: 14px; }
+#telBox { border: 1px solid var(--line); border-radius: var(--r-panel); padding: 10px 12px; display: grid; gap: 8px; font-size: 14px; }
 #telBox .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
-#telBox .mlabel { color: var(--fire); }
+#telBox .mlabel { color: var(--parchment); font-weight: 500; }
 #telBox .note, .telNote { font-size: 13px; color: var(--dim); margin: 0; line-height: 1.6; }
 .btnExport { font-size: 14px; padding: 5px 12px; }
-#survey { border: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 8px; text-align: left; font-size: 14px; max-width: 560px; width: 100%; }
-#survey legend { color: var(--fire); padding: 0 4px; }
+#survey { border: 1px solid var(--line); border-radius: var(--r-panel); padding: 10px 12px; display: grid; gap: 8px; text-align: left; font-size: 14px; max-width: 560px; width: 100%; }
+#survey legend { color: var(--parchment); padding: 0 4px; }
 #survey .q { display: grid; gap: 4px; }
 #survey .scale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 #survey .scale small { color: var(--dim); font-size: 12px; }
-#survey textarea { font: inherit; font-size: 14px; background: rgba(0,0,0,.35); color: var(--ash); border: 1px solid var(--line); padding: 6px; min-height: 48px; resize: vertical; }
+#survey textarea { font: inherit; font-size: 14px; background: var(--night); border-radius: var(--r-btn); color: var(--ash); border: 1px solid var(--line); padding: 6px; min-height: 48px; resize: vertical; }
 #survey .row button { font-size: 14px; padding: 5px 12px; }
 #survey .thanks { color: var(--moon); }
 /* 腹中練習試驗場（?lab=belly）的判定數字面板 */
 #labBtns { left: calc(18px + var(--sl)); top: 300px; pointer-events: auto; display: flex; gap: 6px; }
-#labBtns button { font: 12px/1.4 inherit; padding: 4px 8px; background: var(--panel); color: #e8e0d0; border: 1px solid #6b5a33; border-radius: 3px; cursor: pointer; }
-#stepRing { left: 50%; top: 58%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; font: 12px/1.4 ui-monospace, monospace; color: var(--ash, #d6cfc2); text-shadow: 0 1px 3px #000, 0 0 8px #000; }   /* 走法試驗場：下一步什麼時候 */
-#labPanel { left: calc(18px + var(--sl)); top: 70px; width: 300px; font: 12px/1.55 ui-monospace, monospace; color: #e8e0d0; background: var(--panel); padding: 8px 10px; white-space: pre-wrap; }
-#telHud { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 230px; font: 11px/1.5 ui-monospace, monospace; color: var(--dim); background: var(--panel); padding: 6px 8px; white-space: pre; }
+#labBtns button { font: 500 12px/1.4 var(--text); padding: 4px 8px; background: var(--panel); color: var(--bronze); border: 1px solid var(--bronze); border-radius: var(--r-btn); cursor: pointer; }
+#stepRing { left: 50%; top: 58%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; font: 12px/1.4 var(--text); color: var(--ash); text-shadow: 0 1px 3px #000, 0 0 8px #000; }   /* 走法試驗場：下一步什麼時候 */
+#labPanel { left: calc(18px + var(--sl)); top: 70px; width: 320px; font: 13px/1.6 var(--text); color: var(--ash); background: var(--panel); border-radius: var(--r-panel); padding: 10px 12px; white-space: pre-wrap; }
+#labPanel .lpTitle { display: block; font: 900 20px/1.3 var(--display); letter-spacing: .04em; margin-bottom: 4px; white-space: normal; }   /* 試驗場名：題字 20px */
+#labPanel .lpTitle small { display: block; font: 400 12px/1.5 var(--text); letter-spacing: 0; color: var(--dim); }
+#labPanel .lpRule { display: block; height: 1px; background: var(--line); margin: 4px 0; }
+#telHud { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 230px; font: 11px/1.5 var(--text); color: var(--dim); background: var(--panel); border-radius: var(--r-panel); padding: 6px 8px; white-space: pre; }
 </style>
 
 <div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
@@ -209,12 +231,16 @@ button:hover { filter: brightness(1.12); }
 <!-- 開場字卡 -->
 <div class="screen" id="intro">
   <div class="card">
-   <div class="col">
+   <header class="introHead">
     <h1>木馬之夜</h1>
+    <div id="introStrip"></div>
+    <p class="stripNote"><i class="ui-dot" style="width:8px;height:8px;border-radius:50%;background:var(--beat)"></i>踩得上的拍<i style="width:3px;height:12px;background:var(--parchment)"></i>最響的一擊：碰到直線那一刻就是一拍</p>
+   </header>
+   <div class="col">
     <div class="labBrief" id="labBrief" hidden></div>
     <p class="lead">十年了。希臘大軍圍攻特洛伊城整整十年，始終攻不進那道城牆。</p>
     <p>今天，希臘人假裝撤退，在海灘上留下一匹巨大的木馬。特洛伊人以為那是戰利品，把它拖進城裡，喝酒慶祝到深夜。</p>
-    <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b style="color:var(--fire)">今晚，由你打開城門。</b></p>
+    <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b>今晚，由你打開城門。</b></p>
     <!-- 兩種鼓聲模式各一段說明，依「鼓聲」選單切換（coverText） -->
     <p class="modeCover">這一夜，聲音比火光更危險：衛兵靠耳朵找人。踩著城裡的鼓點走，腳步聲會被蓋過；所有的鼓同時落下、最響的那一擊，就是你衝出去的時候。</p>
     <p class="dim modeCover">這座城在你耳裡響著一段永遠在加速、從不停下的節奏。節奏越急，衛兵越敏銳；每一輪最重的那一擊和它的餘韻，蓋得住你的腳步和刀聲。請戴上耳機。需要鍵盤和滑鼠。</p>
@@ -222,15 +248,15 @@ button:hover { filter: brightness(1.12); }
     <p class="dim modeGap" hidden>這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
     <h3 class="sect">操作</h3>
     <dl class="keys">
-      <dt>WASD・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
-      <dt>空白鍵／滑鼠右鍵 按住</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
-      <dt id="kShiftDt">Shift</dt><dd><span class="modeCover">衝刺，只在最響的那一擊落下時有用</span><span class="modeGap" hidden>衝刺，只在節奏重來的瞬間有用</span></dd>
-      <dt class="movesOnly" hidden>Shift 按住</dt><dd class="movesOnly" id="kRun" hidden></dd>
-      <dt class="movesOnly" hidden>Alt 按住</dt><dd class="movesOnly" id="kCrouch" hidden></dd>
-      <dt class="revealOnly" hidden>[ ]</dt><dd class="revealOnly" hidden>調整暗度（照亮場景版：平常很暗，最響的一擊落下時照出衛兵）</dd>
-      <dt>E</dt><dd>點一下：從背後暗殺；在城門按住：推開門閂</dd>
-      <dt class="calmOnly">Q</dt><dd class="calmOnly">衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
-      <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
+      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
+      <dt><kbd>空白鍵</kbd>／滑鼠右鍵 按住</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
+      <dt id="kShiftDt"><kbd>Shift</kbd></dt><dd><span class="modeCover">衝刺，只在最響的那一擊落下時有用</span><span class="modeGap" hidden>衝刺，只在節奏重來的瞬間有用</span></dd>
+      <dt class="movesOnly" hidden><kbd>Shift</kbd> 按住</dt><dd class="movesOnly" id="kRun" hidden></dd>
+      <dt class="movesOnly" hidden><kbd>Alt</kbd> 按住</dt><dd class="movesOnly" id="kCrouch" hidden></dd>
+      <dt class="revealOnly" hidden><kbd>[</kbd> <kbd>]</kbd></dt><dd class="revealOnly" hidden>調整暗度（照亮場景版：平常很暗，最響的一擊落下時照出衛兵）</dd>
+      <dt><kbd>E</kbd></dt><dd>點一下：從背後暗殺；在城門按住：推開門閂</dd>
+      <dt class="calmOnly"><kbd>Q</kbd></dt><dd class="calmOnly">衛兵起疑時，跟著底層的低音慢慢按，讓他平靜下來</dd>
+      <dt><kbd>Esc</kbd></dt><dd>暫停（可回開場或總首頁）</dd>
     </dl>
    </div>
    <div class="col">
@@ -333,13 +359,14 @@ button:hover { filter: brightness(1.12); }
     <h2 id="winTitle">城門開了</h2>
     <p id="winText">希臘人的火把湧進沉睡的街道。十年的圍城，在這一夜結束。</p>
     <p class="later">十年後……</p>
-    <div class="row" style="margin-top:18px;justify-content:center"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button><button type="button" class="btnSwitch">回試玩切換台</button></div>
+    <div class="row" style="margin-top:18px"><button id="btnAgain">再玩一次</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button><button type="button" class="btnSwitch">回試玩切換台</button></div>
     <div class="surveySlot"></div>
-    <div class="row" style="justify-content:center"><button type="button" class="btnExport">匯出數據</button></div>
+    <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
   </div>
 </div>
 
 <script src="../nav.js"></script>
+<script src="../beatstrip.js"></script>
 <script>
 // 試玩數據模組：一般從上一層載入；在 claude.ai 試玩頁（沙盒裡沒有上一層）改載同目錄的 telemetry.js
 document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(location.hostname) ? '' : '../') + 'telemetry.js"><\/script>');
@@ -715,7 +742,7 @@ $('oCover').addEventListener('change', coverText); coverText();
   document.querySelectorAll('.calmOnly').forEach(el => { el.hidden = on; });   // 第 13 節：開關開著拿掉安撫，Q 沒作用
   if (!on) return;
   const mul = v => (v === 2 ? '快一倍' : v === .5 ? '慢一半' : '×' + v);
-  $('kShiftDt').textContent = 'Shift 點一下';
+  $('kShiftDt').innerHTML = '<kbd>Shift</kbd> 點一下';
   $('kRun').textContent = '跑，速度' + mul(num(T.RUN_SPEED_MUL, 2)) + '。鼓慢、火暗、' + num(T.RUN_R, 8) + ' 公尺內沒有衛兵時沒人聽得見；最響的那一擊也蓋得住，其他時候附近的衛兵會警覺。';
   $('kCrouch').textContent = '蹲走，速度' + mul(num(T.CROUCH_SPEED_MUL, .5)) + '；起步不必那麼準，離拍的腳步聲傳得近。蹲著時水缸、貨堆這類矮東西擋得住視線。要暗殺、推門閂得先站起來。';
 })();
@@ -1563,7 +1590,7 @@ LAB_HELP.horse.title = '木馬共鳴＋敲暗號';
 LAB_HELP.horse.what.push('也試「敲暗號指揮同伴」：按 T 敲，三下＝引開（木馬裡回兩下）、兩下＝現在；每一下都要敲在能敲的拍上，同伴才聽得懂。');
 LAB_HELP.horse.watch.push('敲暗號跟著畫面下方的四步教學走：先看 4 秒 → 敲準 1 下 → 聽同伴示範三下再換你 → 示範兩下再換你。',
   '拍點條：圓點從右往左滑，碰到中間直線就是一拍；直線兩邊的淺帶是判定寬度。準星外圈縮到底也是那一刻。',
-  '每敲一下，準星上方立刻顯示準、太早或太晚幾毫秒；條下方的短線是你敲的位置（綠＝準、橘＝歪），條上方的橘色菱形是同伴示範。',
+  '每敲一下，準星上方立刻顯示準、太早或太晚幾毫秒；條下方的短線是你敲的位置（海青＝準、橘＝歪），條上方的白色菱形是同伴示範；白色直條是每一輪最響的一擊。',
   'Y 隨時再聽一次同伴示範；示範時你敲的不算。');
 LAB_HELP.horse.panel.push(['敲暗號', '正在敲／上一組每一下離拍幾毫秒（✓ 在拍上、✗ 敲歪）、認出哪一種、各幾次']);
 LAB_HELP.flash = {
@@ -1621,6 +1648,23 @@ for (const k in LAB_BRIEF) if (LAB_HELP[k]) LAB_HELP[k].brief = LAB_BRIEF[k];
 function withBrief(lines) {                       // 面板：標題下面插開頭三行
   const b = LAB_BRIEF[LAB]; if (!b || !lines.length) return lines;
   return [lines[0], ...b.map(r => r[0] + '：' + r[1]), '────────────', ...lines.slice(1)];
+}
+(function introStrip() {                         // 開場題字下方的拍帶（設計系統第 4 節）：照這一關規則的拍滑動；共用 ../beatstrip.js，沒載到（claude.ai 試玩頁）就不放
+  const el = $('introStrip'); if (!el || !window.OdysseyBeat || !Rules) return;
+  OdysseyBeat.mount(el, { rules: Rules, label: '拍帶：照這一關規則的拍點，碰到直線就是一拍' });
+})();
+// 試驗場面板：第一行是試驗場名（題字），分隔線，狀態字上色（海青＝準／蓋住、火把橘＝歪／沒蓋住／查看、血紅底＝追殺）
+const PANEL_ST = [['st-beat', ['拍上蓋住', '掩護窗內蓋住', '踩準', '敲準', '通過']], ['st-torch', ['沒蓋住', '太早', '太晚', '踩歪', '出聲', '引來查看', '查看中']], ['st-blood', ['轉追殺', '追殺中', '被發現']]];
+const PANEL_CLS = {}; PANEL_ST.forEach(([c, ws]) => ws.forEach(w => { PANEL_CLS[w] = c; }));
+const PANEL_RE = new RegExp(Object.keys(PANEL_CLS).sort((a, b) => b.length - a.length).join('|'), 'g');
+const escHtml = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+function setPanel(el, lines) {
+  const t = String(lines[0] || ''), cut = t.indexOf('（');          // 標題：試驗場名用題字，括號裡的網址參數改小字
+  const head = '<span class="lpTitle">' + escHtml(cut > 0 ? t.slice(0, cut) : t) + (cut > 0 ? '<small>' + escHtml(t.slice(cut)) + '</small>' : '') + '</span>';
+  const body = escHtml(lines.slice(1).join('\n')), r = body.search(/^─+$/m);
+  const color = x => x.replace(PANEL_RE, w => '<span class="' + PANEL_CLS[w] + '">' + w + '</span>');   // 只替數字區上色；開頭三行是說明，不上色
+  const html = head + (r >= 0 ? body.slice(0, r) + '<span class="lpRule"></span>' + color(body.slice(r).replace(/^─+\n?/, '')) : color(body));
+  if (el.__html !== html) { el.innerHTML = html; el.__html = html; }   // 內容沒變就不重排
 }
 (function labBriefIntro() {                       // 開場字卡最上面
   const el = $('labBrief'), b = LAB_BRIEF[LAB]; if (!el || !b) return;
@@ -2632,7 +2676,7 @@ function knockBeat(t) {                           // 時間 t 附近最近的「
 }
 function knockTap(t) {
   if (!game || game.phase !== 'play' || t == null) return;
-  if (knockDemoOn()) { KT.fb = { at: performance.now(), col: '#d6cfc2', text: '同伴在敲：先聽完再換你' }; return; }
+  if (knockDemoOn()) { KT.fb = { at: performance.now(), col: '#F2ECDD', text: '同伴在敲：先聽完再換你' }; return; }
   const b = knockBeat(t), win = num(K().STEP_WIN, .08), off = b ? t - b.t : null, ok = off != null && Math.abs(off) <= win + 1e-9;
   KN.taps.push({ t, off, ok, at: performance.now() });
   knockFeedback(off, ok, KN.taps.length);         // 敲完立即顯示準／太早／太晚
@@ -2687,7 +2731,7 @@ window.addEventListener('keydown', e => {
 // ============================================================
 // 敲暗號教學（使用者 11/14 試玩：「不知道怎麼敲」）：只在 ?lab=horse，只動畫面，不改規則與聲音
 //   畫面下方拍點條：能敲的拍（和 knockBeat 同一份：規則可聽拍、音量 ≥ MASK_GAIN）從右往左滑，碰到中間直線就是一拍；
-//     直線兩邊的淺帶是判定寬度（±STEP_WIN）。你的每一下畫在條下方（綠＝準、橘＝歪），同伴示範畫在條上方（橘色菱形）。
+//     直線兩邊的淺帶是判定寬度（±STEP_WIN）。你的每一下畫在條下方（海青＝準、橘＝歪），同伴示範畫在條上方（白色菱形）。
 //   準星倒數圈：下一拍前 0.6 秒開始縮，縮到底那一刻敲；拍落下時直線和準星閃一下。
 //   四步教學：先看 4 拍 → T 敲準 1 下 → 同伴示範三下、換你（引開）→ 同伴示範兩下、換你（現在）；Y 隨時再聽一次示範。
 //   每敲一下，準星上方立刻跳「準／太早／太晚 n 毫秒」；一組判完，拍點條下方顯示結果。
@@ -2696,7 +2740,7 @@ const KT = { step: 0, stepAt: 0, seen: 0, okTaps: 0, lastNow: null, pulse: -1e9,
 const KT_STEPS = [
   { head: '先聽拍', text: '圓點碰到直線、準星外圈縮到底，就是一拍。先看 4 秒', done: () => KT.seen >= 4 && performance.now() - KT.stepAt > 4000 },
   { head: 'T：跟著拍敲一下', text: '圓點碰到直線的那一刻按 T。敲準 1 下就過', done: () => KT.okTaps >= 1 },
-  { head: 'T T T：敲三下＝引開', text: '先聽同伴敲（橘色菱形），再換你敲三下，每下落在拍上；停 1 秒算一組', done: () => KN.lures >= 1, demo: 3 },
+  { head: 'T T T：敲三下＝引開', text: '先聽同伴敲（白色菱形），再換你敲三下，每下落在拍上；停 1 秒算一組', done: () => KN.lures >= 1, demo: 3 },
   { head: 'T T：敲兩下＝現在', text: '先聽同伴敲，再換你敲兩下，每下落在拍上；停 1 秒算一組', done: () => KN.nows >= 1, demo: 2 },
 ];
 const knockNow = () => actx ? actx.currentTime - (actx.outputLatency || actx.baseLatency || 0) : null;   // 「聽到的」時間，和 knockTap 同一個算法
@@ -2741,7 +2785,7 @@ function knockTeach() {                           // 每幀：數經過的拍（
 }
 function knockFeedback(off, ok, n) {              // 敲完立即顯示：準／太早／太晚
   const ms = off == null ? null : Math.round(Math.abs(off) * 1000);
-  KT.fb = { at: performance.now(), col: off == null ? '#d6cfc2' : ok ? '#9fd8a8' : '#ff8a3a',
+  KT.fb = { at: performance.now(), col: off == null ? '#F2ECDD' : ok ? '#6FB3A6' : '#E8893B',   // 海青＝準、火把橘＝太早太晚
     text: '第 ' + n + ' 下・' + (off == null ? '附近沒有拍' : ok ? '準（' + (off < 0 ? '早 ' : '晚 ') + ms + ' 毫秒）' : (off < 0 ? '太早 ' : '太晚 ') + ms + ' 毫秒') };
   if (ok) KT.okTaps++;
 }
@@ -2759,48 +2803,52 @@ function knockDraw() {
   const font = (w, px) => w + ' ' + px + 'px "Noto Sans TC", system-ui, sans-serif';
   c.textAlign = 'center'; c.textBaseline = 'middle';
   // 拍點條
-  c.fillStyle = 'rgba(8, 9, 14, .78)'; c.fillRect(LX - 10, LY - 30, LW + 20, 60);
-  c.fillStyle = 'rgba(159, 176, 216, .2)'; c.fillRect(NX - win * pps, LY - 24, 2 * win * pps, 48);
-  c.strokeStyle = 'rgba(240, 168, 90, ' + (.65 + .35 * pulseA) + ')'; c.lineWidth = 2 + 4 * pulseA;
-  c.beginPath(); c.moveTo(NX, LY - 26); c.lineTo(NX, LY + 26); c.stroke();
+  c.fillStyle = 'rgba(35, 40, 56, .9)'; c.fillRect(LX - 10, LY - 30, LW + 20, 60);   // 城牆石底
+  c.fillStyle = 'rgba(111, 179, 166, .18)'; c.fillRect(NX - win * pps, LY - 24, 2 * win * pps, 48);   // 判定寬度：海青淡帶
   const beats = knockBeats(now - PAST, now + FUT);
-  for (const b of beats) {
-    const x = NX + (b.t - now) * pps, d = b.t - now, near = Math.abs(d) <= win;
-    c.beginPath(); c.arc(x, LY, near ? 9 : 6, 0, Math.PI * 2);
-    c.fillStyle = d < -win ? 'rgba(214, 207, 194, .22)' : near ? '#f0a85a' : 'rgba(214, 207, 194, .9)'; c.fill();
+  if (window.OdysseyBeat) {                       // 共用拍帶（../beatstrip.js）：海青＝能敲的拍；每一輪最響的一擊畫直條、落下時整條亮一下
+    let hits = []; try { hits = Rules.beatsBetween(now - PAST, now + FUT, game, { includeBlind: true }).filter(b => b.n === 0); } catch (e) { hits = []; }
+    const seen = {}, fr = beats.map(b => ({ t: b.t, strong: true, hit: false }));
+    for (const h of hits) { const k = Math.round(h.t * 1000); if (!seen[k]) { seen[k] = 1; fr.push({ t: h.t, strong: true, hit: true }); } }
+    OdysseyBeat.draw(c, LX, LY - 24, LW, 48, { now, beats: fr }, { bg: false, past: PAST, fut: FUT });
+  } else {                                        // 沒載到共用檔（claude.ai 試玩頁）：自己畫同樣的點
+    c.fillStyle = 'rgba(242, 236, 221, .7)'; c.fillRect(NX - 1, LY - 24, 2, 48);
+    for (const b of beats) { c.beginPath(); c.arc(NX + (b.t - now) * pps, LY, 5, 0, Math.PI * 2); c.fillStyle = b.t < now - .02 ? 'rgba(111, 179, 166, .3)' : '#6FB3A6'; c.fill(); }
   }
-  for (const d of KT.demo) {                      // 同伴示範：條上方橘色菱形
+  if (pulseA > 0) { c.fillStyle = 'rgba(242, 236, 221, ' + (.9 * pulseA).toFixed(3) + ')'; c.fillRect(NX - 1 - 2 * pulseA, LY - 26, 2 + 4 * pulseA, 52); }   // 拍落下：直線閃一下
+  for (const b of beats) if (Math.abs(b.t - now) <= win) { c.beginPath(); c.arc(NX + (b.t - now) * pps, LY, 9, 0, Math.PI * 2); c.strokeStyle = '#6FB3A6'; c.lineWidth = 2; c.stroke(); }   // 判定窗內的拍：外圈
+  for (const d of KT.demo) {                      // 同伴示範：條上方白色菱形
     const x = NX + (d.t - now) * pps; if (x < LX - 8 || x > LX + LW + 8) continue;
-    c.fillStyle = '#f0a85a'; c.beginPath(); c.moveTo(x, LY - 26); c.lineTo(x + 6, LY - 19); c.lineTo(x, LY - 12); c.lineTo(x - 6, LY - 19); c.closePath(); c.fill();
+    c.fillStyle = '#F2ECDD'; c.beginPath(); c.moveTo(x, LY - 26); c.lineTo(x + 6, LY - 19); c.lineTo(x, LY - 12); c.lineTo(x - 6, LY - 19); c.closePath(); c.fill();
   }
   for (const tp of KN.taps.concat(KN.last ? KN.last.taps : [])) {   // 你的每一下：條下方短線
     const x = NX + (tp.t - now) * pps; if (x < LX - 4 || x > LX + LW + 4) continue;
-    c.strokeStyle = tp.ok ? '#9fd8a8' : '#ff8a3a'; c.lineWidth = 3; c.beginPath(); c.moveTo(x, LY + 12); c.lineTo(x, LY + 26); c.stroke();
+    c.strokeStyle = tp.ok ? '#6FB3A6' : '#E8893B'; c.lineWidth = 3; c.beginPath(); c.moveTo(x, LY + 12); c.lineTo(x, LY + 26); c.stroke();
   }
-  c.font = font(400, 12); c.fillStyle = 'rgba(214, 207, 194, .6)';
+  c.font = font(400, 12); c.fillStyle = 'rgba(242, 236, 221, .68)';
   c.textAlign = 'left'; c.fillText('現在', NX + 6, LY + 20); c.textAlign = 'right'; c.fillText('之後的拍 →', LX + LW, LY - 20); c.textAlign = 'center';
   // 步驟卡（條上方）
   const st = KT_STEPS[KT.step];
   const head = st ? '第 ' + (KT.step + 1) + ' / ' + KT_STEPS.length + ' 步　' + st.head : '練完了　T 自由敲・Y 再聽一次示範';
-  const sub = knockDemoOn() ? '同伴在敲，先聽（橘色菱形碰到直線時那一聲「喀」）'
+  const sub = knockDemoOn() ? '同伴在敲，先聽（白色菱形碰到直線時那一聲「喀」）'
     : st ? st.text + (KT.step === 0 ? '（' + Math.min(KT.seen, 4) + ' / 4）' : '') : '三下＝引開、兩下＝現在；每一下都要在拍上';
-  c.fillStyle = 'rgba(8, 9, 14, .78)'; c.fillRect(LX - 10, LY - 82, LW + 20, 50);
-  c.font = font(600, 16); c.fillStyle = '#f0a85a'; c.fillText(head, W / 2, LY - 66);
-  c.font = font(400, 13); c.fillStyle = '#d6cfc2'; c.fillText(sub, W / 2, LY - 45);
-  if (KT.step >= 1) { c.font = font(400, 12); c.fillStyle = 'rgba(214, 207, 194, .55)'; c.fillText('Y 再聽一次同伴示範', W / 2, LY + 42); }
+  c.fillStyle = 'rgba(35, 40, 56, .9)'; c.fillRect(LX - 10, LY - 82, LW + 20, 50);
+  c.font = '900 16px "Noto Serif TC", serif'; c.fillStyle = '#F2ECDD'; c.fillText(head, W / 2, LY - 66);
+  c.font = font(400, 13); c.fillStyle = 'rgba(242, 236, 221, .78)'; c.fillText(sub, W / 2, LY - 45);
+  if (KT.step >= 1) { c.font = font(400, 12); c.fillStyle = 'rgba(242, 236, 221, .68)'; c.fillText('Y 再聽一次同伴示範', W / 2, LY + 42); }
   // 一組的結果（條下方）
   if (KT.res) {
     const age = (performance.now() - KT.res.at) / 1000;
-    if (age < 3) { c.globalAlpha = Math.min(1, 3 - age); c.font = font(600, 14); c.fillStyle = KT.res.ok ? '#9fd8a8' : '#ff8a3a'; c.fillText(KT.res.text, W / 2, LY + 62); c.globalAlpha = 1; }
+    if (age < 3) { c.globalAlpha = Math.min(1, 3 - age); c.font = font(600, 14); c.fillStyle = KT.res.ok ? '#6FB3A6' : '#E8893B'; c.fillText(KT.res.text, W / 2, LY + 62); c.globalAlpha = 1; }
   }
   // 準星倒數圈：下一拍前 0.6 秒開始縮，縮到底就敲
   const cx = W / 2, cy = H / 2, nb = beats.find(b => b.t > now);
-  c.strokeStyle = 'rgba(214, 207, 194, .3)'; c.lineWidth = 1.5; c.beginPath(); c.arc(cx, cy, 16, 0, Math.PI * 2); c.stroke();
+  c.strokeStyle = 'rgba(242, 236, 221, .3)'; c.lineWidth = 1.5; c.beginPath(); c.arc(cx, cy, 16, 0, Math.PI * 2); c.stroke();
   if (nb) {
     const u = (nb.t - now) / .6;
-    if (u <= 1) { c.strokeStyle = 'rgba(240, 168, 90, ' + (.35 + .55 * (1 - u)) + ')'; c.lineWidth = 2; c.beginPath(); c.arc(cx, cy, 16 + 44 * u, 0, Math.PI * 2); c.stroke(); }
+    if (u <= 1) { c.strokeStyle = 'rgba(111, 179, 166, ' + (.35 + .55 * (1 - u)) + ')'; c.lineWidth = 2; c.beginPath(); c.arc(cx, cy, 16 + 44 * u, 0, Math.PI * 2); c.stroke(); }
   }
-  if (pulseA > 0) { c.fillStyle = 'rgba(240, 168, 90, ' + (.45 * pulseA) + ')'; c.beginPath(); c.arc(cx, cy, 16, 0, Math.PI * 2); c.fill(); }
+  if (pulseA > 0) { c.fillStyle = 'rgba(111, 179, 166, ' + (.45 * pulseA) + ')'; c.beginPath(); c.arc(cx, cy, 16, 0, Math.PI * 2); c.fill(); }
   // 敲完的即時判定（準星上方）
   if (KT.fb) {
     const age = (performance.now() - KT.fb.at) / 1000;
@@ -3492,9 +3540,9 @@ function labHud() {
   const el = $('labPanel'), g = game;
   const lab = (g && g.lab) || (g ? LAB : null);
   el.hidden = !lab; if (!lab) return;
-  if (LAB === 'flash') { el.textContent = withBrief(flashLabLines()).join('\n'); return; }   // 規則那邊是 run 場景，面板照畫面的試驗場
-  if (lab === 'horse') { el.textContent = withBrief(horseLabLines()).join('\n'); return; }
-  if (MOVES_LABS.includes(lab)) { el.textContent = withBrief(movesLabLines(lab)).join('\n'); return; }
+  if (LAB === 'flash') { setPanel(el, withBrief(flashLabLines())); return; }   // 規則那邊是 run 場景，面板照畫面的試驗場
+  if (lab === 'horse') { setPanel(el, withBrief(horseLabLines())); return; }
+  if (MOVES_LABS.includes(lab)) { setPanel(el, withBrief(movesLabLines(lab))); return; }
   const Bs = g.belly || {}, need = num(Bs.need, 4), n = num(Bs.n, 0);
   const bar = Array.from({ length: need }, (_, i) => (Bs.ready || i < n ? '■' : '□')).join('');
   const state = Bs.open ? '暗門開了：走過去爬下' : Bs.ready ? '刻痕滿了：等下一個最響的一擊' : '停下，等鼓點，再踏出去';
@@ -3511,7 +3559,7 @@ function labHud() {
   const lpMode = BELLY_LP_MODES[bellyLpI];
   lines.push('', '低通（隔著木板聽鼓）：' + (hi ? (hi.lowpass ? '開' : '關') + (hi.lowpassHz ? '（' + hi.lowpassHz + ' Hz）' : '') : '聲音層沒有這個功能') +
     '\n  按 L 切換：' + lpMode.label);
-  el.textContent = withBrief(lines).join('\n');
+  setPanel(el, withBrief(lines));
 }
 function hintVisuals(dt) {
   const g = game, s = HW.sig, aid = VIS.aid, blind = !!(g.cycle && g.cycle.blind);

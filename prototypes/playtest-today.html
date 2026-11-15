@@ -4,46 +4,49 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>今日試玩清單</title>
+<link rel="stylesheet" href="ui-tokens.css">
 <style>
-  :root { --bg:#14110f; --card:#1f1a16; --line:#3a312a; --text:#efe6da; --dim:#b3a594; --accent:#e0a35a; --ok:#7cc48a; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 "Noto Sans TC","Microsoft JhengHei",sans-serif; }
-  main { max-width:980px; margin:0 auto; padding:24px 16px 80px; }
-  h1 { font-size:26px; margin:0 0 4px; }
-  .lead { color:var(--dim); margin:0 0 20px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:14px 0; }
-  .card.done { border-color:var(--ok); }
-  .card h2 { font-size:19px; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; }
-  .card h2 .n { color:var(--accent); }
-  .card h2 .st { margin-left:auto; font-size:13px; color:var(--dim); }
-  .card.done h2 .st { color:var(--ok); }
-  .how { color:var(--dim); margin:4px 0 10px; }
-  .links a { display:inline-block; margin:2px 8px 6px 0; padding:6px 12px; border-radius:6px; background:#3a2a18; color:var(--accent); text-decoration:none; font-weight:600; }
-  .links a:hover { background:#4d3820; }
-  fieldset { border:0; padding:0; margin:12px 0 0; }
-  legend { font-weight:600; margin-bottom:2px; }
-  .qh { color:var(--dim); font-size:14px; margin:0 0 4px; }
-  label { display:inline-flex; align-items:center; gap:6px; margin:2px 14px 2px 0; cursor:pointer; }
-  textarea { width:100%; min-height:48px; margin-top:6px; background:#120f0d; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
-  .bar { position:sticky; bottom:0; background:var(--bg); padding:12px 0; border-top:1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  button { background:var(--accent); color:#1a120a; border:0; border-radius:6px; padding:10px 18px; font:inherit; font-weight:700; cursor:pointer; }
-  button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line); }
-  #msg { color:var(--ok); }
-  kbd { background:#2b241e; border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:14px; }
+  /* 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：頁首題字＋拍帶；完成用海青；可按的用青銅 */
+  main { max-width:980px; margin:0 auto; padding:28px var(--gutter-r) 96px var(--gutter-l); }
+  header .ui-title { margin:0 0 14px; }
+  .lead { color:var(--muted); margin:14px 0 20px; max-width:var(--measure); }
+  .card { background:var(--stone); border:1px solid transparent; border-left:3px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
+  .card.done { border-left-color:var(--beat); }
+  .card h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .card h2 .n { color:var(--muted); }
+  .card h2 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .card.done h2 .st { color:var(--beat); }
+  .how { color:var(--parchment); margin:4px 0 10px; max-width:var(--measure); }
+  .links { display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .links a { display:inline-block; padding:5px 12px; border:1px solid var(--bronze); border-radius:var(--r-btn); color:var(--bronze); text-decoration:none; font-weight:500; font-size:var(--fs-14); }
+  .links a:hover { background:var(--bronze-wash); }
+  fieldset { border:0; border-top:1px solid var(--rule); padding:10px 0 0; margin:14px 0 0; }
+  legend { font-weight:500; padding:0; float:left; width:100%; margin-bottom:2px; }
+  .qh { clear:both; color:var(--muted); font-size:var(--fs-14); margin:0 0 6px; max-width:var(--measure); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); }
+  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; }
+  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #msg { color:var(--beat); font-size:var(--fs-14); }
 </style>
 </head>
 <body>
 <main>
-  <h1>今日試玩清單（2026-11-15）</h1>
-  <p class="lead">一項一項試：點連結開新分頁 → 照「怎麼試」玩 → 回來點選答案。全部試完按最下面「複製結果」，貼回對話給總控。答案會自動存在這台電腦的瀏覽器裡，關掉再開也還在。請戴耳機、用電腦與真鍵盤。</p>
+  <header>
+    <h1 class="ui-title lg">今日試玩清單</h1>
+    <div id="strip"></div>
+  </header>
+  <p class="lead">2026-11-15。一項一項試：點連結（在同一分頁打開）→ 照「怎麼試」玩 → 按上一頁回來點選答案。全部試完按最下面「複製結果」，貼回對話給總控。答案會自動存在這台電腦的瀏覽器裡，關掉再開也還在。請戴耳機、用電腦與真鍵盤。</p>
   <div id="list"></div>
   <div class="bar">
-    <button id="copy">複製結果</button>
-    <button class="ghost" id="reset">清除答案</button>
+    <button class="ui-btn primary" id="copy">複製結果</button>
+    <button class="ui-btn" id="reset">清除答案</button>
     <span id="msg"></span>
   </div>
 </main>
+<script src="troy-prologue/risset.js"></script>
+<script src="beatstrip.js"></script>
 <script>
+if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'));
 const ITEMS = [
   { id:'drum', title:'鼓越來越快 H0～H4（約 5 分鐘）',
     how:'H0 是現在的鼓；H1 半快；H2 最快；H3 在 60 秒內一路變快；H4 分四階、每 15 秒跳一階。（這四題剛才已在對話答過，已幫你勾好，可改。）',

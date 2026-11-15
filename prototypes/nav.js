@@ -37,10 +37,11 @@
     return true;
   }
 
-  // ---------- 設計系統 tokens（Odyssey 音樂系列，取自木馬之夜 :root） ----------
+  // ---------- 設計代號（方向 A「夜城訊號」，和 ui-tokens.css 同值；本檔要能單獨載入，所以另抄一份） ----------
+  // fire＝青銅（只給可以按的）、ash＝羊皮紙、dim＝次要字、moon＝海青、warn＝火把橘、blood＝血紅
   var TOKENS = {
-    night: '#07080c', panel: 'rgba(8, 9, 14, .82)', scrim: 'rgba(5, 6, 10, .9)', control: '#12131a', line: '#2a2c38',
-    ash: '#d6cfc2', dim: '#8a8478', fire: '#f0a85a', onFire: '#1a1008', moon: '#9fb0d8', warn: '#e0b04a', blood: '#c23a2c',
+    night: '#0E1322', panel: 'rgba(35, 40, 56, .92)', scrim: 'rgba(14, 19, 34, .96)', control: 'rgba(242, 236, 221, .05)', line: 'rgba(242, 236, 221, .14)',
+    ash: '#F2ECDD', dim: 'rgba(242, 236, 221, .68)', fire: '#C9A55C', onFire: '#0E1322', moon: '#6FB3A6', warn: '#E8893B', blood: '#B02A1E',
     fontText: '"Noto Sans TC", "PingFang TC", system-ui, sans-serif', fontDisplay: '"Noto Serif TC", "Songti TC", serif', fontMono: 'ui-monospace, monospace'
   };
 
@@ -49,26 +50,27 @@
     '.odnav { font: 13px/1.6 ' + TOKENS.fontText + '; color: ' + TOKENS.ash + '; }',
     '.odnav a { color: ' + TOKENS.fire + '; }',
     '.odnav-switch { position: fixed; z-index: 9000; top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px));',
-    '  background: ' + TOKENS.panel + '; border: 1px solid ' + TOKENS.line + '; padding: 4px 10px; text-decoration: none; font-size: 12px; }',
+    '  background: ' + TOKENS.panel + '; border: 1px solid ' + TOKENS.line + '; border-radius: 2px; padding: 4px 10px; text-decoration: none; font-size: 12px; }',
     '.odnav-switch:hover, .odnav-switch:focus-visible { border-color: ' + TOKENS.fire + '; }',
-    '.odnav-switch-inline { display: inline-block; align-self: flex-start; margin: 0 0 8px; font-size: 12px; text-decoration: none; border: 1px solid ' + TOKENS.line + '; padding: 3px 10px; background: ' + TOKENS.panel + '; }',
+    '.odnav-switch-inline { display: inline-block; align-self: flex-start; justify-self: start; border-radius: 2px; margin: 0 0 8px; font-size: 12px; text-decoration: none; border: 1px solid ' + TOKENS.line + '; padding: 3px 10px; background: ' + TOKENS.panel + '; }',
     '.odnav-switch-inline:hover, .odnav-switch-inline:focus-visible { border-color: ' + TOKENS.fire + '; }',
     '.odnav-tab { position: fixed; z-index: 9001; right: 0; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; letter-spacing: .2em;',
-    '  background: ' + TOKENS.panel + '; color: ' + TOKENS.fire + '; border: 1px solid ' + TOKENS.line + '; border-right: 0; padding: 12px 6px; cursor: pointer; font: 600 13px/1 ' + TOKENS.fontText + '; }',
+    '  background: ' + TOKENS.panel + '; color: ' + TOKENS.fire + '; border: 1px solid ' + TOKENS.fire + '; border-right: 0; border-radius: 2px 0 0 2px; padding: 12px 6px; cursor: pointer; font: 600 13px/1 ' + TOKENS.fontText + '; }',
     '.odnav-tab:hover, .odnav-tab:focus-visible { border-color: ' + TOKENS.fire + '; }',
     '.odnav-side { position: fixed; z-index: 9002; top: 0; right: 0; bottom: 0; width: min(340px, 92vw); overflow-y: auto; overscroll-behavior: contain;',
     '  background: ' + TOKENS.scrim + '; border-left: 1px solid ' + TOKENS.line + '; padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 24px 16px; }',
     '.odnav-side[hidden], .odnav-tab[hidden] { display: none; }',
     '.odnav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }',
-    '.odnav-head h2 { margin: 0; font: 900 18px/1.3 ' + TOKENS.fontDisplay + '; color: ' + TOKENS.fire + '; }',
-    '.odnav-close { background: transparent; color: ' + TOKENS.dim + '; border: 1px solid ' + TOKENS.line + '; padding: 2px 8px; cursor: pointer; font: inherit; }',
-    '.odnav-close:hover { color: ' + TOKENS.ash + '; border-color: ' + TOKENS.fire + '; }',
+    '.odnav-head h2 { margin: 0; font: 900 20px/1.3 ' + TOKENS.fontDisplay + '; letter-spacing: .04em; color: ' + TOKENS.ash + '; }',
+    '.odnav-close { background: transparent; color: ' + TOKENS.fire + '; border: 1px solid ' + TOKENS.fire + '; border-radius: 2px; padding: 2px 8px; cursor: pointer; font: inherit; }',
+    '.odnav-close:hover { background: rgba(201, 165, 92, .14); }',
     '.odnav-links { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 0 0 10px; font-size: 12px; }',
-    '.odnav-side h3 { margin: 14px 0 4px; font: 600 13px/1.4 ' + TOKENS.fontText + '; color: ' + TOKENS.fire + '; }',
+    '.odnav-side h3 { margin: 14px 0 4px; font: 900 15px/1.4 ' + TOKENS.fontDisplay + '; letter-spacing: .04em; color: ' + TOKENS.ash + '; }',
     '.odnav-side ul, .odnav-side ol { margin: 0; padding-left: 18px; }',
     '.odnav-side li { margin: 2px 0; }',
     '.odnav-side dl { margin: 0; }',
-    '.odnav-side dt { color: ' + TOKENS.moon + '; font: 12px/1.5 ' + TOKENS.fontMono + '; margin-top: 6px; }',
+    '.odnav-side dt { color: ' + TOKENS.ash + '; font: 500 12px/1.5 ' + TOKENS.fontText + '; margin-top: 6px; }',
+    '.odnav :focus-visible { outline: 2px solid ' + TOKENS.ash + '; outline-offset: 2px; }',
     '.odnav-side dd { margin: 0 0 0 10px; }',
     '.odnav-side .odnav-src { margin-top: 14px; color: ' + TOKENS.dim + '; font-size: 11px; }',
     '.odnav-side .odnav-key { color: ' + TOKENS.dim + '; font-size: 11px; }',
