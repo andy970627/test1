@@ -182,7 +182,8 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
 #survey .thanks { color: var(--moon); }
 /* 腹中練習試驗場（?lab=belly）的判定數字面板 */
 #labBtns { left: calc(18px + var(--sl)); top: 300px; pointer-events: auto; display: flex; gap: 6px; }
-#labBtns button { font: 500 12px/1.4 var(--text); padding: 4px 8px; background: var(--panel); color: var(--bronze); border: 1px solid var(--bronze); border-radius: var(--r-btn); cursor: pointer; }
+#driveBtns { left: calc(18px + var(--sl)); top: 300px; pointer-events: auto; display: flex; flex-wrap: wrap; gap: 6px; width: 320px; }   /* DRIVE 試驗場的按鈕列 */
+#labBtns button, #driveBtns button { font: 500 12px/1.4 var(--text); padding: 4px 8px; background: var(--panel); color: var(--bronze); border: 1px solid var(--bronze); border-radius: var(--r-btn); cursor: pointer; }
 #stepRing { left: 50%; top: 58%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px; font: 12px/1.4 var(--text); color: var(--ash); text-shadow: 0 1px 3px #000, 0 0 8px #000; }   /* 走法試驗場：下一步什麼時候 */
 #labPanel { left: calc(18px + var(--sl)); top: 70px; width: 320px; font: 13px/1.6 var(--text); color: var(--ash); background: var(--panel); border-radius: var(--r-panel); padding: 10px 12px; white-space: pre-wrap; }
 #labPanel .lpTitle { display: block; font: 900 20px/1.3 var(--display); letter-spacing: .04em; margin-bottom: 4px; white-space: normal; }   /* 試驗場名：題字 20px */
@@ -220,6 +221,7 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
 <div class="hud" id="flashCtl" hidden><label>暗度 <input type="range" id="flashDarkR" min="0" max="0.95" step="0.05" value="0.7"> <span id="flashDarkV">0.70</span></label> <span class="dim">（[ ] 調整）</span></div>
 <div class="hud" id="stepRing" hidden><canvas width="64" height="64"></canvas><span></span></div>
 <div class="hud" id="labBtns" hidden><button type="button" id="btnLabNotice">製造聲響（N）</button> <button type="button" id="btnLabNoticeSide">在旁邊 3 公尺（M）</button> <button type="button" id="btnLabBow">彈弓弦（V）</button></div>
+<div class="hud" id="driveBtns" hidden><button type="button" data-act="segDown">上一段</button><button type="button" data-act="segUp">下一段</button><button type="button" data-act="down">急度 −（,）</button><button type="button" data-act="up">急度 ＋（.）</button><button type="button" data-act="hunt">追殺／甩掉（K）</button><button type="button" data-act="free">放開（U）</button></div>
 <div class="hud" id="gateBar" hidden><b id="gateFill"></b></div>
 <div class="hud" id="breath"><span id="breathText">屏息（空白鍵／右鍵）</span><i><b id="breathFill"></b></i><span id="shade" hidden>身在暗處</span></div>
 <div class="hud" id="phase" hidden>
@@ -305,7 +307,7 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
   <!-- 核心方向甲（docs/design/2026-11-10-core-direction-illusion.md 第 1 節）：設定規則的 T.COVER_MODE；規則檔還沒有這個常數時停用 -->
   <label>鼓聲 <select id="oCover"><option value="cover">不停（趁最響的一擊行動）</option><option value="gap">留空檔（舊版：趁安靜行動）</option></select> <span class="dim" id="oCoverNote" hidden>（規則檔還沒支援，先用舊版）</span></label>
   <!-- 試驗場入口（專案規則：每個機制都要有試驗場）：木馬第 1 批，docs/design/2026-11-11-trojan-horse-directions.md 方向 A -->
-  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）<span id="labMoves" hidden>・<a href="?lab=run" id="labRunLink">跑</a>（第 2 區）・<a href="?lab=crouch" id="labCrouchLink">蹲走與矮掩體</a>（第 3 區）・<a href="?lab=listen" id="labListenLink">屏息聽衛兵</a>（第 3 區）・<a href="?lab=hunt" id="labHuntLink">追殺</a>（第 2 區，追兵從背後追）・<a href="?lab=flash" id="labFlashLink">最響一擊照亮場景</a>（第 2 區，調暗）・<a href="?lab=check" id="labCheckLink">查看</a>（第 2 區，按 N 製造聲響）・走法 <a href="?lab=walk&amp;step=glide" id="labWalk0Link">P0</a>／<a href="?lab=walk&amp;step=stride" id="labWalk1Link">P1</a>／<a href="?lab=walk&amp;step=manual" id="labWalk2Link">P2</a>（第 2 區）</span></div>
+  <div class="dim" id="labLinks">試驗場：<a href="?lab=belly" id="labBellyLink">木馬腹中練習</a>（只有腹中、沒有衛兵、循環固定）・<a href="?lab=horse" id="labHorseLink">木馬共鳴</a>（第 2 區自由走、沒有衛兵）<span id="labMoves" hidden>・<a href="?lab=run" id="labRunLink">跑</a>（第 2 區）・<a href="?lab=crouch" id="labCrouchLink">蹲走與矮掩體</a>（第 3 區）・<a href="?lab=listen" id="labListenLink">屏息聽衛兵</a>（第 3 區）・<a href="?lab=hunt" id="labHuntLink">追殺</a>（第 2 區，追兵從背後追）・<a href="?lab=flash" id="labFlashLink">最響一擊照亮場景</a>（第 2 區，調暗）・<a href="?lab=check" id="labCheckLink">查看</a>（第 2 區，按 N 製造聲響）・<a href="?lab=drive" id="labDriveLink">越來越急（DRIVE）</a>（第 2 區，沒有衛兵）・走法 <a href="?lab=walk&amp;step=glide" id="labWalk0Link">P0</a>／<a href="?lab=walk&amp;step=stride" id="labWalk1Link">P1</a>／<a href="?lab=walk&amp;step=manual" id="labWalk2Link">P2</a>（第 2 區）</span></div>
   <div id="music" role="group" aria-label="音樂層">
     <div class="mrow">
       <span class="mlabel">音樂層</span>
@@ -718,7 +720,7 @@ const LAB_HELP = {
       ]
     }
   };
-const HORSE_Q = URLQ.get('horse') === '1', LAB = ['belly', 'horse', 'flash', ...MOVES_LABS].includes(URLQ.get('lab')) ? URLQ.get('lab') : null;
+const HORSE_Q = URLQ.get('horse') === '1', LAB = ['belly', 'horse', 'flash', 'drive', ...MOVES_LABS].includes(URLQ.get('lab')) ? URLQ.get('lab') : null;
 const MOVES_OFF_Q = URLQ.get('moves') === '0';
 // 錄影模式 ?clean=1：不讀也不寫首頁存檔（每次都是 HTML 預設），相位條、試玩數據摘要強制關，不掛說明欄、不放「回試玩切換台」。
 // 給報告錄影用：使用者自己電腦上存過的除錯開關不會出現在畫面上
@@ -747,7 +749,7 @@ $('oCover').addEventListener('change', coverText); coverText();
   $('kCrouch').textContent = '蹲走，速度' + mul(num(T.CROUCH_SPEED_MUL, .5)) + '；起步不必那麼準，離拍的腳步聲傳得近。蹲著時水缸、貨堆這類矮東西擋得住視線。要暗殺、推門閂得先站起來。';
 })();
 $('labMoves').hidden = !MOVES_SUPPORTED;
-for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink'], ['run', 'labRunLink'], ['crouch', 'labCrouchLink'], ['listen', 'labListenLink'], ['hunt', 'labHuntLink'], ['check', 'labCheckLink'], ['flash', 'labFlashLink'], ['walk:glide', 'labWalk0Link'], ['walk:stride', 'labWalk1Link'], ['walk:manual', 'labWalk2Link']]) { const q = new URLSearchParams(); const [lb, st] = lab.split(':'); q.set('lab', lb); if (st) q.set('step', st); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
+for (const [lab, id] of [['belly', 'labBellyLink'], ['horse', 'labHorseLink'], ['run', 'labRunLink'], ['crouch', 'labCrouchLink'], ['listen', 'labListenLink'], ['hunt', 'labHuntLink'], ['check', 'labCheckLink'], ['drive', 'labDriveLink'], ['flash', 'labFlashLink'], ['walk:glide', 'labWalk0Link'], ['walk:stride', 'labWalk1Link'], ['walk:manual', 'labWalk2Link']]) { const q = new URLSearchParams(); const [lb, st] = lab.split(':'); q.set('lab', lb); if (st) q.set('step', st); for (const k of ['mute', 'nolock']) if (URLQ.has(k)) q.set(k, URLQ.get(k)); $(id).href = '?' + q.toString(); }
 
 // ============================================================
 // three.js 場景
@@ -1631,9 +1633,18 @@ LAB_HELP.flash = {
 };
 // 第 15 節：查看這版偏兇（驗收沒過），在說明裡註明
 LAB_HELP.check.what.push('（調整中）這版的查看偏兇，驗收還沒過，數字會再改。');
+LAB_HELP.drive = {                                // DRIVE 試驗場（期末版企劃第 3 節；規則 driveFor）
+  title: '越來越急（DRIVE）',
+  what: ['DRIVE（急度）是 0.30～1.00 的一個數：越高，最快那條鼓上面疊的兩倍、四倍快的層越響，聽起來越急；踩得上的拍不變，判定也完全不讀它。', '整關每一段有自己的起點和終點，段內慢慢往上升；換到下一段時 4 秒滑上去；被追殺 2 秒衝到 1.00，甩掉後 4 秒滑回追殺前的值。', '這頁在第 2 區、沒有衛兵、出口擋住，只聽急度怎麼變。'],
+  watch: ['按 1 → 3 → 5 → 7 一段一段跳：每次換段有沒有聽出「又往上一階」？', '按 K 假裝被追殺：2 秒內衝到頂的感覺夠不夠急？再按 K 甩掉：4 秒滑回會不會太突然？', '用 , . 直接定值，找出「剛好開始覺得急」和「太吵」的值。'],
+  panel: [['急度', '現在的 DRIVE 值與長條（0.30～1.00）；DRIVE 關（?drive=0）時顯示關'], ['段', '企劃的第幾段（0 序～8 終）與段內經過秒數；括號是這段的起→止'], ['追殺', '是否當成追殺中；追殺前＝甩掉後要滑回的值'], ['進段值', '進這一段時的值（低於這段起點就 4 秒滑上去）'], ['定值', '用 , . 直接定的值；U 放開']],
+  questions: ['換段的升階聽得出來嗎？', '追殺衝到頂、甩掉滑回的速度對不對？', '哪個值開始覺得急、哪個值太吵？'],
+  src: ['docs/design/2026-11-15-final-gdd.md 第 3 節', 'risset.js driveFor']
+};
 // 試驗場開頭三行（使用者 11/14：「各主要測試部分相關說明要清楚一點」）：測什麼／怎麼操作（按鍵寫最前面）／看哪個數字。
 //   顯示在三個地方：開場字卡最上面、試驗場面板標題下、說明側欄最上面（nav.js 的 brief）
 const LAB_BRIEF = {
+  drive: [['測', '鼓越來越急（DRIVE）：照段慢慢升、換段滑上、追殺 2 秒衝到頂、甩掉 4 秒滑回，聽不聽得出越來越急'], ['操作', '0～8 切到第幾段・, . 把急度往下／往上定 0.05・K 假裝追殺／甩掉・U 全部放開（回到照遊戲）・WASD 走'], ['看', '面板「急度」的數字與長條、「段」和段內秒數；追殺時「追殺前」記著回去的值']],
   belly: [['測', '站定後的第一步有沒有踩在鼓點上'], ['操作', 'W 放開站定 → 聽到鼓點再按 W 起步；踩準亮一格，亮滿 4 格同伴開暗門'], ['看', '「踩準 n / 4」和最近每一步離鼓點幾毫秒']],
   horse: [['測', '敲暗號叫同伴引開衛兵；木馬共鳴隨距離變小'], ['操作', 'T 跟著拍敲（三下＝引開、兩下＝現在，停 1 秒算一組）・Y 聽同伴示範・WASD 走近走遠'], ['看', '畫面下方的拍點條、敲完跳出的「準／太早／太晚」；面板「離木馬」「共鳴音量」']],
   run: [['測', '跑很吵，只有最響的一擊蓋得住'], ['操作', 'Shift 按住跑（點一下是衝刺）・WASD 走'], ['看', '腳下波紋（淡＝沒人聽到、橘＝被聽到）和「跑的步」三個數']],
@@ -1739,6 +1750,7 @@ function newGame() {
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
   if (MOVES_OFF_Q) opts.T.MOVES_MODE = false;
+  if (URLQ.get('drive') === '0') opts.T.DRIVE_MODE = false;             // ?drive=0：關掉 DRIVE（越來越急的層），規則不讀網址，由這裡轉（沒帶參數交給規則預設：開）
   if (URLQ.get('drums') === 'old') opts.T.DRUMS = 'old';               // ?drums=old：開關開著也用舊鼓聲（新鼓聲只在 MOVES_MODE 開且 DRUMS 不是 'old' 時，?moves=0 一定舊鼓聲）
   if (LAB === 'walk' && STEP_Q) opts.T.STEP_MODE = STEP_Q;              // 走法試驗場：P0／P1／P2                         // ?moves=0：報告版（沒帶參數就交給規則的預設：開）
   if (HORSE_Q) opts.T.HORSE_MODE = true;                               // 木馬第 1 批（沒帶參數就不碰，規則走報告版的路）
@@ -3130,6 +3142,7 @@ function huntFrame(dt, on) {
   for (const [k, o] of HV.marks) if (!usedMark.has(k)) o.m.visible = false;
   // 試驗場按鈕
   const lb = $('labBtns'); if (lb) lb.hidden = !(LAB === 'check' && on);
+  const db = $('driveBtns'); if (db) db.hidden = !(LAB === 'drive' && on);
   // 喘：畫面邊緣起伏（減少動態時不起伏，只淡淡亮著）
   const panting = on && P && P.panting;
   const wave = REDUCED_MOTION ? .6 : .5 + .5 * Math.sin(performance.now() / 1000 * Math.PI * 2 * HUNT_FX.pantHz);
@@ -3531,10 +3544,57 @@ function flashLabLines() {
     '場上衛兵：' + gs.length + ' 名',
     '', '平常只看得到火光附近；那一擊落下，光圈從木馬掃過全場，照出所有衛兵和他們面向哪邊', '試試看：等那一擊來看路，再趁下一擊動', '整關玩：網址加 ?reveal=1'];
 }
+// DRIVE 試驗場（?lab=drive）：面板讀 g.drive／g.driveInfo，按鍵呼叫 g.labDriveSeg／labDriveSet／labDriveHunt（null 放開）
+const DRIVE_SEG_NAMES = ['序 木馬進城', '1 木馬腹中', '2 木馬下', '3 神殿廣場', '4 慶宴的街', '5 城牆下的窄巷', '6 沒有火的後街', '7 城門', '終 城門開了'];
+const DRV = { seg: null, set: null, hunt: null };   // 試驗場現在蓋過哪些（null＝照遊戲）
+function driveLabLines() {
+  const g = game, d = g && g.drive, I = g && g.driveInfo, segs = arr(K().DRIVE_SEGS);
+  const lines = ['越來越急試驗場（?lab=drive，第 2 區）'];
+  if (!g || d === undefined) { lines.push('規則沒有 DRIVE（g.drive）'); return lines; }
+  if (d === null) { lines.push('急度：關（?drive=0 或規則 DRIVE_MODE 關）'); return lines; }
+  const lo = num(K().DRIVE_MIN, .3), hi = num(K().DRIVE_MAX, 1), n = 20, k = Math.round((d - lo) / Math.max(1e-6, hi - lo) * n);
+  lines.push('急度：' + d.toFixed(2) + '  ' + '■'.repeat(Math.max(0, Math.min(n, k))) + '□'.repeat(Math.max(0, n - k)));
+  if (I) {
+    const S = segs[I.seg];
+    lines.push('段：' + (DRIVE_SEG_NAMES[I.seg] || I.seg) + (S ? '（' + S[0].toFixed(2) + '→' + S[1].toFixed(2) + '，' + S[2] + ' 秒）' : '') + '・段內 ' + num(I.segT, 0).toFixed(1) + ' 秒');
+    lines.push('追殺：' + (I.hunted ? '追殺中' : '否') + (Number.isFinite(I.pre) ? '・追殺前 ' + I.pre.toFixed(2) : ''));
+    lines.push('進段值：' + (Number.isFinite(I.enter) ? I.enter.toFixed(2) : '—') + (I.fixed ? '・直接定值中' : ''));
+  }
+  lines.push('', '試驗場蓋過：段 ' + (DRV.seg == null ? '照區' : DRV.seg) + '・定值 ' + (DRV.set == null ? '沒有' : DRV.set.toFixed(2)) + '・追殺 ' + (DRV.hunt == null ? '照遊戲' : DRV.hunt ? '假裝追殺' : '假裝甩掉'));
+  lines.push('0～8 切段・, . 定值 ∓0.05・K 追殺／甩掉・U 全部放開');
+  return lines;
+}
+function driveLab(act, v) {
+  const g = game; if (LAB !== 'drive' || !g || g.phase !== 'play') return;
+  const call = (fn, x) => { try { if (typeof g[fn] === 'function') g[fn](x); } catch (e) {} };
+  if (act === 'seg') { DRV.seg = v; call('labDriveSeg', v); }
+  else if (act === 'set') { const lo = num(K().DRIVE_MIN, .3), hi = num(K().DRIVE_MAX, 1); const base = DRV.set != null ? DRV.set : num(g.drive, lo); DRV.set = clamp(Math.round((base + v) * 100) / 100, lo, hi); call('labDriveSet', DRV.set); }
+  else if (act === 'hunt') { DRV.hunt = !(DRV.hunt != null ? DRV.hunt : !!(g.driveInfo && g.driveInfo.hunted)); call('labDriveHunt', DRV.hunt); }
+  else if (act === 'free') { DRV.seg = DRV.set = DRV.hunt = null; call('labDriveSeg', null); call('labDriveSet', null); call('labDriveHunt', null); }
+}
+window.addEventListener('keydown', e => {
+  if (LAB !== 'drive' || e.repeat) return;
+  const m = /^Digit([0-8])$/.exec(e.code);
+  if (m) driveLab('seg', +m[1]);
+  else if (e.code === 'Comma') driveLab('set', -.05);
+  else if (e.code === 'Period') driveLab('set', .05);
+  else if (e.code === 'KeyK') driveLab('hunt');
+  else if (e.code === 'KeyU') driveLab('free');
+});
+(function driveBtns() {                           // 滑鼠也能按：段 −／＋、定值 −／＋、追殺、放開
+  const b = $('driveBtns'); if (!b) return;
+  const segNow = () => DRV.seg != null ? DRV.seg : (game && game.driveInfo ? game.driveInfo.seg : 3);
+  b.addEventListener('click', e => {
+    const a = e.target.closest('button'); if (!a) return; e.stopPropagation();
+    const act = a.dataset.act;
+    if (act === 'segDown') driveLab('seg', Math.max(0, segNow() - 1)); else if (act === 'segUp') driveLab('seg', Math.min(8, segNow() + 1));
+    else if (act === 'down') driveLab('set', -.05); else if (act === 'up') driveLab('set', .05); else driveLab(act);
+  });
+})();
 function labUnder() {                              // 試驗場面板下面的按鈕列與暗度滑桿：跟著面板底部排（面板長度會變），不壓到字
   const el = $('labPanel'); if (!el || el.hidden) return;
   let y = el.offsetTop + el.offsetHeight + 8;
-  for (const id of ['labBtns', 'flashCtl']) { const b = $(id); if (b && !b.hidden) { b.style.top = y + 'px'; y += b.offsetHeight + 6; } }
+  for (const id of ['labBtns', 'flashCtl', 'driveBtns']) { const b = $(id); if (b && !b.hidden) { b.style.top = y + 'px'; y += b.offsetHeight + 6; } }
 }
 function labHud() {
   const el = $('labPanel'), g = game;
@@ -3542,6 +3602,7 @@ function labHud() {
   el.hidden = !lab; if (!lab) return;
   if (LAB === 'flash') { setPanel(el, withBrief(flashLabLines())); return; }   // 規則那邊是 run 場景，面板照畫面的試驗場
   if (lab === 'horse') { setPanel(el, withBrief(horseLabLines())); return; }
+  if (lab === 'drive') { setPanel(el, withBrief(driveLabLines())); return; }
   if (MOVES_LABS.includes(lab)) { setPanel(el, withBrief(movesLabLines(lab))); return; }
   const Bs = g.belly || {}, need = num(Bs.need, 4), n = num(Bs.n, 0);
   const bar = Array.from({ length: need }, (_, i) => (Bs.ready || i < n ? '■' : '□')).join('');

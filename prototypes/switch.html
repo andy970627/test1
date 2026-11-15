@@ -72,6 +72,7 @@ small { color: var(--muted); font-size: var(--fs-12); }
         <label><input type="checkbox" id="drums"> 舊鼓聲（?drums=old；報告版本來就是舊鼓聲）</label>
         <label><input type="checkbox" id="horse"> 木馬新內容（腹中練習、木馬陰影、共鳴、結尾回頭）</label>
         <label><input type="checkbox" id="reveal"> 照亮場景版（?reveal=1：平常很暗，最響的一擊照出衛兵；<kbd>[</kbd> <kbd>]</kbd> 調暗度）</label>
+        <label><input type="checkbox" id="nodrive"> 關掉越來越急（?drive=0）</label>
         <label><input type="checkbox" id="tel"> 記錄試玩數據</label>
         <label><input type="checkbox" id="mute"> 靜音</label>
         <label><input type="checkbox" id="clean"> 錄影模式（不帶出存過的除錯開關、不放說明欄）</label>
@@ -105,6 +106,7 @@ small { color: var(--muted); font-size: var(--fs-12); }
           <li><a href="troy-prologue/index.html?lab=run"><b>跑</b><span><kbd>Shift</kbd> 按住跑：只有最響的一擊蓋得住</span></a></li>
           <li><a href="troy-prologue/index.html?lab=check"><b>查看</b><span><kbd>N</kbd>／<kbd>M</kbd> 製造聲響、<kbd>V</kbd> 彈弓弦，讓走過來查看的衛兵找不到你</span></a></li>
           <li><a href="troy-prologue/index.html?lab=hunt"><b>追殺</b><span>聽追兵的腳步，躲開他的搜索</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=drive"><b>越來越急（DRIVE）</b><span><kbd>0</kbd>～<kbd>8</kbd> 切段、<kbd>K</kbd> 假裝追殺：聽鼓怎麼一路變急</span></a></li>
           <li><a href="troy-prologue/index.html?lab=flash"><b>最響一擊照亮場景</b><span>那一擊照出衛兵輪廓（整關版勾上面「照亮場景版」）</span></a></li>
           <li class="group">走法（比三種）</li>
           <li><a href="troy-prologue/index.html?lab=walk&amp;step=glide"><b>P0 現狀</b><span>按住滑著走</span></a></li>
@@ -170,6 +172,7 @@ function gameUrl(zone) {
   if ($('mute').checked) q.set('mute', '1');
   if ($('clean').checked) q.set('clean', '1');
   if ($('reveal').checked) q.set('reveal', '1');
+  if ($('nodrive').checked) q.set('drive', '0');
   const s = q.toString();
   return 'troy-prologue/index.html' + (s ? '?' + s : '');
 }
@@ -180,7 +183,7 @@ function refresh() {
   document.querySelectorAll('a.from').forEach(a => { a.href = gameUrl(a.dataset.zone); });
 }
 // 記住上次的選擇（只存在這台電腦的瀏覽器；存不了就用預設）
-const KEYS = ['moves', 'drums', 'horse', 'zone', 'tel', 'mute', 'clean', 'reveal', 'ill', 'cyc'];
+const KEYS = ['moves', 'drums', 'horse', 'zone', 'tel', 'mute', 'clean', 'reveal', 'nodrive', 'ill', 'cyc'];
 try { const s = JSON.parse(localStorage.getItem('switch-board') || '{}'); KEYS.forEach(k => { if (k in s) { const el = $(k); if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; } }); } catch (e) {}
 document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', () => {
   refresh();
