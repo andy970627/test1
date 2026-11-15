@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>今日試玩清單</title>
+<style>
+  :root { --bg:#14110f; --card:#1f1a16; --line:#3a312a; --text:#efe6da; --dim:#b3a594; --accent:#e0a35a; --ok:#7cc48a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 "Noto Sans TC","Microsoft JhengHei",sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; }
+  .lead { color:var(--dim); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:14px 0; }
+  .card.done { border-color:var(--ok); }
+  .card h2 { font-size:19px; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; }
+  .card h2 .n { color:var(--accent); }
+  .card h2 .st { margin-left:auto; font-size:13px; color:var(--dim); }
+  .card.done h2 .st { color:var(--ok); }
+  .how { color:var(--dim); margin:4px 0 10px; }
+  .links a { display:inline-block; margin:2px 8px 6px 0; padding:6px 12px; border-radius:6px; background:#3a2a18; color:var(--accent); text-decoration:none; font-weight:600; }
+  .links a:hover { background:#4d3820; }
+  fieldset { border:0; padding:0; margin:12px 0 0; }
+  legend { font-weight:600; margin-bottom:2px; }
+  .qh { color:var(--dim); font-size:14px; margin:0 0 4px; }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 14px 2px 0; cursor:pointer; }
+  textarea { width:100%; min-height:48px; margin-top:6px; background:#120f0d; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
+  .bar { position:sticky; bottom:0; background:var(--bg); padding:12px 0; border-top:1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  button { background:var(--accent); color:#1a120a; border:0; border-radius:6px; padding:10px 18px; font:inherit; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line); }
+  #msg { color:var(--ok); }
+  kbd { background:#2b241e; border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>今日試玩清單（2026-11-15）</h1>
+  <p class="lead">一項一項試：點連結開新分頁 → 照「怎麼試」玩 → 回來點選答案。全部試完按最下面「複製結果」，貼回對話給總控。答案會自動存在這台電腦的瀏覽器裡，關掉再開也還在。請戴耳機、用電腦與真鍵盤。</p>
+  <div id="list"></div>
+  <div class="bar">
+    <button id="copy">複製結果</button>
+    <button class="ghost" id="reset">清除答案</button>
+    <span id="msg"></span>
+  </div>
+</main>
+<script>
+const ITEMS = [
+  { id:'drum', title:'鼓越來越快 H0～H4（約 5 分鐘）',
+    how:'H0 是現在的鼓；H1 半快；H2 最快；H3 在 60 秒內一路變快；H4 分四階、每 15 秒跳一階。（這四題剛才已在對話答過，已幫你勾好，可改。）',
+    links:[['H0','troy-prologue/audio-test.html?ill=H0'],['H1','troy-prologue/audio-test.html?ill=H1'],['H2','troy-prologue/audio-test.html?ill=H2'],['H3','troy-prologue/audio-test.html?ill=H3'],['H4','troy-prologue/audio-test.html?ill=H4']],
+    qs:[
+      ['H1、H2 哪一個才算夠快？', '比較 H1 和 H2 上面那層密密的鼓：哪一個聽起來才像「很急、在趕」？H0 是現在遊戲裡的速度，當對照。',['H1 就夠','H2 才夠','H2 太吵','都不夠'],'H2 才夠'],
+      ['H3、H4 有沒有一路越來越快的累積感？', 'H3、H4 各聽滿 60 秒：前面和後面比，是不是真的越來越快、壓力一直往上疊？H3 是平滑地升，H4 是一階一階跳（像每進一區快一階）。',['有，H3 連續升好','有，H4 分階好','沒有'],'有，H3 連續升好'],
+      ['速度上去後，還聽不聽得出「又從頭來了」？', '鼓聲每 6 秒會偷偷回到同樣的狀態。速度快起來以後，耳朵還抓不抓得到這個「回到原點」的瞬間？',['聽不出','還聽得出','每個不一樣'],'每個不一樣'],
+      ['H2 裡，讓你踩的低鼓和最響一擊還聽不聽得清？', '在最快的 H2 裡：底下那條較低、較厚的鼓（遊戲裡要踩在它上面走）和每圈最響的那一下，有沒有被上面密的鼓蓋掉？',['都聽得清','低鼓被蓋掉','一擊被蓋掉'],'都聽得清'],
+    ]},
+  { id:'reveal', title:'最響一擊照亮場景，整關（約 5 分鐘）',
+    how:'平常比較暗；最響一擊落下時，衛兵輪廓（含牆後）亮半秒。按 <kbd>[</kbd> <kbd>]</kbd> 可調暗度。',
+    links:[['整關（照亮版）','troy-prologue/index.html?reveal=1']],
+    qs:[
+      ['兩擊之間，靠火把光點和耳朵，夠不夠知道衛兵大概在哪？', '不靠那一擊的閃光，只靠遠處火把的小光點和腳步聲，你知不知道衛兵大概在哪個方向、多遠？',['夠','不夠']],
+      ['那一擊落下時，你通常拿來動手還是看？', '那一擊之後 0.6 秒衛兵察覺不到你（可以衝、暗殺），同時畫面也會亮。你會趁機行動，還是光顧著看，變成每次都站著等下一擊？',['看完就動，不會一直等','大多拿來看，會一直等','大多拿來動手']],
+      ['0.5 秒夠不夠看清楚？隔牆看到輪廓像不像作弊？', '輪廓亮 0.5 秒：來不來得及看清衛兵位置和面向？牆後的衛兵也會描邊，這樣會不會讓遊戲太簡單、像透視外掛？',['夠，不像作弊','太短','隔牆太像作弊']],
+      ['前後兩區暗度差、追殺時的閃光？', '前兩區比後兩區亮一階（讓新手先熟悉）；被追殺時每一擊都會閃。這兩點會不會不合理或刺眼？',['都沒問題','暗度差不合理','追殺時太閃']],
+    ]},
+  { id:'knock', title:'敲暗號（重試，有新教學）',
+    how:'跟著畫面上的四步教學卡。看下方拍點條或準星倒數圈，在拍上按 <kbd>T</kbd>；按 <kbd>Y</kbd> 聽同伴示範。三下＝引開、兩下＝現在，停 1 秒結束一組。',
+    links:[['敲暗號試驗場','troy-prologue/index.html?lab=horse']],
+    qs:[
+      ['現在學不學得會、敲不敲得準？', '照四步教學：畫面下方拍點條的拍點滑到中間直線、或準星的圈縮到底時按 T。每按一下上方會顯示「準／太早／太晚」。',['學得會、敲得準','學得會，但敲不準','還是不知道怎麼敲']],
+      ['三下和兩下分不分得清？', '連敲三下＝叫同伴引開衛兵，連敲兩下＝「現在」。停 1 秒算一組結束。你敲的時候，系統認得對不對？同伴示範時你聽得出是幾下嗎？',['分得清','偶爾搞混','分不清']],
+    ]},
+  { id:'bow', title:'弓弦',
+    how:'拉弓：試聽頁的「弓弦」面板，按住 <kbd>B</kbd> 拉弓（音調隨張力上升）、放開射出；試著讓放開那一刻剛好落在最響一擊。彈弦引開：查看試驗場按 <kbd>V</kbd>，在拍上或掩護窗內衛兵不理你，拍外衛兵會過來查看。',
+    links:[['拉弓（試聽頁）','troy-prologue/audio-test.html?ill=H0'],['彈弦引開（查看試驗場）','troy-prologue/index.html?lab=check']],
+    qs:[
+      ['拉弓的上升音和越打越密一起衝到那一擊，感覺成不成立？', '按住 B 拉弓，音調會一路往上升；試著配合鼓越打越密，在最響一擊那一刻放開。這種「一起衝到頂」的感覺有沒有出來？面板會顯示你放開時差幾毫秒。',['成立，很有感','有一點','不成立']],
+      ['彈弦引開衛兵好不好用？', '在查看試驗場按 V 空彈弓弦：落在拍上或最響一擊後的 0.6 秒內，衛兵不理你；落在拍外，最近的衛兵會走過來查看。這個用法好不好懂、好不好用？',['好用','規則懂，但不好控制','不好用']],
+    ]},
+  { id:'keys', title:'空白鍵與 Alt（真鍵盤）',
+    how:'任何一關。走路或跑步中按 <kbd>空白鍵</kbd> 應該立刻停下並屏息；按住 <kbd>Alt</kbd> 是蹲。跑步中（按著 <kbd>Shift</kbd>）按 <kbd>Alt</kbd>，看會不會跳出瀏覽器選單或切換輸入法。',
+    links:[['整關（預設版）','troy-prologue/index.html']],
+    qs:[
+      ['空白鍵立刻停下屏息的手感？', '走路或跑步中按住空白鍵：應該立刻停住並屏住呼吸（剛跑完還在喘時會停下但屏不住氣，畫面會提示）。手感對不對？',['對，就是要這樣','停得太突然','沒有立刻停']],
+      ['Alt 蹲有沒有出問題？', '按住 Alt 蹲下走。特別試：跑步中（按著 Shift）按 Alt，Windows 有時會切換輸入法，或瀏覽器跳到選單列，有沒有發生？',['沒問題','會跳出瀏覽器選單','跑步中會切換輸入法','其他（寫在備註）']],
+    ]},
+];
+const KEY = 'playtest-2026-11-15';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+const list = document.getElementById('list');
+ITEMS.forEach((it, i) => {
+  const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
+  let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
+  it.links.forEach(([t, u]) => { h += `<a href="${u}" target="_blank" rel="noopener">${t} ↗</a>`; });
+  h += '</div>';
+  it.qs.forEach(([q, hint, opts, def], k) => {
+    const name = it.id + '-' + k;
+    if (saved[name] === undefined && def) saved[name] = def;
+    h += `<fieldset><legend>${q}</legend><div class="qh">${hint}</div>`;
+    opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
+    h += '</fieldset>';
+  });
+  h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
+  c.innerHTML = h; list.appendChild(c);
+});
+save();
+function refresh() {
+  ITEMS.forEach(it => {
+    const n = it.qs.filter((_, k) => saved[it.id + '-' + k]).length;
+    const c = document.getElementById('c-' + it.id);
+    c.classList.toggle('done', n === it.qs.length);
+    c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
+  });
+}
+list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.target.name] = e.target.value; save(); refresh(); } });
+list.addEventListener('input', e => { if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
+refresh();
+document.getElementById('copy').onclick = async () => {
+  let out = '試玩結果（2026-11-15 清單）\n';
+  ITEMS.forEach((it, i) => {
+    out += `\n${i + 1}. ${it.title}\n`;
+    it.qs.forEach(([q], k) => { out += `- ${q}：${saved[it.id + '-' + k] || '（未答）'}\n`; });
+    if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
+  });
+  const msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(out); msg.textContent = '已複製，貼回對話即可。'; }
+  catch (e) { prompt('複製下面文字：', out); }
+};
+document.getElementById('reset').onclick = () => { if (confirm('清除所有答案？')) { saved = {}; save(); location.reload(); } };
+</script>
+</body>
+</html>
