@@ -647,7 +647,7 @@ const LAB_HELP = {
       "what": [
         "衛兵聽到聲音會先走過來查看，不是直接追殺；試退開、躲影子、屏息，讓他走回去巡邏。",
         "按 N（在你腳下）或 M（在你右邊 3 公尺）自己製造聲響，叫他過來。",
-        "按 V 空彈一下弓弦：落在踩得上的拍上就被鼓聲蓋住、沒人來；沒蓋住時 8 公尺內最近的衛兵朝你當時的位置走過來查看。"
+        "按 V 空彈一下弓弦：落在踩得上的拍上、或最響一擊後的掩護窗內，就被蓋住、沒人來；沒蓋住時 8 公尺內最近的衛兵朝你當時的位置走過來查看。"
       ],
       "watch": [
         "查看分四段：轉頭（這 0.5 秒不判定，是你的反應時間）、走過來、停下來聽、走回去。",
@@ -1613,7 +1613,7 @@ const LAB_BRIEF = {
   crouch: [['測', '蹲走慢但輕；蹲著時水缸、貨堆擋得住視線'], ['操作', 'Alt 按住蹲・WASD 走到矮東西後面'], ['看', '「蹲走的步：合拍／出聲」和「矮掩體：隔著幾名」']],
   listen: [['測', '屏息時聽不聽得出衛兵從哪個方向來'], ['操作', '空白鍵 按住屏息（最多 6 秒，屏息時不能動）'], ['看', '先閉眼說出方向，再對照「最近的衛兵：在你的前／後／左／右」']],
   hunt: [['測', '被追時，聽追兵的腳步躲開他的搜索'], ['操作', 'Shift 按住跑進影子・空白鍵 屏息・WASD 踩著鼓點挪開'], ['看', '追兵「離你 n 公尺」、他腳下的圈有沒有變紅、「被聽到」幾次']],
-  check: [['測', '衛兵聽到聲音先走過來查看；讓他找不到你、走回去'], ['操作', 'N 在腳下出聲・M 在右邊 3 公尺出聲・V 彈弓弦（落在拍上就蓋住）・空白鍵 屏息・WASD 退開'], ['看', '「衛兵：查看・」後面是哪一段，和「疑心 n%」；疑心滿了就轉成追殺']],
+  check: [['測', '衛兵聽到聲音先走過來查看；讓他找不到你、走回去'], ['操作', 'N 在腳下出聲・M 在右邊 3 公尺出聲・V 彈弓弦（拍上或掩護窗內就蓋住）・空白鍵 屏息・WASD 退開'], ['看', '「衛兵：查看・」後面是哪一段，和「疑心 n%」；疑心滿了就轉成追殺']],
   walk: [['測', '三種走法哪個好：P0 滑著走、P1 步子跟著鼓、P2 圈內自己踩'], ['操作', 'W 按住走；P2 進圈後一步按一下方向鍵'], ['看', '「按住走的步」「圈內自己踩的步」各踩準幾步、出聲幾步']],
   flash: [['測', '最響的一擊照出衛兵輪廓，你會不會等那一擊來看路'], ['操作', '[ ] 調暗度・WASD 走（等那一擊亮起再看路）'], ['看', '「這一次照出 n 名衛兵」和暗度；整關玩用 ?reveal=1']],
 };
@@ -3113,8 +3113,9 @@ function checkLabLines() {
   lines.push('呼吸範圍 ' + r.toFixed(1) + ' 公尺：' + (d <= r ? (P.breathing ? '在範圍內，屏住了' : '在範圍內，聽得到！') : '不在範圍內'));
   lines.push('你：' + (P.hidden ? '在影子裡' : '在亮處') + '・' + (P.panting ? '在喘（不能屏息）' : P.breathing ? '屏息中' : '呼吸'));
   lines.push('查看 ' + n.checks + ' 次（到點 ' + n.checkArrive + '、走完 ' + n.checkOver + '）・轉成追殺 ' + n.checkToHunt + ' 次' + (n.lastCheck ? '・上次原因：' + (CHECK_CAUSE[n.lastCheck] || n.lastCheck) : ''));
-  lines.push('弓弦：彈了 ' + BW.n + ' 次・被拍蓋住 ' + BW.masked + '・傳出去 ' + BW.heard + (BW.last ? '｜上一彈：' + (BW.last.masked ? '蓋住了，沒人來' : BW.last.by != null ? '傳出去了，衛兵走過來' : '傳出去了，但 ' + num(K().NOISE_R, 8) + ' 公尺內沒有巡邏的衛兵') : ''));
-  lines.push('', 'N：在你腳下製造聲響　M：在你右邊 3 公尺　V：彈弓弦（落在拍上就被蓋住）', '橘圈：他要走去的點；淡圈：聽得到呼吸的範圍（變紅＝聽到了）');
+  lines.push('弓弦：彈了 ' + BW.n + ' 次・拍上蓋住 ' + BW.beat + '・掩護窗內蓋住 ' + BW.blind + '・沒蓋住 ' + BW.heard + '（引來查看 ' + BW.came + ' 次）');
+  if (BW.last) lines.push('　上一彈：' + (BW.last.cover === 'beat' ? '落在拍上，蓋住了，沒人來' : BW.last.cover === 'blind' ? '在掩護窗內，蓋住了，沒人來' : BW.last.by != null ? '沒蓋住，衛兵走過來查看' : '沒蓋住，但 ' + num(K().NOISE_R, 8) + ' 公尺內沒有巡邏或查看中的衛兵'));
+  lines.push('', 'N：在你腳下製造聲響　M：在你右邊 3 公尺　V：彈弓弦（拍上或掩護窗內被蓋住）', '橘圈：他要走去的點；淡圈：聽得到呼吸的範圍（變紅＝聽到了）');
   return lines;
 }
 function labNoticeAt(side) {
@@ -3128,7 +3129,7 @@ $('btnLabNoticeSide').addEventListener('click', () => labNoticeAt(true));
 // 弓弦引開（2026-11-14 發想第 1.3 節；規則 g.noise 1e9c677、聲音 audio.raw.bowPluck 2bd09c7）：只在 ?lab=check
 //   按 V 空彈一下弓弦：聲音層出聲，按鍵時刻（扣掉輸出延遲＝玩家聽到的時間，和踩步同一把尺）交給規則判斷有沒有被拍蓋住；
 //   沒蓋住時 NOISE_R 內最近的衛兵朝你當時的位置來查看。腳下波紋：淡藍＝被蓋住、橘＝傳出去了
-const BW = { n: 0, masked: 0, heard: 0, last: null };
+const BW = { n: 0, masked: 0, heard: 0, beat: 0, blind: 0, came: 0, last: null };
 function labBow() {
   const g = game; if (!g || g.phase !== 'play' || !g.player || typeof g.noise !== 'function') return;
   const R = audio && audio.raw;
@@ -3137,8 +3138,12 @@ function labBow() {
   const P = g.player; let r = null;
   try { r = g.noise({ t, x: P.x, z: P.z, kind: 'bow' }); } catch (e) { console.warn('g.noise 失敗', e); return; }
   if (!r) return;
+  // 規則回傳 cover：'beat'（拍上）｜'blind'（掩護窗內）｜null；舊規則沒有 cover 時，被蓋住一律當拍上
+  const cover = r.masked ? (r.cover === 'blind' ? 'blind' : 'beat') : null;
   BW.n++; if (r.masked) BW.masked++; else BW.heard++;
-  BW.last = { masked: !!r.masked, by: r.by, at: performance.now() };
+  if (cover === 'beat') BW.beat++; else if (cover === 'blind') BW.blind++;
+  if (r.by != null) BW.came++;
+  BW.last = { masked: !!r.masked, cover, by: r.by, at: performance.now() };
   ripple(P.x, P.z, r.masked ? 1.2 : num(K().NOISE_R, 8), r.masked ? 0x9fb0d8 : 0xff8a3a, r.masked ? .35 : .5, r.masked ? .5 : .9);
 }
 $('btnLabBow').addEventListener('click', () => labBow());
