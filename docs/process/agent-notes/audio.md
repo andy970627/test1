@@ -488,3 +488,14 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - 真遊戲模擬（`audio-zone-check.mjs`，`--mute-audio`；拿掉衛兵、`DRIVE_MODE` 關、`Math.random` 固定種子，因為衛兵讓一圈長度一直變、DRIVE 每幀在升，同一版跑兩次都會差小數點最後一位）：startZone 1～4 各 25 秒，HEAD 和目前的排程紀錄（拍、最響一擊含新訊號加強、低音、合唱、主題、號角）在 25 秒內全部相同；不同的只有第 25.3 秒之後、錄音結束那一刻預排的幾拍（同一版自比也會）。波形逐樣本比不了（同上，浮點誤差讓雜訊亂數錯開）。
     - 插第 6 區實跑 4 種寫法（沒寫、`music: 'temple'`、`music: 1, wind: null`、`tier: 5` 加自訂風）都沒有錯誤、沒有非數值。
     - 全套 375 過（退出碼 0、fail 0，不接管線）。
+- **11/17：序與終字卡的聲音（序的悶鼓）**（未提交；`audio.js`；期末企劃第 2 節「序」「終」）：
+  - 讀 `game.story`（總控 11/17 更正，畫面角色明天實作）：`'intro'`＝序字卡、`'outro'`＝終字卡、null 或沒有這個欄位＝什麼都不做。只看這個值，不看勝利與否。
+  - 第一次遇到 `story` 才在 master 和輸出之間接上低通＋音量兩個節點，所以沒有字卡的遊戲完全不經過它們。
+  - 序：0.3 秒內整體只留 `STORY_LP` 450 Hz 以下、再退 `STORY_DB` −12 dB（隔著木板），加一條 600 Hz 帶通雜訊當木板外的慶祝遠聲（`STORY_CROWD` 0.16，慢慢起伏，也在同一層低通後面）。旗標消失（翻完進腹中）`STORY_OPEN` 1.5 秒內打開。
+  - 終：`STORY_END_FADE` 0.25 秒內全部靜下來（號角主題也一起收掉），城外風聲（420 Hz 帶通雜訊，不經過 master）`STORY_WIND_IN` 3 秒淡入到 `STORY_WIND_GAIN` 0.12。數字都是【假設】，要真耳朵定。
+  - 驗證：
+    - 沒有旗標時排程和 HEAD 相同：`audio-zone-check.mjs`（拿掉衛兵、`DRIVE_MODE` 關、固定亂數），第 1～4 區各 20 秒，排程紀錄在 20 秒內全部相同（只差錄音結束那一刻預排的幾拍，同一版自比也會）。
+    - 離線（`audio-story-check.mjs`，`--mute-audio`）：序 1～4 秒 −38.8 dB、翻完後 −20.2 dB（序悶了 18.6 dB）；終開始 0.3～1 秒 −43.2 dB（靜下來），12～14 秒風聲 −33.7 dB；沒有錯誤。
+    - `bash tools/cleancheck.sh prototypes/troy-prologue/audio.js prototypes/troy-prologue/audio.test.js`：375 過、嚴格檢查通過。
+  - 改成讀 `game.story` 後重跑：序 −39.0、翻完後 −19.4、終 −43.2、風聲 −33.7 dB，沒有錯誤；嚴格檢查 375 過。
+  - 待：畫面角色實作 `game.story`；序 −18.6 dB 會不會太小聲、要不要留一點鼓聲的輪廓，明天試玩時聽。

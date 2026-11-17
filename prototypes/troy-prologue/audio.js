@@ -268,6 +268,14 @@
     F_GAP_MIN: 0.6, F_GAP_MAX: 1.4,   // 上一擊之後抽一個目標（圈），取目標之後的第一個對齊點（使用者 11/14 選「平均和現在一樣」，同文件 10.1）
     F_FIRST: 0.5,              // 第一擊：開始後 0.5 圈之後的第一個對齊點（同文件 3.2 HIT_FIRST）
     F_ROLL_LEAD: 1.5,          // 越打越密：那一擊之前 1.5 秒起（不超過和上一擊間隔的一半；同文件 11.2 把 HIT_ROLL_LEAD 從 2.5 改 1.5，遊戲一圈實際 5～6.5 秒）
+    // 序與終的字卡（期末企劃第 2 節；畫面設 game.story = 'intro'／'outro' 時才有，null 或沒有這個欄位時輸出不變）
+    STORY_LP: 450,             // 序：整體聲音隔著木板（木馬腹中聽外面）只留這以下【假設】
+    STORY_DB: -12,             // 序：整體再退幾 dB
+    STORY_OPEN: 1.5,           // 序翻完進腹中：幾秒內打開回原樣（企劃要 1～2 秒）
+    STORY_CROWD: 0.16,         // 序：木板外全城慶祝的遠聲（隔著同一層低通）
+    STORY_END_FADE: 0.25,      // 終：最後一擊之後幾秒內全部靜下來
+    STORY_WIND_IN: 3,          // 終：靜下來之後，城外的風聲幾秒淡入
+    STORY_WIND_GAIN: 0.12,
     F_SEED: 20261112,          // 時間表的固定亂數種子（同一個網址每次聽到的順序一樣）
     // 弓弦（docs/design/2026-11-14-style-and-input-ideas.md 第 1.1、1.3 節；最小原型，只有呼叫 bowDraw／bowRelease／bowPluck 才響，預設版不呼叫）
     BOW_FULL: 1.2,             // 拉滿要幾秒；張力 = 1 − (1 − 經過 ÷ BOW_FULL)²（一開始升得快、快滿時變慢，像弦越來越緊）【假設】
@@ -505,6 +513,46 @@
     comp.connect(ctx.destination);
     var master = ctx.createGain(); master.gain.value = (opts.master != null) ? opts.master : 0.8;
     master.connect(comp);
+    // ---------- 序與終的字卡（game.story 是 'intro' 或 'outro' 時；第一次遇到才接上，沒有字卡的遊戲不經過這兩個節點）----------
+    // 序（'intro'）：master → 低通 STORY_LP → 退 STORY_DB → 輸出，加木板外的慶祝遠聲；翻完（旗標消失）STORY_OPEN 秒內打開。
+    // 終（'outro'）：最後一擊之後 STORY_END_FADE 秒內全靜，風聲（不經過 master，直接到輸出）STORY_WIND_IN 秒淡入。
+    var story = { mode: 'none', lp: null, g: null, crowd: null, wind: null };
+    function storyNodes() {
+      if (story.lp) return;
+      story.lp = ctx.createBiquadFilter(); story.lp.type = 'lowpass'; story.lp.frequency.value = 20000; story.lp.Q.value = 0.7;
+      story.g = ctx.createGain(); story.g.gain.value = 1;
+      master.disconnect(comp); master.connect(story.lp); story.lp.connect(story.g); story.g.connect(comp);
+    }
+    function storyLoop(dest, f, q, g, lfoHz, now) {   // 一直響的濾波雜訊（慶祝的遠聲、風）：慢慢起伏
+      var src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), amp = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+      src.buffer = noiseBuf; src.loop = true; flt.type = 'bandpass'; flt.frequency.value = f; flt.Q.value = q;
+      amp.gain.setValueAtTime(0, now); lfo.frequency.value = lfoHz; lg.gain.value = g * 0.35; lfo.connect(lg); lg.connect(amp.gain);
+      src.connect(flt); flt.connect(amp); amp.connect(dest); src.start(now); lfo.start(now);
+      return { src: src, amp: amp, lfo: lfo, g: g };
+    }
+    function storyStop(n, now, fade) { if (!n) return; n.amp.gain.cancelScheduledValues(now); n.amp.gain.setTargetAtTime(0, now, fade / 3); try { n.src.stop(now + fade * 2); n.lfo.stop(now + fade * 2); } catch (e) {} }
+    function storyUpdate(s, now) {
+      var sv = s && s.story, want = sv === 'intro' ? 'pro' : sv === 'outro' ? 'end' : 'none';   // 畫面設 game.story：'intro' 序字卡、'outro' 終字卡、null 沒有
+      if (want === story.mode) return;
+      var was = story.mode; story.mode = want;
+      if (want !== 'none') storyNodes();
+      if (!story.lp) return;
+      var f = story.lp.frequency, g = story.g.gain;
+      f.cancelScheduledValues(now); g.cancelScheduledValues(now); f.setValueAtTime(f.value, now); g.setValueAtTime(g.value, now);
+      if (want === 'pro') {
+        f.exponentialRampToValueAtTime(C.STORY_LP, now + 0.3); g.linearRampToValueAtTime(Math.pow(10, C.STORY_DB / 20), now + 0.3);
+        storyStop(story.wind, now, 0.5); story.wind = null;
+        if (!story.crowd) { story.crowd = storyLoop(master, 600, 0.6, C.STORY_CROWD, 0.23, now); story.crowd.amp.gain.linearRampToValueAtTime(C.STORY_CROWD, now + 1); }
+      } else if (want === 'end') {
+        g.linearRampToValueAtTime(0, now + C.STORY_END_FADE);
+        storyStop(story.crowd, now, 0.2); story.crowd = null;
+        if (!story.wind) { story.wind = storyLoop(comp, 420, 0.5, C.STORY_WIND_GAIN, 0.11, now); story.wind.amp.gain.setValueAtTime(0, now + C.STORY_END_FADE); story.wind.amp.gain.linearRampToValueAtTime(C.STORY_WIND_GAIN, now + C.STORY_END_FADE + C.STORY_WIND_IN); }
+      } else {   // 翻完進腹中（或終的字卡關掉、重來）：STORY_OPEN 秒內打開
+        f.exponentialRampToValueAtTime(20000, now + C.STORY_OPEN); g.linearRampToValueAtTime(1, now + C.STORY_OPEN);
+        storyStop(story.crowd, now, C.STORY_OPEN); story.crowd = null; storyStop(story.wind, now, C.STORY_OPEN); story.wind = null;
+      }
+      if (log) log.push({ type: 'story', t: now, mode: want, from: was });
+    }
 
     // 節奏：rhythmBus → 高通（警戒時讓出低頻給低音）→ 乾 / 殘響 / 失真 → gate → master
     // gate 只管盲區（精準排程）；rhythmOut 是節奏匯流排的固定總增益（A1：不隨 p 變，假驟降交接才沒有接縫）
@@ -2875,6 +2923,7 @@
           } else mismN = 0;
           suppress = suppress.filter(function (x) { return x.e > now - 3; });
         }
+        storyUpdate(s, now);   // 序與終的字卡（沒有 story 旗標時什麼都不做）
         st.panic = clamp(+(typeof s.panic === 'object' ? 0 : s.panic) || 0, 0, 1);
         // 分區編曲：照這一區的混音組（zoneMixIndex，關卡資料決定）；勝利時城門大開，號角完整奏一次主題
         if (s.phase === 'win') {
