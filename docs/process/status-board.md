@@ -25,7 +25,11 @@
 - 畫面：`?map=final` 載入新地圖、後街 dark 區調暗＋照亮；序與終字卡 `?story=1`（旁白初稿交回後，總控用 humanizer-zh-tw 修）；switch.html 加入口。
 - 聲音：序的悶鼓、終的全靜與城外風聲（等畫面告知 story 旗標欄位名）。
 
-**下一步（總控）**：三份交卷 → 審查、`bash tools/cleancheck.sh`、提交 → 把「期末七段版（序→終）」加進試玩清單 `playtest-today.html` 第 7 項（附白話說明）→ 一次請使用者試。
+- 21:47 使用者：「全部繼續做完把用量用完」→ 加派兩份：報告角色做第 12 週提案簡報初稿與 1 分鐘操作影片腳本（文字跑 humanizer-zh-tw、組員姓名留空）；量測與驗收做打包檢查與整關冒煙腳本 `tools/smoke-full.mjs`。
+- 聲音角色的序悶鼓已交卷但讀的是 state.story，要改成 game.story（'intro'／'outro'／null），更正已排隊。
+- 使用者 11/17 選「今晚就做」：睡前規則只管不打擾使用者，角色自己跑不受限。
+
+**下一步（總控）**：五份交卷 → 審查、`bash tools/cleancheck.sh`、提交 → 把「期末七段版（序→終）」加進試玩清單 `playtest-today.html` 第 7 項（附白話說明）→ 一次請使用者試。
 
 ## 等你的事
 
