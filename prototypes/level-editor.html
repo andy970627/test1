@@ -95,7 +95,7 @@ textarea#io { width: 100%; min-height: 70px; font-size: var(--fs-12); }
         <li>每改一下都會自動存在<b>這台電腦的瀏覽器</b>裡，關掉再開還在（換電腦或換瀏覽器就沒有了）。</li>
         <li>按「在遊戲裡試」直接用你畫的關卡玩；玩完按瀏覽器的上一頁回來繼續改。</li>
         <li>右邊「檢查」照企劃書的規定逐區打分：<span class="st-beat">✓ 過</span>、<span class="st-torch">! 提醒</span>、<span class="st-blood">✕ 不過</span>。</li>
-        <li>要加新的區：用「插入空地」在某條線的右邊塞進幾公尺，右邊的東西會整批往東移。</li>
+        <li>要加新的區：先用「插入空地」在某條線的右邊塞進幾公尺（右邊的東西會整批往東移），再到右邊「區」按「加一區」把那段設成新的一區、取名字。每一區可以改名字、教什麼、難度階，也可以重畫出口、設出口通往哪一區。城門區永遠在最後。</li>
       </ul>
     </section>
     <section aria-labelledby="h1c">
@@ -116,7 +116,8 @@ textarea#io { width: 100%; min-height: 70px; font-size: var(--fs-12); }
     <button class="tool" data-tool="shadow" aria-pressed="false">影子（3）</button>
     <button class="tool" data-tool="guard" aria-pressed="false">衛兵（4）</button>
     <button class="tool" data-tool="start" aria-pressed="false">起點（5）</button>
-    <label>給第 <select id="startZone"></select> 區</label>
+    <button class="tool" data-tool="exit" aria-pressed="false">出口（6）</button>
+    <label>目前的區 <select id="startZone"></select></label>
     <span class="sep"></span>
     <button class="tool" id="undo">復原</button>
     <button class="tool" id="redo">重做</button>
@@ -145,6 +146,20 @@ textarea#io { width: 100%; min-height: 70px; font-size: var(--fs-12); }
     </div>
 
     <div class="side">
+      <section class="panel" aria-labelledby="hZone">
+        <h2 id="hZone">區</h2>
+        <div id="zoneProp"></div>
+        <details id="addZoneBox">
+          <summary class="tool" style="display:inline-block">加一區</summary>
+          <div class="row">從 x = <input type="number" id="azX0" step="0.5"> 到 <input type="number" id="azX1" step="0.5"> 公尺</div>
+          <div class="row"><label style="flex:1">名字 <input type="text" id="azName" value="慶宴的街"></label></div>
+          <div class="row"><label>教什麼 <select id="azTeach"></select></label> <label>難度階 <input type="number" id="azTier" min="0" max="4" step="1" value="3"></label></div>
+          <div class="row"><label>DRIVE 段 <select id="azSeg"></select></label></div>
+          <div class="row"><button class="tool" id="azGo">加在城門前</button></div>
+          <p class="note">新區會有起點（罩一塊影子）和東邊的出口；上一區的出口改通往它。先用「插入空地」留出位置，範圍會自動帶進來。</p>
+        </details>
+      </section>
+
       <section class="panel" aria-labelledby="hProp">
         <h2 id="hProp">選取的東西</h2>
         <div id="prop"><p class="note">還沒選。用「選取」點地圖上的東西。</p></div>
@@ -152,7 +167,7 @@ textarea#io { width: 100%; min-height: 70px; font-size: var(--fs-12); }
 
       <section class="panel" aria-labelledby="hCheck">
         <h2 id="hCheck">檢查（照企劃第 2 節）</h2>
-        <p class="note">各區範圍用出口推算（出口那條線的西邊是本區）。算不出來的列成提醒，自己確認。</p>
+        <p class="note">各區範圍：用「加一區」加的區照它記下的範圍；原本的區用出口推算（出口那條線的西邊是本區）。算不出來的列成提醒，自己確認。</p>
         <div id="checks"></div>
       </section>
 
@@ -277,8 +292,8 @@ function draw() {
   // 各區範圍：頂端標區名
   for (const sp of C.zoneSpans(data)) {
     if (sp.intro || sp.belly) continue;
-    c.fillStyle = 'rgba(242,236,221,.5)'; c.font = '500 12px "Noto Sans TC", sans-serif'; c.textBaseline = 'top';
-    c.fillText('第 ' + sp.id + ' 區 ' + sp.name, sx(sp.x0) + 4, sz(0) + 4);
+    c.fillStyle = sp.i === curZone() ? COL.bronze : 'rgba(242,236,221,.5)'; c.font = '500 12px "Noto Sans TC", sans-serif'; c.textBaseline = 'top';
+    c.fillText('第 ' + sp.i + ' 區 ' + sp.name, sx(sp.x0) + 4, sz(0) + 4);
     c.strokeStyle = 'rgba(242,236,221,.12)'; c.setLineDash([2, 6]); c.beginPath(); c.moveTo(sx(sp.x1) + .5, sz(0)); c.lineTo(sx(sp.x1) + .5, sz(S.h)); c.stroke(); c.setLineDash([]);
   }
   const rect = (r, fill, stroke, dash) => {
@@ -358,7 +373,7 @@ cv.addEventListener('pointerdown', e => {
     if (q.route.length > 1 && 'yaw' in q) delete q.yaw;
     sel = { t: 'pt', i: sel.i, j: q.route.length - 1 }; changed(); return;
   }
-  if (tool === 'wall' || tool === 'low' || tool === 'shadow') { drag = { kind: 'draw', a: { x: snap(x), z: snap(z) }, b: { x: snap(x), z: snap(z) } }; return; }
+  if (tool === 'wall' || tool === 'low' || tool === 'shadow' || tool === 'exit') { drag = { kind: 'draw', a: { x: snap(x), z: snap(z) }, b: { x: snap(x), z: snap(z) } }; return; }
   if (tool === 'guard') {
     commit();
     let n = data.guards.length + 1, id; do { id = 'n' + n++; } while (data.guards.some(q => q.id === id));
@@ -414,6 +429,13 @@ cv.addEventListener('pointerup', () => {
   if (d.kind === 'draw') {
     const r = normRect(d.a, d.b);
     if (r.x1 - r.x0 < .5 || r.z1 - r.z0 < .5) { draw(); return; }
+    if (tool === 'exit') {                         // 出口：目前這一區走進這個矩形就到下一區（城門區、腹中的出口不能改）
+      const zi = curZone(), zz = data.zones[zi];
+      if (!zz || zi === 0 || (zz.exit && zz.exit.kind !== 'rect')) { setStatus('這一區的出口是' + (zz && zz.exit && zz.exit.kind === 'gate' ? '城門' : '暗門') + '，不能改'); draw(); return; }
+      commit();
+      zz.exit = Object.assign({ kind: 'rect' }, zz.exit || { to: Math.min(zi + 1, data.zones.length - 1) }, { rect: { x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1 } });
+      sel = { t: 'exit', i: zi }; setTool('select'); changed(); return;
+    }
     commit();
     const names = { wall: '牆', low: '矮掩體', shadow: '影子' };
     const o = { x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, name: '新' + names[tool] };
@@ -441,7 +463,7 @@ window.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); redo(); return; }
   if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); delSel(); return; }
   if (e.code === 'Escape') { addPts = false; setTool('select'); refresh(); return; }
-  const map = { KeyV: 'select', Digit1: 'wall', Digit2: 'low', Digit3: 'shadow', Digit4: 'guard', Digit5: 'start' };
+  const map = { KeyV: 'select', Digit1: 'wall', Digit2: 'low', Digit3: 'shadow', Digit4: 'guard', Digit5: 'start', Digit6: 'exit' };
   if (map[e.code] && !e.ctrlKey && !e.metaKey) setTool(map[e.code]);
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') spaceDown = false; });
@@ -460,7 +482,7 @@ function setTool(t) {
   tool = t; addPts = false;
   document.querySelectorAll('.tool[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t ? 'true' : 'false'));
   cv.classList.toggle('select', t === 'select');
-  setStatus({ select: '點東西選取、拖曳移動、拖四角改大小；空白處拖曳移動畫面', wall: '按住拖曳畫一面牆', low: '按住拖曳畫矮掩體（蹲下才擋得住視線）', shadow: '按住拖曳畫一塊影子', guard: '點一下放一名衛兵（站崗）', start: '點一下設第 ' + $('startZone').value + ' 區的起點' }[t]);
+  setStatus({ select: '點東西選取、拖曳移動、拖四角改大小；空白處拖曳移動畫面', wall: '按住拖曳畫一面牆', low: '按住拖曳畫矮掩體（蹲下才擋得住視線）', shadow: '按住拖曳畫一塊影子', guard: '點一下放一名衛兵（站崗）', start: '點一下設第 ' + $('startZone').value + ' 區的起點', exit: '按住拖曳畫第 ' + $('startZone').value + ' 區的出口（走進去就到下一區）' }[t]);
 }
 function setStatus(t) { $('status').textContent = t || ''; }
 
@@ -543,10 +565,65 @@ function showChecks() {
 }
 
 // ---------- 存檔與大小 ----------
+// ---------- 區（11/17 起區數由資料決定：區號＝陣列索引；城門區固定在最後） ----------
+const TEACH = [['', '不教'], ['blind', '最響的一擊與衝刺（blind）'], ['takedown', '蹲走、暗殺與屏息（takedown）']];
+const SEGS = ['序 木馬進城', '1 木馬腹中', '2 木馬下', '3 神殿廣場', '4 慶宴的街', '5 城牆下的窄巷', '6 沒有火的後街', '7 城門', '終 城門開了'];
+const curZone = () => { const v = +$('startZone').value; return Number.isFinite(v) && v > 0 && data.zones[v] ? v : 1; };
+function zoneOptions() {
+  const el = $('startZone'), keep = el.value;
+  el.innerHTML = data.zones.map((z, i) => i ? '<option value="' + i + '">' + i + ' ' + esc(z.name) + '</option>' : '').join('');
+  el.value = data.zones[+keep] && +keep ? keep : '1';
+}
+function showZone() {
+  const i = curZone(), z = data.zones[i], P = $('zoneProp'); if (!z) { P.innerHTML = ''; return; }
+  const gate = !!(z.exit && z.exit.kind === 'gate'), belly = !!z.belly;
+  let h = '<p class="note">共 ' + data.zones.length + ' 區（第 0 區是開場字卡）。用工具列的「目前的區」切換；地圖上方青銅字是目前這一區。</p>';
+  h += '<div class="row"><label style="flex:1">名字 <input type="text" data-z="name" value="' + esc(z.name) + '"></label></div>';
+  if (!gate && !belly) h += '<div class="row"><label>教什麼 <select data-z="teach">' + TEACH.map(([v, n]) => '<option value="' + v + '"' + ((z.teach || '') === v ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label></div>';
+  h += '<div class="row"><label>難度階 <input type="number" min="0" max="4" step="1" data-z="tier" value="' + (z.tier != null ? z.tier : '') + '" placeholder="' + i + '"></label>';
+  h += ' <label>DRIVE 段 <select data-z="driveSeg"><option value=""' + (z.driveSeg == null ? ' selected' : '') + '>沿用前一區</option>' + SEGS.map((n, k) => '<option value="' + k + '"' + (z.driveSeg === k ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></label></div>';
+  if (gate) h += '<p class="note">出口：城門（推門閂）。城門區固定在最後一區。</p>';
+  else if (belly) h += '<p class="note">出口：木馬的暗門，通往第 ' + (z.exit && z.exit.to) + ' 區。腹中不能改出口。</p>';
+  else h += '<div class="row">出口' + (z.exit && z.exit.rect ? '' : '（還沒畫）') + '通往 <select data-z="to">' + data.zones.map((q, k) => k > i ? '<option value="' + k + '"' + (z.exit && z.exit.to === k ? ' selected' : '') + '>' + k + ' ' + esc(q.name) + '</option>' : '').join('') + '</select> <button class="tool" data-zact="exit">畫出口</button></div>';
+  h += '<div class="row"><button class="tool" data-zact="del"' + (gate || belly ? ' disabled title="開場、腹中、城門區不能刪"' : '') + '>刪除這一區</button></div>';
+  P.innerHTML = h;
+}
+$('zoneProp').addEventListener('change', e => {
+  const k = e.target.dataset.z; if (!k) return;
+  const z = data.zones[curZone()]; commit();
+  const v = e.target.value;
+  if (k === 'name') z.name = v || z.name;
+  else if (k === 'teach') { if (v) z.teach = v; else delete z.teach; }
+  else if (k === 'tier') { if (v === '') delete z.tier; else z.tier = +v; }
+  else if (k === 'driveSeg') { if (v === '') delete z.driveSeg; else z.driveSeg = +v; }
+  else if (k === 'to') z.exit = Object.assign(z.exit || { kind: 'rect' }, { to: +v });
+  changed();
+});
+$('zoneProp').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if (b.dataset.zact === 'exit') { setTool('exit'); return; }
+  if (b.dataset.zact === 'del') {
+    const i = curZone(), z = data.zones[i], nG = data.guards.filter(q => q.zone === i).length;
+    if (!confirm('刪除第 ' + i + ' 區「' + z.name + '」？' + (nG ? '這一區的 ' + nG + ' 名衛兵會一起刪掉。' : '') + '（可以按「復原」拿回來）')) return;
+    try { const d = C.removeZone(data, i); commit(); data = d; sel = null; zoneOptions(); $('startZone').value = String(Math.max(1, i - 1)); changed(); }
+    catch (err) { setStatus(err.message); }
+  }
+});
+$('startZone').addEventListener('change', () => { if (tool === 'start' || tool === 'exit') setTool(tool); showZone(); draw(); });
+$('azTeach').innerHTML = TEACH.map(([v, n]) => '<option value="' + v + '">' + n + '</option>').join('');
+$('azSeg').innerHTML = '<option value="">沿用前一區</option>' + SEGS.map((n, k) => '<option value="' + k + '"' + (k === 4 ? ' selected' : '') + '>' + n + '</option>').join('');
+$('azGo').addEventListener('click', () => {
+  const x0 = +$('azX0').value, x1 = +$('azX1').value;
+  if (!$('azX0').value || !$('azX1').value || !Number.isFinite(x0) || !Number.isFinite(x1) || Math.abs(x1 - x0) < 4) { ioMsg('加一區：請填範圍（至少 4 公尺寬）。'); return; }
+  const r = C.addZone(data, Math.min(x0, x1), Math.max(x0, x1), { name: $('azName').value.trim() || '新的區', teach: $('azTeach').value, tier: $('azTier').value, driveSeg: $('azSeg').value });
+  commit(); data = r.data; sel = null; zoneOptions(); $('startZone').value = String(r.index); changed();
+  ioMsg('已加第 ' + r.index + ' 區「' + data.zones[r.index].name + '」：起點、起點的影子、東邊的出口都放好了，接著畫牆、影子、衛兵。');
+});
+
 function refresh() {
   $('sizeTxt').textContent = data.size.w + ' × ' + data.size.h + ' 公尺' + (C.sameData(data, BASE) ? '（和現有關卡相同）' : '（已修改）');
   $('undo').disabled = !undoS.length; $('redo').disabled = !redoS.length;
-  showProp(); showChecks(); draw();
+  zoneOptions(); showZone(); showProp(); showChecks(); draw();
 }
 function ioMsg(t) { $('ioMsg').textContent = t; }
 $('copy').addEventListener('click', async () => {
@@ -574,14 +651,15 @@ $('ins').addEventListener('click', () => {
   const at = +$('insAt').value, dx = +$('insDx').value;
   if (!Number.isFinite(at) || !Number.isFinite(dx) || dx <= 0) { ioMsg('請填正數。'); return; }
   commit(); data = C.insertWidth(data, at, dx); sel = null; changed(); fit();
-  ioMsg('已在 x = ' + at + ' 插入 ' + dx + ' 公尺，全圖變成 ' + data.size.w + ' × ' + data.size.h + '。');
+  ioMsg('已在 x = ' + at + ' 插入 ' + dx + ' 公尺，全圖變成 ' + data.size.w + ' × ' + data.size.h + '。可以在上面「區」按「加一區」把這段設成新的一區。');
+  $('azX0').value = at; $('azX1').value = at + dx; $('addZoneBox').open = true;
 });
 $('reset').addEventListener('click', () => { commit(); data = C.clone(BASE); sel = null; changed(); fit(); ioMsg('已重設成現有關卡（要拿回剛才的按「復原」）。'); });
 $('undo').addEventListener('click', undo); $('redo').addEventListener('click', redo);
 $('del').addEventListener('click', delSel); $('fit').addEventListener('click', fit);
 $('play').addEventListener('click', () => { save(); location.href = 'troy-prologue/index.html?level=local'; });
 document.querySelectorAll('.tool[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
-$('startZone').addEventListener('change', () => { if (tool === 'start') setTool('start'); });
+
 window.addEventListener('resize', draw);
 
 // ---------- 開始 ----------
@@ -597,7 +675,7 @@ function start() {
     data = saved;
     if (!C.sameData(saved, BASE)) { $('restored').hidden = false; $('restored').textContent = '已載入你上次存在這台電腦的關卡。要從現有關卡重來，按右下「重設成現有關卡」。'; }
   } else data = C.clone(BASE);
-  $('startZone').innerHTML = data.zones.filter(z => z.start && z.exit).map((z, i) => '<option value="' + data.zones.indexOf(z) + '">' + z.id + ' ' + esc(z.name) + '</option>').join('');
+  zoneOptions(); $('startZone').value = '2';
   setTool('select'); fit(); refresh(); save();
 }
 window.__levelBaseReady = start;

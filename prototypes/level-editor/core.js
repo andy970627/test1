@@ -90,21 +90,75 @@
 
   // ---------- 各區範圍 ----------
   /**
-   * 資料裡沒有寫各區的邊界，這裡用出口推：出口是一條南北向的矩形（kind 'rect'），它的西緣是本區東界、東緣是下一區西界。
-   * 腹中那區（有 belly）只算腹中矩形。最後一區到全圖東緣。回傳 [{id, name, x0, x1, belly}]。
+   * 各區的東西範圍 [{i, id, name, x0, x1, belly, intro, gate}]（i＝陣列索引＝區號，11/17 起區數由資料決定）。
+   *   有 area {x0, x1} 的區（編輯器新增的區會寫）用它；沒有的照舊用出口推：出口矩形（kind 'rect'）的西緣是本區東界、東緣是下一區西界。
+   *   area 是編輯器自己用的欄位，規則不讀。區 0 是開場字卡；有 belly 的是腹中；有 gate 出口的城門區到全圖東緣。
    */
   function zoneSpans(data) {
     const out = []; let west = 0;
-    for (const z of data.zones) {
-      if (z.belly) { out.push({ id: z.id, name: z.name, x0: z.belly.x0, x1: z.belly.x1, belly: true }); continue; }
-      if (!z.start || !z.exit) { out.push({ id: z.id, name: z.name, x0: null, x1: null, intro: true }); continue; }   // 開場（沒有出口）：故事字卡
+    data.zones.forEach((z, i) => {
+      const base = { i, id: z.id, name: z.name };
+      if (i === 0) { out.push(Object.assign(base, { x0: null, x1: null, intro: true })); return; }   // 開場：故事字卡
+      if (z.belly) { out.push(Object.assign(base, { x0: z.belly.x0, x1: z.belly.x1, belly: true })); return; }
+      const gate = !!(z.exit && z.exit.kind === 'gate');
       const r = z.exit && z.exit.kind === 'rect' && z.exit.rect;
-      const east = r ? Math.min(r.x0, r.x1) : data.size.w;
-      out.push({ id: z.id, name: z.name, x0: west, x1: east });
-      if (r) west = Math.max(r.x0, r.x1);
-    }
+      let x0 = west, x1 = r ? Math.min(r.x0, r.x1) : data.size.w;
+      if (z.area && Number.isFinite(z.area.x0) && Number.isFinite(z.area.x1)) { x0 = Math.min(z.area.x0, z.area.x1); x1 = Math.max(z.area.x0, z.area.x1); }
+      out.push(Object.assign(base, { x0, x1, gate }));
+      west = r ? Math.max(r.x0, r.x1) : x1;
+    });
     return out;
   }
+
+  // ---------- 加區、刪區 ----------
+  /** 區號＝陣列索引：插入或刪除後把 id、每區 exit.to、衛兵的 zone 都對上新的索引。map(舊號) → 新號（null＝刪掉了）。 */
+  function renumber(d, map) {
+    d.zones.forEach((z, i) => { z.id = i; if (z.exit && z.exit.to != null) { const t = map(z.exit.to); z.exit.to = t; } });
+    d.guards.forEach((q) => { if (q.zone != null) q.zone = map(q.zone); });
+    d.guards = d.guards.filter((q) => q.zone != null);
+  }
+  /**
+   * 在 x0～x1 這段插一個新區，放在城門區（或最後一區）之前。opts：{name, teach, tier, driveSeg}。
+   * 新區：起點在西邊 1.5 公尺、z 接上一區出口的中線；起點罩一塊 4 × 4 的影子（企劃：起點要在影子裡）；
+   *   出口是東緣 1.5 公尺寬、整個南北向的矩形，走進去就移到下一區的起點（place）；area 記住範圍。
+   * 上一區的出口改通往新區。回傳 {data, index}。
+   */
+  function addZone(data, x0, x1, opts) {
+    opts = opts || {};
+    const d = clone(data);
+    let at = d.zones.findIndex((z) => z.exit && z.exit.kind === 'gate');
+    if (at < 0) at = d.zones.length;
+    if (at < 1) at = 1;
+    const prev = d.zones[at - 1];
+    const pr = prev && prev.exit && prev.exit.rect;
+    const zMid = pr ? (Math.min(pr.z0, pr.z1) + Math.max(pr.z0, pr.z1)) / 2 : d.size.h / 2;
+    const h = d.size.h, snap = (v) => Math.round(v * 2) / 2;
+    const start = { x: snap(x0 + 1.5), z: snap(zMid), y: 0, yaw: -Math.PI / 2 };
+    const z = { id: at, name: opts.name || '新的區' };
+    if (opts.tier != null && opts.tier !== '') z.tier = +opts.tier;
+    if (opts.teach) z.teach = opts.teach;
+    if (opts.driveSeg != null && opts.driveSeg !== '') z.driveSeg = +opts.driveSeg;
+    z.start = start;
+    z.exit = { kind: 'rect', rect: { x0: x1 - 1.5, z0: 0, x1: x1, z1: h }, to: at + 1, place: true };
+    z.area = { x0, x1 };
+    renumber(d, (t) => (t >= at ? t + 1 : t));
+    d.zones.splice(at, 0, z);
+    d.zones.forEach((q, i) => { q.id = i; });
+    if (prev && prev.exit && prev.exit.kind !== 'gate') prev.exit.to = at;
+    d.shadows.push({ x0: start.x - 2, z0: Math.max(0, start.z - 2), x1: start.x + 2, z1: Math.min(h, start.z + 2), name: z.name + '起點的影子' });
+    return { data: d, index: at };
+  }
+  /** 刪掉第 i 區（開場、城門區不能刪）。這一區的衛兵一起刪；通往它的出口改通往它原本通往的那一區。 */
+  function removeZone(data, i) {
+    const d = clone(data), Z = d.zones[i];
+    if (!Z || i === 0 || (Z.exit && Z.exit.kind === 'gate')) throw new Error('開場和城門區不能刪');
+    const next = Z.exit && Z.exit.to != null ? Z.exit.to : i + 1;
+    d.zones.splice(i, 1);
+    d.guards = d.guards.filter((q) => q.zone !== i);   // 這一區的衛兵一起刪
+    renumber(d, (t) => (t === i ? (next > i ? next - 1 : next) : t > i ? t - 1 : t));
+    return d;
+  }
+
   const cx = (r) => (r.x0 + r.x1) / 2;
 
   /**
@@ -115,9 +169,9 @@
     const runR = (K && K.RUN_R) || 8;
     const spans = zoneSpans(data);
     return spans.map((S) => {
-      const z = data.zones.find((q) => q.id === S.id) || {};
+      const z = data.zones[S.i] || {};
       const items = [];
-      const guards = data.guards.filter((q) => q.zone === S.id);
+      const guards = data.guards.filter((q) => q.zone === S.i);
       if (S.intro) { items.push({ label: '開場', state: 'info', text: '故事字卡，沒有場景，不檢查' }); return { zone: S, items }; }
       const nG = guards.length, posts = guards.filter((q) => (q.route || []).length === 1).length;
       items.push({ label: '衛兵 ≤ 3', state: nG <= 3 ? 'pass' : 'fail', text: nG + ' 名（巡邏 ' + (nG - posts) + '、站崗 ' + posts + '）' });
@@ -155,5 +209,5 @@
     });
   }
 
-  return { clone, fromBuilt, resolveLevel, exportText, importText, sameData, inRect, rectGap, routeDist, insertWidth, zoneSpans, checkZones };
+  return { clone, fromBuilt, resolveLevel, exportText, importText, sameData, inRect, rectGap, routeDist, insertWidth, zoneSpans, addZone, removeZone, checkZones };
 });

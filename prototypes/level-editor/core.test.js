@@ -80,3 +80,45 @@ test('逐區檢查：現有關卡的數字', () => {
   assert.strictEqual(r2.find((i) => i.label === '起點在影子裡').state, 'fail');
   assert.strictEqual(r2.find((i) => i.label === '衛兵 ≤ 3').state, 'fail');
 });
+
+test('加一區「慶宴的街」：區號、出口、衛兵都對上，遊戲從第 2 區一路走到城門，區名提示正確', () => {
+  let d = C.insertWidth(base(), 47.5, 30);
+  const r = C.addZone(d, 47.5, 77.5, { name: '慶宴的街', tier: 3, driveSeg: 4 });
+  d = r.data;
+  assert.strictEqual(r.index, 4);
+  assert.deepStrictEqual(d.zones.map((z) => z.id), [0, 1, 2, 3, 4, 5]);
+  assert.strictEqual(d.zones[3].exit.to, 4);
+  assert.strictEqual(d.zones[4].exit.to, 5);
+  assert.strictEqual(d.zones[5].exit.kind, 'gate');
+  assert.ok(d.guards.filter((q) => q.zone === 5).length === 2 && d.guards.every((q) => q.zone !== 4));   // 原本城門區的衛兵跟著變成第 5 區
+  assert.ok(C.inRect(d.zones[4].start, d.shadows[d.shadows.length - 1]));   // 新區起點罩著影子
+  assert.deepStrictEqual(C.importText(C.exportText(d)), d);               // 加區後匯入匯出一樣
+  const lv = R.resolveLevel ? R.resolveLevel(d) : C.resolveLevel(d, R.T.BELLY_Y);
+  const g = R.createLevel({ level: lv, startZone: 2, T: { DYNAMIC: false } });
+  const msgs = []; let t = 0;
+  const step = () => { g.step(t += 1 / 30, { mx: 0, mz: 0 }); for (const e of g.drain ? g.drain() : []) if (e.type === 'msg') msgs.push(e.a); };
+  for (let i = 0; i < 5; i++) step();
+  while (lv.zones[g.zone].exit && lv.zones[g.zone].exit.kind === 'rect') {
+    const z0 = g.zone, rr = lv.zones[g.zone].exit.rect;
+    g.guards.forEach((q) => { q.active = false; });
+    g.player.x = (rr.x0 + rr.x1) / 2; g.player.z = (rr.z0 + rr.z1) / 2;
+    for (let i = 0; i < 5; i++) step();
+    assert.strictEqual(g.zone, z0 + 1);
+  }
+  assert.strictEqual(g.zone, 5);
+  assert.ok(R.isGateZone ? R.isGateZone(lv, g.zone) : true);
+  assert.deepStrictEqual(msgs.filter((m) => ['城牆下的窄巷', '慶宴的街', '城門'].includes(m)), ['城牆下的窄巷', '慶宴的街', '城門']);
+});
+
+test('刪區：開場、城門區不能刪；刪中間一區後出口與衛兵重新對號', () => {
+  const d = base();
+  assert.throws(() => C.removeZone(d, 0), /不能刪/);
+  assert.throws(() => C.removeZone(d, d.zones.length - 1), /不能刪/);
+  const e = C.removeZone(d, 3);
+  assert.deepStrictEqual(e.zones.map((z) => z.id), [0, 1, 2, 3]);
+  assert.strictEqual(e.zones[2].exit.to, 3);
+  assert.strictEqual(e.zones[3].exit.kind, 'gate');
+  assert.ok(e.guards.every((q) => q.zone <= 3) && !e.guards.some((q) => q.id.startsWith('g3')));
+  const add = C.addZone(C.insertWidth(d, 47.5, 30), 47.5, 77.5, { name: 'x' }).data;
+  assert.deepStrictEqual(C.removeZone(add, 4).zones.map((z) => z.name), d.zones.map((z) => z.name));   // 加了再刪，區回到原本
+});

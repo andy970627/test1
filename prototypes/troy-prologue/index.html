@@ -383,7 +383,14 @@ document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(loc
 const $ = id => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rand = (a, b) => a + Math.random() * (b - a);
-const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
+// 區數、區名、哪一區是腹中／城門／教什麼，11/17 起都讀關卡資料（規則 e31150e，rules.md 第 1 節），不寫死區號。
+//   沒有資料可讀時（舊規則檔）才退回原本的固定值：腹中 1、教最響一擊 2、教暗殺與屏息 3、城門 4。
+const lvZones = L => (L && Array.isArray(L.zones) ? L.zones : null);
+const zoneIndex = (L, pred, fb) => { const Z = lvZones(L); if (!Z) return fb; const i = Z.findIndex(z => z && pred(z)); return i >= 0 ? i : -1; };
+const bellyZoneOf = L => zoneIndex(L, z => !!z.belly, 1);
+const tierOf = g => (g ? (typeof Rules.zoneTier === 'function' && lvZones(g.level) ? Rules.zoneTier(g.level, g.zone | 0) : g.zone | 0) : 0);   // 難度階：資料的 tier，沒寫＝區號
+const gateZoneOf = (L, z) => (typeof Rules.isGateZone === 'function' && lvZones(L) ? Rules.isGateZone(L, z) : z === 4);
+function zoneNameOf(L, z) { const Z = lvZones(L); if (Z && Z[z] && Z[z].name) return Z[z].name; const N = Rules.ZONE_NAMES || []; return N[z] || ''; }
 
 const Rules = window.RissetRules, AudioMod = window.RissetAudio;
 if (!Rules || !AudioMod) {
@@ -1083,7 +1090,8 @@ function buildHouses(w) {
 function buildHorse(H, L) {
   const g = new THREE.Group(); world.add(g);
   const r = R(H), fy = num(H.bellyY, H.floor, H.y, 2.5);
-  const zb = L.zones && L.zones[1] && L.zones[1].belly ? R(L.zones[1].belly) : { x0: r.x0 + .8, x1: r.x1 - 1, z0: (r.z0 + r.z1) / 2 - .5, z1: (r.z0 + r.z1) / 2 + .5 };
+  const bz = lvZones(L) && L.zones[bellyZoneOf(L)];
+  const zb = bz && bz.belly ? R(bz.belly) : { x0: r.x0 + .8, x1: r.x1 - 1, z0: (r.z0 + r.z1) / 2 - .5, z1: (r.z0 + r.z1) / 2 + .5 };
   // 木馬身體（中空）：比腹中走道每邊寬一些
   const bx0 = zb.x0 - .4, bx1 = zb.x1 + .4, bz0 = zb.z0 - .6, bz1 = zb.z1 + .6, top = fy + 2.3;
   const bxc = (bx0 + bx1) / 2, bzc = (bz0 + bz1) / 2, bw = bx1 - bx0, bd = bz1 - bz0;
@@ -1101,7 +1109,7 @@ function buildHorse(H, L) {
     box(.25, .3, Math.abs(bzc - sz) + .3, 0x4a3420, sx, fy - .1, (sz + bzc) / 2, g);          // 腿和身體接起來
   }
   // 地板：沿 x 的木條，中間有縫；暗門那裡挖空
-  const td = H.trapdoor || (L.zones && L.zones[1] && L.zones[1].exit);
+  const td = H.trapdoor || (bz && bz.exit);
   S.bellyGeom = { g, fy, top, bx0, bx1, bz0, bz1, bxc, bzc, td };   // 木馬第 1 批的腹中物件用
   const n = Math.round(bd / .32);
   for (let i = 0; i < n; i++) {
@@ -1381,7 +1389,7 @@ function telActive() {
   const k = K(), c = g.cycle, p = c.p || 0, pl = g.player;
   if (c.blind) return true;
   const L = g.level && g.level.gate && g.level.gate.latch;
-  if (g.zone === 4 && L && Math.hypot(pl.x - L.x, pl.z - L.z) <= k.LATCH_R && p <= k.GATE_LOW_P) return true;
+  if (gateZoneOf(g.level, g.zone) && L && Math.hypot(pl.x - L.x, pl.z - L.z) <= k.LATCH_R && p <= k.GATE_LOW_P) return true;
   if (p > k.HIGH_P) return false;
   for (const q of g.guards || []) {
     if (!q.active || q.state === 'down') continue;
@@ -1759,7 +1767,8 @@ function newGame() {
   // 規則：opts.T 是常數覆寫；從開場字卡（區 0）進入區 1，讓第一個提示照規則出現
   const aidMode = $('oAid').value;
   const qz = +new URLSearchParams(location.search).get('startZone');     // 實驗：?startZone=1..4 直接從某一區開始
-  const opts = { t0, startZone: qz >= 1 && qz <= 4 ? qz | 0 : 0, T: { CYCLE: curT } };
+  const nZ = ((LEVEL_LOCAL || window.TroyLevelData || {}).zones || [0, 0, 0, 0, 0]).length;   // ?startZone 上限＝區數減 1
+  const opts = { t0, startZone: qz >= 1 && qz <= nZ - 1 ? qz | 0 : 0, T: { CYCLE: curT } };
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
   if (MOVES_OFF_Q) opts.T.MOVES_MODE = false;
@@ -2294,7 +2303,7 @@ function aidTarget() {
   if (m === 'on') return 1;
   if (m === 'off') return 0;
   if (game && Number.isFinite(game.visualAid)) return clamp(game.visualAid, 0, 1);
-  const z = game ? game.zone | 0 : 0;                 // 規則還沒提供時：0、1 區 1，2 區 0.5，之後 0
+  const z = tierOf(game);                             // 規則還沒提供時：難度階 0、1 是 1，2 是 0.5，之後 0
   return z <= 1 ? 1 : z === 2 ? .5 : 0;
 }
 // 相位：依 cycle.anchor 外推（和聲音層同一條公式），沒有 anchor 就用 cycle.p
@@ -2510,8 +2519,9 @@ function caption(who, text, ms) {
 // 同伴教學在哪一區（M9 教學重排；對照 risset.js enterZone 的教學順序）：
 //   殘響掩護版：區 2 第一個掩護窗教最響的一擊（「就是現在」），區 3 之後節奏快時教屏息（「別動」）
 //   舊版：兩個都在區 1（木馬腹中）
-const teachNowZone = () => (coverMode() ? 2 : 1);
-const teachBreathZone = () => (coverMode() ? 3 : 1);
+// 教學區：不中斷模式看資料的 teach（'blind'＝最響一擊、'takedown'＝暗殺與屏息）；舊的留空檔模式兩件都在腹中那區教
+const teachNowZone = () => (coverMode() ? zoneIndex(game && game.level, z => z.teach === 'blind', 2) : bellyZoneOf(game && game.level));
+const teachBreathZone = () => (coverMode() ? zoneIndex(game && game.level, z => z.teach === 'takedown', 3) : bellyZoneOf(game && game.level));
 function worldHints(t) {
   const g = game;
   let s = null;
@@ -3432,8 +3442,8 @@ function revealEnv(delay) {                       // 0～1：從 delay 秒後亮
   if (u < .06 + hold) return 1;
   const q = (u - .06 - hold) / fade; return (1 - q) * (1 - q);
 }
-function revealDark() {                           // 這一區的暗度：前兩區少一階
-  const z = game ? num(game.zone, 0) : 0;
+function revealDark() {                           // 這一區的暗度：難度階 0、1 少一階
+  const z = tierOf(game);
   return clamp(FL.dark - (z <= 1 ? REVEAL.EASY : 0), 0, .95);
 }
 function revealOrigin() {                         // 光圈的中心：木馬（祭典的鼓在那邊）；這一區沒有木馬就用玩家位置
@@ -3643,7 +3653,7 @@ function hintVisuals(dt) {
   HW.handKick = Math.max(0, HW.handKick - dt * .45);
   HW.hushKick = Math.max(0, (HW.hushKick || 0) - dt * .8);
   let handT = g.zone === teachBreathZone() && s ? Math.max(s.breathWarn * .8, HW.handKick) : 0;
-  if (horseOn() && g.zone === 1) handT = Math.max(handT, HW.hushKick);   // 腹中練習：起步踩歪，同伴按住你的肩
+  if (horseOn() && g.zone === bellyZoneOf(g.level)) handT = Math.max(handT, HW.hushKick);   // 腹中練習：起步踩歪，同伴按住你的肩
   HW.hand += (handT - HW.hand) * Math.min(1, dt * 6);
   const hEl = $('hand'), hv = HW.hand * aid;
   hEl.style.opacity = Math.min(1, hv * 1.4).toFixed(3);
@@ -3664,11 +3674,11 @@ function hintVisuals(dt) {
   // 木板縫的火光：衛兵從木馬下走過時，從下方掃過他所在位置的縫
   if (S && S.shafts.length) {
     let gx = null, warn = s ? s.breathWarn : 0;
-    if (g.zone === 1) for (const q of arr(g.guards)) if (q.active && (gx == null || Math.abs(q.x - g.player.x) < Math.abs(gx - g.player.x))) gx = q.x;
+    if (g.zone === bellyZoneOf(g.level)) for (const q of arr(g.guards)) if (q.active && (gx == null || Math.abs(q.x - g.player.x) < Math.abs(gx - g.player.x))) gx = q.x;
     for (const sh of S.shafts) {
       const near = gx == null ? 0 : Math.exp(-Math.pow(sh.position.x - gx, 2) / .8);
       sh.material.opacity = .05 + .03 * Math.random() * (1 - VIS.freeze) + near * (.06 + .12 * warn) * aid
-        + (horseOn() && g.zone === 1 ? VIS.pulse * .1 : 0);              // 木馬第 1 批：縫裡的火光隨拍一明一暗
+        + (horseOn() && g.zone === bellyZoneOf(g.level) ? VIS.pulse * .1 : 0);              // 木馬第 1 批：縫裡的火光隨拍一明一暗
     }
   }
   bellyFrame(dt);
@@ -3717,9 +3727,9 @@ function hud(dt) {
   labHud(); labUnder();
   const g = game, P = g.player, p = curP();
   // 區名
-  const z = clamp(g.zone | 0, 0, 4);
+  const z = clamp(g.zone | 0, 0, Math.max(0, (lvZones(g.level) || [0, 0, 0, 0, 0]).length - 1));
   $('zoneNo').textContent = z ? `第 ${z} 區` : '';
-  $('zoneName').textContent = ZONE_NAMES[z];
+  $('zoneName').textContent = zoneNameOf(g.level, z);
   // 屏息計量
   const used = clamp(num(P.breathT, 0) / num(K().BREATH_MAX, 6), 0, 1);
   $('breathFill').style.width = ((1 - used) * 100).toFixed(1) + '%';
