@@ -18,7 +18,11 @@ const DT = 1 / 60;
  * activeNow ruler：'own'＝各版照自己的規則量 N1；'cover'＝新版量法（設計席 7.6：舊版也照算踩拍走），兩版同一把尺。
  */
 function makeBot(opts = {}) {
-  const WP = {
+  // 11/17 期末七段地圖：opts.wp（{區號: 路線點}）、opts.gateZone（城門區號）、opts.takedown（{id, zone, from}：暗殺目標、在哪一區、走到第幾個路線點起動手）。
+  // 沒給就是預設地圖原本的值（照搬部分的行為逐字不變）。forBotLevel(level) 從地圖的 botRoute 欄位組出這三項。
+  const GATE_Z = opts.gateZone != null ? opts.gateZone : 4;
+  const TK = opts.takedown || { id: 'g3a', zone: 3, from: 2 };
+  const WP = opts.wp || {
     1: [{ x: 11, z: 15 }],
     2: [{ x: 14, z: 22 }, { x: 17, z: 26.5 }, { x: 28, z: 25.5 }, { x: 31, z: 22.5 }],
     3: [{ x: 34, z: 25.5 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
@@ -148,12 +152,13 @@ function makeBot(opts = {}) {
       return inp;
     }
     // 城門
-    if (g.zone === 4 && wi >= WP[4].length) {
+    if (g.zone === GATE_Z && wi >= WP[GATE_Z].length) {
       const quiet = p <= K.GATE_LOW_P - 0.02 && act.every(q => d3(q) > r(q) * K.BREATH_HEAR + 0.5);
       if (quiet) inp.interact = true;
       else inp.breath = pl.breathT < K.BREATH_MAX - 0.5 && wantBreath();
       return inp;
     }
+    if (!WP[g.zone] || !WP[g.zone][wi]) return inp;   // 11/17：路線走完卻還沒換區（例如追殺中出口擋住、追殺結束後）就站著等；預設地圖原本不會走到這裡
     let w = WP[g.zone][wi];
     let dx = w.x - pl.x, dz = w.z - pl.z, dw = Math.hypot(dx, dz);
     // 11/11 修：到了路線點同一幀就轉向下一個點，不停一幀（停了再起步，幀率抖動時起步那一步可能離拍出聲；
@@ -165,8 +170,8 @@ function makeBot(opts = {}) {
     }
     const ux = dx / dw, uz = dz / dw;
     // 暗殺目標：區 3 的站崗衛兵
-    const tgt = act.find(q => q.id === 'g3a');
-    if (tgt && g.zone === 3 && wi >= 2) {
+    const tgt = act.find(q => q.id === TK.id);
+    if (tgt && g.zone === TK.zone && wi >= TK.from) {
       const dd = Math.hypot(tgt.x - pl.x, tgt.z - pl.z);
       if (blind && dd <= K.TAKEDOWN_R) { inp.takedown = true; return inp; }
       if (blind) { inp.mx = (tgt.x - pl.x) / dd; inp.mz = (tgt.z - pl.z) / dd; return inp; }
@@ -191,7 +196,7 @@ function makeBot(opts = {}) {
     const canMove = blindV || (pV <= 0.57 && safe) || coverStep;
     if (canMove) {
       inp.mx = ux; inp.mz = uz;
-      if (blind && dw > 1.5 && !(tgt && g.zone === 3)) inp.dash = true;
+      if (blind && dw > 1.5 && !(tgt && g.zone === TK.zone)) inp.dash = true;
     } else {
       inp.breath = pl.breathT < K.BREATH_MAX - 0.4 && wantBreath();
     }
@@ -286,4 +291,22 @@ function runGame(cover, seed, bot, opts = {}) {
 /** 常態分布亂數（Box–Muller，和規則測試同式），給測試驗抽樣。 */
 function gauss(rnd) { let u = 0; while (u === 0) u = rnd(); const v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 
-module.exports = { R, RULES_PATH, makeBot, makeForwardBot, activeNow, runGame, BOTS, gauss };
+/**
+ * 11/17：從地圖資料組出 makeBot 的 {wp, gateZone, takedown}。wp＝每區的 botRoute；城門＝出口是 gate 的區；
+ * 暗殺目標＝teach 'takedown' 那一區的站崗衛兵（路線只有一點），第 2 個路線點起動手（同預設地圖）。
+ */
+function forBotLevel(level) {
+  const wp = {};
+  let gateZone = null, takedown = null;
+  level.zones.forEach((z, i) => {
+    if (z.botRoute) wp[i] = z.botRoute;
+    if (z.exit && z.exit.kind === 'gate') gateZone = i;
+    if (z.teach === 'takedown' && !takedown) {
+      const q = level.guards.find((o) => o.zone === i && o.route.length === 1);
+      if (q) takedown = { id: q.id, zone: i, from: 2 };
+    }
+  });
+  return { wp, gateZone, takedown: takedown || { id: null, zone: -1, from: 0 } };
+}
+
+module.exports = { forBotLevel,  R, RULES_PATH, makeBot, makeForwardBot, activeNow, runGame, BOTS, gauss };

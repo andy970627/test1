@@ -4553,3 +4553,59 @@ test('11/17 區數由資料決定：資料多插一區（6 區）照樣走得完
   assert.ok(R.isGateZone(R.buildLevel(), 4) && !R.isGateZone(R.buildLevel(), 3));
   assert.deepEqual(R.buildLevel().zones.map((z, i) => R.zoneTier(R.buildLevel(), i)), [0, 1, 2, 3, 4]);
 });
+
+// ---------- 11/17 期末版七段地圖（level-troy-final.js） ----------
+test('11/17 期末版七段地圖：純資料、各區欄位齊全（name、tier、driveSeg 1～7、music；城門在最後；後街 dark）；程式玩家（完美）從頭走到城門', () => {
+  const data = require('./level-troy-final.js');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(data)), data, '只能有 JSON 表達得了的值');
+  const lv = R.resolveLevel(data);
+  assert.deepEqual(lv.size, { w: 90, h: 30 });
+  assert.deepEqual(lv.zones.map((z) => z.name), ['開場', '木馬腹中', '木馬下', '神殿廣場', '慶宴的街', '城牆下的窄巷', '沒有火的後街', '城門']);
+  lv.zones.forEach((z, i) => {
+    assert.equal(z.id, i);
+    assert.ok(typeof z.name === 'string' && z.name, '區 ' + i + ' name');
+    assert.ok(Number.isFinite(z.tier), '區 ' + i + ' tier');
+    assert.equal(z.driveSeg, i, '區 ' + i + ' driveSeg＝企劃的段號');
+    assert.ok(['intro', 'belly', 'temple', 'alley', 'gate'].includes(z.music), '區 ' + i + ' music');
+    assert.ok(z.start && Number.isFinite(z.start.x), '區 ' + i + ' start');
+    if (i >= 1) {
+      assert.ok(z.exit, '區 ' + i + ' exit');
+      if (i < lv.zones.length - 1) assert.equal(z.exit.to, i + 1);
+      if (i >= 2) assert.ok(lv.shadows.some((s) => R.inRect(z.start.x, z.start.z, s)), '區 ' + i + ' 起點在影子裡');
+      assert.ok(lv.guards.filter((q) => q.zone === i).length <= 3, '區 ' + i + ' 衛兵最多 3 名');
+      if (i >= 2) assert.ok(Array.isArray(z.botRoute) && z.botRoute.length, '區 ' + i + ' botRoute');
+    }
+  });
+  assert.ok(R.isGateZone(lv, lv.zones.length - 1), '城門在最後一區');
+  assert.ok(lv.zones[1].belly);
+  assert.equal(lv.zones[2].teach, 'blind');
+  assert.equal(lv.zones[5].teach, 'takedown');
+  assert.equal(lv.zones[6].dark, true);
+  // 走得完：程式玩家（完美踩拍）照 botRoute 走
+  const Bots = require('../../tools/telemetry/troy-bots.js');
+  const g = R.createLevel({ level: lv, seed: 1, T: { COVER_MODE: true } });
+  const bot = Bots.makeBot(Object.assign({ cover: true }, Bots.forBotLevel(lv)));
+  let t = 2; const seen = [];
+  g.step(t, {}); g.step(t, { start: true });
+  while (g.phase === 'play' && t < 600) { t += DT; g.step(t, bot(g)); g.drain(); if (seen[seen.length - 1] !== g.zone) seen.push(g.zone); }
+  assert.equal(g.phase, 'win', '停在區 ' + g.zone + '（' + g.phase + '，' + g.failCode + '）');
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7]);
+  // 預設地圖不受影響
+  assert.equal(R.buildLevel().zones.length, 5);
+});
+
+test('11/17 期末版七段地圖：出口矩形比衝刺距離深（畫面回報後街要試好幾次才換區：舊的 1.5 公尺深出口，衝刺 3 公尺會一步跨過去）；各區在掩護窗衝刺穿過關口都會換區', () => {
+  const lv = R.resolveLevel(require('./level-troy-final.js'));
+  lv.guards = [];
+  for (let zi = 2; zi <= 6; zi++) {
+    const r = lv.zones[zi].exit.rect;
+    assert.ok(r.x1 - r.x0 >= K.DASH + 1, '區 ' + zi + ' 出口深 ' + (r.x1 - r.x0));
+    for (let k = 0; k < 6; k++) {
+      const g = R.createLevel({ level: lv, startZone: zi, t0: k * 0.37 });
+      let t = 1; g.step(t, {});
+      g.player.x = r.x0 - 1.4; g.player.z = (r.z0 + r.z1) / 2;
+      for (let f = 0; f < 900 && g.zone === zi; f++) { t += DT; g.step(t, { mx: 1, mz: 0, dash: g.cycle.blind, yaw: R.yawTo(1, 0) }); g.drain(); }
+      assert.equal(g.zone, zi + 1, '區 ' + zi + ' 第 ' + k + ' 次衝刺沒換區');
+    }
+  }
+});

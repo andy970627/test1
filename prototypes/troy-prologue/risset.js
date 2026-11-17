@@ -1056,7 +1056,7 @@
     }
     /** 搭配動作第 8 節：久站影子時，暗示階梯往上推一階（至少第 2 階、有文字），提示這一區的下一步。只引導，不懲罰。 */
     function idleNudge() {
-      const tgt = g.guards.find((q) => q.id === 'g3a');
+      const tgt = g.guards.find((q) => q.zone === g.zone && q.route.length === 1);   // 11/17：這一區的站崗衛兵（預設地圖的窄巷就是 g3a），不寫死 id
       const key = isBelly(g.zone) ? 'step' : teachOf(g.zone) === 'takedown' && tgt && tgt.active ? 'takedown' : isGate(g.zone) ? 'latch' : 'blind';
       const H = g.hints[key]; if (!H) return;
       H.fails = Math.max(H.fails + 1, 2); H.level = Math.min(3, H.fails); H.lastFail = g.time;
