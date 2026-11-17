@@ -185,3 +185,37 @@ test('催促 DRIVE：追殺時（規則 5 層）也照樣疊，踩得上的拍�
     }
   }
 });
+
+// 區數改由關卡資料決定（規則 e31150e）：聲音的「區號 → 混音組、風、城門、教最響的一擊」改看關卡資料
+test('區的聲音：現有關卡每一區和以前寫死區號的對應完全相同（混音組＝區號、風、城門＝第 4 區、第 2 區教最響的一擊）', () => {
+  const R = require('./risset.js'), L = R.buildLevel();
+  assert.strictEqual(L.zones.length, 5);
+  for (let z = 0; z < 5; z++) {
+    const a = A.zoneSound(L, z), b = A.zoneSound(null, z);   // b：沒有關卡資料＝以前的寫法
+    assert.deepStrictEqual(a, b, `第 ${z} 區`);
+    assert.strictEqual(a.mix, z);
+  }
+  assert.strictEqual(A.zoneSound(L, 2).intro, true);
+  assert.strictEqual(A.zoneSound(L, 4).gate, true);
+  assert.strictEqual(A.zoneSound(L, 9).mix, 4, '沒有這一區（越界）時照區號夾住，不出錯');
+});
+
+test('區的聲音：插第 6 區（城門變第 5 區）不出錯，混音照 tier 取最接近的一組、城門照舊；music、wind 可指定', () => {
+  const R = require('./risset.js'), L = R.buildLevel(), zs = L.zones.slice(), gate = zs.pop();
+  zs.push(Object.assign({}, zs[3], { id: 4, name: '插入的區', teach: undefined }));
+  zs.push(Object.assign({}, gate, { id: 5 }));
+  const L6 = Object.assign({}, L, { zones: zs });
+  assert.strictEqual(R.isGateZone(L6, 5), true);
+  const z4 = A.zoneSound(L6, 4), z5 = A.zoneSound(L6, 5);
+  assert.strictEqual(z4.mix, 3, '插入的區 tier 3 → 窄巷那一組');
+  assert.strictEqual(z4.gate, false);
+  assert.ok(z4.wind && isFinite(z4.wind.x) && z4.wind.g > 0);
+  assert.strictEqual(z5.mix, 4); assert.strictEqual(z5.gate, true);
+  for (const [extra, want] of [[{ tier: 3.6 }, 4], [{ tier: 7 }, 4], [{ tier: -1 }, 0], [{ music: 'temple' }, 2], [{ music: 1 }, 1], [{ music: 'nope', tier: 2 }, 2]]) {
+    zs[4] = Object.assign({}, zs[4], { music: undefined, tier: 3 }, extra);
+    assert.strictEqual(A.zoneSound(Object.assign({}, L, { zones: zs }), 4).mix, want, JSON.stringify(extra));
+  }
+  zs[4] = Object.assign({}, zs[4], { wind: null }); assert.strictEqual(A.zoneSound(Object.assign({}, L, { zones: zs }), 4).wind, null);
+  zs[4] = Object.assign({}, zs[4], { wind: { x: 30, z: 10 } }); assert.deepStrictEqual(A.zoneSound(Object.assign({}, L, { zones: zs }), 4).wind, { x: 30, y: 1, z: 10, g: 0.7 });
+  assert.ok(A.ZONE_MIX_NAMES.length === 5);
+});

@@ -471,3 +471,20 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - 真的遊戲頁 `index.html?mute=1&nolock=1`（`audio-game-load.mjs`：攔 `createAudio` 包 `update`，每幀把假 drive 放進 state，量 20 秒）：無頭沒有顯示卡，畫面本來只有 13～15 fps，看不出幀率差；`audio.update` 平均 drive 0 0.26、0.3 0.69、1 1.26 毫秒，最差 2.8／11.4／19.4 毫秒（這裡一幀要排的拍是 60 fps 時的 4 倍）。試聽頁 H2 60 fps、最差一幀 28 毫秒。
     - 結論：一般電腦每幀多 1～2 毫秒；最快時偶爾一幀卡 10～20 毫秒（掉一幀）。真的卡就再調高 `DRIVE_MIN_GAIN`（0.06 時 73 拍、平均 1.1／最差 11 毫秒）。
   - 全套 362 過。順手記：遊戲頁在無頭瀏覽器裡偶爾報 `Unexpected token ')'`（沒有堆疊，7 次出現 2 次，drive 0 也有），和 DRIVE 無關，來源沒查。
+- **11/17：拿掉寫死的區號（區數改由關卡資料決定，規則 e31150e）**（未提交；`audio.js`、`audio.test.js`）：
+  - 新的模組層級純函式 `RissetAudio.zoneSound(level, z)` → `{ mix, tier, gate, intro, wind }`，遊戲裡讀 `state.level.zones[z]`：
+    - `mix`（用 `ZONE_MIX` 第幾組，0～4；5 是勝利）：區的 `music` 欄位優先；沒寫就城門區（`exit.kind === 'gate'`）用 4，其他照 `tier`（沒寫＝區號）四捨五入夾在 0～4。
+    - `wind`（風從哪裡來）：區的 `wind` 欄位優先；沒寫就跟混音那一組的風（`WIND_AT`，現有地圖的座標）。
+    - `intro`（新訊號強調那一區）：`teach === 'blind'`；`gate`：城門區（城門外人群聲只在這區、隨推門進度變大）；`tier ≥ 2` 才有遠處號角（原本 `z ≥ 2`）。
+    - 沒有關卡資料（試聽頁、舊規則）：照以前用區號（夾 0～4、`INTRO_COVER_ZONE` 2、城門＝第 4 區）。
+    - 原本寫死的地方都改走它：`INTRO_COVER_ZONE` 兩處、`ZONE_MIX` 選組、`WIND_AT`、號角 `z >= 2`、人群聲 `z === 4`、區號夾 0～4（`update` 與 `updateRoute`）。剩下的「夾 0～4」只是混音組編號（`opts.musicZone`、`setMusicZone`、建立時的 `opts.zone`），不是區數。
+  - **給關卡資料的兩個新可選欄位（請規則、畫面角色知道；關卡編輯器可以加）**：
+    | 欄位 | 寫法 | 沒寫時 |
+    |---|---|---|
+    | `music` | 現有一組的名字：`'intro'`（開場）、`'belly'`（腹中，很遠的低吟）、`'temple'`（神殿廣場：低吟＋合唱、主題 4 音）、`'alley'`（窄巷：再加謝帕德音階）、`'gate'`（城門：全部疊上、主題完整）；或編號 0～4 | 城門區 `'gate'`，其他照 `tier` 取最接近的一組 |
+    | `wind` | `{x, y, z, g}`（世界座標、音量 0～1.5）、`null`（沒有風）或某一組的編號 0～4 | 跟混音那一組的風（現有地圖的座標；新地圖的區最好自己寫） |
+  - 驗收：
+    - 純函式（Node 測試，2 條）：現有關卡 5 區的 `zoneSound(level, z)` 和沒有關卡資料的舊對應**完全相同**（混音組＝區號、風、城門、教學區）；插第 6 區（城門變第 5 區）不出錯：插入的區 tier 3 → 窄巷那一組、城門照舊 4，tier 3.6／7 → 4、−1 → 0，`music` 名字與編號、`wind` null 與座標都照寫的走，壞的 `music` 名字退回照 tier。
+    - 真遊戲模擬（`audio-zone-check.mjs`，`--mute-audio`；拿掉衛兵、`DRIVE_MODE` 關、`Math.random` 固定種子，因為衛兵讓一圈長度一直變、DRIVE 每幀在升，同一版跑兩次都會差小數點最後一位）：startZone 1～4 各 25 秒，HEAD 和目前的排程紀錄（拍、最響一擊含新訊號加強、低音、合唱、主題、號角）在 25 秒內全部相同；不同的只有第 25.3 秒之後、錄音結束那一刻預排的幾拍（同一版自比也會）。波形逐樣本比不了（同上，浮點誤差讓雜訊亂數錯開）。
+    - 插第 6 區實跑 4 種寫法（沒寫、`music: 'temple'`、`music: 1, wind: null`、`tier: 5` 加自訂風）都沒有錯誤、沒有非數值。
+    - 全套 375 過（退出碼 0、fail 0，不接管線）。

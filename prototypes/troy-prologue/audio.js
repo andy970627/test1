@@ -210,7 +210,7 @@
     // 新訊號強調（裁決 7.9）：該區第一個循環，新訊號比平常響 INTRO_BOOST_DB，其他聲音不動（不做獨奏，獨奏等於又做出一段空白）
     INTRO_BOOST_DB: 4,         // 試聽頁可調到 0
     INTRO_CYCLES: 1,           // 重合擊：進區後前幾記；低音拍：整局第一次起疑後幾個循環（安撫在哪一區第一次出現都算）
-    INTRO_COVER_ZONE: 2,       // 殘響掩護版第 2 區才教最響的一擊：進區後第一記重合擊
+    INTRO_COVER_ZONE: 2,       // 殘響掩護版教最響的一擊的那一區：關卡資料有 teach === 'blind' 就看它（11/17 起），沒有關卡資料（試聽頁）才用這個區號
     // 加速感試聽（docs/design/2026-11-11-illusion-not-heard.md 第 3.1、6.1 節）：只在聲音測試頁用 setIllusion 打開，預設＝現行
     ILL_TIMBRE_X: 0.375,       // S1 同一種鼓：所有層都用這個「速度位置」的音色（playHit 的 0.375＝純框鼓）
     ILL_CENTER: 0.62,          // S2 鐘形偏快：中心【假設，待試聽】
@@ -432,6 +432,28 @@
       g.push(w[j] * b + (1 - w[j]) * mix);
     }
     return { g: g, w: w };
+  }
+  // ---------- 區號 → 這一區的聲音（11/17：區數改由關卡資料決定，規則 e31150e；agent-notes/rules.md 第 1 節）----------
+  // 關卡資料每一區有 name、belly、teach、tier、exit.kind 'gate'；聲音另外認兩個可選欄位：
+  //   music：用哪一組混音（createAudio 裡的 ZONE_MIX），寫名字 ZONE_MIX_NAMES 或編號 0～4；沒寫就城門區用 'gate'、其他照 tier 取最接近的一組
+  //   wind：風從哪裡來，{x, y, z, g}（世界座標、音量）、null（沒有風）或某一組的編號；沒寫就跟混音那一組的風（WIND_AT，現有地圖的座標）
+  // 沒有關卡資料（試聽頁、舊規則）：照以前用區號（夾在 0～4；第 2 區教最響的一擊，第 4 區是城門）。純函式，測試直接呼叫。
+  var ZONE_MIX_NAMES = ['intro', 'belly', 'temple', 'alley', 'gate'];
+  var WIND_AT = [null, { x: 11, y: 0.2, z: 15, g: 0.7 }, { x: 62, y: 5, z: 15, g: 0.8 }, { x: 49, y: 2, z: 22.5, g: 0.9 }, { x: 62, y: 4, z: 15, g: 0.7 }];   // 依混音那一組的編號
+  function zoneSound(level, z) {
+    z = Math.max(0, (+z || 0) | 0);
+    var Zs = level && level.zones, Z = (Zs && Zs[z] && typeof Zs[z] === 'object') ? Zs[z] : null, mix, wind;
+    if (!Z) { mix = clamp(z, 0, 4); return { mix: mix, tier: z, gate: z === 4, intro: z === C.INTRO_COVER_ZONE, wind: WIND_AT[mix] || null }; }
+    var tier = (Z.tier != null && isFinite(Z.tier)) ? +Z.tier : z, gate = !!(Z.exit && Z.exit.kind === 'gate');
+    if (typeof Z.music === 'number' && isFinite(Z.music)) mix = clamp(Math.round(Z.music), 0, 4);
+    else if (Z.music != null && ZONE_MIX_NAMES.indexOf(String(Z.music)) >= 0) mix = ZONE_MIX_NAMES.indexOf(String(Z.music));
+    else mix = gate ? 4 : clamp(Math.round(tier), 0, 4);
+    var w = Z.wind;
+    if (w === null) wind = null;
+    else if (typeof w === 'number' && isFinite(w)) wind = WIND_AT[clamp(Math.round(w), 0, 4)] || null;
+    else if (w && typeof w === 'object' && isFinite(w.x) && isFinite(w.z)) wind = { x: +w.x, y: isFinite(w.y) ? +w.y : 1, z: +w.z, g: isFinite(w.g) ? clamp(+w.g, 0, 1.5) : 0.7 };
+    else wind = WIND_AT[mix] || null;
+    return { mix: mix, tier: tier, gate: gate, intro: Z.teach === 'blind', wind: wind };
   }
   function phaseAt(t, T, t0) { return frac((t - t0) / T); }
   // 第 k 層、第 c 個循環的所有拍點（絕對時間），規則與測試可用
@@ -722,6 +744,11 @@
       rampTo(chantLP.frequency, m.far ? 450 : 2400, d, true);
     }
     applyZone(forcedZone != null ? forcedZone : (opts.zone != null ? clamp(opts.zone | 0, 0, 4) : 0), 0.01);
+    // 區號 → 這一區的聲音：模組層級純函式 zoneSound（關卡資料決定，見檔案前段），這裡只包一層讀 state.level
+    function zoneMixIndex(s, z) { return zoneSound(s && s.level, z).mix; }
+    function zoneTierOf(s, z) { return zoneSound(s && s.level, z).tier; }
+    function isGateZoneOf(s, z) { return zoneSound(s && s.level, z).gate; }
+    function introZone(s, z) { return zoneSound(s && s.level, z).intro; }
 
     // 里拉琴（Karplus-Strong 撥弦）：每個音高預先算一段緩衝（只算一次），播放時一個 BufferSource。
     // 音高 = sr ÷ (N + 0.5)（平均濾波多半格延遲），用 playbackRate 補到準確頻率。
@@ -1385,7 +1412,7 @@
         var le = log ? { type: 'coverHit', t: t, p: frac(P), alert: aw } : null;
         if (le) log.push(le);
         var bst = ill.v3 ? C.V3_HIT_MUL : 1;
-        if (!aw && intro.hitsLeft > 0 && intro.zone === C.INTRO_COVER_ZONE) { intro.hitsLeft--; bst = introGain(); if (le) le.boost = bst; }
+        if (!aw && intro.hitsLeft > 0 && introZone(lastState, intro.zone)) { intro.hitsLeft--; bst = introGain(); if (le) le.boost = bst; }
         // 木馬共鳴（C2）：一般掩護窗那一擊，從木馬的位置發一聲（音量隨玩家距離；腹中、警戒窗不發——警戒窗讓出 200～600 Hz 給低音拍）
         var hg = (!aw && horseOn() && !horse.inBelly) ? horseBoomGain(horse.dist) : 0;
         if (le && hg > 0) le.boom = hg;
@@ -1689,26 +1716,26 @@
       mAmp.connect(murmurGain); ms.start(); routeLive.push(ms);
     }
     // 每區的風從哪裡來（世界座標；y 是高度）
-    var WIND_AT = [null, { x: 11, y: 0.2, z: 15, g: 0.7 }, { x: 62, y: 5, z: 15, g: 0.8 }, { x: 49, y: 2, z: 22.5, g: 0.9 }, { x: 62, y: 4, z: 15, g: 0.7 }];
+    function windOf(s, z) { return zoneSound(s && s.level, z).wind; }   // 每區的風從哪裡來（世界座標；y 是高度）：zoneSound 決定
     var route = { zone: -1, nextHorn: ctx.currentTime + 6, prog: -1 };
     function updateRoute(s, now) {
-      var z = clamp((+s.zone || 0) | 0, 0, 4), won = s.phase === 'win';
+      var z = Math.max(0, (+s.zone || 0) | 0), won = s.phase === 'win', far = zoneTierOf(s, z) >= 2;   // far：離開木馬、在城裡（號角聽得到）
       if (z !== route.zone) {
         route.zone = z;
-        var W = WIND_AT[z];
+        var W = windOf(s, z);
         if (W) setPos(windPan, W.x, W.y, W.z, now, true);
         windGain.gain.setTargetAtTime(W ? W.g : 0, now, 1.2);
         setPos(murmurPan, 63, 1.5, 15, now, true); setPos(hornPan, 75, 6, 15, now, true);
-        if (z >= 2 && route.nextHorn < now + 4) route.nextHorn = now + 4 + Math.random() * 4;
+        if (far && route.nextHorn < now + 4) route.nextHorn = now + 4 + Math.random() * 4;
       }
       var prog = s.gate && s.gate.need ? clamp(s.gate.progress / s.gate.need, 0, 1) : 0;
-      var mg = won ? 0 : (z === 4 ? 0.25 + 0.75 * prog : 0);
+      var mg = won ? 0 : (isGateZoneOf(s, z) ? 0.25 + 0.75 * prog : 0);   // 城門外的人群聲：城門區才有
       if (Math.abs(mg - route.prog) > 0.01) { route.prog = mg; murmurGain.gain.setTargetAtTime(mg, now, 0.8); }
       var al = clamp(+s.alarm || 0, 0, 1);
       routeDuck.gain.setTargetAtTime(s.hunted ? 0.35 : 1 - 0.75 * al, now, 0.3);
       // 號角：只在盲區剛結束、整段吹完都碰不到下一段盲區時吹（警戒、追殺不吹）
       var cy = s.cycle || {};
-      if (z >= 2 && !won && s.phase === 'play' && !s.hunted && !cy.alertBlind && now >= route.nextHorn && !cy.blind) {
+      if (far && !won && s.phase === 'play' && !s.hunted && !cy.alertBlind && now >= route.nextHorn && !cy.blind) {
         var t = now + 0.05;
         if (hintFree(t, 2.9)) {
           horn(hornPan, t, 146.83, 1.3, C.HORN_GAIN); horn(hornPan, t + 1.15, 220, 1.5, C.HORN_GAIN * 0.85);
@@ -2849,10 +2876,10 @@
           suppress = suppress.filter(function (x) { return x.e > now - 3; });
         }
         st.panic = clamp(+(typeof s.panic === 'object' ? 0 : s.panic) || 0, 0, 1);
-        // 分區編曲：state.zone 0～4；勝利時城門大開，號角完整奏一次主題
+        // 分區編曲：照這一區的混音組（zoneMixIndex，關卡資料決定）；勝利時城門大開，號角完整奏一次主題
         if (s.phase === 'win') {
           if (!mz.won) { mz.won = true; applyZone(5); winTheme(now + 1.4); }
-        } else applyZone(forcedZone != null ? forcedZone : clamp((+s.zone || 0) | 0, 0, 4));
+        } else applyZone(forcedZone != null ? forcedZone : zoneMixIndex(s, Math.max(0, (+s.zone || 0) | 0)));
         // 推門閂：推的時候每 0.45 秒一聲木頭摩擦（越接近完成越響），高頻時鬆手就不會有聲音
         if (s.gate && s.gate.pushing && !s.gate.open && now - st.lastCreak > 0.45) {
           st.lastCreak = now;
@@ -2897,7 +2924,7 @@
         // 低音第一拍起 INTRO_CYCLES 個循環（循環長讀規則的 cycle.T）。只調那一個訊號的音量，其他聲音不動。
         if (s !== intro.game) intro = { game: s, zone: -1, hitsLeft: 0, bassDone: false, bassFrom: Infinity, bassUntil: -Infinity };
         var zn = isFinite(s.zone) ? (s.zone | 0) : -1;
-        if (zn !== intro.zone) { intro.zone = zn; intro.hitsLeft = zn === C.INTRO_COVER_ZONE ? Math.max(0, C.INTRO_CYCLES | 0) : 0; }
+        if (zn !== intro.zone) { intro.zone = zn; intro.hitsLeft = introZone(s, zn) ? Math.max(0, C.INTRO_CYCLES | 0) : 0; }
         if (pa && !intro.bassDone) {
           intro.bassDone = true;
           var ib0 = (s.bass && isFinite(s.bass.anchor)) ? +s.bass.anchor : now;
@@ -3067,5 +3094,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
+  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, zoneSound: zoneSound, ZONE_MIX_NAMES: ZONE_MIX_NAMES, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
 });
