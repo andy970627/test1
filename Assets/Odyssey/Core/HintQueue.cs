@@ -9,6 +9,8 @@ namespace Odyssey.Core
         Stake, Pail, Pen, Pant, Dawn, Rush, SheepStuck, Prayer, Slip,
         Notch, Footstep, HearingRing, ArrowClutter, FindExit, Brace,
         FirstStone, FairHit, Ambush, FavorRegained, Horse,
+        // 規格第 34 節
+        LureDoubted, Drunk, CarvingFollowed, FavorGained, FavorSpendable, DawnStir,
     }
 
     /// <summary>
@@ -120,6 +122,12 @@ namespace Odyssey.Core
             HintKind.Ambush => "他沒聽見你，雷聲卻響了",
             HintKind.FavorRegained => "月光又照在巨石邊上",
             HintKind.Horse => "岩壁上，木馬燒成了灰",
+            HintKind.LureDoubted => "他不再全信那個聲音了",
+            HintKind.Drunk => "他喝醉了",
+            HintKind.CarvingFollowed => "他摸到了你的刻痕",
+            HintKind.FavorGained => "雅典娜在看著你",
+            HintKind.FavorSpendable => "雅典娜的眷顧，夠你求她一次了",
+            HintKind.DawnStir => "天光從縫裡滲進來，羊群醒了",
             _ => null,
         };
     }

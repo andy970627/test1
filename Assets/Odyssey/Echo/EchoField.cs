@@ -38,6 +38,13 @@ public class EchoField : MonoBehaviour
     static readonly int SpreadId = Shader.PropertyToID("_EchoSpread");
     static readonly int FadeId = Shader.PropertyToID("_EchoFade");
     static readonly int HearId = Shader.PropertyToID("_EchoHear");
+    static readonly int AmbientId = Shader.PropertyToID("_EchoAmbient");
+
+    /// <summary>回聲亮度倍率（雷鳴耳鳴時壓到 0.1，規格第 34 節 A）。</summary>
+    public float Gain { get; set; } = 1f;
+
+    /// <summary>不靠回聲的環境亮度 0～0.5（天亮前的縫光，規格第 34 節 B）。</summary>
+    public float Ambient { get; set; }
 
     public static EchoField Instance { get; private set; }
 
@@ -132,7 +139,7 @@ public class EchoField : MonoBehaviour
             {
                 var p = pulses[i];
                 positions[i] = new Vector4(p.Position.x, p.Position.y, p.Position.z, p.StartTime);
-                colors[i] = new Vector4(p.Color.r, p.Color.g, p.Color.b, p.Radius);
+                colors[i] = new Vector4(p.Color.r * Gain, p.Color.g * Gain, p.Color.b * Gain, p.Radius);
                 hears[i] = p.HearRadius;
             }
             else
@@ -149,5 +156,6 @@ public class EchoField : MonoBehaviour
         Shader.SetGlobalFloat(NowId, now);
         Shader.SetGlobalFloat(SpreadId, SpreadSeconds);
         Shader.SetGlobalFloat(FadeId, FadeSeconds);
+        Shader.SetGlobalFloat(AmbientId, Ambient);
     }
 }

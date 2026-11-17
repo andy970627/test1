@@ -35,6 +35,9 @@ namespace Odyssey.Core
             new("wedge", GuidePage.Controls, "楔子", "右鍵 塞石子當楔子（按住 拔回）。"),
             new("crew", GuidePage.Controls, "同伴", "E 帶他走・F 隊伍蹲下或跟上。"),
             new("stakekeys", GuidePage.Controls, "木樁", "E 拿起木樁・G 插進縫裡或放下。"),
+            new("winekeys", GuidePage.Controls, "酒囊", "E 拿起酒囊・按住 G 倒酒。木樁和酒囊一次只能拿一樣。"),
+            new("carvekeys", GuidePage.Controls, "刻痕", "貼著岩壁按住 R 刻下記號。"),
+            new("favorkeys", GuidePage.Controls, "雅典娜", "Q 求雅典娜相助，再按 1～3 選擇。"),
             new("pause", GuidePage.Controls, "暫停", "Tab 暫停，翻閱這本紀事。"),
 
             new("law", GuidePage.SoundLight, "聲音就是光", "在波呂斐摩斯的洞裡，聲音就是光。照亮了哪裡，他就聽得到哪裡。"),
@@ -43,6 +46,7 @@ namespace Odyssey.Core
             new("pen", GuidePage.SoundLight, "乾草", "羊圈裡的乾草讓腳步聲變輕。"),
             new("pail", GuidePage.SoundLight, "奶桶", "奶桶倒下很吵，整個洞都聽得到；也能拿來把巨人引到別處。"),
             new("pant", GuidePage.SoundLight, "喘息", "跑太久就會喘，喘息聲巨人也聽得到。停下來休息就好。"),
+            new("carving", GuidePage.SoundLight, "刻痕", "刻在岩壁上的記號會留到下一夜，回聲掃過時亮起，是你自己畫的地圖。最多八道。但巨人摸到刻痕，也會順著一道一道找過來。"),
 
             new("exit", GuidePage.Boulder, "洞口", "洞口在海風吹來的方向，巨石邊緣透著一絲月光。"),
             new("slip", GuidePage.Boulder, "回滑", "巨石一放手，三秒後就慢慢滑回，開得越大滑得越快。站在它前面頂住，或把石子塞進縫裡當楔子。"),
@@ -58,8 +62,12 @@ namespace Odyssey.Core
             new("rock", GuidePage.Giant, "丟岩石冷卻", "聲音太遠摸不到時，他會舉起岩石朝聲音丟過去。丟完要等一陣子才能再丟；趕快離開剛才出聲的地方。"),
             new("zeuslaw", GuidePage.Giant, "宙斯的法則", "宙斯守護主人與客人，不容人從暗處出手。石子或箭打中巨人時，若他三秒內聽見了你、正循著你的聲音而來，就是正面出手；否則就是偷襲。"),
             new("fairhit", GuidePage.Giant, "正面出手", "先出聲，再出手。被正面打中的他會踉蹌兩秒半，聽不見也不動，之後走向你出手的地方。"),
-            new("ambush", GuidePage.Giant, "偷襲", "打中正在禱告、吃人、守著巨石，或根本沒聽見你的他，宙斯就降下雷鳴：雷光照亮整個洞一瞬，他衝向你，雷殛落在一名跟著你的同伴身上；沒人跟著時，巨石滑回。那一夜，你的手會一直發抖。"),
-            new("athena", GuidePage.Giant, "雅典娜的眷顧", "灰眼的女神看顧守法的人：巨石邊的月光、詩人的吟唱，都是她的眷顧。偷襲就會失去；之後一次正面出手，她會回過頭來。"),
+            new("ambush", GuidePage.Giant, "偷襲", "打中正在禱告、吃人、守著巨石，或根本沒聽見你的他，宙斯就降下雷鳴：雷光照亮整個洞一瞬，雷殛落在一名跟著你的同伴身上；沒人跟著時，巨石滑回。那一夜，你的手會一直發抖。"),
+            new("thunderdeaf", GuidePage.Giant, "雷鳴之後", "雷聲震聾了你們兩人。你耳鳴三秒；他聾得更久，先愣住，再朝最後聽見你的地方慢慢摸過去。趁他聽不見時走開，但你也聽不見他的腳步。"),
+            new("athena", GuidePage.Giant, "雅典娜的眷顧", "灰眼的女神看顧守法的人：巨石邊的月光、詩人的吟唱，都是她的眷顧。每次正面出手，她的眷顧多一分（最多三分）；偷襲就全部失去，她會轉身，直到你再一次正面出手。"),
+            new("boons", GuidePage.Giant, "求雅典娜相助", "Q 求雅典娜相助：一分換縫光，月光照亮巨石縫二十秒；一分換神諭，詩人告訴你此刻最該做的事；兩分換整洞回聲，像雷光一樣照亮整個洞一瞬，他不會當成偷襲。"),
+            new("learn", GuidePage.Giant, "巨人記得", "同一種東西在同一個地方騙他太多次，他就只走一半便停下來聽，再多幾次乾脆不理。換一樣東西、換一個地方。過一夜，他會忘掉一半。"),
+            new("wine", GuidePage.Giant, "馬戎的酒", "他床邊的酒囊，是奧德修斯帶來的烈酒，只夠倒兩次。倒在地上，酒香會把十步內的他引過去喝；醉了的他腳步沉重、東倒西歪，摸不準，也舉不起岩石。"),
             new("prayer", GuidePage.Giant, "禱告", "波呂斐摩斯偶爾停下，向父親波塞頓禱告。禱告時他什麼都聽不見，正是猛推巨石的時候；但整個洞會跟著震動。"),
 
             new("whimper", GuidePage.Crew, "嗚咽", "同伴躲在洞裡各處，偶爾嗚咽。找到他，E 帶他走。"),
@@ -71,6 +79,7 @@ namespace Odyssey.Core
             new("stuck", GuidePage.Sheep, "卡住的羊", "羊卡在縫裡時誰也出不去；把巨石再推開一點，牠就能掙脫。"),
 
             new("dawn", GuidePage.Escape, "天亮", "天亮時巨人會把巨石推回原處，還在洞裡的人就出不去了。"),
+            new("predawn", GuidePage.Escape, "黎明前", "天亮前最後一刻，天光從縫裡滲進來，不用聲音也看得見；但羊群醒了，叫聲蓋過一切，你聽不清他從哪裡來。他也一樣被羊叫淹沒，而他看不見。"),
             new("rescue", GuidePage.Escape, "帶出同伴", "鑽出去時，跟在身後的同伴一起逃出；蹲著的會留在洞裡。"),
             new("shore", GuidePage.Escape, "岸邊", "逃出洞外後，可以報復，也可以默默離開。報復會讓巨人追出來，帶出的同伴可能死在路上。"),
         };
@@ -154,6 +163,12 @@ namespace Odyssey.Core
             HintKind.Ambush => "ambush",
             HintKind.FavorRegained => "athena",
             HintKind.Horse => "ambush",
+            HintKind.LureDoubted => "learn",
+            HintKind.Drunk => "wine",
+            HintKind.CarvingFollowed => "carving",
+            HintKind.FavorGained => "athena",
+            HintKind.FavorSpendable => "boons",
+            HintKind.DawnStir => "predawn",
             _ => null,
         };
     }

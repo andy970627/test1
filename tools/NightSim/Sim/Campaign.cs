@@ -23,12 +23,15 @@ namespace Odyssey.Sim
             }
             var stoneSpots = CaveMap.PickSpots(new Random(seed * 31 + 7), 6, 2f, 3f);
             var roster = new CrewRoster();
+            var lures = new LureMemory();
             IBot bot = makeBot();
             while (!roster.Wiped && nights.Count < maxNights)
             {
                 // 每夜躲藏點換一個順序（同 ShuffledCrewSpots）。
                 var spots = crewSpots.OrderBy(_ => layoutRng.Next()).ToList();
-                var night = new Night(config, seed * 1000 + roster.Night, new DecoyMemory(), spots, roster.Remaining, stoneSpots);
+                if (nights.Count > 0)
+                    lures.NewNight();
+                var night = new Night(config, seed * 1000 + roster.Night, new DecoyMemory(), spots, roster.Remaining, stoneSpots, lures);
                 NightResult r = night.Run(bot);
                 nights.Add(r);
                 for (int i = 0; i < r.CrewLost; i++)

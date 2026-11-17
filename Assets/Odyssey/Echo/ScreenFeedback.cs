@@ -29,6 +29,10 @@ public class ScreenFeedback : MonoBehaviour
     float arcLeft;
     Vector3 arcFrom;
     float tinnitusLeft;
+    float tinnitusSeconds = TinnitusSeconds, tinnitusFloor = TinnitusVolume;
+
+    /// <summary>耳鳴時連回聲的光也一起壓暗（雷鳴，規格第 34 節 A）；岩石落地的耳鳴不壓。</summary>
+    EchoField dimEcho;
     float lastBump = -10f;
     float lawAt = -1f;
     Vector3 lawPoint;
@@ -89,7 +93,18 @@ public class ScreenFeedback : MonoBehaviour
     public void RockNearMiss()
     {
         feel.Kick(0.08f, 0.4f);
-        tinnitusLeft = TinnitusSeconds;
+        Ring(TinnitusSeconds, TinnitusVolume, null);
+    }
+
+    /// <summary>宙斯的雷鳴（規格第 34 節 A）：耳鳴 3 秒，所有聲音與回聲的光壓到 10%，3 秒內恢復。</summary>
+    public void ThunderDeafness(EchoField echo) => Ring(3f, 0.1f, echo);
+
+    void Ring(float seconds, float floor, EchoField echo)
+    {
+        tinnitusSeconds = seconds;
+        tinnitusFloor = floor;
+        tinnitusLeft = seconds;
+        dimEcho = echo;
         ring.Play();
     }
 
@@ -107,6 +122,9 @@ public class ScreenFeedback : MonoBehaviour
     {
         if (tinnitusLeft > 0f)
             AudioListener.volume = 1f;
+        if (dimEcho != null)
+            dimEcho.Gain = 1f;
+        dimEcho = null;
         pulseLeft = arcLeft = tinnitusLeft = 0f;
         heartIntensity = 0f;
         if (heart != null)
@@ -123,13 +141,21 @@ public class ScreenFeedback : MonoBehaviour
         pulseLeft = Mathf.Max(0f, pulseLeft - dt);
         arcLeft = Mathf.Max(0f, arcLeft - dt);
 
-        // 耳鳴：其他聲音壓到 40%，1.5 秒內慢慢恢復。
+        // 耳鳴：其他聲音（雷鳴時連回聲的光）壓低，幾秒內慢慢恢復。
         if (tinnitusLeft > 0f)
         {
             tinnitusLeft = Mathf.Max(0f, tinnitusLeft - dt);
-            AudioListener.volume = Mathf.Lerp(1f, TinnitusVolume, tinnitusLeft / TinnitusSeconds);
+            float level = Mathf.Lerp(1f, tinnitusFloor, tinnitusLeft / tinnitusSeconds);
+            AudioListener.volume = level;
+            if (dimEcho != null)
+                dimEcho.Gain = level;
             if (tinnitusLeft <= 0f)
+            {
                 AudioListener.volume = 1f;
+                if (dimEcho != null)
+                    dimEcho.Gain = 1f;
+                dimEcho = null;
+            }
         }
 
         // 心跳：巨人在 8 m 內才有，越近越快越大聲。

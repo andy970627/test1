@@ -37,6 +37,7 @@ static class Program
             ("rescue", () => new CarefulBot(decoy: true, rescue: true)),
             ("slingdecoy", () => new CarefulBot(decoy: false, rescue: false, slingDecoy: true)),
             ("slinggiant", () => new CarefulBot(decoy: false, rescue: false, slingGiant: true)),
+            ("onetrick", () => new CarefulBot(decoy: false, rescue: false, oneTrick: true)),
         };
         var levels = new[] { DifficultyLevel.Familiar, DifficultyLevel.Normal, DifficultyLevel.Hard };
 

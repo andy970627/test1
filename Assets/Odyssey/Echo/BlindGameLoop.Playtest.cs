@@ -18,6 +18,9 @@ public enum PlaytestScene
     Shore,      // 直接鑽出去到岸邊
     Death,      // 被巨人摸到（死亡畫面）
     Verse,      // 宙斯法則的吟遊詩句提示
+    Wine,       // 馬戎的酒：在巨人前倒一灘酒，他走過去喝、醉倒（規格第 34 節 C）
+    Carvings,   // 刻痕：沿岩壁刻三道，巨人摸到第一道後循線走（規格第 34 節 D）
+    Favor,      // 雅典娜的眷顧：攢滿三分，換一次整洞回聲（規格第 34 節 F）
 }
 
 public partial class BlindGameLoop
@@ -74,6 +77,17 @@ public partial class BlindGameLoop
             case PlaytestScene.Verse:
                 Hint(HintKind.FirstStone);
                 break;
+            case PlaytestScene.Wine:
+                WineTest();
+                break;
+            case PlaytestScene.Carvings:
+                CarvingsTest();
+                break;
+            case PlaytestScene.Favor:
+                Favor.OnFair();
+                Favor.OnFair();
+                UseBoon(FavorBoon.CaveFlash);
+                break;
         }
         Debug.Log($"[PLAYTEST] ran {scene}");
         return true;
@@ -87,7 +101,8 @@ public partial class BlindGameLoop
         string hint = Hints.Current?.ToString() ?? "-";
         return $"phase={State.Phase} t={Dawn.Elapsed:0.0} player=({p.x:0.0},{p.z:0.0}) giant=({g.X:0.0},{g.Y:0.0}) " +
                $"state={Cyclops?.Brain.State} open={Slide.Opening:0.00} favor={Favor.Has} tremble={Favor.Tremble} " +
-               $"terror={Terror.Layer} hint={hint} essential={Essential.Step} onShore={onShore}";
+               $"terror={Terror.Layer} hint={hint} essential={Essential.Step} onShore={onShore} " +
+               $"points={Favor.Points} deaf={Cyclops?.Brain.DeafLeft:0.0} drunk={Cyclops?.Brain.Drunk} carvings={Carved.Count} wine={Wine.PoursLeft}";
     }
 
     bool EnsureNight()
@@ -136,5 +151,38 @@ public partial class BlindGameLoop
         body.Teleport(at + Vector3.up * 0.05f, Quaternion.LookRotation(-dir).eulerAngles.y);
         SoundBus.Emit(SoundKind.Clap, body.CameraTransform.position);
         OnCyclopsHit(Cyclops.HeadPosition);
+    }
+
+    /// <summary>站在巨人 7 m 外面向他，在兩人中間倒一灘酒：他聞到、走過去喝、醉倒（畫面測試在 mark drunk 時截圖）。</summary>
+    void WineTest()
+    {
+        var g = Cyclops.Brain.Position;
+        var giant = new Vector3(g.X, 0f, g.Y);
+        Vector3 dir = body.transform.position - giant;
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.01f)
+            dir = Vector3.back;
+        Vector3 at = giant + dir.normalized * 7f;
+        at.y = CaveBuilder.GroundHeight(at);
+        body.Teleport(at + Vector3.up * 0.05f, Quaternion.LookRotation(-dir).eulerAngles.y);
+        Vector3 puddle = giant + dir.normalized * 3.5f;
+        puddle.y = CaveBuilder.GroundHeight(puddle);
+        PourWine(puddle);
+    }
+
+    /// <summary>沿著玩家附近的岩壁刻三道，再在第一道旁拍一下把巨人引過去：他摸到刻痕就循線走（mark carving）。</summary>
+    void CarvingsTest()
+    {
+        ParkGiantFar();
+        var giant = Cyclops.Brain.Position;
+        for (int i = 0; i < 3; i++)
+        {
+            double a = System.Math.Atan2(giant.Y, giant.X) + (i - 1) * 0.25;
+            var p = new System.Numerics.Vector2((float)System.Math.Cos(a) * 12.5f, (float)System.Math.Sin(a) * 8.3f);
+            Carve(p);
+        }
+        Vector3 first = new Vector3(Carved.Marks[0].X, 0f, Carved.Marks[0].Y);
+        first.y = CaveBuilder.GroundHeight(first);
+        SoundBus.Emit(SoundKind.Clap, first + Vector3.up);
     }
 }

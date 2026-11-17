@@ -211,6 +211,7 @@ public partial class BlindGameLoop : MonoBehaviour
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
         InitZeus();
         gameObject.AddComponent<CaveAtmosphere>().Init(Layout, Cyclops, body, () => Slide.Opening / BoulderSlide.FullOpen, seed);
+        InitExtensions();
 
         // 洞外的海風從巨石後面傳來：整個洞都聽得到，越接近洞口越大聲、左右聲道分得清；
         // 縫旁再加一道從縫鑽進來的細呼嘯聲。
@@ -291,6 +292,7 @@ public partial class BlindGameLoop : MonoBehaviour
         State.Restart();
         Nights.Clear();
         Favor.Reset();
+        ExtensionsNewGame();
         BeginIntro();
     }
 
@@ -360,6 +362,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Nights.Clear();
         Favor.Reset();
         ResetNight();
+        ExtensionsNewGame();
     }
 
     /// <summary>情境提示與洞中紀事同一個觸發點：提示排隊，紀事解鎖（第一次解鎖時通知）。</summary>
@@ -406,6 +409,7 @@ public partial class BlindGameLoop : MonoBehaviour
     void ResetNight()
     {
         ZeusNewNight();
+        ExtensionsNewNight();
         Slide.Reset();
         milestones.Reset();
         settleFlash = 0f;
@@ -483,6 +487,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Dawn.Tick(Time.deltaTime);
         UpdatePrayer();
         UpdateZeus();
+        UpdateExtensions();
         Layout.Boulder.SetDawn(Dawn.Fraction);
         if (Dawn.IsDawn)
             Fail(FailReason.Dawn);

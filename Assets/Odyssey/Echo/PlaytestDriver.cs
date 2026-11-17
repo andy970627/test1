@@ -21,6 +21,8 @@ public class PlaytestDriver : MonoBehaviour
         (Key.F8, PlaytestScene.FullOpen, "巨石全開"),
         (Key.F9, PlaytestScene.Shore, "岸邊"),
         (Key.F10, PlaytestScene.Death, "被摸到"),
+        (Key.F11, PlaytestScene.Wine, "馬戎的酒"),
+        (Key.F12, PlaytestScene.Carvings, "刻痕"),
     };
 
     /// <summary>自動畫面測試時，過場在關鍵瞬間停住這麼久（真實秒數），讓截圖拍得到。</summary>

@@ -110,6 +110,9 @@ public class EchoPlayer : MonoBehaviour
     /// <summary>撿回一支箭；只給玩家聽的小回饋用。</summary>
     public event Action PickedUpArrow;
 
+    /// <summary>E 的額外互動（例如拿起酒囊，規格第 34 節 C）：在撿木樁之後、帶同伴之前問一次；回傳 true 表示這一下已被用掉。</summary>
+    public Func<bool> ExtraInteract;
+
     /// <summary>玩家用了某個操作（給遊戲內提示計次）。</summary>
     public event Action<PromptKind> Used;
 
@@ -250,6 +253,8 @@ public class EchoPlayer : MonoBehaviour
             Used?.Invoke(PromptKind.TakeStake);
             return true;
         }
+        if (ExtraInteract != null && ExtraInteract())
+            return true;
         var hiding = crew.NearestHiding(transform.position, CrewReach);
         if (hiding != null)
         {
@@ -325,6 +330,13 @@ public class EchoPlayer : MonoBehaviour
             Stones++;
         else
             LooseStone.Spawn(transform.position + Vector3.up * 0.3f, Vector3.zero, controller);
+    }
+
+    /// <summary>把手上的木樁放在面前地上（改拿酒囊時，規格第 34 節 C）。</summary>
+    public void DropStakeHere()
+    {
+        if (CarryingStake)
+            stake.PlaceAt(transform.position + body.CameraTransform.forward * 0.5f);
     }
 
     void DropOrPlantStake()

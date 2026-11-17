@@ -26,13 +26,14 @@ namespace Odyssey.Core
 
         public static readonly (string, string) FirstStone = ("宙斯的法則，不從暗處出手", "先讓他聽見你，再舉起你的手");
         public static readonly (string, string) FairHit = ("他聽見了你，你才出手", "宙斯不會怪罪");
-        public static readonly (string, string) Ambush = ("你從暗處出手", "雷霆記下了你的名字");
+        public static readonly (string, string) Ambush = ("你從暗處出手", "雷聲奪走了你們兩人的耳朵");
         public static readonly (string, string) CrewEaten = ("他吃了他的客人", "宙斯的法則，他早已踐踏");
         public static readonly (string, string) Prayer = ("他向父親波塞頓低語", "這時，他什麼都聽不見");
         public static readonly (string, string) ShoreShoot = ("宙斯看見了", null);
         public static readonly (string, string) Regained = ("灰眼的女神回過頭來", "月光又照在巨石邊上");
         public static readonly (string, string) EndingKept = ("你守住了宙斯的法則，灰眼的女神仍看著你", null);
         public static readonly (string, string) EndingTurned = ("雅典娜轉過了身", null);
+        public static readonly (string, string) DawnStir = ("天光從縫裡滲進來", "羊群醒了，黑暗退去，聲音卻淹沒了一切");
         public static readonly (string, string) Horse = ("在特洛伊，你也從暗處出手", "木馬燒成了灰，你的手還在發抖");
     }
 }

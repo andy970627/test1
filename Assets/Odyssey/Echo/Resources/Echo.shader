@@ -47,6 +47,7 @@ Shader "Odyssey/Echo"
             float _EchoSpread;
             float _EchoFade;
             float _EchoHear[16];    // 巨人聽得到的半徑；0 = 不畫邊
+            float _EchoAmbient;     // 天亮前不靠回聲的縫光（0～0.5，規格第 34 節 B）
 
             float Hash3(float3 p)
             {
@@ -105,6 +106,8 @@ Shader "Odyssey/Echo"
                 float grain = ValueNoise(i.positionWS * 8.0);
                 float microTexture = 0.9 + 0.2 * grain;
 
+                // 天亮前的縫光：冷灰藍色的環境光，不靠回聲也看得見輪廓。
+                lit += float3(0.55, 0.6, 0.72) * _EchoAmbient;
                 half3 surfaceColor = _BaseColor.rgb * microTexture;
                 return half4(surfaceColor * lit * 2.0 + ring * 0.65 + fresnel * lit * 1.2, 1);
             }

@@ -109,11 +109,14 @@ namespace Odyssey.Sim
         CyclopsState lastState;
         readonly NightResult result = new();
 
-        public Night(SimConfig config, int seed, DecoyMemory memory, IReadOnlyList<Vector2> crewSpots, int crewCount, IReadOnlyList<Vector2> stoneSpots)
+        public Night(SimConfig config, int seed, DecoyMemory memory, IReadOnlyList<Vector2> crewSpots, int crewCount, IReadOnlyList<Vector2> stoneSpots, LureMemory lures = null)
         {
             Config = config;
             Rng = new Random(seed);
             Brain = new CyclopsBrain(CaveMap.CyclopsSeat, memory, Rng.NextDouble) { Level = config.Difficulty };
+            // 巨人會學（規格第 34 節 E）：由整場遊戲保管，跨夜減半。
+            if (lures != null)
+                Brain.Lures = lures;
             Slide = new BoulderSlide(Rng.NextDouble);
             Dawn = new DawnClock(config.NightSeconds);
             Prayer.NewNight(Rng.NextDouble);
@@ -352,7 +355,8 @@ namespace Odyssey.Sim
                         last = f;
                     }
                     ThunderStrike strike = Thunder.Strike(followers);
-                    Brain.Charge(Player);
+                    // 雷鳴耳鳴（規格第 34 節 A）：定住 2.5 秒、再聾 2～4 秒，慢慢摸向最後聽見你的地方。
+                    Brain.Thunderstruck(Player);
                     if (strike.Penalty == ThunderPenalty.KillFollower && last != null)
                     {
                         LoseCrew(last);

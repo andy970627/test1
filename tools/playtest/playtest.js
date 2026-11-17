@@ -36,6 +36,10 @@ const SCENES = [
   { name: 'shore', shots: [2, 5] },
   { name: 'death', shots: [1, 2.5] },
   { name: 'dawn', shots: [0.5, 1.5, 3] },
+  // 規格第 34 節：馬戎的酒、刻痕、雅典娜的眷顧（天亮前的縫光與羊叫由 dawnsoon 拍到）。
+  { name: 'wine', shots: [1], marks: ['drunk'] },
+  { name: 'carvings', shots: [1], marks: ['carving'] },
+  { name: 'favor', shots: [], marks: ['flash'] },
 ];
 const only = args.scenes ? new Set(args.scenes.split(',')) : null;
 

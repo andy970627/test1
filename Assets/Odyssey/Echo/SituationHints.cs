@@ -199,6 +199,7 @@ public class SituationHints : MonoBehaviour
             HintKind.FavorRegained => VerseBook.Regained,
             HintKind.CrewEaten => VerseBook.CrewEaten,
             HintKind.Prayer => VerseBook.Prayer,
+            HintKind.DawnStir => VerseBook.DawnStir,
             _ => ((string, string)?)null,
         };
     }

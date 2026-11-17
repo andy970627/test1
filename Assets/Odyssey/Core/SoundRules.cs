@@ -38,6 +38,9 @@ namespace Odyssey.Core
             SoundKind.Twang => 0.1f,
             SoundKind.SnapShot => 0.4f,
             SoundKind.Stretch => 0.1f,
+            // 規格第 34 節：在岩壁刻記號、倒酒。
+            SoundKind.Carve => 0.25f,
+            SoundKind.Pour => 0.3f,
             _ => 0f,
         };
 

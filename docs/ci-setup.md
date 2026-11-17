@@ -45,7 +45,7 @@
 
 ## 4. 實測捷徑與自動畫面測試
 
-- **手動（Unity 編輯器）**：選單 **Odyssey → Create Playtest Scene and Play** 一鍵建場景並開始；夜晚中按 F2～F10 直接跳到要測的情況（巨石前、偷襲、正面出手、禱告、天亮前 30 秒、天亮、巨石全開、岸邊、被摸到），F1 面板下方列出按鍵。
+- **手動（Unity 編輯器）**：選單 **Odyssey → Create Playtest Scene and Play** 一鍵建場景並開始；夜晚中按 F2～F12 直接跳到要測的情況（巨石前、偷襲、正面出手、禱告、天亮前 30 秒、天亮、巨石全開、岸邊、被摸到、馬戎的酒、刻痕）；網址另有 `?playtest=favor`（雅典娜的眷顧），F1 面板下方列出按鍵。
 - **自動（CI）**：網頁版建好後，「自動畫面測試」用 Playwright 逐一打開 `index.html?playtest=名稱`，截圖、錄影、抓瀏覽器例外；結果在執行頁的摘要，截圖與影片在成品 **Playtest-Screens**。
   - 測試機用軟體繪圖，一秒只有一兩格，照真實秒數截圖會錯過過場。過場在關鍵瞬間呼叫 `PlaytestDriver.Mark("名稱")`：自動測試時寫一行 `[PLAYTEST] mark 名稱` 並停住 20 秒（軟體繪圖下一張截圖要好幾秒），腳本照這行截圖（例如 `ambush-mark-horse.png`）。平常玩不受影響。
 - **本機跑自動測試**：下載 `BlindCave-WebGL` 解壓到 `build/`，在 `tools/playtest` 執行 `npm install --no-save playwright@1.49.1 && npx playwright install chromium`，再回專案根目錄跑 `node tools/playtest/playtest.js --build build --out playtest-out`。

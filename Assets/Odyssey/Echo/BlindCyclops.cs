@@ -89,7 +89,7 @@ public class BlindCyclops : MonoBehaviour
         if (rock != null)
             Destroy(rock.gameObject);
         rock = null;
-        transform.rotation = Quaternion.identity;
+        facing = Quaternion.identity;
         SyncTransform();
         SetMoonlit(false);
     }
@@ -192,8 +192,13 @@ public class BlindCyclops : MonoBehaviour
         transform.position = p;
         NVector2 dir = Brain.Target - Brain.Position;
         if (Brain.IsMoving && dir.LengthSquared() > 1e-4f)
-            transform.rotation = Quaternion.LookRotation(new Vector3(dir.X, 0f, dir.Y));
+            facing = Quaternion.LookRotation(new Vector3(dir.X, 0f, dir.Y));
+        // 醉了東倒西歪（規格第 34 節 C）：左右慢慢晃 ±8°。
+        float sway = Brain.Drunk ? Mathf.Sin(Time.time * 1.7f) * 8f : 0f;
+        transform.rotation = facing * Quaternion.Euler(0f, 0f, sway);
     }
+
+    Quaternion facing = Quaternion.identity;
 
     void AnimateArms()
     {
@@ -223,6 +228,7 @@ public class BlindCyclops : MonoBehaviour
                 rightArm.localRotation = Quaternion.Euler(45f + tremble, 20f, 0f);
                 break;
             }
+            case CyclopsState.Drink:
             case CyclopsState.Eat:
             {
                 // 嚼食：手捧在巨口前
@@ -262,7 +268,8 @@ public class BlindCyclops : MonoBehaviour
         if (soundTimer < interval)
             return;
         soundTimer = 0f;
-        SoundBus.Emit(SoundKind.Cyclops, transform.position + Vector3.up * SoundHeight);
+        // 醉了腳步更重（規格第 34 節 C）：聲量 ×2，你更容易聽到他。
+        SoundBus.Emit(SoundKind.Cyclops, transform.position + Vector3.up * SoundHeight, Brain.Drunk ? WineSkin.DrunkStepScale : 1f);
         Sounded?.Invoke(Brain.State);
     }
 

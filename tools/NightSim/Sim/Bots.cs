@@ -46,24 +46,29 @@ namespace Odyssey.Sim
     /// </summary>
     public sealed class CarefulBot : IBot
     {
-        readonly bool decoy, rescue, slingDecoy, slingGiant;
+        readonly bool decoy, rescue, slingDecoy, slingGiant, oneTrick;
+        /// <summary>「一招到底」的固定落點：洞西側（規格第 34 節 E 用來確認巨人會學）。</summary>
+        static readonly Vector2 OneTrickSpot = new(-10f, 2f);
         readonly int rescueGoal;
         float lastClap = -999f, lastArrow = -999f;
         float lastWedgeOpening;
         int wedgingFrom = -1;
 
-        public CarefulBot(bool decoy, bool rescue, int rescueGoal = 4, bool slingDecoy = false, bool slingGiant = false)
+        public CarefulBot(bool decoy, bool rescue, int rescueGoal = 4, bool slingDecoy = false, bool slingGiant = false, bool oneTrick = false)
         {
             this.decoy = decoy;
             this.rescue = rescue;
-            this.slingDecoy = slingDecoy;
+            this.slingDecoy = slingDecoy || oneTrick;
+            this.oneTrick = oneTrick;
             this.slingGiant = slingGiant;
             this.rescueGoal = rescueGoal;
         }
 
-        public string Name => slingGiant ? "正面出手" : slingDecoy ? "彈弓引開" : rescue ? "帶人" : decoy ? "引開" : "謹慎";
+        public string Name => oneTrick ? "一招到底" : slingGiant ? "正面出手" : slingDecoy ? "彈弓引開" : rescue ? "帶人" : decoy ? "引開" : "謹慎";
 
-        public string Blurb => slingGiant
+        public string Blurb => oneTrick
+            ? "「彈弓引開」但石子永遠射向同一個地方（洞西側）：確認巨人會學"
+            : slingGiant
             ? "「謹慎」再加上：巨人朝你逼近到 6 m 內時，用彈弓直接打他（宙斯法則判定）"
             : slingDecoy
             ? "「謹慎」再加上：巨人靠近巨石時，用彈弓把石子射到他另一邊引開（不用箭）"
@@ -122,7 +127,7 @@ namespace Odyssey.Sim
                 Vector2 away = k.CyclopsPos - n.Player;
                 if (away.LengthSquared() < 1e-4f)
                     away = new Vector2(1f, 0f);
-                sling = CaveMap.Clamp(k.CyclopsPos + Vector2.Normalize(away) * 6f + new Vector2(0f, -3f));
+                sling = oneTrick ? OneTrickSpot : CaveMap.Clamp(k.CyclopsPos + Vector2.Normalize(away) * 6f + new Vector2(0f, -3f));
                 lastArrow = now;
             }
             // 正面出手：他朝你逼近時直接打他。

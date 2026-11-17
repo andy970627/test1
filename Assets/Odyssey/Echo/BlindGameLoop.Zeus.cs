@@ -79,7 +79,8 @@ public partial class BlindGameLoop
         Chase.Update(Time.deltaTime, brain.State, brain.TargetIsPlayerSound, brain.SecondsSinceHeardPlayer, distance, brain.Charging);
         bool listening = brain.State == CyclopsState.Listen;
         bool praying = brain.State == CyclopsState.Pray;
-        Terror = TerrorRadius.Evaluate(distance, Chase.Chasing, listening, praying, Difficulty);
+        // 天亮前羊叫淹沒一切（規格第 34 節 B）：你聽他的距離縮成一半，恐懼半徑跟著縮。
+        Terror = TerrorRadius.Evaluate(FeltDistance(distance), Chase.Chasing, listening, praying, Difficulty);
         player.AimTremble = Favor.Tremble ? TrembleDegrees : 0f;
 
         float dt = Time.deltaTime;
@@ -135,6 +136,8 @@ public partial class BlindGameLoop
             Hint(HintKind.FairHit);
             if (Favor.OnFair())
                 OnFavorRegained();
+            else
+                OnFavorPoint();
             return;
         }
         Ambush(from);
@@ -144,10 +147,12 @@ public partial class BlindGameLoop
     void Ambush(System.Numerics.Vector2 playerAt)
     {
         ThunderStrike strike = Thunder.Strike(Crew.Followers.Count);
-        // 雷鳴震住所有人：過場（雅典娜轉身、燃燒的木馬）播完之前巨人不動也聽不到，播完才衝過來。
-        // 否則他就在附近時，過場還沒播完玩家就被抓了（自動畫面測試抓到的問題）。
-        Cyclops.Brain.Stagger(playerAt);
-        StartCoroutine(ChargeAfterThunder(playerAt));
+        // 雷鳴震聾你們兩人（規格第 34 節 A，取代第 31 節的衝鋒）：
+        // 巨人在過場（雅典娜轉身、燃燒的木馬）播完之前不動，之後再聾 2～4 秒，慢慢摸向最後聽見你的地方；
+        // 你耳鳴 3 秒，聲音與回聲的光都壓到 10%。
+        Cyclops.Brain.Thunderstruck(playerAt);
+        feedback.ThunderDeafness(echo);
+        Unlock("thunderdeaf");
         if (strike.Penalty == ThunderPenalty.KillFollower && Crew.Followers.Count > 0)
         {
             CrewMember struck = Crew.Followers[Crew.Followers.Count - 1];
@@ -161,13 +166,6 @@ public partial class BlindGameLoop
         if (Favor.OnAmbush())
             OnFavorLost();
         OnAmbushPresentation(strike);
-    }
-
-    System.Collections.IEnumerator ChargeAfterThunder(System.Numerics.Vector2 playerAt)
-    {
-        yield return new WaitForSeconds(ZeusThunderScene.Duration);
-        if (State.Phase == LoopPhase.Night && Cyclops.Active)
-            Cyclops.Brain.Charge(playerAt);
     }
 
     void OnFavorLost() => OnFavorChanged(false);

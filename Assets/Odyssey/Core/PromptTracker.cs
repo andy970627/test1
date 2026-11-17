@@ -1,7 +1,7 @@
 namespace Odyssey.Core
 {
     /// <summary>遊戲內提示的種類（規格第 15 節 C）。</summary>
-    public enum PromptKind { Push, Wedge, PlantStake, Escape, TakeStake, DropStake, Recruit, Crouch, Shoot, Move, Clap }
+    public enum PromptKind { Push, Wedge, PlantStake, Escape, TakeStake, DropStake, Recruit, Crouch, Shoot, Move, Clap, TakeWine, Pour, Carve, Favor }
 
     /// <summary>
     /// 決定提示還要不要出現：同一種提示「看到後 2 秒內真的做到」3 次就不再出現（整場遊戲）；「鑽出去」永遠出現；

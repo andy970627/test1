@@ -166,6 +166,9 @@ public class SoundPlayer : MonoBehaviour
             case SoundKind.Drag: Play(scrape, at, v, Random.Range(0.9f, 1.1f), 1f, 8f); break;
             case SoundKind.Twang: Play(twang, at, 0.5f, Random.Range(0.97f, 1.03f), 1f, 6f); break;
             case SoundKind.Arrow: Play(arrowHit, at, v, Random.Range(0.9f, 1.1f), 2f, 20f); break;
+            // 規格第 34 節：石子在岩壁上刮出刻痕（高一點的刮擦）、酒倒在地上（悶悶的水聲）。
+            case SoundKind.Carve: Play(scrape, at, v, Random.Range(1.5f, 1.7f), 1f, 8f); break;
+            case SoundKind.Pour: Play(soft, at, v, 0.6f, 1f, 8f); break;
         }
     }
 

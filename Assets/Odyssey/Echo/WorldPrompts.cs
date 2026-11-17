@@ -117,8 +117,19 @@ public class WorldPrompts : MonoBehaviour
             DrawAt(followers[followers.Count - 1].transform.position + Vector3.up * CrewLift);
         }
 
+        // 延伸玩法（規格第 34 節）：拿酒囊、倒酒、刻記號、求雅典娜相助。
+        loop.ExtensionPrompts(extra);
+        foreach (var (kind, text, at) in extra)
+        {
+            lines.Clear();
+            Add(kind, text);
+            DrawAt(at);
+        }
+
         DrawEssential();
     }
+
+    readonly List<(PromptKind Kind, string Text, Vector3 At)> extra = new();
 
     /// <summary>必要引導（規格第 26 節 A）：畫面下方中央一次只有一行，做到才換下一步。</summary>
     void DrawEssential()

@@ -220,7 +220,9 @@ public class Boulder : MonoBehaviour
         if (gapMaterial == null)
             return;
         float open = Mathf.Clamp01(slide / Odyssey.Core.BoulderSlide.FullOpen);
-        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open) * favor);
+        // 雅典娜的縫光（規格第 34 節 F）：月光亮到 4 倍，最後 3 秒淡回。
+        float beam = 1f + 3f * Mathf.Clamp01(moonbeamLeft / 3f);
+        OdysseyMaterials.SetEmission(gapMaterial, Color.Lerp(NightGlow, DawnGlow, dawn) * (1f + 2f * open) * Mathf.Max(favor, moonbeamLeft > 0f ? 1f : 0f) * beam);
     }
 
     /// <summary>fraction：0 = 入夜，1 = 天亮；縫裡的光從深藍漸變到灰白。</summary>
@@ -241,8 +243,25 @@ public class Boulder : MonoBehaviour
         SetDawn(dawn);
     }
 
+    float moonbeamLeft;
+
+    /// <summary>雅典娜的縫光：巨石縫的月光亮 seconds 秒，看得見推的位置。</summary>
+    public void Moonbeam(float seconds) => moonbeamLeft = seconds;
+
+    /// <summary>換夜：收起縫光。</summary>
+    public void StopMoonbeam()
+    {
+        moonbeamLeft = 0f;
+        UpdateGapGlow();
+    }
+
     void Update()
     {
+        if (moonbeamLeft > 0f)
+        {
+            moonbeamLeft = Mathf.Max(0f, moonbeamLeft - Time.deltaTime);
+            UpdateGapGlow();
+        }
         if (Mathf.Approximately(favor, favorTarget))
             return;
         favor = Mathf.MoveTowards(favor, favorTarget, Time.deltaTime / FavorFadeSeconds);

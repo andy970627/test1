@@ -8,7 +8,7 @@ namespace Odyssey.Core
     /// Grind＝輕推巨石；Slip＝巨石回滑；Wedge＝塞楔子；Arrow＝箭的落點；Twang＝弓弦聲；
     /// SnapShot＝彈弓射出石子時的「啪」；Stretch＝拉彈弓皮筋（規格第 31 節 A）。
     /// </summary>
-    public enum SoundKind { Step, Run, Clap, Stone, Boulder, Bleat, Cyclops, Pant, Whimper, RockImpact, Drag, Clatter, Cheese, Wicker, Grind, Slip, Wedge, Arrow, Twang, SnapShot, Stretch }
+    public enum SoundKind { Step, Run, Clap, Stone, Boulder, Bleat, Cyclops, Pant, Whimper, RockImpact, Drag, Clatter, Cheese, Wicker, Grind, Slip, Wedge, Arrow, Twang, SnapShot, Stretch, Carve, Pour }
 
     /// <summary>聲音是誰發出的，決定聲波的顏色。</summary>
     public enum SoundSource { Player, Cyclops, Sheep, Crew }
