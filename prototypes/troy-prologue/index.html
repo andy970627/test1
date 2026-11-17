@@ -139,6 +139,14 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
 }
 #fail h2 { color: var(--parchment); border-left: 4px solid var(--blood); padding-left: 14px; font-size: clamp(20px, 3.6vw, 28px); line-height: 1.5; }   /* 血紅當字對比不夠：血紅色條＋羊皮紙字 */
 #failHint { border-left: 2px solid var(--torch); padding: 4px 0 4px 12px; color: var(--ash); }
+/* 序與終的字卡：黑底、插圖框 16:9（給電繪同學的規格）、旁白靠左 */
+#story { background: #000; z-index: 8; cursor: pointer; }
+.storyCard { width: min(960px, 100%); display: grid; gap: 14px; }
+.storyArt { width: min(960px, 100%, calc((100vh - 280px) * 16 / 9)); aspect-ratio: 16 / 9; border: 1px dashed var(--rule); border-radius: var(--r-panel); display: grid; place-items: center; color: var(--dim); font-size: 14px; }
+#storyTitle { font-family: var(--display); font-weight: 900; font-size: clamp(28px, 4vw, 44px); line-height: 1.15; letter-spacing: .04em; margin: 0; color: var(--parchment); }
+#storyText p { margin: 0; font-size: 20px; line-height: 1.7; max-width: 36em; }
+.storyFoot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#storyPage { color: var(--dim); font-size: 14px; margin-right: auto; }
 #win { background: transparent; transition: background 3s; }
 #win.dark { background: #000; }
 #win .card { opacity: 0; transition: opacity 2.5s; }
@@ -280,6 +288,16 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
   </div>
 </div>
 
+<!-- 序與終的翻頁字卡（?story=1；?map=final 預設開） -->
+<div class="screen" id="story" hidden role="dialog" aria-label="故事字卡">
+  <div class="storyCard">
+    <div class="storyArt" aria-hidden="true"><span>插圖待放（16:9）</span></div>
+    <h2 id="storyTitle"></h2>
+    <div id="storyText"></div>
+    <div class="storyFoot"><span id="storyPage"></span><button class="primary" id="storyNext" type="button">下一張</button><button id="storySkip" type="button">略過</button></div>
+  </div>
+</div>
+
 <!-- 暫停 -->
 <div class="screen" id="pause" hidden>
   <div class="card">
@@ -376,6 +394,9 @@ document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(loc
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
 <script src="level-troy.js"></script>
+<script>   // ?map=final：期末七段版地圖（規則角色的 level-troy-final.js，window.TroyLevelFinal）；沒帶參數完全不載
+if (new URLSearchParams(location.search).get('map') === 'final') document.write('<script src="level-troy-final.js"><\/script>');
+</script>
 <script src="risset.js"></script>
 <script>
 (() => {
@@ -733,6 +754,14 @@ const MOVES_OFF_Q = URLQ.get('moves') === '0';
 // ?level=local：玩關卡編輯器（../level-editor.html）存在這台電腦的關卡（localStorage 'troy-level-local'）。
 //   資料腹中高度寫字串 "BELLY_Y"，經規則的 resolveLevel 換成數字；規則還沒有 resolveLevel 時這裡自己換。沒帶參數時完全不碰。
 const LEVEL_LOCAL_Q = URLQ.get('level') === 'local';
+// ?map=final：期末七段版地圖，經 Rules.resolveLevel 交給 createLevel；檔案還沒到就用原本的地圖並顯示一行訊息
+const MAP_FINAL_Q = URLQ.get('map') === 'final';
+const LEVEL_FINAL = (() => {
+  if (!MAP_FINAL_Q || !window.TroyLevelFinal) return null;
+  try { return typeof Rules.resolveLevel === 'function' ? Rules.resolveLevel(window.TroyLevelFinal) : null; } catch (e) { return null; }
+})();
+// 序與終的翻頁字卡：?story=1 開；?map=final 時預設開（?story=0 關）
+const STORY_ON = URLQ.get('story') === '1' || (MAP_FINAL_Q && URLQ.get('story') !== '0');
 const LEVEL_LOCAL = (() => {
   if (!LEVEL_LOCAL_Q) return null;
   let d = null; try { d = JSON.parse(localStorage.getItem('troy-level-local') || 'null'); } catch (e) { d = null; }
@@ -1767,7 +1796,7 @@ function newGame() {
   // 規則：opts.T 是常數覆寫；從開場字卡（區 0）進入區 1，讓第一個提示照規則出現
   const aidMode = $('oAid').value;
   const qz = +new URLSearchParams(location.search).get('startZone');     // 實驗：?startZone=1..4 直接從某一區開始
-  const nZ = ((LEVEL_LOCAL || window.TroyLevelData || {}).zones || [0, 0, 0, 0, 0]).length;   // ?startZone 上限＝區數減 1
+  const nZ = ((LEVEL_LOCAL || LEVEL_FINAL || window.TroyLevelData || {}).zones || [0, 0, 0, 0, 0]).length;   // ?startZone 上限＝區數減 1
   const opts = { t0, startZone: qz >= 1 && qz <= nZ - 1 ? qz | 0 : 0, T: { CYCLE: curT } };
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
@@ -1779,6 +1808,7 @@ function newGame() {
   if (LAB) opts.lab = LAB === 'flash' ? 'run' : LAB;          // ?lab=flash（2026-11-14 發想第 4 節）只動畫面：借規則 run 試驗場的場景（第 2 區、衛兵照常、出口擋住）
   if (LAB === 'horse') { opts.T.HORSE_MODE = true; opts.startZone = 2; }   // 規則的 lab: 'horse' 也會這樣設；先寫上，規則還沒支援時一樣能看共鳴
   if (LEVEL_LOCAL) opts.level = LEVEL_LOCAL;                          // ?level=local：關卡編輯器的關卡
+  else if (LEVEL_FINAL) opts.level = LEVEL_FINAL;                     // ?map=final：期末七段版
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
@@ -1787,6 +1817,7 @@ function newGame() {
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
+  if (MAP_FINAL_Q && !LEVEL_LOCAL) showMsg(LEVEL_FINAL ? '期末七段版地圖。' : '期末七段版的地圖檔還沒到，先用原本的地圖。');
   if (LEVEL_LOCAL_Q) showMsg(LEVEL_LOCAL ? '這是關卡編輯器的關卡（存在這台電腦）。按瀏覽器的上一頁回編輯器。' : '找不到關卡編輯器存的關卡，先用原本的關卡。');
   HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.hushKick = 0; LABS.steps.length = 0; bellyLpI = 0; resetMovesFx(); HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
   resetActionFx(); cinReset(); S.lastPrint = null;
@@ -1800,7 +1831,56 @@ function startFromTop() {
   telStart();                                    // 試玩數據：一局從這裡開始（上一局沒結束就記成 restart）
   startedOnce = true;
   resume();
+  STORY.outroDone = false;
+  if (STORY_ON && !LAB && game && game.zone <= 1) storyShow('intro');   // 序：翻完才進腹中（從別區開始就不放）
 }
+// ============================================================
+// 序與終的翻頁字卡（期末企劃第 2 節「序」「終」；?story=1，?map=final 預設開）
+//   序 3 張（木馬被拖進城、全城慶祝、夜深），終 1 張（城門打開、城外的火把）。黑底、插圖框 16:9（先寫「插圖待放」）、旁白第三人稱短句。
+//   點擊、空白鍵、Enter、→ 翻頁；Esc 或「略過」跳過全部。字卡顯示時 game.story = 'intro'｜'outro'（聲音角色用它放隔著木板的悶鼓），收起後 null；
+//   序的時候遊戲照跑（聲音的時鐘要走），但不收任何輸入，玩家停在腹中。
+const STORY_CARDS = {
+  intro: [
+    { title: '木馬進城', lines: ['黃昏。特洛伊人拉著粗繩，把木馬拖進城門。', '他們以為，十年的戰爭結束了。'] },
+    { title: '全城慶祝', lines: ['城裡點滿火把，酒一桶接一桶打開。', '歌聲和鼓聲，從神殿一路傳到城牆。'] },
+    { title: '夜深', lines: ['火把一支支熄了。醉倒的人睡在街上。', '木馬肚子裡，有人屏住了呼吸。'] },
+  ],
+  outro: [
+    { title: '城門開了', lines: ['門閂落地，城門慢慢打開。', '城外，希臘人舉著火把連成一片，湧進沉睡的城。'] },
+  ],
+};
+const STORY = { kind: null, i: 0, done: null, outroDone: false };
+function storyRender() {
+  const c = STORY_CARDS[STORY.kind][STORY.i], n = STORY_CARDS[STORY.kind].length;
+  $('storyTitle').textContent = c.title;
+  $('storyText').replaceChildren(...c.lines.map(t => { const p = document.createElement('p'); p.textContent = t; return p; }));
+  $('storyPage').textContent = (STORY.i + 1) + ' / ' + n;
+  $('storyNext').textContent = STORY.i + 1 < n ? '下一張（空白鍵）' : (STORY.kind === 'intro' ? '進木馬（空白鍵）' : '繼續（空白鍵）');
+  $('storySkip').hidden = STORY.i + 1 >= n;
+}
+function storyShow(kind, done) {
+  STORY.kind = kind; STORY.i = 0; STORY.done = done || null;
+  if (game) game.story = kind;
+  unlockPointer();
+  $('story').hidden = false; storyRender();
+  try { $('storyNext').focus({ preventScroll: true }); } catch (e) {}
+}
+function storyEnd() {
+  if (!STORY.kind) return;
+  const done = STORY.done; STORY.kind = null; STORY.done = null;
+  if (game) game.story = null;
+  $('story').hidden = true;
+  if (done) done(); else if (game && game.phase === 'play') { lockPointer(); if (MAP_FINAL_Q && !LEVEL_FINAL) showMsg('期末七段版的地圖檔還沒到，先用原本的地圖。'); }   // 字卡蓋住了開局的訊息，翻完再說一次
+}
+function storyNext() { if (!STORY.kind) return; if (STORY.i + 1 < STORY_CARDS[STORY.kind].length) { STORY.i++; storyRender(); } else storyEnd(); }
+$('story').addEventListener('click', e => { e.stopPropagation(); if (e.target.closest('#storySkip')) storyEnd(); else storyNext(); });
+['mousedown', 'pointerdown'].forEach(t => $('story').addEventListener(t, e => e.stopPropagation()));
+window.addEventListener('keydown', e => {                // 字卡開著：先接走按鍵，遊戲收不到
+  if (!STORY.kind) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.repeat) return;
+  if (e.code === 'Escape') storyEnd(); else if (['Space', 'Enter', 'ArrowRight', 'NumpadEnter'].includes(e.code)) storyNext();
+}, true);
 // 失敗畫面降音量（使用者 11/11 要求「死亡後把聲音調低或直接關掉」）：進 fail 後先留 FAIL_DUCK_HOLD 秒讓被抓的那一聲響完，
 // 再於 FAIL_DUCK_FADE 秒內把總音量淡到 FAIL_DUCK_DB；離開 fail（按 R 重來）就回到原音量。過關、木馬結尾不受影響。
 // 用聲音模組本體的 audio.raw.setMaster（預設總音量 MASTER0，createAudio 沒另外指定）。
@@ -2086,7 +2166,7 @@ function loop() {
   if (playing) {
     const t = audio.now();
     if (game.player) { prePos.x = game.player.x; prePos.z = game.player.z; }   // 追殺殘影用：這一步之前的位置
-    game.step(t, readInput());
+    game.step(t, game.story ? { yaw: V.yaw, mx: 0, mz: 0 } : readInput());   // 序、終字卡開著：遊戲照跑、不收輸入
     VIS.beats.push(...collectBeats(t));
     // 3D 聽聲辨位：聆聽者跟著玩家（聲音層沒有這個函式時略過）
     const P = game.player;
@@ -3432,7 +3512,9 @@ const REVEAL = { SWEEP: .25, HOLD: .5, FADE: .3, R: 60, LIFT: .6, EASY: .15, GUA
 const FLASH = { RANGE: 45 };                      // 試驗場面板：照出幾名衛兵（45 公尺內）
 const FL = { at: -1e9, n: 0, dark: .7, lastShown: 0, hunted: false };
 const RV = { hemi: null, moon: null, feet: null };
-const flashOn = () => LAB === 'flash' || REVEAL_Q;
+// 期末地圖的暗區（區資料 dark: true）：在那一區借照亮場景的做法（平常調暗、最響一擊照亮）；沒有暗區的地圖完全不碰
+const darkZoneOn = () => !!(game && game.level && Array.isArray(game.level.zones) && game.level.zones[game.zone] && game.level.zones[game.zone].dark === true);
+const flashOn = () => LAB === 'flash' || REVEAL_Q || darkZoneOn();
 function flashTrigger() { if (!flashOn()) return; FL.at = performance.now(); FL.n++; FL.hunted = !!(game && game.hunted); }
 function revealEnv(delay) {                       // 0～1：從 delay 秒後亮起 0.06 秒、撐 HOLD、FADE 秒內淡完（追殺中撐與淡減半）
   const k = FL.hunted ? .5 : 1, hold = REVEAL.HOLD * k, fade = REVEAL.FADE * k;
@@ -3473,7 +3555,15 @@ function flashProject(x, y, z, W, H) {
 }
 function flashFrame(dt) {
   const dk = $('flashDark'), cv = $('flashFx'), ctl = $('flashCtl');
-  if (!dk || !flashOn()) return;                  // 開關關著：完全不動（畫面和以前逐像素相同）
+  if (!dk) return;
+  if (!flashOn()) {                              // 開關關著：完全不動（畫面和以前逐像素相同）；離開暗區時把環境光還原
+    if (RV.hemi || RV.moon || RV.feet) {
+      for (const L of [RV.hemi, RV.moon]) if (L && L.userData.rvBase != null) L.intensity = L.userData.rvBase;
+      if (RV.feet) RV.feet.intensity = 0;
+      cv.hidden = true;
+    }
+    return;
+  }
   dk.hidden = true;                               // 舊的黑幕不用了（火光也會被蓋暗，規格要火光照舊）
   ctl.hidden = !(LAB === 'flash' && game && game.phase !== 'over');
   if (!game) return;
@@ -3932,6 +4022,7 @@ function showOver() {
     setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
   } else {
     const lab = !!game.lab;   // 試驗場過關：不是城門，是爬下暗門
+    if (STORY_ON && !lab && !STORY.outroDone) { STORY.outroDone = true; storyShow('outro', () => { if (game && game.phase === 'win') showOver(); }); return; }   // 終：城門打開的字卡
     $('winTitle').textContent = lab ? '爬下暗門了' : '城門開了';
     $('winText').textContent = lab ? '起步踩準了，同伴趁最響的那一擊替你拉開木栓。（' + LABS.summary() + '）' : WIN_TEXT0;
     $('win').hidden = false;
