@@ -278,3 +278,17 @@
   3. **只確認那一刻有明顯的最響起音，不分辨那是哪一層**：cycle 版的一擊本來就和每圈開頭各層的拍同時。free 版如果一擊和鼓拍錯開，要一起看上升 dB；一擊比旁邊的拍小時可能抓錯，到時候再重量。
 - free 版要接上的前提：錄音工具要收得到規則的 `hit` 事件（`type:'hit'`，或 cue 的 name 是 `hit`，要帶 `at`）。規則角色接上 `game.hit` 之後要先確認一次。
 - 自動化測試 348 項全過。這次錄完沒有留下自己開的無頭瀏覽器。
+
+## 11/17 發布與整關冒煙（`tools/smoke-full.mjs`，新）
+
+- **打包**：`build-itch.sh` 會把每個原型資料夾整個照抄，`level-troy.js`、`level-troy-final.js`、`level-editor.html`、`level-editor/core.js` 本來就會打包進去。我只把 `level-editor` 加進 `PROTOS` 清單，讓它變成必要資料夾（缺了會報錯），也不再印「不在清單」的提醒。`layer-ride/` 仍然不在清單裡，沒有動，要不要加由總控決定。打包結果是 37 個檔、zip 724K。
+- **冒煙指令**：`node tools/smoke-full.mjs [--root dist/odyssey-series] [--wait 3] [--md 表.md] [--json 結果.json]`。本機要先設 `NODE_PATH` 指到 test1-node-tools。腳本自己開隨機埠的伺服器，不碰 8765；瀏覽器帶 `--mute-audio`，網址加 `mute=1&nolock=1`。
+  - 開的頁：預設版、`?map=final&story=1`、編輯器、`switch.html` 上每個 .html 連結。
+  - 沒有 `level-troy-final.js` 時，最終地圖那幾頁標「待交卷」。
+  - 本站的 404、主控台錯誤、頁面例外都算失敗；外部網址（Google 字型）連不上只列警告。
+  - 退出碼：有頁失敗是 1，執行出錯是 2。
+- **結果（11/17）**：repo 的 prototypes 和打包出的 dist 都是 20 頁全過、待交卷 0。這時 `level-troy-final.js` 已在工作資料夾裡，還沒提交，是規則角色的半成品。
+  - 第一次測 dist 時有 4 頁失敗，原因是 Google 字型逾時、頁面等 `load` 等到 20 秒。之後改成等 `domcontentloaded`，外部連線失敗也只算警告。
+- **CI**：在 `web-tests` 工作裡加了三步：裝 Playwright（chromium）、冒煙測打包出的 dist、把冒煙表寫進執行摘要。路徑過濾也加上 `tools/smoke-full.mjs`。預估每次多 1～2 分鐘。還沒在 GitHub 上實際跑過，第一次推上去後要看結果。
+- **嚴格檢查**：`bash tools/cleancheck.sh tools/smoke-full.mjs tools/build-itch.sh .github/workflows/ci.yml tools/playtest-recorder/hit-align.mjs tools/playtest-recorder/profiles/troy-prologue.mjs` 全過，377 項。
+- 注意：在 PowerShell 打 `bash` 會叫到 WSL 而失敗，打包和嚴格檢查要用 Git Bash 跑。

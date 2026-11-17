@@ -27,7 +27,7 @@ copy_tree() {  # copy_tree <來源資料夾> <目的資料夾>
       cp "$from/$f" "$to/$f"
     done
 }
-PROTOS=(troy-prologue bow-risset vengeance bow-contest beggar-hall odyssey-series)
+PROTOS=(troy-prologue bow-risset vengeance bow-contest beggar-hall odyssey-series level-editor)
 for f in index.html nav.js; do
   [ -f "$SRC/$f" ] || { echo "錯誤：缺少 prototypes/$f" >&2; exit 1; }
 done

@@ -43,7 +43,7 @@ jobs:
           files=$(git diff --name-only "$BEFORE" "$AFTER")
           echo "$files"
           if echo "$files" | grep -qE '^(Assets/|Packages/|ProjectSettings/|tools/CoreTests/|tools/NightSim/|tools/NightSimTests/|tools/playtest/|\.github/workflows/)'; then echo "unity=true" >> "$GITHUB_OUTPUT"; else echo "unity=false" >> "$GITHUB_OUTPUT"; fi
-          if echo "$files" | grep -qE '^(prototypes/|tools/telemetry/|tools/playtest-recorder/|tools/build-itch\.|\.github/workflows/)'; then echo "web=true" >> "$GITHUB_OUTPUT"; else echo "web=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$files" | grep -qE '^(prototypes/|tools/telemetry/|tools/playtest-recorder/|tools/build-itch\.|tools/smoke-full\.mjs|\.github/workflows/)'; then echo "web=true" >> "$GITHUB_OUTPUT"; else echo "web=false" >> "$GITHUB_OUTPUT"; fi
       - uses: dorny/paths-filter@v3
         if: steps.d.outcome != 'success'
         id: f
@@ -63,6 +63,7 @@ jobs:
               - 'tools/telemetry/**'
               - 'tools/playtest-recorder/**'
               - 'tools/build-itch.*'
+              - 'tools/smoke-full.mjs'
               - '.github/workflows/**'
 
   # 網頁原型與遙測的規則測試（Node，約 30 秒）
@@ -80,6 +81,16 @@ jobs:
       - run: node --test prototypes/*/*.test.js prototypes/odyssey-series/*.test.js tools/telemetry/*.test.js
       - name: 打包檢查（相對連結）
         run: bash tools/build-itch.sh | tail -5
+      # 11/17：整關冒煙——打包出的站台每一頁用無頭 Chromium 開 3 秒，主控台錯誤、例外、404 就失敗（約 1～2 分鐘）
+      - name: 安裝 Playwright（冒煙用）
+        run: |
+          npm install --no-save --prefix "$RUNNER_TEMP/pw" playwright@1.49.1
+          npx --prefix "$RUNNER_TEMP/pw" playwright install --with-deps chromium
+      - name: 整關冒煙測試
+        run: NODE_PATH="$RUNNER_TEMP/pw/node_modules" node tools/smoke-full.mjs --root dist/odyssey-series --md smoke.md
+      - name: 冒煙表寫進執行摘要
+        if: always()
+        run: cat smoke.md >> "$GITHUB_STEP_SUMMARY" || true
 
   core-tests:
     name: 規則測試（Odyssey.Core）
