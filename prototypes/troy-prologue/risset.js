@@ -63,9 +63,10 @@
  *   追殺中不能離開這一區，要先擺脫。
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.RissetRules = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  // 關卡資料（11/17 抽出）：Node 讀同目錄的 level-troy.js；瀏覽器讀 window.TroyLevelData（level-troy.js 要在本檔之前載入）
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./level-troy.js'));
+  else root.RissetRules = factory(root.TroyLevelData);
+})(typeof self !== 'undefined' ? self : this, function (LEVEL_DATA) {
   'use strict';
 
   // ---------- 常數（第 6.2 節，全部可調） ----------
@@ -691,70 +692,23 @@
     if (!h) return null;
     return { x0: h.x1, z0: h.z0, x1: h.x1 + 3, z1: h.z1, name: '木馬東側的影子' };
   }
-  function buildLevel() {
-    const R = (x0, z0, x1, z1, name) => ({ x0, z0, x1, z1, name });
-    // 矮掩體（搭配動作 A2）：low: true 的牆，蹲著時擋得住衛兵視線；只有 MOVES_MODE 開著才讀
-    const LOW = (x0, z0, x1, z1, name) => ({ x0, z0, x1, z1, name, low: true });
-    const walls = [
-      // 外框
-      R(-1, -1, 61, 0, '北界'), R(-1, 30, 61, 31, '南界'), R(-1, 0, 0, 30, '西界'), R(60, 0, 61, 30, '城門牆'),
-      // 區 1／2 之間：木馬停在廣場西緣
-      // 區 2 神殿廣場
-      R(19, 2, 27, 8, '神殿'),
-      LOW(21, 12.5, 23, 14.5, '雕像台座'),
-      R(30, 0, 31, 18, '廣場東牆（北段）'), R(30, 27, 31, 30, '廣場東牆（南段）'),
-      // 區 3 窄巷：北邊是城牆根的屋舍，南邊是倉庫
-      R(31, 0, 46, 17, '屋舍'), R(31, 28, 46, 30, '倉庫'),
-      LOW(35, 24.5, 37, 28, '貨堆'), LOW(40, 18, 41.5, 21, '水缸'),
-      R(46, 0, 47, 17, '巷口北牆'), R(46, 28, 47, 30, '巷口南牆'),
-      // 區 4 城門
-      LOW(52, 13, 53.5, 17, '石墩')
-    ];
-    const shadows = [
-      R(5, 14.2, 11.8, 15.8, '木馬腹中'),
-      R(11, 16, 15, 20, '木馬的影子'),
-      R(18, 8, 28, 10.5, '神殿柱廊'),
-      R(20, 14.5, 24, 18, '雕像的影子'),
-      R(14, 24, 20, 30, '南側拱廊'),
-      R(26.5, 23.5, 30, 27, '廣場東南角'),
-      R(31, 23.5, 35, 28, '巷口屋簷'),
-      R(37, 24.5, 40, 28, '貨堆後'),
-      R(41.5, 17, 44, 21, '水缸旁'),
-      R(47, 23, 51, 28, '城門南側廊下'),
-      R(53.5, 12, 59.8, 18, '城門拱道')
-    ];
-    const P = (x, z) => ({ x, z });
-    const zones = [
-      { id: 0, name: ZONE_NAMES[0], start: { x: 6, z: 15, y: T.BELLY_Y, yaw: -Math.PI / 2 } },
-      { id: 1, name: ZONE_NAMES[1], start: { x: 5.8, z: 15, y: T.BELLY_Y, yaw: -Math.PI / 2 },
-        belly: R(5.3, 14.5, 11.5, 15.5, '木馬腹中'),
-        exit: { kind: 'trapdoor', x: 11, z: 15, to: 2 } },
-      { id: 2, name: ZONE_NAMES[2], start: { x: 13, z: 18.5, y: 0, yaw: -Math.PI / 2 },
-        exit: { kind: 'rect', rect: R(30, 18, 31.5, 27), to: 3 } },
-      // place：走進下一區時把玩家移到下一區的起點（＝重來時的起點，城門南側廊下的暗處）
-      { id: 3, name: ZONE_NAMES[3], start: { x: 32, z: 25.5, y: 0, yaw: -Math.PI / 2 },
-        exit: { kind: 'rect', rect: R(46, 17, 47.5, 28), to: 4, place: true } },
-      { id: 4, name: ZONE_NAMES[4], start: { x: 48, z: 25, y: 0, yaw: -Math.PI / 2 },
-        exit: { kind: 'gate', to: null } }
-    ];
-    // 衛兵：route 是巡邏點（迴圈）；只有一點 = 站崗，朝 yaw。
-    const guards = [
-      { id: 'g1', zone: 1, route: [P(9, 15), P(1.5, 15), P(15.5, 15)], note: '木馬下來回巡的衛兵' },
-      { id: 'g2a', zone: 2, route: [P(15, 12), P(29, 12), P(29, 15.5), P(15, 15.5)], note: '繞廣場的衛兵' },
-      { id: 'g2b', zone: 2, route: [P(28, 21), P(16, 21)], note: '橫越廣場南側、會起疑的衛兵' },
-      { id: 'g3a', zone: 3, route: [P(39, 23)], yaw: yawTo(1, 0), note: '背對巷口站崗（可暗殺）' },
-      { id: 'g3b', zone: 3, route: [P(44.5, 18.5), P(44.5, 27)], note: '巷尾南北巡' },
-      { id: 'g3c', zone: 3, route: [P(42, 22.5), P(45.5, 22.5)], note: '巷尾東西巡，與南北巡交錯' },
-      { id: 'g4a', zone: 4, route: [P(49, 5), P(57, 5)], note: '城門北側守衛' },
-      { id: 'g4b', zone: 4, route: [P(48, 20), P(51, 20), P(51, 9)], note: '城門西側守衛' }
-    ];
-    return {
-      size: { w: 60, h: 30 },
-      walls, shadows, zones, guards,
-      horse: { x0: 4.5, z0: 13, x1: 12.5, z1: 17, bellyY: T.BELLY_Y, trapdoor: { x: 11, z: 15 }, drop: { x: 13, z: 18.5 } },
-      gate: { x0: 59.8, z0: 11, x1: 60, z1: 19, latch: { x: 58.6, z: 15 } }
+  /**
+   * 11/17 關卡抽成純資料（prototypes/troy-prologue/level-troy.js，網頁關卡編輯器讀寫同一份結構）：
+   * 把資料深拷貝成 level，字串 "BELLY_Y" 換成常數 T.BELLY_Y；其他值原樣照搬（不檢查、不補預設）。
+   * 給畫面層把編輯器存的資料轉成 level，再傳 createLevel({level})。
+   */
+  function resolveLevel(data) {
+    if (!data || typeof data !== 'object') throw new Error('resolveLevel：沒有關卡資料（level-troy.js 要在 risset.js 之前載入）');
+    const conv = (v) => {
+      if (v === 'BELLY_Y') return T.BELLY_Y;
+      if (Array.isArray(v)) return v.map(conv);
+      if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = conv(v[k]); return o; }
+      return v;
     };
+    return conv(data);
   }
+  /** 預設關卡：level-troy.js 解析後的結果（每次呼叫都是新的物件，改了不影響下一局）。 */
+  function buildLevel() { return resolveLevel(LEVEL_DATA); }
 
   // ---------- 世界內暗示的訊號（設計文件 2026-11-07 第 2.1 節；畫面層、聲音層共用，純讀 game 不改它） ----------
   /**
@@ -2141,7 +2095,7 @@
 
   return {
     T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES, causesFor,
-    createLevel, buildLevel, horseShadowFor,
+    createLevel, buildLevel, resolveLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
     stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,

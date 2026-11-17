@@ -4460,3 +4460,25 @@ test('11/15 DRIVE 試驗場 ?lab=drive：第 2 區、沒有衛兵、出口擋住
   assert.equal(g.driveInfo.seg, 3); assert.equal(g.driveInfo.fixed, false);
   assert.equal(R.createLevel({}).labDriveSeg, undefined, '只有 ?lab=drive 才有這些入口');
 });
+
+
+// ---------- 11/17 關卡抽成純資料（level-troy.js） ----------
+/** 改動前 buildLevel() 的回傳值（11/17 從 HEAD 的 risset.js 直接 JSON.stringify 存下；exit.rect 原本的 name: undefined 在 JSON 裡本來就沒有）。 */
+const LEVEL_BEFORE_1117 = {"size":{"w":60,"h":30},"walls":[{"x0":-1,"z0":-1,"x1":61,"z1":0,"name":"北界"},{"x0":-1,"z0":30,"x1":61,"z1":31,"name":"南界"},{"x0":-1,"z0":0,"x1":0,"z1":30,"name":"西界"},{"x0":60,"z0":0,"x1":61,"z1":30,"name":"城門牆"},{"x0":19,"z0":2,"x1":27,"z1":8,"name":"神殿"},{"x0":21,"z0":12.5,"x1":23,"z1":14.5,"name":"雕像台座","low":true},{"x0":30,"z0":0,"x1":31,"z1":18,"name":"廣場東牆（北段）"},{"x0":30,"z0":27,"x1":31,"z1":30,"name":"廣場東牆（南段）"},{"x0":31,"z0":0,"x1":46,"z1":17,"name":"屋舍"},{"x0":31,"z0":28,"x1":46,"z1":30,"name":"倉庫"},{"x0":35,"z0":24.5,"x1":37,"z1":28,"name":"貨堆","low":true},{"x0":40,"z0":18,"x1":41.5,"z1":21,"name":"水缸","low":true},{"x0":46,"z0":0,"x1":47,"z1":17,"name":"巷口北牆"},{"x0":46,"z0":28,"x1":47,"z1":30,"name":"巷口南牆"},{"x0":52,"z0":13,"x1":53.5,"z1":17,"name":"石墩","low":true}],"shadows":[{"x0":5,"z0":14.2,"x1":11.8,"z1":15.8,"name":"木馬腹中"},{"x0":11,"z0":16,"x1":15,"z1":20,"name":"木馬的影子"},{"x0":18,"z0":8,"x1":28,"z1":10.5,"name":"神殿柱廊"},{"x0":20,"z0":14.5,"x1":24,"z1":18,"name":"雕像的影子"},{"x0":14,"z0":24,"x1":20,"z1":30,"name":"南側拱廊"},{"x0":26.5,"z0":23.5,"x1":30,"z1":27,"name":"廣場東南角"},{"x0":31,"z0":23.5,"x1":35,"z1":28,"name":"巷口屋簷"},{"x0":37,"z0":24.5,"x1":40,"z1":28,"name":"貨堆後"},{"x0":41.5,"z0":17,"x1":44,"z1":21,"name":"水缸旁"},{"x0":47,"z0":23,"x1":51,"z1":28,"name":"城門南側廊下"},{"x0":53.5,"z0":12,"x1":59.8,"z1":18,"name":"城門拱道"}],"zones":[{"id":0,"name":"開場","start":{"x":6,"z":15,"y":2.5,"yaw":-1.5707963267948966}},{"id":1,"name":"木馬腹中","start":{"x":5.8,"z":15,"y":2.5,"yaw":-1.5707963267948966},"belly":{"x0":5.3,"z0":14.5,"x1":11.5,"z1":15.5,"name":"木馬腹中"},"exit":{"kind":"trapdoor","x":11,"z":15,"to":2}},{"id":2,"name":"神殿廣場","start":{"x":13,"z":18.5,"y":0,"yaw":-1.5707963267948966},"exit":{"kind":"rect","rect":{"x0":30,"z0":18,"x1":31.5,"z1":27},"to":3}},{"id":3,"name":"城牆下的窄巷","start":{"x":32,"z":25.5,"y":0,"yaw":-1.5707963267948966},"exit":{"kind":"rect","rect":{"x0":46,"z0":17,"x1":47.5,"z1":28},"to":4,"place":true}},{"id":4,"name":"城門","start":{"x":48,"z":25,"y":0,"yaw":-1.5707963267948966},"exit":{"kind":"gate","to":null}}],"guards":[{"id":"g1","zone":1,"route":[{"x":9,"z":15},{"x":1.5,"z":15},{"x":15.5,"z":15}],"note":"木馬下來回巡的衛兵"},{"id":"g2a","zone":2,"route":[{"x":15,"z":12},{"x":29,"z":12},{"x":29,"z":15.5},{"x":15,"z":15.5}],"note":"繞廣場的衛兵"},{"id":"g2b","zone":2,"route":[{"x":28,"z":21},{"x":16,"z":21}],"note":"橫越廣場南側、會起疑的衛兵"},{"id":"g3a","zone":3,"route":[{"x":39,"z":23}],"yaw":-1.5707963267948966,"note":"背對巷口站崗（可暗殺）"},{"id":"g3b","zone":3,"route":[{"x":44.5,"z":18.5},{"x":44.5,"z":27}],"note":"巷尾南北巡"},{"id":"g3c","zone":3,"route":[{"x":42,"z":22.5},{"x":45.5,"z":22.5}],"note":"巷尾東西巡，與南北巡交錯"},{"id":"g4a","zone":4,"route":[{"x":49,"z":5},{"x":57,"z":5}],"note":"城門北側守衛"},{"id":"g4b","zone":4,"route":[{"x":48,"z":20},{"x":51,"z":20},{"x":51,"z":9}],"note":"城門西側守衛"}],"horse":{"x0":4.5,"z0":13,"x1":12.5,"z1":17,"bellyY":2.5,"trapdoor":{"x":11,"z":15},"drop":{"x":13,"z":18.5}},"gate":{"x0":59.8,"z0":11,"x1":60,"z1":19,"latch":{"x":58.6,"z":15}}};
+
+test('11/17 關卡抽成 level-troy.js：新的 buildLevel() 和改動前的回傳值 deep-equal；resolveLevel 把 "BELLY_Y" 換成常數、每次給新物件；資料檔是純資料', () => {
+  assert.deepStrictEqual(R.buildLevel(), LEVEL_BEFORE_1117);
+  const data = require('./level-troy.js');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(data)), data, '資料檔只能有 JSON 表達得了的值（沒有函式、undefined）');
+  assert.equal(data.zones[1].start.y, 'BELLY_Y');
+  assert.deepStrictEqual(R.resolveLevel(data), LEVEL_BEFORE_1117);
+  const a = R.buildLevel(); a.walls[0].x0 = 99; a.zones[2].start.x = 0;
+  assert.equal(R.buildLevel().walls[0].x0, -1, '改了上一份不影響下一份');
+  assert.equal(data.walls[0].x0, -1, '也不改到資料檔本身');
+  // 編輯器存的資料（JSON 字串來回一次）照樣能用；createLevel({level}) 照舊可以覆蓋
+  const lv = R.resolveLevel(JSON.parse(JSON.stringify(data)));
+  lv.shadows = lv.shadows.concat([{ x0: 1, z0: 1, x1: 2, z1: 2, name: '測試影子' }]);
+  const g = R.createLevel({ level: lv, startZone: 2 });
+  assert.ok(g.level.shadows.some((s) => s.name === '測試影子'));
+  assert.throws(() => R.resolveLevel(null), /level-troy\.js/);
+});

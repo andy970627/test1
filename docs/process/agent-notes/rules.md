@@ -10,6 +10,11 @@
 
 ### 木馬之夜 `troy-prologue/risset.js`（1219 行，全域 `RissetRules`）
 - 規格：`docs/design/2026-11-06-risset-troy-prologue.md` 第 6.2、6.3、8 節（**循環長度與盲區以 8.1 節為準**，6.2 是第一版）。
+- 關卡資料（11/17 起）：`troy-prologue/level-troy.js`，純資料，UMD：瀏覽器是 `window.TroyLevelData`，Node 用 `require`。
+  - 頁面要先載 `level-troy.js` 再載 `risset.js`（`index.html`、`audio-test.html` 已加）。
+  - `buildLevel()` 等於 `resolveLevel(資料)`：深拷貝一份，字串 `"BELLY_Y"` 換成 `T.BELLY_Y`，每次都給新物件。
+  - 編輯器存的資料用 `RissetRules.resolveLevel(data)` 轉成 level，再傳 `createLevel({level})`。
+  - 資料檔裡不能有函式或算式；角度存數字（−π/2 寫 `-1.5707963267948966`）。
 - 常數表：`const T = Object.freeze({...})`，第 70～150 行左右，每個常數旁有中文註解。
 - 入口：`createLevel(opts)` 回傳遊戲物件 `g`，方法掛在 `g` 上：
   - `g.step(t, input)`（第 848 行起，主迴圈）：`t` 是音訊時鐘絕對秒數；內部算 dt，最多 `MAX_DT` 0.1 秒（只限制移動與規則，循環時鐘照實際經過的音訊時間推進）。
@@ -383,3 +388,14 @@
     - 神殿廣場對應段 3（企劃的段 2 木馬下目前沒有獨立的區）。
     - `driveFor` 多收一個選填的 `o`（進段值、追殺秒數、甩掉秒數），因為滑動要知道時間；前四個參數照企劃。
   - 畫面角色要做：`?drive=0` 轉成 `T.DRIVE_MODE = false`；`LAB` 清單加 `drive`；試驗場面板與按鍵。
+
+- 2026-11-17 關卡抽成純資料（總控派工）：
+  - 新檔 `prototypes/troy-prologue/level-troy.js`。
+  - `risset.js` 的 `buildLevel()` 改讀這份資料，新匯出 `resolveLevel`；`index.html`、`audio-test.html` 在 `risset.js` 前多載一行 `level-troy.js`。
+  - 驗收：
+    - 新測試：`buildLevel()` 和改動前的輸出 deep-equal（舊輸出存成測試裡的固定值 `LEVEL_BEFORE_1117`）。
+    - 整夜 500 局 `--moves 1` 和 HEAD 逐字相同；`--moves 0` 和 c1d4aa3 逐字相同。
+    - 無頭 Chrome（`--mute-audio`）開遊戲頁、`?lab=drive`、`audio-test.html`，沒有主控台錯誤。
+  - 唯一差別：兩個出口矩形原本帶 `name: undefined`，資料檔裡沒有這個鍵（JSON 本來就存不了 undefined，也沒有程式讀它）。
+  - 沒載 `level-troy.js` 的頁面（`prototypes/index.html`、`playtest-today.html`）只用常數與純函式，照常能載；一呼叫 `createLevel` 就丟出「level-troy.js 要在 risset.js 之前載入」。
+  - `dist/` 和 claude.ai 上發布的版本沒改，下次打包或發布要把 `level-troy.js` 一起帶上。

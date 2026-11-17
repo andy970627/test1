@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>關卡編輯器</title>
+<link rel="stylesheet" href="ui-tokens.css">
+<style>
+/* 木馬之夜的關卡編輯器（總控 11/17）：在瀏覽器裡用方格畫特洛伊城的區。純邏輯在 level-editor/core.js（Node 有測試）。
+ * 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：青銅＝可以按、目前選中；海青＝過；火把橘＝提醒；血紅底＝不過。
+ * 地圖上的顏色另有圖例：牆、矮掩體、影子、衛兵、起點、出口。 */
+main { max-width: 1600px; margin: 0 auto; padding: 20px var(--gutter-r) 40px var(--gutter-l); }
+header .ui-title { margin: 0 0 10px; }
+.intro { display: grid; gap: 10px 24px; margin: 0 0 16px; }
+@media (min-width: 1100px) { .intro { grid-template-columns: repeat(3, 1fr); } }
+.intro section { background: var(--stone); border-radius: var(--r-panel); padding: 12px 14px; font-size: var(--fs-14); }
+.intro h2 { font: 900 var(--fs-16)/1.3 var(--font-title); letter-spacing: .04em; margin: 0 0 6px; }
+.intro ol, .intro ul { margin: 0; padding-left: 20px; }
+.intro li { margin: 2px 0; }
+.note { color: var(--muted); font-size: var(--fs-14); margin: 0; }
+.notice { font-size: var(--fs-14); margin: 0 0 10px; padding: 6px 10px; border-left: 3px solid var(--torch); background: var(--stone); border-radius: var(--r-panel); }
+.notice[hidden] { display: none; }
+
+/* 工具列 */
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+.tools .sep { width: 1px; height: 26px; background: var(--rule); margin: 0 4px; }
+.tool { font: 500 var(--fs-14)/1.4 var(--font-body); color: var(--bronze); background: transparent; border: 1px solid var(--bronze); border-radius: var(--r-btn); padding: 5px 10px; cursor: pointer; }
+.tool:hover { background: var(--bronze-wash); }
+.tool[aria-pressed="true"] { background: var(--bronze); color: var(--night); }
+.tool:disabled { opacity: .4; cursor: not-allowed; }
+.tools label { font-size: var(--fs-14); display: inline-flex; gap: 6px; align-items: center; }
+
+/* 主區：地圖＋側欄 */
+.work { display: grid; gap: 14px; }
+@media (min-width: 1100px) { .work { grid-template-columns: minmax(0, 1fr) 380px; align-items: start; } }
+.mapBox { position: relative; background: var(--night); border: 1px solid var(--rule); border-radius: var(--r-panel); height: min(72vh, 680px); min-height: 360px; overflow: hidden; touch-action: none; }
+#map { display: block; width: 100%; height: 100%; cursor: crosshair; }
+#map.select { cursor: default; }
+#map.panning { cursor: grabbing; }
+.coord { position: absolute; right: 8px; bottom: 6px; font-size: var(--fs-12); color: var(--muted); background: rgba(14, 19, 34, .8); padding: 1px 6px; border-radius: var(--r-btn); pointer-events: none; }
+.status { position: absolute; left: 8px; top: 6px; font-size: var(--fs-12); color: var(--parchment); background: rgba(14, 19, 34, .85); padding: 2px 8px; border-radius: var(--r-btn); pointer-events: none; max-width: calc(100% - 16px); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; font-size: var(--fs-12); color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 1px; }
+
+.side { display: grid; gap: 12px; }
+.panel { background: var(--stone); border-radius: var(--r-panel); padding: 12px 14px; font-size: var(--fs-14); }
+.panel h2 { font: 900 var(--fs-16)/1.3 var(--font-title); letter-spacing: .04em; margin: 0 0 8px; }
+.panel .row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }
+.panel input[type=number] { width: 5.5em; color: var(--parchment); background: var(--night); border: 1px solid var(--rule); border-radius: var(--r-btn); padding: 3px 6px; }
+.panel input[type=text] { flex: 1; width: auto; min-width: 0; }
+.panel label { white-space: nowrap; }
+.panel label { display: inline-flex; gap: 6px; align-items: center; }
+.pts { display: grid; gap: 4px; margin: 6px 0; }
+.pts .row { margin: 0; }
+
+/* 檢查面板 */
+.zcheck { border-top: 1px solid var(--rule); padding: 8px 0 4px; }
+.zcheck:first-of-type { border-top: 0; }
+.zcheck h3 { margin: 0 0 4px; font: 500 var(--fs-14)/1.4 var(--font-body); }
+.zcheck ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.zcheck li { display: grid; grid-template-columns: 1.6em 9.5em 1fr; gap: 6px; font-size: var(--fs-12); line-height: 1.6; }
+.mark { text-align: center; font-weight: 500; border-radius: var(--r-btn); }
+.s-pass .mark { color: var(--beat); }
+.s-warn .mark { color: var(--torch); }
+.s-fail .mark { color: var(--parchment); background: var(--blood); }
+.s-info .mark { color: var(--muted); }
+.s-fail .lbl { color: var(--parchment); }
+.lbl { color: var(--parchment); }
+.txt { color: var(--muted); }
+#selfCheck.pass { color: var(--beat); }
+#selfCheck.fail { color: var(--parchment); background: var(--blood); padding: 0 .3em; border-radius: var(--r-btn); }
+textarea#io { width: 100%; min-height: 70px; font-size: var(--fs-12); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 class="ui-title lg">關卡編輯器</h1>
+    <p id="restored" class="notice" hidden></p>
+  </header>
+
+  <div class="intro">
+    <section aria-labelledby="h1a">
+      <h2 id="h1a">一、怎麼畫</h2>
+      <ol>
+        <li>地圖一格是 1 公尺，由西（左，木馬）往東（右，城門）。滑鼠滾輪縮放；在空白處按住拖曳可以移動畫面。</li>
+        <li>上面選一種東西（牆、矮掩體、影子），在地圖上<b>按住拖曳</b>畫出長方形。矮掩體是蹲下才擋得住視線的矮東西，影子是可以躲的暗處。</li>
+        <li>選「衛兵」點一下放一名衛兵。只有一個點＝站崗，右邊可以設他面向哪邊；按「加巡邏點」再點地圖，他就會在這些點之間來回走。</li>
+        <li>用「選取」點一下東西可以拖曳移動，拖四個角改大小；右邊的欄位可以打精確數字。<kbd>Delete</kbd> 刪除，<kbd>Ctrl</kbd>＋<kbd>Z</kbd> 復原。</li>
+      </ol>
+    </section>
+    <section aria-labelledby="h1b">
+      <h2 id="h1b">二、怎麼存、怎麼試</h2>
+      <ul>
+        <li>每改一下都會自動存在<b>這台電腦的瀏覽器</b>裡，關掉再開還在（換電腦或換瀏覽器就沒有了）。</li>
+        <li>按「在遊戲裡試」直接用你畫的關卡玩；玩完按瀏覽器的上一頁回來繼續改。</li>
+        <li>右邊「檢查」照企劃書的規定逐區打分：<span class="st-beat">✓ 過</span>、<span class="st-torch">! 提醒</span>、<span class="st-blood">✕ 不過</span>。</li>
+        <li>要加新的區：用「插入空地」在某條線的右邊塞進幾公尺，右邊的東西會整批往東移。</li>
+      </ul>
+    </section>
+    <section aria-labelledby="h1c">
+      <h2 id="h1c">三、怎麼交給組員</h2>
+      <ul>
+        <li>按「下載 .json」存成一個檔，傳給負責程式的組員（雲端硬碟、訊息都可以）。</li>
+        <li>或按「複製 JSON」直接貼在訊息裡。</li>
+        <li>收到別人的檔：按「匯入 .json」選那個檔，就會換成他的版本（換之前的樣子可以用復原拿回來）。</li>
+      </ul>
+    </section>
+  </div>
+
+  <div class="tools" role="toolbar" aria-label="畫圖工具">
+    <button class="tool" data-tool="select" aria-pressed="true">選取（V）</button>
+    <span class="sep"></span>
+    <button class="tool" data-tool="wall" aria-pressed="false">牆（1）</button>
+    <button class="tool" data-tool="low" aria-pressed="false">矮掩體（2）</button>
+    <button class="tool" data-tool="shadow" aria-pressed="false">影子（3）</button>
+    <button class="tool" data-tool="guard" aria-pressed="false">衛兵（4）</button>
+    <button class="tool" data-tool="start" aria-pressed="false">起點（5）</button>
+    <label>給第 <select id="startZone"></select> 區</label>
+    <span class="sep"></span>
+    <button class="tool" id="undo">復原</button>
+    <button class="tool" id="redo">重做</button>
+    <button class="tool" id="del">刪除選取</button>
+    <button class="tool" id="fit">看全圖</button>
+    <span class="sep"></span>
+    <button class="tool" id="play" style="background:var(--bronze);color:var(--night)">在遊戲裡試</button>
+  </div>
+
+  <div class="work">
+    <div>
+      <div class="mapBox" id="mapBox">
+        <canvas id="map" aria-label="關卡俯視圖：一格 1 公尺"></canvas>
+        <div class="status" id="status"></div>
+        <div class="coord" id="coord"></div>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i style="background:rgba(242,236,221,.55)"></i>牆</span>
+        <span><i style="background:rgba(242,236,221,.18);outline:1px dashed rgba(242,236,221,.7)"></i>矮掩體</span>
+        <span><i style="background:rgba(111,179,166,.35)"></i>影子</span>
+        <span><i style="background:#E8893B;border-radius:50%;width:10px"></i>衛兵與巡邏路線</span>
+        <span><i style="background:#F2ECDD;width:4px"></i>各區起點（旗子上是區號）</span>
+        <span><i style="outline:1px dashed #F2ECDD"></i>出口</span>
+        <span><i style="outline:2px solid #C9A55C"></i>選取中</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <section class="panel" aria-labelledby="hProp">
+        <h2 id="hProp">選取的東西</h2>
+        <div id="prop"><p class="note">還沒選。用「選取」點地圖上的東西。</p></div>
+      </section>
+
+      <section class="panel" aria-labelledby="hCheck">
+        <h2 id="hCheck">檢查（照企劃第 2 節）</h2>
+        <p class="note">各區範圍用出口推算（出口那條線的西邊是本區）。算不出來的列成提醒，自己確認。</p>
+        <div id="checks"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="hData">
+        <h2 id="hData">存檔與大小</h2>
+        <div class="row">
+          <button class="tool" id="copy">複製 JSON</button>
+          <button class="tool" id="download">下載 .json</button>
+          <label class="tool" style="position:relative">匯入 .json<input type="file" id="importFile" accept=".json,application/json" style="position:absolute;inset:0;opacity:0;cursor:pointer"></label>
+        </div>
+        <p class="note" id="ioMsg" aria-live="polite"></p>
+        <div class="row">全圖 <b id="sizeTxt"></b></div>
+        <div class="row">在 x = <input type="number" id="insAt" value="47.5" step="0.5"> 公尺的右邊插入 <input type="number" id="insDx" value="30" step="1"> 公尺 <button class="tool" id="ins">插入空地</button></div>
+        <p class="note">預設插在窄巷出口的東邊（x = 47.5），塞 30 公尺，把 60 × 30 加長成 90 × 30；新空地先算在城門那區，要另外分區時再請組員加出口。寬 10 公尺以上的長牆會跟著拉長，其他東西照位置整塊移。</p>
+        <div class="row"><button class="tool" id="reset">重設成現有關卡</button></div>
+        <p class="note">自我檢查（現有關卡匯入再匯出，資料完全相同）：<span id="selfCheck">—</span></p>
+      </section>
+    </div>
+  </div>
+</main>
+<script src="troy-prologue/risset.js"></script>
+<script src="level-editor/core.js"></script>
+<script>
+// 正式關卡資料（規則角色抽出後才有）：沒有這個檔也能用，改從 buildLevel() 換算
+(function () { var s = document.createElement('script'); s.src = 'troy-prologue/level-troy.js'; s.onload = s.onerror = function () { window.__levelBaseReady && window.__levelBaseReady(); }; document.head.appendChild(s); })();
+</script>
+<script>
+(function () {
+'use strict';
+const C = window.LevelEditorCore, R = window.RissetRules;
+const K = (R && R.T) || {};
+const KEY = 'troy-level-local';
+const $ = id => document.getElementById(id);
+let BASE = null, data = null, sel = null, tool = 'select', addPts = false;
+const undoS = [], redoS = [];
+const view = { s: 12, x: -2, z: -2 };   // s：每公尺幾像素；x、z：畫面左上角的世界座標
+const cv = $('map'), box = $('mapBox');
+const snap = v => Math.round(v * 2) / 2;   // 吸附到 0.5 公尺
+
+// ---------- 資料 ----------
+function baseData() {
+  if (window.TroyLevelData) return C.clone(window.TroyLevelData);
+  return C.fromBuilt(R.buildLevel(), K.BELLY_Y);
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} }
+function commit() {   // 改之前呼叫：存一份復原點
+  undoS.push(JSON.stringify(data)); if (undoS.length > 200) undoS.shift(); redoS.length = 0;
+}
+function changed() { save(); refresh(); }
+function undo() { if (!undoS.length) return; redoS.push(JSON.stringify(data)); data = JSON.parse(undoS.pop()); sel = null; changed(); }
+function redo() { if (!redoS.length) return; undoS.push(JSON.stringify(data)); data = JSON.parse(redoS.pop()); sel = null; changed(); }
+
+// ---------- 座標 ----------
+const W = () => cv.clientWidth, H = () => cv.clientHeight;
+const sx = x => (x - view.x) * view.s, sz = z => (z - view.z) * view.s;
+const wx = px => px / view.s + view.x, wz = py => py / view.s + view.z;
+function fit() {
+  const w = data.size.w + 4, h = data.size.h + 4;
+  view.s = Math.max(4, Math.min(W() / w, H() / h));
+  view.x = -2 - (W() / view.s - w) / 2; view.z = -2 - (H() / view.s - h) / 2;
+  draw();
+}
+
+// ---------- 選取對象 ----------
+// sel：{t:'wall'|'shadow'|'exit'|'guard'|'pt'|'start', i, j}
+function rectOf(s) {
+  if (!s) return null;
+  if (s.t === 'wall') return data.walls[s.i];
+  if (s.t === 'shadow') return data.shadows[s.i];
+  if (s.t === 'exit') return data.zones[s.i].exit.rect;
+  return null;
+}
+function hit(x, z) {
+  const tol = 8 / view.s;
+  // 1. 衛兵巡邏點
+  for (let i = data.guards.length - 1; i >= 0; i--) {
+    const r = data.guards[i].route || [];
+    for (let j = 0; j < r.length; j++) if (Math.hypot(r[j].x - x, r[j].z - z) <= tol) return { t: 'pt', i, j };
+  }
+  // 2. 起點
+  for (let i = 0; i < data.zones.length; i++) { const s = data.zones[i].start; if (s && data.zones[i].exit && Math.hypot(s.x - x, s.z - z) <= tol) return { t: 'start', i }; }
+  // 3. 長方形：面積小的優先（裡面的東西點得到）
+  const cands = [];
+  data.walls.forEach((r, i) => C.inRect({ x, z }, r) && cands.push({ t: 'wall', i, a: area(r) }));
+  data.shadows.forEach((r, i) => C.inRect({ x, z }, r) && cands.push({ t: 'shadow', i, a: area(r) }));
+  data.zones.forEach((zz, i) => zz.exit && zz.exit.rect && C.inRect({ x, z }, zz.exit.rect) && cands.push({ t: 'exit', i, a: area(zz.exit.rect) }));
+  cands.sort((a, b) => a.a - b.a);
+  return cands[0] ? { t: cands[0].t, i: cands[0].i } : null;
+}
+const area = r => Math.abs((r.x1 - r.x0) * (r.z1 - r.z0));
+function cornerAt(px, py) {   // 選取中的長方形，滑鼠在哪個角（0～3）
+  const r = rectOf(sel); if (!r) return -1;
+  const cs = [[r.x0, r.z0], [r.x1, r.z0], [r.x1, r.z1], [r.x0, r.z1]];
+  for (let k = 0; k < 4; k++) if (Math.hypot(sx(cs[k][0]) - px, sz(cs[k][1]) - py) <= 7) return k;
+  return -1;
+}
+function zoneAtX(x) {
+  const sp = C.zoneSpans(data).filter(s => !s.intro && !s.belly);
+  const f = sp.find(s => x >= s.x0 && x < s.x1) || sp[sp.length - 1];
+  return f ? f.id : 2;
+}
+
+// ---------- 畫 ----------
+const COL = { night: '#0E1322', stone: '#232838', parch: '#F2ECDD', bronze: '#C9A55C', beat: '#6FB3A6', torch: '#E8893B', blood: '#B02A1E' };
+function draw() {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), w = W(), h = H();
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  const S = data.size;
+  // 地面與方格
+  c.fillStyle = COL.stone; c.fillRect(sx(0), sz(0), S.w * view.s, S.h * view.s);
+  c.lineWidth = 1;
+  const step = view.s < 5 ? 5 : 1;
+  for (let x = 0; x <= S.w; x += step) { c.strokeStyle = x % 10 === 0 ? 'rgba(242,236,221,.22)' : 'rgba(242,236,221,.07)'; c.beginPath(); c.moveTo(sx(x) + .5, sz(0)); c.lineTo(sx(x) + .5, sz(S.h)); c.stroke(); }
+  for (let z = 0; z <= S.h; z += step) { c.strokeStyle = z % 10 === 0 ? 'rgba(242,236,221,.22)' : 'rgba(242,236,221,.07)'; c.beginPath(); c.moveTo(sx(0), sz(z) + .5); c.lineTo(sx(S.w), sz(z) + .5); c.stroke(); }
+  // 刻度（每 10 公尺）
+  c.fillStyle = 'rgba(242,236,221,.6)'; c.font = '11px "Noto Sans TC", sans-serif'; c.textBaseline = 'bottom';
+  for (let x = 0; x <= S.w; x += 10) c.fillText(String(x), sx(x) + 2, sz(0) - 2);
+  c.textBaseline = 'middle'; c.textAlign = 'right';
+  for (let z = 0; z <= S.h; z += 10) c.fillText(String(z), sx(0) - 4, sz(z));
+  c.textAlign = 'left';
+  // 各區範圍：頂端標區名
+  for (const sp of C.zoneSpans(data)) {
+    if (sp.intro || sp.belly) continue;
+    c.fillStyle = 'rgba(242,236,221,.5)'; c.font = '500 12px "Noto Sans TC", sans-serif'; c.textBaseline = 'top';
+    c.fillText('第 ' + sp.id + ' 區 ' + sp.name, sx(sp.x0) + 4, sz(0) + 4);
+    c.strokeStyle = 'rgba(242,236,221,.12)'; c.setLineDash([2, 6]); c.beginPath(); c.moveTo(sx(sp.x1) + .5, sz(0)); c.lineTo(sx(sp.x1) + .5, sz(S.h)); c.stroke(); c.setLineDash([]);
+  }
+  const rect = (r, fill, stroke, dash) => {
+    const x = sx(Math.min(r.x0, r.x1)), y = sz(Math.min(r.z0, r.z1)), ww = Math.abs(r.x1 - r.x0) * view.s, hh = Math.abs(r.z1 - r.z0) * view.s;
+    if (fill) { c.fillStyle = fill; c.fillRect(x, y, ww, hh); }
+    if (stroke) { c.strokeStyle = stroke; c.setLineDash(dash || []); c.lineWidth = 1; c.strokeRect(x + .5, y + .5, ww - 1, hh - 1); c.setLineDash([]); }
+  };
+  data.shadows.forEach(r => rect(r, 'rgba(111,179,166,.32)', 'rgba(111,179,166,.6)'));
+  data.walls.forEach(r => r.low ? rect(r, 'rgba(242,236,221,.16)', 'rgba(242,236,221,.7)', [4, 3]) : rect(r, 'rgba(242,236,221,.55)', null));
+  // 木馬、城門（只顯示）
+  if (data.horse) { rect(data.horse, null, 'rgba(242,236,221,.45)', [2, 3]); label('木馬', (data.horse.x0 + data.horse.x1) / 2, data.horse.z0 - .4); }
+  if (data.gate) { rect(data.gate, COL.bronze === '' ? null : 'rgba(242,236,221,.8)', null); label('城門', data.gate.x0 - 1.5, (data.gate.z0 + data.gate.z1) / 2); }
+  // 出口
+  data.zones.forEach(zz => { const e = zz.exit; if (e && e.rect) { rect(e.rect, null, COL.parch, [5, 4]); label('出口→' + e.to, (e.rect.x0 + e.rect.x1) / 2, Math.min(e.rect.z0, e.rect.z1) - .5); } });
+  // 名稱（夠大才寫）
+  if (view.s >= 9) {
+    c.font = '11px "Noto Sans TC", sans-serif'; c.textBaseline = 'middle'; c.textAlign = 'center';
+    for (const r of data.walls.concat(data.shadows)) {
+      if (!r.name || Math.abs(r.x1 - r.x0) * view.s < 40 || Math.abs(r.z1 - r.z0) * view.s < 14) continue;
+      c.fillStyle = r.low || data.shadows.includes(r) ? 'rgba(242,236,221,.85)' : COL.night;
+      c.fillText(r.name, sx((r.x0 + r.x1) / 2), sz((r.z0 + r.z1) / 2));
+    }
+    c.textAlign = 'left';
+  }
+  // 衛兵
+  data.guards.forEach((q, i) => {
+    const r = q.route || []; if (!r.length) return;
+    const on = sel && (sel.t === 'guard' || sel.t === 'pt') && sel.i === i;
+    c.strokeStyle = on ? COL.bronze : 'rgba(232,137,59,.75)'; c.lineWidth = on ? 2 : 1.5; c.setLineDash([6, 4]);
+    if (r.length > 1) { c.beginPath(); r.forEach((p, k) => k ? c.lineTo(sx(p.x), sz(p.z)) : c.moveTo(sx(p.x), sz(p.z))); if (r.length > 2) c.closePath(); c.stroke(); }
+    c.setLineDash([]);
+    r.forEach((p, k) => {
+      c.beginPath(); c.arc(sx(p.x), sz(p.z), k === 0 ? 6 : 4, 0, Math.PI * 2);
+      c.fillStyle = COL.torch; c.fill();
+      if (on && sel.t === 'pt' && sel.j === k) { c.beginPath(); c.arc(sx(p.x), sz(p.z), 10, 0, Math.PI * 2); c.strokeStyle = COL.bronze; c.lineWidth = 2.5; c.stroke(); }   // 選取中的點：青銅外圈
+    });
+    if (r.length === 1) {   // 站崗：畫面向
+      const yaw = Number.isFinite(q.yaw) ? q.yaw : 0, fx = -Math.sin(yaw), fz = -Math.cos(yaw), L = 2.2;
+      c.strokeStyle = COL.torch; c.lineWidth = 2; c.beginPath(); c.moveTo(sx(r[0].x), sz(r[0].z)); c.lineTo(sx(r[0].x + fx * L), sz(r[0].z + fz * L)); c.stroke();
+    }
+    c.fillStyle = 'rgba(242,236,221,.85)'; c.font = '11px "Noto Sans TC", sans-serif'; c.textBaseline = 'bottom';
+    c.fillText(q.id || '', sx(r[0].x) + 7, sz(r[0].z) - 4);
+  });
+  // 起點（旗子）
+  data.zones.forEach((zz, i) => {
+    const s = zz.start; if (!s || !zz.exit) return;
+    const x = sx(s.x), y = sz(s.z), on = sel && sel.t === 'start' && sel.i === i;
+    c.fillStyle = on ? COL.bronze : COL.parch; c.fillRect(x - 1, y - 16, 2, 16);
+    c.beginPath(); c.moveTo(x + 1, y - 16); c.lineTo(x + 14, y - 12); c.lineTo(x + 1, y - 8); c.closePath(); c.fill();
+    c.fillStyle = COL.night; c.font = '500 9px "Noto Sans TC", sans-serif'; c.textBaseline = 'middle'; c.fillText(String(zz.id), x + 3, y - 12);
+    const yaw = Number.isFinite(s.yaw) ? s.yaw : 0;
+    c.strokeStyle = on ? COL.bronze : COL.parch; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x, y); c.lineTo(x - Math.sin(yaw) * 14, y - Math.cos(yaw) * 14); c.stroke();
+  });
+  // 選取外框與四角
+  const r = rectOf(sel);
+  if (r) {
+    rect(r, null, COL.bronze); c.lineWidth = 2; c.strokeStyle = COL.bronze;
+    const x = sx(Math.min(r.x0, r.x1)), y = sz(Math.min(r.z0, r.z1)), ww = Math.abs(r.x1 - r.x0) * view.s, hh = Math.abs(r.z1 - r.z0) * view.s;
+    c.strokeRect(x - 1, y - 1, ww + 2, hh + 2);
+    c.fillStyle = COL.bronze; for (const [px, py] of [[x, y], [x + ww, y], [x + ww, y + hh], [x, y + hh]]) c.fillRect(px - 4, py - 4, 8, 8);
+  }
+  // 正在畫的長方形
+  if (drag && drag.kind === 'draw') rect(normRect(drag.a, drag.b), 'rgba(201,165,92,.2)', COL.bronze);
+  function label(t, x, z) { c.fillStyle = 'rgba(242,236,221,.75)'; c.font = '11px "Noto Sans TC", sans-serif'; c.textBaseline = 'bottom'; c.textAlign = 'center'; c.fillText(t, sx(x), sz(z)); c.textAlign = 'left'; }
+}
+function normRect(a, b) { return { x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z) }; }
+
+// ---------- 滑鼠 ----------
+let drag = null, spaceDown = false;
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId);
+  const px = e.offsetX, py = e.offsetY, x = wx(px), z = wz(py);
+  if (e.button === 1 || e.button === 2 || spaceDown) { drag = { kind: 'pan', px, py, vx: view.x, vz: view.z }; cv.classList.add('panning'); return; }
+  if (addPts && sel && (sel.t === 'guard' || sel.t === 'pt')) {   // 加巡邏點模式
+    commit(); const q = data.guards[sel.i]; q.route.push({ x: snap(x), z: snap(z) });
+    if (q.route.length > 1 && 'yaw' in q) delete q.yaw;
+    sel = { t: 'pt', i: sel.i, j: q.route.length - 1 }; changed(); return;
+  }
+  if (tool === 'wall' || tool === 'low' || tool === 'shadow') { drag = { kind: 'draw', a: { x: snap(x), z: snap(z) }, b: { x: snap(x), z: snap(z) } }; return; }
+  if (tool === 'guard') {
+    commit();
+    let n = data.guards.length + 1, id; do { id = 'n' + n++; } while (data.guards.some(q => q.id === id));
+    data.guards.push({ id, zone: zoneAtX(x), route: [{ x: snap(x), z: snap(z) }], yaw: 0, note: '' });
+    sel = { t: 'guard', i: data.guards.length - 1 }; setTool('select'); changed(); return;
+  }
+  if (tool === 'start') {
+    const zi = +$('startZone').value, zz = data.zones[zi]; if (!zz) return;
+    commit(); zz.start = Object.assign({}, zz.start, { x: snap(x), z: snap(z) });
+    sel = { t: 'start', i: zi }; changed(); return;
+  }
+  // 選取工具
+  const k = cornerAt(px, py);
+  if (k >= 0) { commit(); drag = { kind: 'corner', k }; return; }
+  const h = hit(x, z);
+  if (h) {
+    sel = h.t === 'pt' && (data.guards[h.i].route || []).length === 1 ? { t: 'pt', i: h.i, j: 0 } : h;
+    commit();
+    const r = rectOf(sel);
+    drag = { kind: 'move', x0: snap(x), z0: snap(z), orig: r ? { x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1 } : null, moved: false };
+    if (sel.t === 'pt') { const p = data.guards[sel.i].route[sel.j]; drag.op = { x: p.x, z: p.z }; }
+    if (sel.t === 'start') { const s = data.zones[sel.i].start; drag.op = { x: s.x, z: s.z }; }
+    refresh(); return;
+  }
+  sel = null; addPts = false;
+  drag = { kind: 'pan', px, py, vx: view.x, vz: view.z }; cv.classList.add('panning'); refresh();
+});
+cv.addEventListener('pointermove', e => {
+  const px = e.offsetX, py = e.offsetY, x = wx(px), z = wz(py);
+  $('coord').textContent = 'x ' + x.toFixed(1) + '　z ' + z.toFixed(1);
+  if (!drag) { cv.style.cursor = tool === 'select' && cornerAt(px, py) >= 0 ? 'nwse-resize' : ''; return; }
+  if (drag.kind === 'pan') { view.x = drag.vx - (px - drag.px) / view.s; view.z = drag.vz - (py - drag.py) / view.s; draw(); return; }
+  if (drag.kind === 'draw') { drag.b = { x: snap(x), z: snap(z) }; draw(); return; }
+  if (drag.kind === 'corner') {
+    const r = rectOf(sel), X = snap(x), Z = snap(z);
+    if (drag.k === 0 || drag.k === 3) r.x0 = X; else r.x1 = X;
+    if (drag.k === 0 || drag.k === 1) r.z0 = Z; else r.z1 = Z;
+    draw(); return;
+  }
+  if (drag.kind === 'move') {
+    const dx = snap(x) - drag.x0, dz = snap(z) - drag.z0;
+    if (dx || dz) drag.moved = true;
+    const r = rectOf(sel);
+    if (r && drag.orig) { r.x0 = drag.orig.x0 + dx; r.x1 = drag.orig.x1 + dx; r.z0 = drag.orig.z0 + dz; r.z1 = drag.orig.z1 + dz; }
+    else if (sel.t === 'pt') { const p = data.guards[sel.i].route[sel.j]; p.x = drag.op.x + dx; p.z = drag.op.z + dz; }
+    else if (sel.t === 'start') { const s = data.zones[sel.i].start; s.x = drag.op.x + dx; s.z = drag.op.z + dz; }
+    draw();
+  }
+});
+cv.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const d = drag; drag = null; cv.classList.remove('panning');
+  if (d.kind === 'draw') {
+    const r = normRect(d.a, d.b);
+    if (r.x1 - r.x0 < .5 || r.z1 - r.z0 < .5) { draw(); return; }
+    commit();
+    const names = { wall: '牆', low: '矮掩體', shadow: '影子' };
+    const o = { x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, name: '新' + names[tool] };
+    if (tool === 'shadow') { data.shadows.push(o); sel = { t: 'shadow', i: data.shadows.length - 1 }; }
+    else { if (tool === 'low') o.low = true; data.walls.push(o); sel = { t: 'wall', i: data.walls.length - 1 }; }
+    changed(); return;
+  }
+  if (d.kind === 'corner') { const r = rectOf(sel); const n = normRect({ x: r.x0, z: r.z0 }, { x: r.x1, z: r.z1 }); Object.assign(r, n); changed(); return; }
+  if (d.kind === 'move') { if (!d.moved) undoS.pop(); changed(); return; }
+  draw();
+});
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const px = e.offsetX, py = e.offsetY, x = wx(px), z = wz(py);
+  view.s = Math.max(3, Math.min(60, view.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+  view.x = x - px / view.s; view.z = z - py / view.s; draw();
+}, { passive: false });
+
+// ---------- 鍵盤 ----------
+const typing = el => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !typing(e.target)) { spaceDown = true; e.preventDefault(); }
+  if (typing(e.target)) return;
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { e.preventDefault(); redo(); return; }
+  if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); delSel(); return; }
+  if (e.code === 'Escape') { addPts = false; setTool('select'); refresh(); return; }
+  const map = { KeyV: 'select', Digit1: 'wall', Digit2: 'low', Digit3: 'shadow', Digit4: 'guard', Digit5: 'start' };
+  if (map[e.code] && !e.ctrlKey && !e.metaKey) setTool(map[e.code]);
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') spaceDown = false; });
+
+function delSel() {
+  if (!sel) return;
+  commit();
+  if (sel.t === 'wall') data.walls.splice(sel.i, 1);
+  else if (sel.t === 'shadow') data.shadows.splice(sel.i, 1);
+  else if (sel.t === 'guard') data.guards.splice(sel.i, 1);
+  else if (sel.t === 'pt') { const q = data.guards[sel.i]; if (q.route.length > 1) { q.route.splice(sel.j, 1); if (q.route.length === 1 && !('yaw' in q)) q.yaw = 0; } else data.guards.splice(sel.i, 1); }
+  else { undoS.pop(); setStatus('起點和出口不能刪，可以拖曳移動。'); return; }
+  sel = null; addPts = false; changed();
+}
+function setTool(t) {
+  tool = t; addPts = false;
+  document.querySelectorAll('.tool[data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t ? 'true' : 'false'));
+  cv.classList.toggle('select', t === 'select');
+  setStatus({ select: '點東西選取、拖曳移動、拖四角改大小；空白處拖曳移動畫面', wall: '按住拖曳畫一面牆', low: '按住拖曳畫矮掩體（蹲下才擋得住視線）', shadow: '按住拖曳畫一塊影子', guard: '點一下放一名衛兵（站崗）', start: '點一下設第 ' + $('startZone').value + ' 區的起點' }[t]);
+}
+function setStatus(t) { $('status').textContent = t || ''; }
+
+// ---------- 側欄：選取的東西 ----------
+const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+const num = (id, v, lab, step) => '<label>' + lab + ' <input type="number" step="' + (step || .5) + '" data-f="' + id + '" value="' + v + '"></label>';
+const YAWS = [['北', 0], ['東', -Math.PI / 2], ['南', Math.PI], ['西', Math.PI / 2]];
+const deg = y => Math.round((Number.isFinite(y) ? y : 0) * 180 / Math.PI);
+function yawRow(y) { return '<div class="row">面向 ' + YAWS.map(([n, v]) => '<button class="tool" data-yaw="' + v + '">' + n + '</button>').join('') + ' <label><input type="number" step="15" data-f="yawdeg" value="' + deg(y) + '"> 度</label></div><p class="note">0＝面向北（上）、90＝面向西、−90＝面向東。</p>'; }
+function showProp() {
+  const P = $('prop');
+  if (!sel) { P.innerHTML = '<p class="note">還沒選。用「選取」點地圖上的東西。</p>'; return; }
+  let h = '';
+  const r = rectOf(sel);
+  if (r) {
+    const kind = sel.t === 'exit' ? '出口（第 ' + data.zones[sel.i].id + ' 區 → 第 ' + data.zones[sel.i].exit.to + ' 區）' : sel.t === 'shadow' ? '影子' : r.low ? '矮掩體' : '牆';
+    h += '<p><b>' + kind + '</b></p>';
+    if (sel.t !== 'exit') h += '<div class="row"><label style="flex:1">名字 <input type="text" data-f="name" value="' + esc(r.name) + '"></label></div>';
+    h += '<div class="row">' + num('x0', r.x0, '西 x0') + num('x1', r.x1, '東 x1') + '</div><div class="row">' + num('z0', r.z0, '北 z0') + num('z1', r.z1, '南 z1') + '</div>';
+    h += '<p class="note">大小 ' + Math.abs(r.x1 - r.x0) + ' × ' + Math.abs(r.z1 - r.z0) + ' 公尺</p>';
+    if (sel.t !== 'exit') h += '<div class="row">改成 <button class="tool" data-kind="wall">牆</button><button class="tool" data-kind="low">矮掩體</button><button class="tool" data-kind="shadow">影子</button></div>';
+  } else if (sel.t === 'guard' || sel.t === 'pt') {
+    const q = data.guards[sel.i], rt = q.route || [];
+    h += '<p><b>衛兵 ' + esc(q.id) + '</b>（' + (rt.length === 1 ? '站崗' : '巡邏 ' + rt.length + ' 點，依序來回走') + '）</p>';
+    h += '<div class="row"><label>屬於第 <select data-f="zone">' + data.zones.filter(z => z.exit && !z.belly || z.belly).map(z => '<option value="' + z.id + '"' + (z.id === q.zone ? ' selected' : '') + '>' + z.id + ' ' + esc(z.name) + '</option>').join('') + '</select> 區</label></div>';
+    h += '<div class="row"><label style="flex:1">說明 <input type="text" data-f="note" value="' + esc(q.note) + '"></label></div>';
+    if (rt.length === 1) h += yawRow(q.yaw);
+    h += '<div class="pts">' + rt.map((p, j) => '<div class="row">' + (j + 1) + '. ' + num('px' + j, p.x, 'x') + num('pz' + j, p.z, 'z') + (rt.length > 1 ? ' <button class="tool" data-delpt="' + j + '">刪</button>' : '') + '</div>').join('') + '</div>';
+    h += '<div class="row"><button class="tool" id="addPts" aria-pressed="' + addPts + '">' + (addPts ? '加點中：點地圖（Esc 結束）' : '加巡邏點') + '</button> <button class="tool" data-delguard="1">刪除這名衛兵</button></div>';
+  } else if (sel.t === 'start') {
+    const zz = data.zones[sel.i], s = zz.start;
+    h += '<p><b>第 ' + zz.id + ' 區「' + esc(zz.name) + '」的起點</b>（重來也從這裡）</p>';
+    h += '<div class="row">' + num('sx', s.x, 'x') + num('sz', s.z, 'z') + '</div>' + yawRow(s.yaw);
+    if (s.y === 'BELLY_Y') h += '<p class="note">高度：木馬腹中（BELLY_Y）</p>';
+  }
+  P.innerHTML = h;
+}
+$('prop').addEventListener('change', e => {
+  const f = e.target.dataset.f; if (!f || !sel) return;
+  commit();
+  const v = e.target.type === 'number' ? +e.target.value : e.target.value;
+  const r = rectOf(sel);
+  if (r) { if (f === 'name') r.name = v; else if (['x0', 'x1', 'z0', 'z1'].includes(f) && Number.isFinite(v)) r[f] = v; }
+  else if (sel.t === 'guard' || sel.t === 'pt') {
+    const q = data.guards[sel.i];
+    if (f === 'zone') q.zone = +v; else if (f === 'note') q.note = v; else if (f === 'yawdeg') q.yaw = v * Math.PI / 180;
+    else { const m = /^p([xz])(\d+)$/.exec(f); if (m && Number.isFinite(v)) q.route[+m[2]][m[1]] = v; }
+  } else if (sel.t === 'start') {
+    const s = data.zones[sel.i].start;
+    if (f === 'sx') s.x = v; else if (f === 'sz') s.z = v; else if (f === 'yawdeg') s.yaw = v * Math.PI / 180;
+  }
+  changed();
+});
+$('prop').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !sel) return;
+  if (b.id === 'addPts') { addPts = !addPts; setStatus(addPts ? '點地圖加巡邏點；按 Esc 結束' : ''); showProp(); return; }
+  if (b.dataset.yaw != null) {
+    commit(); const v = +b.dataset.yaw;
+    if (sel.t === 'start') data.zones[sel.i].start.yaw = v; else data.guards[sel.i].yaw = v;
+    changed(); return;
+  }
+  if (b.dataset.delpt != null) { sel = { t: 'pt', i: sel.i, j: +b.dataset.delpt }; delSel(); return; }
+  if (b.dataset.delguard) { sel = { t: 'guard', i: sel.i }; delSel(); return; }
+  if (b.dataset.kind) {   // 牆／矮掩體／影子互換
+    const r = rectOf(sel); if (!r) return; commit();
+    const from = sel.t === 'shadow' ? data.shadows : data.walls; from.splice(sel.i, 1);
+    const o = { x0: r.x0, z0: r.z0, x1: r.x1, z1: r.z1, name: r.name };
+    if (b.dataset.kind === 'shadow') { data.shadows.push(o); sel = { t: 'shadow', i: data.shadows.length - 1 }; }
+    else { if (b.dataset.kind === 'low') o.low = true; data.walls.push(o); sel = { t: 'wall', i: data.walls.length - 1 }; }
+    changed();
+  }
+});
+
+// ---------- 檢查 ----------
+const MARK = { pass: '✓', warn: '!', fail: '✕', info: '·' };
+function showChecks() {
+  const res = C.checkZones(data, K);
+  $('checks').innerHTML = res.map(z => '<div class="zcheck"><h3>第 ' + z.zone.id + ' 區 ' + esc(z.zone.name) + '</h3><ul>' +
+    z.items.map(i => '<li class="s-' + i.state + '"><span class="mark" aria-label="' + ({ pass: '過', warn: '提醒', fail: '不過', info: '說明' })[i.state] + '">' + MARK[i.state] + '</span><span class="lbl">' + esc(i.label) + '</span><span class="txt">' + esc(i.text) + '</span></li>').join('') + '</ul></div>').join('');
+}
+
+// ---------- 存檔與大小 ----------
+function refresh() {
+  $('sizeTxt').textContent = data.size.w + ' × ' + data.size.h + ' 公尺' + (C.sameData(data, BASE) ? '（和現有關卡相同）' : '（已修改）');
+  $('undo').disabled = !undoS.length; $('redo').disabled = !redoS.length;
+  showProp(); showChecks(); draw();
+}
+function ioMsg(t) { $('ioMsg').textContent = t; }
+$('copy').addEventListener('click', async () => {
+  const t = C.exportText(data);
+  try { await navigator.clipboard.writeText(t); ioMsg('已複製，可以貼到訊息裡。'); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); ioMsg('已複製。'); } catch (e2) { ioMsg('複製不了，改用「下載 .json」。'); } ta.remove(); }
+});
+$('download').addEventListener('click', () => {
+  const blob = new Blob([C.exportText(data)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  a.download = 'troy-level-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  ioMsg('已下載 ' + a.download + '。把這個檔傳給組員。');
+});
+$('importFile').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  f.text().then(t => {
+    try { const d = C.importText(t); commit(); data = d; sel = null; changed(); fit(); ioMsg('已匯入 ' + f.name + '（要換回原本的按「復原」）。'); }
+    catch (err) { ioMsg('匯入失敗：' + err.message); }
+    e.target.value = '';
+  });
+});
+$('ins').addEventListener('click', () => {
+  const at = +$('insAt').value, dx = +$('insDx').value;
+  if (!Number.isFinite(at) || !Number.isFinite(dx) || dx <= 0) { ioMsg('請填正數。'); return; }
+  commit(); data = C.insertWidth(data, at, dx); sel = null; changed(); fit();
+  ioMsg('已在 x = ' + at + ' 插入 ' + dx + ' 公尺，全圖變成 ' + data.size.w + ' × ' + data.size.h + '。');
+});
+$('reset').addEventListener('click', () => { commit(); data = C.clone(BASE); sel = null; changed(); fit(); ioMsg('已重設成現有關卡（要拿回剛才的按「復原」）。'); });
+$('undo').addEventListener('click', undo); $('redo').addEventListener('click', redo);
+$('del').addEventListener('click', delSel); $('fit').addEventListener('click', fit);
+$('play').addEventListener('click', () => { save(); location.href = 'troy-prologue/index.html?level=local'; });
+document.querySelectorAll('.tool[data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+$('startZone').addEventListener('change', () => { if (tool === 'start') setTool('start'); });
+window.addEventListener('resize', draw);
+
+// ---------- 開始 ----------
+function start() {
+  if (BASE) return;
+  BASE = baseData();
+  // 自我檢查：現有關卡匯入再匯出要完全相同；腹中高度換回數字要和規則的 buildLevel() 一樣
+  const rt = C.sameData(C.importText(C.exportText(BASE)), BASE);
+  const res = C.resolveLevel(BASE, K.BELLY_Y), resOk = window.TroyLevelData ? true : C.sameData(res, R.buildLevel());
+  const sc = $('selfCheck'); sc.textContent = rt && resOk ? '通過' : '沒通過（請告訴組員）'; sc.className = rt && resOk ? 'pass' : 'fail';
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
+  if (saved && Array.isArray(saved.walls)) {
+    data = saved;
+    if (!C.sameData(saved, BASE)) { $('restored').hidden = false; $('restored').textContent = '已載入你上次存在這台電腦的關卡。要從現有關卡重來，按右下「重設成現有關卡」。'; }
+  } else data = C.clone(BASE);
+  $('startZone').innerHTML = data.zones.filter(z => z.start && z.exit).map((z, i) => '<option value="' + data.zones.indexOf(z) + '">' + z.id + ' ' + esc(z.name) + '</option>').join('');
+  setTool('select'); fit(); refresh(); save();
+}
+window.__levelBaseReady = start;
+if (document.readyState !== 'loading') setTimeout(() => { if (!BASE && window.TroyLevelData) start(); }, 0);
+setTimeout(start, 1500);   // level-troy.js 載不到也一定開始
+window.__LE = { get data() { return data; }, get base() { return BASE; }, get view() { return view; }, C };   // 除錯與無頭測試用
+})();
+</script>
+</body>
+</html>
