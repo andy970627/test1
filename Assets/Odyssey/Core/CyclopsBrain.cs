@@ -9,7 +9,7 @@ namespace Odyssey.Core
     /// Throw＝蓄力朝遠處的聲音丟岩石；Eat＝吃掉摸到的同伴；Pray＝向父親波塞頓禱告（聽不到、不動）；
     /// Stagger＝被石頭或箭打到的僵直（不動、聽不到），結束後去查來襲的方向。
     /// </summary>
-    public enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat, Pray, Stagger }
+    public enum CyclopsState { Listen, Investigate, Search, Guard, Throw, Eat, Pray, Stagger, Drink }
 
     /// <summary>巨人這一幀的結果。</summary>
     public readonly struct CyclopsTick
@@ -66,6 +66,15 @@ namespace Odyssey.Core
         public const float PraySeconds = 8f;
         /// <summary>僵直秒數（被打到之後）。</summary>
         public const float StaggerSeconds = 2.5f;
+        /// <summary>雷鳴（規格第 34 節 A）：先定住這麼久（和雅典娜與木馬的過場一樣長，過場中不會被抓），之後再聾 2～4 秒。</summary>
+        public const float ThunderFreezeSeconds = 2.5f;
+        public const float ThunderDeafMin = 2f, ThunderDeafMax = 4f;
+        /// <summary>聾的時候朝你最後的位置慢慢摸過去（走路速度的倍率）。</summary>
+        public const float DeafWalkMultiplier = 0.5f;
+        /// <summary>刻痕（規格第 34 節 D）：摸索結束時，這麼近有刻痕就沿著往下一道走；下一道最遠這麼遠。</summary>
+        public const float CarvingFollowReach = 15f;
+        /// <summary>酒香引他過去時當成這麼大聲的目標：更大聲的聲音能把他叫走。</summary>
+        const float WineTargetLoudness = 0.3f;
         /// <summary>宙斯雷鳴後衝鋒的速度倍率（只用在走向目標時）。</summary>
         public const float ChargeMultiplier = 1.3f;
         /// <summary>衝刺目標的「聲量」：比箭、石子、腳步都大，只有巨石的聲音會改變他。</summary>
@@ -87,6 +96,12 @@ namespace Odyssey.Core
         bool returning;
         bool wandering;
         Vector2 staggerFrom;
+        float staggerDuration = StaggerSeconds;
+        bool headingToWine;
+        Vector2 drinkAt;
+        readonly System.Collections.Generic.List<Vector2> judgedScents = new();
+        Vector2? previousCarving;
+        int carvingChain;
 
         public CyclopsState State { get; private set; }
         public Vector2 Position { get; private set; }
@@ -103,6 +118,34 @@ namespace Odyssey.Core
 
         /// <summary>宙斯雷鳴後的衝鋒中：走向目標與摸索期間為 true，摸索結束或換目標就清掉。</summary>
         public bool Charging { get; private set; }
+
+        /// <summary>還聾多久（雷鳴之後，規格第 34 節 A）；大於 0 時什麼都聽不見。</summary>
+        public float DeafLeft { get; private set; }
+
+        /// <summary>還醉多久（馬戎的酒，規格第 34 節 C）。</summary>
+        public float DrunkLeft { get; private set; }
+        public bool Drunk => DrunkLeft > 0f;
+
+        /// <summary>最後一次聽見你（宙斯法則所說的聽見）的位置；還沒聽見過時是 null。</summary>
+        public Vector2? LastHeardPlayerAt { get; private set; }
+
+        /// <summary>巨人會學（規格第 34 節 E）：由遊戲迴圈保管，跨夜減半。</summary>
+        public LureMemory Lures { get; set; } = new();
+
+        /// <summary>岩壁上的刻痕（規格第 34 節 D）；沒有時是 null。</summary>
+        public System.Collections.Generic.IReadOnlyList<Vector2> Carvings { get; set; }
+
+        /// <summary>他不再全信一個誘餌（只走一半或不理）；給情境提示用。</summary>
+        public event Action<LureTrust> LureDoubted;
+
+        /// <summary>他喝完一灘酒（位置），開始醉。</summary>
+        public event Action<Vector2> Drank;
+
+        /// <summary>他摸到刻痕，往下一道刻痕走去（下一道的位置）。</summary>
+        public event Action<Vector2> FollowedCarving;
+
+        /// <summary>摸索範圍：醉的時候縮小。</summary>
+        public float CurrentSearchRadius => Drunk ? WineSkin.DrunkSearchRadius : SearchRadius;
 
         /// <summary>守住巨石中（摸完巨石之後到 15 秒或被引開為止）。</summary>
         public bool HoldingBoulder { get; private set; }
@@ -122,7 +165,7 @@ namespace Odyssey.Core
         /// </summary>
         public bool TryPray()
         {
-            if (State is CyclopsState.Guard or CyclopsState.Throw or CyclopsState.Eat or CyclopsState.Pray or CyclopsState.Stagger || OnGuard)
+            if (State is CyclopsState.Guard or CyclopsState.Throw or CyclopsState.Eat or CyclopsState.Pray or CyclopsState.Stagger or CyclopsState.Drink || OnGuard || Drunk)
                 return false;
             wandering = false;
             Enter(CyclopsState.Pray);
@@ -135,7 +178,25 @@ namespace Odyssey.Core
             EndGuard();
             wandering = false;
             Charging = false;
+            headingToWine = false;
             staggerFrom = hitFrom;
+            staggerDuration = StaggerSeconds;
+            Enter(CyclopsState.Stagger);
+        }
+
+        /// <summary>
+        /// 宙斯的雷鳴（規格第 34 節 A，取代第 31 節的衝鋒）：定住 2.5 秒，整段加上之後的 2～4 秒都聽不見；
+        /// 定住結束後以一半的走路速度，朝最後聽見你的位置摸過去（沒聽見過就朝 fallback）。
+        /// </summary>
+        public void Thunderstruck(Vector2 fallback)
+        {
+            EndGuard();
+            wandering = false;
+            Charging = false;
+            headingToWine = false;
+            staggerFrom = LastHeardPlayerAt ?? fallback;
+            staggerDuration = ThunderFreezeSeconds;
+            DeafLeft = ThunderFreezeSeconds + ThunderDeafMin + (float)roll() * (ThunderDeafMax - ThunderDeafMin);
             Enter(CyclopsState.Stagger);
         }
 
@@ -150,6 +211,7 @@ namespace Odyssey.Core
             targetKind = SoundKind.Step;
             TargetIsPlayerSound = true;
             Charging = true;
+            headingToWine = false;
             Enter(CyclopsState.Investigate);
         }
 
@@ -169,7 +231,15 @@ namespace Odyssey.Core
             Charging = false;
             TargetIsPlayerSound = false;
             SecondsSinceHeardPlayer = 999f;
+            LastHeardPlayerAt = null;
             ThrowCooldownLeft = 0f;
+            DeafLeft = 0f;
+            DrunkLeft = 0f;
+            headingToWine = false;
+            judgedScents.Clear();
+            previousCarving = null;
+            carvingChain = 0;
+            staggerDuration = StaggerSeconds;
             Enter(CyclopsState.Listen);
         }
 
@@ -179,12 +249,16 @@ namespace Odyssey.Core
         {
             // 禱告中什麼都聽不到（禱告聲蓋過一切）。
             // 僵直中同樣什麼都聽不到。
-            if (State == CyclopsState.Pray || State == CyclopsState.Stagger)
+            // 雷鳴之後聾了，也什麼都聽不到。
+            if (State == CyclopsState.Pray || State == CyclopsState.Stagger || DeafLeft > 0f)
                 return;
             if (!SoundRules.CanHear(e, Position, HearingMultiplierFor(e.Kind)))
                 return;
             if (RevealsPlayer(e.Kind))
+            {
                 SecondsSinceHeardPlayer = 0f;
+                LastHeardPlayerAt = e.Position;
+            }
 
             // 巨石自己往回滑（Slip）時，已經守在旁邊的巨人不必重新摸一次：只記下巨石現在的位置。
             if (e.Kind == SoundKind.Slip && (guarding || HoldingBoulder) && Vector2.Distance(e.Position, holdPoint) <= HoldLeash)
@@ -207,7 +281,7 @@ namespace Odyssey.Core
                 Enter(CyclopsState.Guard);
                 return;
             }
-            if (State == CyclopsState.Throw || State == CyclopsState.Eat)
+            if (State == CyclopsState.Throw || State == CyclopsState.Eat || State == CyclopsState.Drink)
                 return;
 
             bool lure = e.Kind == SoundKind.Arrow || e.Kind == SoundKind.Stone || e.Kind == SoundKind.Bleat;
@@ -215,10 +289,13 @@ namespace Odyssey.Core
             {
                 if (lure)
                 {
+                    LureTrust trust = Judge(e.Kind, e.Position);
+                    if (trust == LureTrust.Ignore)
+                        return;
                     if (TryThrow(e))
                         return;
                     EndGuard();
-                    Investigate(e);
+                    Investigate(e, trust);
                     return;
                 }
                 if (Vector2.Distance(e.Position, holdPoint) <= HoldLeash)
@@ -237,17 +314,74 @@ namespace Odyssey.Core
                 return;
             }
 
+            LureTrust heard = Judge(e.Kind, e.Position);
+            if (heard == LureTrust.Ignore)
+                return;
             if (TryThrow(e))
                 return;
             if (State == CyclopsState.Investigate && !wandering && e.Loudness <= targetLoudness)
                 return;
-            Investigate(e);
+            Investigate(e, heard);
+        }
+
+        /// <summary>這個聲音若是誘餌，問記憶他還信多少（並記一次）；不是誘餌一律全信。</summary>
+        LureTrust Judge(SoundKind kind, Vector2 at)
+        {
+            LureKind? lure = LureMemory.KindOf(kind);
+            if (lure == null)
+                return LureTrust.Full;
+            LureTrust trust = Lures.Respond(at, lure.Value);
+            if (trust != LureTrust.Full)
+                LureDoubted?.Invoke(trust);
+            return trust;
+        }
+
+        /// <summary>
+        /// 聞到酒香（規格第 34 節 C）：在 10 m 內、手上沒有更要緊的事時，走過去喝。每一灘只判斷一次（巨人會學也算一次）。
+        /// 回傳他是不是被引過去了。
+        /// </summary>
+        public bool Smell(Vector2 scent)
+        {
+            if (headingToWine || OnGuard || Vector2.Distance(scent, Position) > WineSkin.SmellReach)
+                return false;
+            bool idle = State == CyclopsState.Listen || State == CyclopsState.Search
+                || (State == CyclopsState.Investigate && (wandering || !TargetIsPlayerSound) && !Charging && !returning);
+            if (!idle)
+                return false;
+            foreach (var judged in judgedScents)
+                if (Vector2.Distance(judged, scent) < 0.1f)
+                    return false;
+            judgedScents.Add(scent);
+            LureTrust trust = Lures.Respond(scent, LureKind.Wine);
+            if (trust != LureTrust.Full)
+                LureDoubted?.Invoke(trust);
+            if (trust == LureTrust.Ignore)
+                return false;
+            returning = false;
+            wandering = false;
+            ResetCarvingChain();
+            Target = Sway(scent);
+            targetLoudness = WineTargetLoudness;
+            targetKind = SoundKind.Step;
+            TargetIsPlayerSound = false;
+            Charging = false;
+            if (trust == LureTrust.Half)
+            {
+                Target = Position + (Target - Position) * 0.5f;
+                wandering = true;
+            }
+            else
+                headingToWine = true;
+            Enter(CyclopsState.Investigate);
+            return true;
         }
 
         /// <summary>推進時間並判斷是否抓到玩家或同伴；碰撞優先於摸到，玩家優先於同伴。</summary>
         public CyclopsTick Tick(float dt, Vector2 player, IReadOnlyList<Vector2> crew = null)
         {
             SecondsSinceHeardPlayer += dt;
+            DeafLeft = Math.Max(0f, DeafLeft - dt);
+            DrunkLeft = Math.Max(0f, DrunkLeft - dt);
             if (Vector2.Distance(player, Position) <= BumpDistance)
                 return new CyclopsTick(FailReason.Bumped, -1, false, default, false);
 
@@ -284,8 +418,16 @@ namespace Odyssey.Core
                     if (StateElapsed >= PraySeconds)
                         Enter(CyclopsState.Listen);
                     break;
+                case CyclopsState.Drink:
+                    if (StateElapsed >= WineSkin.DrinkSeconds)
+                    {
+                        DrunkLeft = WineSkin.DrunkSeconds;
+                        Enter(CyclopsState.Listen);
+                        Drank?.Invoke(drinkAt);
+                    }
+                    break;
                 case CyclopsState.Stagger:
-                    if (StateElapsed >= StaggerSeconds)
+                    if (StateElapsed >= staggerDuration)
                     {
                         Target = staggerFrom;
                         targetLoudness = 0f;
@@ -308,7 +450,7 @@ namespace Odyssey.Core
 
             if (State == CyclopsState.Search)
             {
-                if (Vector2.Distance(player, Position) <= SearchRadius)
+                if (Vector2.Distance(player, Position) <= CurrentSearchRadius)
                     return new CyclopsTick(FailReason.Touched, -1, false, default, false);
                 if (StateElapsed >= searchDuration)
                     pull = EndSearch();
@@ -319,7 +461,7 @@ namespace Odyssey.Core
                 for (int i = 0; i < crew.Count; i++)
                 {
                     float d = Vector2.Distance(crew[i], Position);
-                    if (d <= BumpDistance || (State == CyclopsState.Search && d <= SearchRadius))
+                    if (d <= BumpDistance || (State == CyclopsState.Search && d <= CurrentSearchRadius))
                     {
                         if (State == CyclopsState.Throw)
                             ThrowCooldownLeft = 0f;
@@ -335,7 +477,8 @@ namespace Odyssey.Core
         void Move(float dt)
         {
             float speed = (State == CyclopsState.Guard ? RunSpeed : WalkSpeed) * Difficulty.SpeedMultiplier(Level)
-                * (Charging && State == CyclopsState.Investigate ? ChargeMultiplier : 1f);
+                * (Charging && State == CyclopsState.Investigate ? ChargeMultiplier : 1f)
+                * (DeafLeft > 0f ? DeafWalkMultiplier : 1f);
             Vector2 toTarget = Target - Position;
             float distance = toTarget.Length();
             float step = Math.Min(speed * dt, distance);
@@ -355,9 +498,16 @@ namespace Odyssey.Core
                 return;
             if (wandering)
             {
-                // 遊走到了不摸索，直接再聽。
+                // 遊走到了（或半信半疑的誘餌只走一半）不摸索，直接再聽。
                 wandering = false;
                 Enter(CyclopsState.Listen);
+                return;
+            }
+            if (headingToWine)
+            {
+                headingToWine = false;
+                drinkAt = Target;
+                Enter(CyclopsState.Drink);
                 return;
             }
             searchDuration = State == CyclopsState.Guard ? GuardSearchSeconds : SearchSeconds;
@@ -383,9 +533,71 @@ namespace Odyssey.Core
                 WalkBackToBoulder();
                 return false;
             }
+            if (TryFollowCarving())
+                return false;
             Enter(CyclopsState.Listen);
             return false;
         }
+
+        /// <summary>
+        /// 刻痕（規格第 34 節 D）：摸索的地方有刻痕，就往最近的下一道走（不走回上一道）。
+        /// 一條線最多走 <see cref="Carvings.Max"/> 道，聽到聲音或遊走就重新算。
+        /// </summary>
+        bool TryFollowCarving()
+        {
+            if (Carvings == null || Carvings.Count < 2 || carvingChain >= Odyssey.Core.Carvings.Max)
+                return false;
+            int here = -1;
+            float hereDistance = CurrentSearchRadius;
+            for (int i = 0; i < Carvings.Count; i++)
+            {
+                float d = Vector2.Distance(Carvings[i], Position);
+                if (d <= hereDistance)
+                {
+                    hereDistance = d;
+                    here = i;
+                }
+            }
+            if (here < 0)
+                return false;
+            int next = -1;
+            float nextDistance = CarvingFollowReach;
+            for (int i = 0; i < Carvings.Count; i++)
+            {
+                if (i == here || (previousCarving is Vector2 prev && Vector2.Distance(prev, Carvings[i]) < 0.1f))
+                    continue;
+                float d = Vector2.Distance(Carvings[i], Position);
+                if (d <= nextDistance)
+                {
+                    nextDistance = d;
+                    next = i;
+                }
+            }
+            if (next < 0)
+                return false;
+            previousCarving = Carvings[here];
+            carvingChain++;
+            returning = false;
+            wandering = false;
+            Target = Sway(Carvings[next]);
+            targetLoudness = 0f;
+            targetKind = SoundKind.Step;
+            TargetIsPlayerSound = false;
+            Enter(CyclopsState.Investigate);
+            FollowedCarving?.Invoke(Carvings[next]);
+            return true;
+        }
+
+        void ResetCarvingChain()
+        {
+            previousCarving = null;
+            carvingChain = 0;
+        }
+
+        /// <summary>醉的時候目標隨機偏一點（最多 ±1 m）。</summary>
+        Vector2 Sway(Vector2 target) => Drunk
+            ? target + new Vector2((float)(roll() * 2 - 1), (float)(roll() * 2 - 1)) * WineSkin.DrunkSway
+            : target;
 
         /// <summary>丟完岩石或吃完同伴：原本在守石就繼續守，否則回到聆聽。</summary>
         void ResumeAfterPause()
@@ -426,7 +638,8 @@ namespace Odyssey.Core
 
         bool TryThrow(SoundEvent e)
         {
-            if (ThrowCooldownLeft > 0f || Vector2.Distance(e.Position, Position) <= ThrowMinDistance)
+            // 醉了舉不起岩石。
+            if (Drunk || ThrowCooldownLeft > 0f || Vector2.Distance(e.Position, Position) <= ThrowMinDistance)
                 return false;
             if (roll() >= ThrowChance)
                 return false;
@@ -447,15 +660,24 @@ namespace Odyssey.Core
             Target = Position + new Vector2((float)Math.Cos(angle), (float)Math.Sin(angle)) * radius;
             targetLoudness = 0f;
             wandering = true;
+            headingToWine = false;
+            ResetCarvingChain();
             TargetIsPlayerSound = false;
             Enter(CyclopsState.Investigate);
         }
 
-        void Investigate(SoundEvent e)
+        /// <summary>循聲去查；半信半疑（巨人會學）時只走一半就停下來聽。</summary>
+        void Investigate(SoundEvent e, LureTrust trust = LureTrust.Full)
         {
             returning = false;
             wandering = false;
             SetTarget(e.Position, e);
+            Target = Sway(Target);
+            if (trust == LureTrust.Half)
+            {
+                Target = Position + (Target - Position) * 0.5f;
+                wandering = true;
+            }
             Enter(CyclopsState.Investigate);
         }
 
@@ -475,6 +697,8 @@ namespace Odyssey.Core
             targetKind = e.Kind;
             TargetIsPlayerSound = SoundRules.Source(e.Kind) == SoundSource.Player && !IsLure(e.Kind);
             Charging = false;
+            headingToWine = false;
+            ResetCarvingChain();
         }
 
         /// <summary>石子、箭、奶桶、乳酪：落點在別處的誘餌，不是你所在的位置。</summary>
