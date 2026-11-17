@@ -124,7 +124,7 @@
     DRIVE_ENTER_SLIDE: 4,  // 換段時低於該段「起」：這麼多秒滑上去
     DRIVE_HUNT_RISE: 2,    // 追殺：這麼多秒升到 DRIVE_MAX
     DRIVE_HUNT_FALL: 4,    // 甩掉：這麼多秒滑回
-    DRIVE_ZONE_SEG: [0, 1, 3, 5, 7], // 現有各區 → 企劃的段（區 0 開場＝序、1 木馬腹中＝段 1、2 神殿廣場＝段 3、3 窄巷＝段 5、4 城門＝段 7；新段 2、4、6 還沒做）
+    // 區對段：11/17 起寫在關卡資料每一區的 driveSeg（level-troy.js），不再是常數
     NOISE_R: 8,           // 11/15 弓弦引開 g.noise：沒被蓋住時，這麼近的衛兵（取最近一名）會來查看【假設】；比腳步兩倍（5）大，?lab=check 的衛兵在 6 公尺
     HUNT_START_DELAY: 0.8, // 第 17.2 節：疑心滿、追殺開始時先喊一聲（hunt_call），這段時間追兵站著不動；規則角色可在 0.6～1.0 內調
     CALL_LOOK_ONLY: false, // 第 16.1 節方向 (a)：追殺開始的喊聲叫來的衛兵只轉頭看、不走過來（查看的「走過去」跳過）
@@ -164,7 +164,7 @@
     BLIND_LEAD_GRACE: 0.15, // 真盲區開始前這麼多秒內，移動、衝刺、暗殺都照盲區規則處理（聽到預告就動的人不會被判 move_high）；假驟降前沒有寬限
     PRE_BLIND: 0.4,       // 盲區前幾秒發出 sfx 'pre_blind'（預告）
     FAKE: true,           // 假驟降（第 8.5 節）；false = 關掉。COVER_MODE 下一律不抽（每次交接都無縫）
-    FAKE_FROM_ZONE: 3,    // 從第 3 區（窄巷）起才會出現
+    FAKE_FROM_ZONE: 3,    // 從難度階 3（窄巷）起才會出現（11/17 起比的是區的 tier，不是區號）
     FAKE_EVERY: 4,        // 平均每幾個循環 1 次：每次交接以 1 ÷ (FAKE_EVERY − 1) 的機率抽，抽中後下一次一定是真的
     R_BASE: 3,            // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
     R_GAIN: 10,           // 感知半徑 r(p) = R_BASE + R_GAIN × p²（11/09 4A：感知放遠）
@@ -683,7 +683,12 @@
     return C;
   }
   const CAUSES = causesFor(T);
-  const ZONE_NAMES = ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門'];
+  // 11/17 起區名從關卡資料讀（每一區的 name）；區數由資料決定。沒載資料時是空陣列
+  const ZONE_NAMES = Object.freeze(LEVEL_DATA && Array.isArray(LEVEL_DATA.zones) ? LEVEL_DATA.zones.map((z) => z.name) : []);
+  /** 這一區是不是城門區（出口是 gate）。 */
+  function isGateZone(level, z) { const Z = level && level.zones && level.zones[z]; return !!(Z && Z.exit && Z.exit.kind === 'gate'); }
+  /** 這一區的難度階（tier，沒寫＝區號）：節奏基準倍率、畫面輔助、假驟降看它。 */
+  function zoneTier(level, z) { const Z = level && level.zones && level.zones[z]; return Z && Z.tier != null ? Z.tier : z; }
 
   // ---------- 關卡資料：木馬之夜（整關 60 × 30 m） ----------
   /** 木馬陰影（C1，HORSE_MODE）：木馬東緣往外 3 公尺、和木馬同寬的矩形。畫面層可以直接拿來畫。 */
@@ -754,7 +759,7 @@
         }
       }
     }
-    if (game.zone === 4 && game.level && game.level.gate && !(game.gate && game.gate.open)) {
+    if (isGateZone(game.level, game.zone) && game.level.gate && !(game.gate && game.gate.open)) {
       const L = game.level.gate.latch, d = Math.hypot(pl.x - L.x, pl.z - L.z);
       if (d <= K.LATCH_R * 2.5) out.latch = { near: d <= K.LATCH_R, low: p <= K.GATE_LOW_P, d };
     }
@@ -801,7 +806,14 @@
       if (hs && !level.shadows.some((s) => s.name === hs.name)) level = Object.assign({}, level, { shadows: level.shadows.concat([hs]) });
     }
     const t0 = opts.t0 || 0;
-    const startZone = lab ? LABS[lab] : Math.max(0, Math.min(4, opts.startZone | 0));
+    const startZone = lab ? LABS[lab] : Math.max(0, Math.min(level.zones.length - 1, opts.startZone | 0));
+    // 11/17 區號判斷改看資料：腹中＝有 belly 的區、城門＝出口是 gate 的區、教學＝zone.teach、難度＝zone.tier、DRIVE 段＝zone.driveSeg
+    const zoneAt = (z) => level.zones[z] || {};
+    const isBelly = (z) => !!zoneAt(z).belly;
+    const isGate = (z) => isGateZone(level, z);
+    const teachOf = (z) => zoneAt(z).teach || null;
+    const tierOf = (z) => zoneTier(level, z);
+    const bellyRect = () => zoneAt(g.zone).belly || (level.zones.find((Z) => Z.belly) || {}).belly;
 
     const g = {
       T: K,
@@ -840,7 +852,7 @@
       visualAidMode: opts.visualAid == null ? 'auto' : opts.visualAid, // 畫面層可隨時改：'auto'|'on'|'off'|數字
       visualAid: 1
     };
-    g.visualAid = visualAidFor(g.zone, g.visualAidMode, K);
+    g.visualAid = visualAidFor(tierOf(g.zone), g.visualAidMode, K);
     for (const k of Object.keys(Object.assign({}, hintLadderFor(Object.assign({}, K, { MOVES_MODE: false })), hintLadderFor(K)))) g.hints[k] = { fails: 0, level: 1, lastFail: -1e9 };
     let last = null;
     let latchNoiseAt = -1e9;
@@ -929,22 +941,22 @@
       setActive();
       clearPanic();
       g.player.inBelly = !!level.zones[z].belly;
-      g.visualAid = visualAidFor(z, g.visualAidMode, K);
+      g.visualAid = visualAidFor(tierOf(z), g.visualAidMode, K);
       walking = false; lastStepT = -1e9; idleWatch = null;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
       // 教學順序（M9）。一區只主動教一件新事；起疑、高度警覺、追殺、腳步太吵是「第一次發生時」才教（要馬上會解）。
       if (K.COVER_MODE) {
         // 殘響掩護版（總控 11/10 夜）：踩拍走 → 最響的一擊（衝刺、暗殺） → 被看見與屏息 → 警戒
-        if (z === 1) hint(K.HORSE_MODE ? 'belly' : 'step');          // 木馬腹中：踩著鼓點走，腳步被蓋過（HORSE_MODE：連續踩準幾步才開門）
-        if (z === 2) { blindHintGate = null; dashHintGate = null; }  // 神殿廣場：第一個掩護窗教最響的一擊，下一個教衝刺
+        if (isBelly(z)) hint(K.HORSE_MODE ? 'belly' : 'step');          // 木馬腹中：踩著鼓點走，腳步被蓋過（HORSE_MODE：連續踩準幾步才開門）
+        if (teachOf(z) === 'blind') { blindHintGate = null; dashHintGate = null; }  // 神殿廣場：第一個掩護窗教最響的一擊，下一個教衝刺
         // 窄巷：最響的一擊暗殺；之後教被看見與屏息。MOVES_MODE：進區先教蹲走（那裡有水缸、貨堆），暗殺改到隔 HINT_GAP 秒後的掩護窗
-        if (z === 3) { if (K.MOVES_MODE) { hint('crouch'); crouchHintAt = null; } else hint('takedown'); breathHintAt = null; }
-        if (z === 4) hint('gate');
+        if (teachOf(z) === 'takedown') { if (K.MOVES_MODE) { hint('crouch'); crouchHintAt = null; } else hint('takedown'); breathHintAt = null; }
+        if (isGate(z)) hint('gate');
       } else {
-        if (z === 1) { hint('breath'); blindHintGate = null; }
-        if (z === 2) hint('dash');
-        if (z === 3) hint('takedown');
-        if (z === 4) hint('gate');
+        if (isBelly(z)) { hint('breath'); blindHintGate = null; }
+        if (teachOf(z) === 'blind') hint('dash');
+        if (teachOf(z) === 'takedown') hint('takedown');
+        if (isGate(z)) hint('gate');
       }
     }
 
@@ -1003,7 +1015,7 @@
     }
     function moveBody(b, dx, dz) {
       if (b === g.player && b.inBelly) {
-        const r = level.zones[1].belly;
+        const r = bellyRect();
         b.x = Math.max(r.x0, Math.min(r.x1, b.x + dx));
         b.z = Math.max(r.z0, Math.min(r.z1, b.z + dz));
         return;
@@ -1045,7 +1057,7 @@
     /** 搭配動作第 8 節：久站影子時，暗示階梯往上推一階（至少第 2 階、有文字），提示這一區的下一步。只引導，不懲罰。 */
     function idleNudge() {
       const tgt = g.guards.find((q) => q.id === 'g3a');
-      const key = g.zone === 1 ? 'step' : g.zone === 3 && tgt && tgt.active ? 'takedown' : g.zone === 4 ? 'latch' : 'blind';
+      const key = isBelly(g.zone) ? 'step' : teachOf(g.zone) === 'takedown' && tgt && tgt.active ? 'takedown' : isGate(g.zone) ? 'latch' : 'blind';
       const H = g.hints[key]; if (!H) return;
       H.fails = Math.max(H.fails + 1, 2); H.level = Math.min(3, H.fails); H.lastFail = g.time;
       emit('hint', ladderText(key, H.level, LADDER), { key, level: H.level, idle: true });
@@ -1239,7 +1251,7 @@
     }
     function cycleTarget() {
       return cycleTargetFor({
-        dist: nearestGuardDist(), zone: g.zone,
+        dist: nearestGuardDist(), zone: tierOf(g.zone),
         hunted: g.phase === 'play' && g.hunted,
         alert: g.phase === 'play' && g.panic.active
       }, K);
@@ -1249,7 +1261,7 @@
       const c = g.cycle;
       c.fake = K.COVER_MODE ? false : c.nextFake;   // 殘響掩護：每次交接都無縫，沒有「假」可言
       c.nextFake = false;
-      if (K.COVER_MODE || !K.FAKE || c.fake || g.phase !== 'play' || g.zone < K.FAKE_FROM_ZONE || g.hunted || g.panic.active) return;
+      if (K.COVER_MODE || !K.FAKE || c.fake || g.phase !== 'play' || tierOf(g.zone) < K.FAKE_FROM_ZONE || g.hunted || g.panic.active) return;
       c.nextFake = rng() < 1 / Math.max(1, K.FAKE_EVERY - 1);
     }
     /** 首幀或重來：T 直接等於目標，相位照 t0 對齊。 */
@@ -1309,7 +1321,7 @@
       c.anchor = { t, p: c.p, T: c.T, index: c.index, start: c.start };
       g.danger = dangerOf(g);
       g.fire = fireBrightness(g);
-      g.visualAid = visualAidFor(g.zone, g.visualAidMode, K);
+      g.visualAid = visualAidFor(tierOf(g.zone), g.visualAidMode, K);
       refreshBass(t);
     }
 
@@ -1574,7 +1586,7 @@
 
       // 致命一擊
       // 站在門閂旁時，E 只算推門閂，不算暗殺
-      const atLatch = g.zone === 4 && !g.gate.open && level.gate && Math.hypot(pl.x - level.gate.latch.x, pl.z - level.gate.latch.z) <= K.LATCH_R;
+      const atLatch = isGate(g.zone) && !g.gate.open && level.gate && Math.hypot(pl.x - level.gate.latch.x, pl.z - level.gate.latch.z) <= K.LATCH_R;
       if (inp.takedown && !pl.inBelly && !atLatch && !crouching) {   // 蹲著不能暗殺（要站起來）
         let best = null, bd = Infinity;
         for (const q of g.guards) {
@@ -1597,7 +1609,7 @@
 
       // 城門門閂（按住 interact）
       g.gate.pushing = false;
-      if (g.zone === 4 && inp.interact && !g.gate.open && !crouching) {   // 蹲著推不了門閂
+      if (isGate(g.zone) && inp.interact && !g.gate.open && !crouching) {   // 蹲著推不了門閂
         const L = level.gate.latch;
         if (Math.hypot(pl.x - L.x, pl.z - L.z) <= K.LATCH_R) {
           if (pAt(actT) <= K.GATE_LOW_P) {   // 按住的判定用按鍵當下的相位
@@ -1641,14 +1653,14 @@
       if (g.phase !== 'play') return g;
 
       // 木馬腹中練習：達成之後的下一個掩護窗一開始，同伴趁那一擊拉開木栓（玩家什麼都不用按）
-      if (K.HORSE_MODE && g.zone === 1 && g.belly.ready && !g.belly.open && blind && !horsePrevBlind) {
+      if (K.HORSE_MODE && isBelly(g.zone) && g.belly.ready && !g.belly.open && blind && !horsePrevBlind) {
         g.belly.open = true;
         emit('sfx', 'trapdoor_open');
       }
       horsePrevBlind = blind;
       // 盲區提示：不和進區提示同時出，等到進區之後的下一個循環、而且隔 HINT_GAP 秒以上。
       // 舊版在區 1（屏息之後）；殘響掩護版在區 2（踩拍走之後），出過之後下一個掩護窗再教衝刺。
-      if (g.zone === (K.COVER_MODE ? 2 : 1)) {
+      if (K.COVER_MODE ? teachOf(g.zone) === 'blind' : isBelly(g.zone)) {
         if (!blindHintGate) blindHintGate = { i: c.index, t };
         if (blind && c.index > blindHintGate.i && t - blindHintGate.t >= K.HINT_GAP) {
           if (!g.hintsShown.blind) { hint('blind'); dashHintGate = c.index; }
@@ -1656,7 +1668,7 @@
         }
       }
       // 殘響掩護版：窄巷的暗殺提示之後隔 HINT_GAP 秒，等節奏快起來（被看見最危險的時候）才教屏息
-      if (K.COVER_MODE && g.zone === 3) {
+      if (K.COVER_MODE && teachOf(g.zone) === 'takedown') {
         // MOVES_MODE：進區教了蹲走，隔 HINT_GAP 秒後的掩護窗（暗殺有效的時候）才教暗殺；屏息再隔 HINT_GAP 秒
         if (K.MOVES_MODE && !g.hintsShown.takedown) {
           if (crouchHintAt == null) crouchHintAt = t;
@@ -1966,7 +1978,7 @@
           }
         }
       }
-      if (g.zone === 4 && g.gate.progress >= K.GATE_NEED && !g.gate.open) {
+      if (isGate(g.zone) && g.gate.progress >= K.GATE_NEED && !g.gate.open) {
         g.gate.open = true; g.phase = 'win';
         emit('sfx', 'gate_open'); emit('msg', '門閂落地，城門開了。火把的光從城外湧進來。');
       }
@@ -2057,8 +2069,8 @@
     function driveSegNow() {
       if (DS.labSeg != null) return DS.labSeg;
       if (g.phase === 'intro') return 0;
-      const m = K.DRIVE_ZONE_SEG;
-      return m[Math.max(0, Math.min(m.length - 1, g.zone | 0))];
+      for (let z = g.zone | 0; z >= 0; z--) { const sg = zoneAt(z).driveSeg; if (sg != null) return sg; }   // 沒寫就沿用前一區
+      return 0;
     }
     function updateDrive() {
       if (!K.DRIVE_MODE) { g.drive = null; g.driveInfo = null; return; }
@@ -2097,7 +2109,7 @@
     T, HINTS, HINT_LADDER, hintsFor, hintLadderFor, ladderText, hintSignals, ZONE_NAMES, CAUSES, causesFor,
     createLevel, buildLevel, resolveLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
-    zoneMul, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
+    zoneMul, zoneTier, isGateZone, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
     stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
     forward, yawTo, angDiff, inRect, mulberry32
   };

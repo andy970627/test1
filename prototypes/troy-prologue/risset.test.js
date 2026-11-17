@@ -4414,7 +4414,7 @@ test('11/15 DRIVE 重來回到該段的「起」；DRIVE_MODE 關（?drive=0）�
   intro.step(1, {}); intro.step(30, {});
   assert.equal(intro.phase, 'intro');
   assert.ok(near(intro.drive, 0.3));
-  assert.deepEqual(K.DRIVE_ZONE_SEG, [0, 1, 3, 5, 7]);
+  assert.deepEqual(R.buildLevel().zones.map((z) => z.driveSeg), [0, 1, 3, 5, 7], '11/17 起區對段寫在關卡資料的 driveSeg');
   const z4 = R.createLevel({ startZone: 4 }); z4.step(1, {}); z4.step(1 + DT, {});
   assert.equal(z4.driveInfo.seg, 7);
 });
@@ -4466,12 +4466,17 @@ test('11/15 DRIVE 試驗場 ?lab=drive：第 2 區、沒有衛兵、出口擋住
 /** 改動前 buildLevel() 的回傳值（11/17 從 HEAD 的 risset.js 直接 JSON.stringify 存下；exit.rect 原本的 name: undefined 在 JSON 裡本來就沒有）。 */
 const LEVEL_BEFORE_1117 = {"size":{"w":60,"h":30},"walls":[{"x0":-1,"z0":-1,"x1":61,"z1":0,"name":"北界"},{"x0":-1,"z0":30,"x1":61,"z1":31,"name":"南界"},{"x0":-1,"z0":0,"x1":0,"z1":30,"name":"西界"},{"x0":60,"z0":0,"x1":61,"z1":30,"name":"城門牆"},{"x0":19,"z0":2,"x1":27,"z1":8,"name":"神殿"},{"x0":21,"z0":12.5,"x1":23,"z1":14.5,"name":"雕像台座","low":true},{"x0":30,"z0":0,"x1":31,"z1":18,"name":"廣場東牆（北段）"},{"x0":30,"z0":27,"x1":31,"z1":30,"name":"廣場東牆（南段）"},{"x0":31,"z0":0,"x1":46,"z1":17,"name":"屋舍"},{"x0":31,"z0":28,"x1":46,"z1":30,"name":"倉庫"},{"x0":35,"z0":24.5,"x1":37,"z1":28,"name":"貨堆","low":true},{"x0":40,"z0":18,"x1":41.5,"z1":21,"name":"水缸","low":true},{"x0":46,"z0":0,"x1":47,"z1":17,"name":"巷口北牆"},{"x0":46,"z0":28,"x1":47,"z1":30,"name":"巷口南牆"},{"x0":52,"z0":13,"x1":53.5,"z1":17,"name":"石墩","low":true}],"shadows":[{"x0":5,"z0":14.2,"x1":11.8,"z1":15.8,"name":"木馬腹中"},{"x0":11,"z0":16,"x1":15,"z1":20,"name":"木馬的影子"},{"x0":18,"z0":8,"x1":28,"z1":10.5,"name":"神殿柱廊"},{"x0":20,"z0":14.5,"x1":24,"z1":18,"name":"雕像的影子"},{"x0":14,"z0":24,"x1":20,"z1":30,"name":"南側拱廊"},{"x0":26.5,"z0":23.5,"x1":30,"z1":27,"name":"廣場東南角"},{"x0":31,"z0":23.5,"x1":35,"z1":28,"name":"巷口屋簷"},{"x0":37,"z0":24.5,"x1":40,"z1":28,"name":"貨堆後"},{"x0":41.5,"z0":17,"x1":44,"z1":21,"name":"水缸旁"},{"x0":47,"z0":23,"x1":51,"z1":28,"name":"城門南側廊下"},{"x0":53.5,"z0":12,"x1":59.8,"z1":18,"name":"城門拱道"}],"zones":[{"id":0,"name":"開場","start":{"x":6,"z":15,"y":2.5,"yaw":-1.5707963267948966}},{"id":1,"name":"木馬腹中","start":{"x":5.8,"z":15,"y":2.5,"yaw":-1.5707963267948966},"belly":{"x0":5.3,"z0":14.5,"x1":11.5,"z1":15.5,"name":"木馬腹中"},"exit":{"kind":"trapdoor","x":11,"z":15,"to":2}},{"id":2,"name":"神殿廣場","start":{"x":13,"z":18.5,"y":0,"yaw":-1.5707963267948966},"exit":{"kind":"rect","rect":{"x0":30,"z0":18,"x1":31.5,"z1":27},"to":3}},{"id":3,"name":"城牆下的窄巷","start":{"x":32,"z":25.5,"y":0,"yaw":-1.5707963267948966},"exit":{"kind":"rect","rect":{"x0":46,"z0":17,"x1":47.5,"z1":28},"to":4,"place":true}},{"id":4,"name":"城門","start":{"x":48,"z":25,"y":0,"yaw":-1.5707963267948966},"exit":{"kind":"gate","to":null}}],"guards":[{"id":"g1","zone":1,"route":[{"x":9,"z":15},{"x":1.5,"z":15},{"x":15.5,"z":15}],"note":"木馬下來回巡的衛兵"},{"id":"g2a","zone":2,"route":[{"x":15,"z":12},{"x":29,"z":12},{"x":29,"z":15.5},{"x":15,"z":15.5}],"note":"繞廣場的衛兵"},{"id":"g2b","zone":2,"route":[{"x":28,"z":21},{"x":16,"z":21}],"note":"橫越廣場南側、會起疑的衛兵"},{"id":"g3a","zone":3,"route":[{"x":39,"z":23}],"yaw":-1.5707963267948966,"note":"背對巷口站崗（可暗殺）"},{"id":"g3b","zone":3,"route":[{"x":44.5,"z":18.5},{"x":44.5,"z":27}],"note":"巷尾南北巡"},{"id":"g3c","zone":3,"route":[{"x":42,"z":22.5},{"x":45.5,"z":22.5}],"note":"巷尾東西巡，與南北巡交錯"},{"id":"g4a","zone":4,"route":[{"x":49,"z":5},{"x":57,"z":5}],"note":"城門北側守衛"},{"id":"g4b","zone":4,"route":[{"x":48,"z":20},{"x":51,"z":20},{"x":51,"z":9}],"note":"城門西側守衛"}],"horse":{"x0":4.5,"z0":13,"x1":12.5,"z1":17,"bellyY":2.5,"trapdoor":{"x":11,"z":15},"drop":{"x":13,"z":18.5}},"gate":{"x0":59.8,"z0":11,"x1":60,"z1":19,"latch":{"x":58.6,"z":15}}};
 
+/** 11/17 第二步（區數由資料決定）在每一區新增的欄位；拿掉之後要和改動前一樣。 */
+function stripZoneFields(lv) {
+  lv.zones = lv.zones.map((z) => { const o = Object.assign({}, z); delete o.tier; delete o.teach; delete o.driveSeg; return o; });
+  return lv;
+}
 test('11/17 關卡抽成 level-troy.js：新的 buildLevel() 和改動前的回傳值 deep-equal；resolveLevel 把 "BELLY_Y" 換成常數、每次給新物件；資料檔是純資料', () => {
-  assert.deepStrictEqual(R.buildLevel(), LEVEL_BEFORE_1117);
+  assert.deepStrictEqual(stripZoneFields(R.buildLevel()), LEVEL_BEFORE_1117);
   const data = require('./level-troy.js');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(data)), data, '資料檔只能有 JSON 表達得了的值（沒有函式、undefined）');
   assert.equal(data.zones[1].start.y, 'BELLY_Y');
-  assert.deepStrictEqual(R.resolveLevel(data), LEVEL_BEFORE_1117);
+  assert.deepStrictEqual(stripZoneFields(R.resolveLevel(data)), LEVEL_BEFORE_1117);
   const a = R.buildLevel(); a.walls[0].x0 = 99; a.zones[2].start.x = 0;
   assert.equal(R.buildLevel().walls[0].x0, -1, '改了上一份不影響下一份');
   assert.equal(data.walls[0].x0, -1, '也不改到資料檔本身');
@@ -4481,4 +4486,70 @@ test('11/17 關卡抽成 level-troy.js：新的 buildLevel() 和改動前的回�
   const g = R.createLevel({ level: lv, startZone: 2 });
   assert.ok(g.level.shadows.some((s) => s.name === '測試影子'));
   assert.throws(() => R.resolveLevel(null), /level-troy\.js/);
+});
+
+// ---------- 11/17 區數由資料決定 ----------
+/** 在預設資料的神殿廣場與窄巷之間插一區「慶宴的街」（6 區）：巷口那一小段當新區，後面的區號、出口 to、衛兵區號都往後挪一號；衛兵全拿掉，好讓腳本走完。 */
+function sixZoneLevel() {
+  const lv = R.buildLevel();
+  const z = lv.zones.map((o) => JSON.parse(JSON.stringify(o)));
+  const feast = { id: 3, name: '慶宴的街', tier: 2, driveSeg: 4, start: { x: 32, z: 25.5, y: 0, yaw: -Math.PI / 2 },
+    exit: { kind: 'rect', rect: { x0: 33.5, z0: 23.5, x1: 34.5, z1: 28 }, to: 4 } };
+  z[2].exit.to = 3; z[2].exit.place = true;
+  z[3].id = 4; z[3].exit.to = 5;
+  z[4].id = 5;
+  lv.zones = [z[0], z[1], z[2], feast, z[3], z[4]];
+  lv.guards = [];
+  return lv;
+}
+
+test('11/17 區數由資料決定：資料多插一區（6 區）照樣走得完，城門在最後一區（門閂、推門、結局看出口是 gate 的區），區名、DRIVE 段、startZone 上限都照資料', () => {
+  const lv = sixZoneLevel();
+  // 走路腳本：每區照路線點走，到城門區就站在門閂旁一直推
+  const WP = {
+    1: [{ x: 11, z: 15 }],
+    2: [{ x: 14, z: 22 }, { x: 17, z: 26.5 }, { x: 28, z: 25.5 }, { x: 31, z: 22.5 }],
+    3: [{ x: 34.2, z: 25.5 }],
+    4: [{ x: 34.5, z: 23 }, { x: 36.4, z: 23 }, { x: 38.5, z: 26.5 }, { x: 46.8, z: 24.5 }],
+    5: [{ x: 50, z: 26 }, { x: 56, z: 24 }, { x: 58.2, z: 15.2 }]
+  };
+  for (const T0 of [{}, { MOVES_MODE: false }, { COVER_MODE: false, MOVES_MODE: false }]) {
+    const g = R.createLevel({ level: lv, T: Object.assign({ DYNAMIC: false }, T0) });
+    let t = 1, zone = -1, wi = 0;
+    const seen = [], names = [], segs = [];
+    g.step(t, {}); g.step(t, { start: true });
+    while (g.phase === 'play' && t < 400) {
+      t += DT;
+      if (g.zone !== zone) { zone = g.zone; wi = 0; seen.push(zone); names.push(g.level.zones[zone].name); }
+      const w = WP[zone], pl = g.player;
+      let tgt = w[Math.min(wi, w.length - 1)], dx = tgt.x - pl.x, dz = tgt.z - pl.z;
+      if (Math.hypot(dx, dz) < 0.4 && wi < w.length - 1) { wi++; tgt = w[wi]; dx = tgt.x - pl.x; dz = tgt.z - pl.z; }
+      const d = Math.hypot(dx, dz), last = wi === w.length - 1 && d < 0.4;
+      g.step(t, { mx: last ? 0 : dx / d, mz: last ? 0 : dz / d, yaw: d > 1e-6 ? R.yawTo(dx, dz) : null, interact: zone === 5 && last });
+      g.drain();
+      if (g.driveInfo && segs[segs.length - 1] !== g.driveInfo.seg) segs.push(g.driveInfo.seg);
+    }
+    const tag = JSON.stringify(T0);
+    assert.equal(g.phase, 'win', tag + '：6 區要走得完（停在區 ' + g.zone + '，' + g.phase + '）');
+    assert.deepEqual(seen, [1, 2, 3, 4, 5], tag);
+    assert.deepEqual(names, ['木馬腹中', '神殿廣場', '慶宴的街', '城牆下的窄巷', '城門'], tag);
+    assert.equal(g.zone, 5, tag + '：城門在最後一區');
+    assert.ok(g.gate.open);
+    if (T0.MOVES_MODE !== false || T0.COVER_MODE !== false) assert.deepEqual(segs, [1, 3, 4, 5, 7], tag + '：DRIVE 段照每一區的 driveSeg');
+  }
+  // 城門判定只看出口：區 4（窄巷）站在門閂旁推，不算
+  const g4 = R.createLevel({ level: lv, startZone: 4, T: { DYNAMIC: false } });
+  g4.player.x = 58.2; g4.player.z = 15.2;
+  for (let t = 1; t < 20; t += DT) g4.step(t, { interact: true });
+  assert.equal(g4.gate.progress, 0, '不是城門區的區推門閂沒有作用');
+  // startZone 上限＝資料裡的區數減 1
+  assert.equal(R.createLevel({ level: lv, startZone: 9 }).zone, 5);
+  assert.equal(R.createLevel({ startZone: 9 }).zone, 4);
+  // 沒寫 driveSeg 的區沿用前一區；預設資料的區名照舊
+  const lv2 = sixZoneLevel(); delete lv2.zones[3].driveSeg;
+  const g2 = R.createLevel({ level: lv2, startZone: 3 }); g2.step(1, {}); g2.step(1 + DT, {});
+  assert.equal(g2.driveInfo.seg, 3);
+  assert.deepEqual(Array.from(R.ZONE_NAMES), ['開場', '木馬腹中', '神殿廣場', '城牆下的窄巷', '城門']);
+  assert.ok(R.isGateZone(R.buildLevel(), 4) && !R.isGateZone(R.buildLevel(), 3));
+  assert.deepEqual(R.buildLevel().zones.map((z, i) => R.zoneTier(R.buildLevel(), i)), [0, 1, 2, 3, 4]);
 });

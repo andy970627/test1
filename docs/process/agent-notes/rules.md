@@ -15,6 +15,17 @@
   - `buildLevel()` 等於 `resolveLevel(資料)`：深拷貝一份，字串 `"BELLY_Y"` 換成 `T.BELLY_Y`，每次都給新物件。
   - 編輯器存的資料用 `RissetRules.resolveLevel(data)` 轉成 level，再傳 `createLevel({level})`。
   - 資料檔裡不能有函式或算式；角度存數字（−π/2 寫 `-1.5707963267948966`）。
+  - 區數由資料決定（11/17 第二步）。區號＝陣列索引；區 0 是開場字卡，按開始從區 1 起玩。每一區的欄位：
+    | 欄位 | 意思 | 沒寫時 |
+    |---|---|---|
+    | `name` | 區名，`RissetRules.ZONE_NAMES` 從這裡讀 | — |
+    | `exit.kind: 'gate'` | 這一區＝城門區（門閂、推門、結局、門閂提示、`hintSignals().latch`），要放最後 | — |
+    | `belly` | 這一區＝腹中（踩拍走提示、腹中練習開門、移動限制在矩形裡） | — |
+    | `teach` | `'blind'`＝教最響的一擊與衝刺；`'takedown'`＝教蹲走、暗殺與屏息 | 不教 |
+    | `tier` | 難度階：節奏基準倍率（ZONE_MUL）、畫面輔助分區、假驟降（`FAKE_FROM_ZONE`）看它 | 區號 |
+    | `driveSeg` | 期末企劃的段號（0～8） | 沿用前一區 |
+  - 新匯出：`isGateZone(level, z)`、`zoneTier(level, z)`。`startZone` 上限＝區數減 1。
+  - 試驗場（`?lab=`）的起始區號和場景座標仍照預設地圖寫死，換地圖時試驗場不保證能用。
 - 常數表：`const T = Object.freeze({...})`，第 70～150 行左右，每個常數旁有中文註解。
 - 入口：`createLevel(opts)` 回傳遊戲物件 `g`，方法掛在 `g` 上：
   - `g.step(t, input)`（第 848 行起，主迴圈）：`t` 是音訊時鐘絕對秒數；內部算 dt，最多 `MAX_DT` 0.1 秒（只限制移動與規則，循環時鐘照實際經過的音訊時間推進）。
@@ -61,7 +72,7 @@
   - 規則在每幀 `g.step` 跑完之後才算，不發事件、不用亂數，任何判定都不讀它。
   - 網址 `?drive=0` 要由畫面層轉成 `opts.T.DRIVE_MODE = false`，規則不讀網址。
   - 純函式 `RissetRules.driveFor(段, 該段經過秒數, 是否追殺中, 追殺前的值, o?, K?)`。`o` 可給 `{enter, huntT, endT, endFrom}`。
-  - 現有區對應企劃的段（`T.DRIVE_ZONE_SEG`）：
+  - 現有區對應企劃的段（11/17 起寫在關卡資料每一區的 `driveSeg`，常數 `T.DRIVE_ZONE_SEG` 已刪）：
 
     | 區 | 企劃的段 | 起→止 | 目標時長 |
     |---|---|---|---|
@@ -399,3 +410,14 @@
   - 唯一差別：兩個出口矩形原本帶 `name: undefined`，資料檔裡沒有這個鍵（JSON 本來就存不了 undefined，也沒有程式讀它）。
   - 沒載 `level-troy.js` 的頁面（`prototypes/index.html`、`playtest-today.html`）只用常數與純函式，照常能載；一呼叫 `createLevel` 就丟出「level-troy.js 要在 risset.js 之前載入」。
   - `dist/` 和 claude.ai 上發布的版本沒改，下次打包或發布要把 `level-troy.js` 一起帶上。
+
+- 2026-11-17 區數由資料決定（總控派工）：
+  - `level-troy.js` 每一區加 `tier`、`teach`、`driveSeg`。
+  - `risset.js` 的區號判斷全部改看資料（欄位見第 1 節）：`ZONE_NAMES`、城門、腹中、教學、難度、DRIVE、`startZone` 上限。
+  - 驗收：
+    - 拿掉三個新欄位後，`buildLevel()` 和改動前一樣。
+    - 新測試：資料多插一區「慶宴的街」（6 區），三種模式都走得完，城門在最後一區，DRIVE 段照 `driveSeg`；不是城門區推門閂沒作用。
+    - 整夜 500 局 `--moves 1` 和 HEAD（69609e5）逐字相同；`--moves 0` 和 c1d4aa3 逐字相同；全套 371 項全過。
+  - 畫面、聲音寫死區號的地方，列給總控（沒改）：
+    - `index.html`：386、1086、1104、1384、1761～1762、1771、2513～2514、3646、3667、3671、3722。
+    - `audio.js`：213、705～716、724、1692～1695、2852～2855、2899～2900。
