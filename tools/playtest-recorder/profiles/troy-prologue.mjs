@@ -50,9 +50,16 @@ export default {
       const src = createRequire(import.meta.url)('../../telemetry/troy-bots.js').makeBot.toString();
       // --sigma <秒>／--seed <整數>（11/12，模仿真人）：起步誤差，和 makeBot 的 opts.sigma／opts.seed 同義；不給就是完美踩拍
       const human = { sigma: o.sigma ? +o.sigma : 0, seed: o.seed ? +o.seed : 1 };
-      await page.evaluate(({ src, human }) => {
-        window.__recPlayMake = () => new Function('R', 'return (' + src + ')')(window.RissetRules)(Object.assign({ cover: window.TroyDebug.game.T.COVER_MODE === true }, human.sigma ? human : {}));
-      }, { src, human });
+      // 11/18：七段地圖（?map=final）要用地圖自己的 botRoute（forBotLevel），否則程式玩家照預設地圖的路線走、卡在第 2 區
+      const flSrc = createRequire(import.meta.url)('../../telemetry/troy-bots.js').forBotLevel.toString();
+      await page.evaluate(({ src, human, flSrc }) => {
+        window.__recPlayMake = () => {
+          const opts = Object.assign({ cover: window.TroyDebug.game.T.COVER_MODE === true }, human.sigma ? human : {});
+          const lv = new URLSearchParams(location.search).get('map') === 'final' && window.TroyLevelFinal && window.RissetRules.resolveLevel ? window.RissetRules.resolveLevel(window.TroyLevelFinal) : null;
+          if (lv) Object.assign(opts, new Function('return (' + flSrc + ')')()(lv));
+          return new Function('R', 'return (' + src + ')')(window.RissetRules)(opts);
+        };
+      }, { src, human, flSrc });
     }
     // --human-cam（11/12，報告影片）：只換「畫出來的視角」，模仿真人轉頭。遊戲邏輯照舊讀 V.yaw（程式玩家要走的方向），
     // 畫圖那一刻才換成平滑、會落後、會東張西望的視角，畫完換回；所以路線、判定、數字和沒開時一樣。
