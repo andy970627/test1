@@ -1,0 +1,110 @@
+# 整夜自動驗證：木馬之夜殘響掩護（2026-11-11）
+
+- 產生：2026-11-10T16:22:47.227Z；版本：程式玩家 提交 c1d4aa3；錄音 提交 c1d4aa3（產生報告當下的工作樹）
+- 門檻：`docs/design/2026-11-10-core-direction-illusion.md` 第 7 節（7.5 錄音、7.8 程式玩家；7.1 的「σ 0.12 通關 50～85%」已被 7.8 作廢，通關率只列不判）。
+- 重產這份報告：`node tools/telemetry/overnight-report.mjs --sim tools/playtest-recorder/out/overnight-sim-1111.json --cover tools/playtest-recorder/out/overnight-cover-1111 --gap tools/playtest-recorder/out/overnight-gap-1111 --steps tools/playtest-recorder/out/overnight-steps-1111 --out docs/process/overnight-validation-2026-11-11.md`
+- 錄音原始輸出在 `tools/playtest-recorder/out/`，不進 git；程式玩家 JSON 在 `tools/playtest-recorder/out/overnight-sim-1111.json`（同樣不進 git）。
+
+## 結論
+
+- 判定 13 項：過 10、不過 1、無資料 2（另 3 項只列不判）。
+- 不過：σ 0.12 錯了要付代價：通關時間中位 ÷ 完美玩家，且每局平均進高度警覺（不停） 44.4 秒 ÷ 44.0 秒 ＝ 1.01 倍；高度警覺 0.59 次／局。
+- 無資料：不合拍與合拍腳步 1～4 kHz 差（不停）；不合拍與合拍腳步 1～4 kHz 差（留空檔）。
+
+## 門檻對照
+
+| 項目 | 數字 | 門檻 | 結果 | 來源指令 |
+|---|---|---|---|---|
+| 只按前進：通關率（不停） | 0.0%（500 局） | ≤ 30% | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| 完美踩拍：通關率（不停） | 100.0%（500 局） | 100% | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.12 錯了要付代價：通關時間中位 ÷ 完美玩家，且每局平均進高度警覺（不停） | 44.4 秒 ÷ 44.0 秒 ＝ 1.01 倍；高度警覺 0.59 次／局 | ≥ 1.2 倍，且 ≥ 1 次／局 | ❌ 不過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.25 越不準越吃虧：通關率比 σ 0.12 低，或通關時間中位再多（不停） | 通關率 83.8% vs 94.4%（低 10.6 個百分點）；時間中位 44.7 秒 vs 44.4 秒（1.01 倍） | 低 ≥ 10 個百分點，或 ≥ 1.2 倍 | ✅ 過 | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.12 通關率（不停；只列，7.8 不當門檻） | 94.4%（500 局） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| σ 0.25 通關率（不停；只列，7.8 不當門檻） | 83.8%（500 局） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+| 餘韻中位（不停，原始） | 0.61 秒（平均背景 0.38 秒，參考）；9 個一般窗 | 0.5～0.8 秒 | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 重合擊突出中位（不停，原始） | +23 dB（最小 20.8） | ≥ 12 dB | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 警戒輕版重擊突出中位（不停，原始） | 11.5 dB（6 個警戒窗） | ≥ 8 dB | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 餘韻中位（不停，喇叭模擬） | 0.59 秒（平均背景 0.15 秒，參考）；9 個一般窗 | 0.5～0.8 秒 | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 重合擊突出中位（不停，喇叭模擬） | +22.9 dB（最小 20.4） | ≥ 12 dB | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 警戒輕版重擊突出中位（不停，喇叭模擬） | 11.7 dB（6 個警戒窗） | ≥ 8 dB | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 不合拍與合拍腳步 1～4 kHz 差（不停） | 3.1 dB（不合拍 1 步、合拍 2 步） | ≥ 12 dB（兩種各 ≥ 3 步才判） | — 無資料 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111` |
+| 不合拍與合拍腳步 1～4 kHz 差（留空檔） | 樣本不夠（不合拍 0 步、合拍 3 步） | ≥ 12 dB（兩種各 ≥ 3 步才判） | — 無資料 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover gap --out tools/playtest-recorder/out/overnight-gap-1111` |
+| 不合拍與合拍腳步 1～4 kHz 差（不停・腳步測試段） | 24.9 dB（不合拍 16 步、合拍 33 步） | ≥ 12 dB（兩種各 ≥ 3 步才判） | ✅ 過 | `node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 45 --cover cover --step-test --no-video --out tools/playtest-recorder/out/overnight-steps-1111` |
+| 通關時間中位：完美玩家，舊版 vs 新版（只列） | 舊版 87.3 秒、新版 44.0 秒（程式玩家） | — | （只列） | `node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json` |
+
+## 程式玩家（Node 直接跑規則層）
+
+指令：`node tools/telemetry/overnight-sim.mjs --n 500 --out tools/playtest-recorder/out/overnight-sim-1111.json`；500 局 × 8 組，共 0.8 分鐘。每局一條命、最多 420 秒；seed 1～500（t0 與幀率抖動由 seed 決定）。
+
+| 模式 | 玩家 | 局數 | 通關率 | 通關時間中位（秒） | 每局進高度警覺 | N1（自己規則／同一把尺） | 走到窄巷／城門 | 各區平均停留秒數（1／2／3／4） | 死因分布 |
+|---|---|---|---|---|---|---|---|---|---|
+| 不停 | 只按前進 | 500 | 0.0% | — | 1.63 次 | 80.4%／80.4% | 63.4%／9.6% | 1.8／9.8／8.0／10.7 | caught_move_high 436（87%）、caught_seen 60（12%）、caught_loud 4（1%） |
+| 不停 | 完美踩拍 | 500 | 100.0% | 44.0 | 0.04 次 | 95.1%／95.1% | 100.0%／100.0% | 3.6／8.4／12.2／22.4 | 無 |
+| 不停 | σ 0.12 起步誤差 | 500 | 94.4% | 44.4 | 0.59 次 | 94.1%／94.1% | 95.2%／94.4% | 3.8／8.7／14.4／22.3 | belly_seen 20（4%）、belly_move_high 4（1%）、caught_calm_slow 2（0%）、caught_seen 2（0%） |
+| 不停 | σ 0.25 起步誤差 | 500 | 83.8% | 44.7 | 0.69 次 | 93.3%／93.3% | 87.4%／83.8% | 4.2／8.9／16.9／21.6 | belly_seen 42（8%）、belly_move_high 21（4%）、caught_calm_slow 15（3%）、caught_seen 3（1%） |
+| 留空檔 | 只按前進 | 500 | 0.0% | — | 0.91 次 | 9.1%／89.5% | 0.0%／0.0% | 0.8／9.4／—／— | belly_move_high 341（68%）、caught_move_high 159（32%） |
+| 留空檔 | 完美時機（舊版沒有踩拍走） | 500 | 100.0% | 87.3 | 0.00 次 | 38.8%／77.5% | 100.0%／100.0% | 4.0／13.4／49.8／23.7 | 無 |
+| 留空檔 | σ 0.12 起步誤差 | 500 | 72.6% | 93.9 | 1.19 次 | 38.5%／80.0% | 96.4%／75.4% | 4.1／13.4／44.9／23.9 | caught_seen 127（25%）、caught_move_high 9（2%）、belly_seen 1（0%） |
+| 留空檔 | σ 0.25 起步誤差 | 500 | 13.4% | 101.0 | 2.49 次 | 37.6%／89.2% | 61.4%／17.6% | 4.5／13.4／31.9／21.9 | caught_seen 273（55%）、caught_move_high 124（25%）、belly_move_high 29（6%）、belly_seen 7（1%） |
+
+規則常數：`COVER_MODE` true、`COVER_EAR_P` 0、`HIGH_P` 0.6、`R_BASE` 3、`R_GAIN` 10、`BLIND_LEN` 0.6、`STEP_WIN` 0.08、`MASK_GAIN` 0.3、`SUSP_MOVE` 0.9、`SUSP_STEP` 0.2、`ALERTED_DURATION` 10。
+
+- N1＝主動時間比例（玩家至少有一個會改變狀態的合法動作的時間 ÷ 遊玩時間），每局平均。表裡兩個數字：「自己規則」＝各版照自己的規則量（舊版沒有踩拍走）；「同一把尺」＝兩版都用新版量法（設計席 7.6、7.8：簡報要對比只能用這個，並註明是程式玩家）。
+- 玩家定義：`tools/telemetry/troy-bots.js`，`makeBot` 與 `activeNow` 逐字照搬規則角色的 `risset.test.js`（提交 0f21bf8：路線點不停、起步判定涵蓋 1/144～1/30 秒的幀率抖動），數字和規則角色的測試同一套模型。「完美踩拍」＝固定策略＋踩拍走；舊版沒有踩拍走，同一個玩家就是完美時機的固定策略。
+- 「σ 0.12／0.25 起步誤差」（規則角色的模型）：每次從停下到起步抽一個 e ~ N(0, σ)，用「t − e 那一刻」的狀態（在不在掩護窗、會不會踩在鼓點上、相位）決定要不要起步，e < 0 太早、e > 0 太晚；走著、停下、衝刺、暗殺、城門都用真實狀態；起步後重抽。
+- 「每局進高度警覺」＝規則發出 `alerted` 音效的次數（衛兵從巡邏轉高度警覺），全部局平均（含沒過的局）。通關時間中位只算通關局。
+- 死因代號是規則的 `failCode`（`belly_*`＝木馬腹中、`caught_*`＝其他區；`move_high`＝節奏快時腳步露聲、`seen`＝被看見、`loud`＝聲音太大）；`timeout`＝420 秒沒過。
+
+## 錄音檢查：鼓聲不停（COVER_MODE = true）
+
+資料夾 `tools/playtest-recorder/out/overnight-cover-1111`（報告 `report.md`、有聲影片 `playtest.mp4`）；指令：`node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover cover --out tools/playtest-recorder/out/overnight-cover-1111`
+
+| 檢查 | 原始 | 喇叭模擬（200 Hz 高通） | 數字（原始） |
+|---|---|---|---|
+| 掩護窗：重合擊在 300～1200 Hz 突出、餘韻長度、警戒輕版（殘響掩護版） | ✅ 過 | ✅ 過 | 突出：中位 +23 dB、最小 +20.8 dB（過）；餘韻：中位 0.6 秒（0.1～1）（過），背景改用平均時 0.4 秒；整體比前後：中位 +8.9 dB（過）（9 次一般窗）；警戒輕版 6 次：突出中位 +11.5 dB（過）；另 2 次窗內有玩家自己的動作音，照列不計 |
+| 火光跟著實際速度（danger）走、不每循環掉回 | ✅ 過 | ✅ 過 | 4296 幀：和 FIRE_BASE + FIRE_P_GAIN × danger 差 > 0.02 的 0 幀；掉回 0 次；相關係數 fire×danger 1、fire×p -0.016；fire 0.55～0.93、danger 0.31～0.89 |
+| 起音時間與規則拍點的誤差 | ✅ 過 | ✅ 過 | Risset：中位 ／誤差／ 2.9 ms、P90 16.2 ms、帶正負號中位 -1.8 ms、±30 ms 命中 96%（381 拍）；低音：中位 1.2 ms、命中 93%（28 拍）；期望拍另含追殺第 5 層 0 拍（顯著的 0）、假驟降尾音 0 拍（極輕，不比對） |
+| 警戒時低頻最突出 | ✅ 過 | ❌ 不過 | 警戒：低頻 -24.9 dB、中頻 -26.7 dB、高頻 -33.4 dB（低−中 1.8 dB）；巡邏：低頻 -34.3 dB、中頻 -43.7 dB、高頻 -50.9 dB（低−中 9.4 dB） |
+| 有無爆音（削峰） | ✅ 過 | — 無資料 | 削峰樣本 0（16-bit）／0（浮點 ≥ 0.999）；峰值 -0.9 dBFS |
+| 有無長時間完全無聲或丟拍 | ✅ 過 | ✅ 過 | 無聲段 0 個；規則拍點 ±40 ms 內找不到起音：4／409（1.0%） |
+| 盲區前 0.4 秒的預告音在 1～3 kHz 聽得出來 | ✅ 過 | ✅ 過 | 相對前 1 秒平均：中位 +25.3 dB、最小 +21.9 dB、≥ +6 dB 的 11／11 次（+25.4、+22.6、+21.9、+25.3、+23.6、+27.6、+25.3、+24.2、+26.6、+28.2、+25.1） |
+| 警戒時低音拍在 200～600 Hz 聽得出來 | ✅ 過 | ✅ 過 | 警戒 6 拍：相對前 1 秒背景 中位 +12 dB、最小 +10.6 dB、≥ +6 dB 的 6 拍（+12、+14.1、+13.2、+10.6、+11.7、+11.6）；巡邏時（對照，不計）25 拍中位 +5.6 dB |
+| 不合拍腳步比合拍腳步在 1～4 kHz 突出 ≥ 12 dB | — 無資料 | — 無資料 | 樣本不夠（每種要 ≥ 3 步；^step_?loud$ 1 步、^step_?masked$ 2 步，差 3.1 dB 只列） |
+
+## 錄音檢查：留空檔（COVER_MODE = false）
+
+資料夾 `tools/playtest-recorder/out/overnight-gap-1111`（報告 `report.md`、有聲影片 `playtest.mp4`）；指令：`node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --cover gap --out tools/playtest-recorder/out/overnight-gap-1111`
+
+| 檢查 | 原始 | 喇叭模擬（200 Hz 高通） | 數字（原始） |
+|---|---|---|---|
+| 盲區時整體音量比前後低 | ✅ 過 | ✅ 過 | 中位 31.9 dB、最小 24.9 dB（14 次盲區）；另 1 次盲區內有玩家自己的動作音（13.865 秒：dash、trapdoor、checkpoint），照列不計 |
+| 火光跟著實際速度（danger）走、不每循環掉回 | ✅ 過 | ✅ 過 | 4359 幀：和 FIRE_BASE + FIRE_P_GAIN × danger 差 > 0.02 的 0 幀；掉回 0 次；相關係數 fire×danger 1、fire×p -0.067；fire 0.15～0.93、danger 0.31～0.89 |
+| 起音時間與規則拍點的誤差 | ✅ 過 | ✅ 過 | Risset：中位 ／誤差／ 2.2 ms、P90 16.2 ms、帶正負號中位 -1.5 ms、±30 ms 命中 97%（380 拍）；低音：中位 1.6 ms、命中 100%（28 拍）；期望拍另含追殺第 5 層 0 拍（顯著的 0）、假驟降尾音 0 拍（極輕，不比對） |
+| 警戒時低頻最突出 | ✅ 過 | ❌ 不過 | 警戒：低頻 -23.6 dB、中頻 -28.4 dB、高頻 -35.3 dB（低−中 4.8 dB）；巡邏：低頻 -34.8 dB、中頻 -44.4 dB、高頻 -52.1 dB（低−中 9.6 dB） |
+| 有無爆音（削峰） | ✅ 過 | — 無資料 | 削峰樣本 0（16-bit）／0（浮點 ≥ 0.999）；峰值 -0.9 dBFS |
+| 有無長時間完全無聲或丟拍 | ✅ 過 | ✅ 過 | 無聲段 0 個；規則拍點 ±40 ms 內找不到起音：6／408（1.5%） |
+| 盲區前 0.4 秒的預告音在 1～3 kHz 聽得出來 | ✅ 過 | ✅ 過 | 相對前 1 秒平均：中位 +26.2 dB、最小 +21.7 dB、≥ +6 dB 的 12／12 次（+21.7、+26.1、+24.8、+27.3、+26.2、+25.1、+26.2、+27、+26.3、+25.6、+23.4、+26.2） |
+| 警戒時低音拍在 200～600 Hz 聽得出來 | ✅ 過 | ✅ 過 | 警戒 3 拍：相對前 1 秒背景 中位 +15.9 dB、最小 +11 dB、≥ +6 dB 的 3 拍（+15.9、+18.9、+11）；巡邏時（對照，不計）26 拍中位 +7.5 dB |
+| 不合拍腳步比合拍腳步在 1～4 kHz 突出 ≥ 12 dB | — 無資料 | — 無資料 | 樣本不夠（每種要 ≥ 3 步；^step_?loud$ 0 步、^step_?masked$ 3 步） |
+
+## 錄音檢查：鼓聲不停・腳步測試段（程式玩家在第 1 區離拍起步，專門累積腳步樣本）
+
+資料夾 `tools/playtest-recorder/out/overnight-steps-1111`（報告 `report.md`、有聲影片 `playtest.mp4`）；指令：`node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 45 --cover cover --step-test --no-video --out tools/playtest-recorder/out/overnight-steps-1111`
+
+| 檢查 | 原始 | 喇叭模擬（200 Hz 高通） | 數字（原始） |
+|---|---|---|---|
+| 掩護窗：重合擊在 300～1200 Hz 突出、餘韻長度、警戒輕版（殘響掩護版） | ✅ 過 | ❌ 不過 | 突出：中位 +21.9 dB、最小 +21.4 dB（過）；餘韻：中位 0.6 秒（0.1～0.9）（過），背景改用平均時 0.2 秒；整體比前後：中位 +10.5 dB（過）（7 次一般窗）；這次沒有警戒窗（輕版不判） |
+| 火光跟著實際速度（danger）走、不每循環掉回 | ✅ 過 | ✅ 過 | 2047 幀：和 FIRE_BASE + FIRE_P_GAIN × danger 差 > 0.02 的 0 幀；掉回 0 次；相關係數 fire×danger 1、fire×p 0.357；fire 0.72～0.78、danger 0.57～0.67 |
+| 起音時間與規則拍點的誤差 | ✅ 過 | ✅ 過 | Risset：中位 ／誤差／ 1.7 ms、P90 13.7 ms、帶正負號中位 -1.4 ms、±30 ms 命中 97%（191 拍）；低音：中位 1.6 ms、命中 92%（13 拍）；期望拍另含追殺第 5 層 0 拍（顯著的 0）、假驟降尾音 0 拍（極輕，不比對） |
+| 警戒時低頻最突出 | — 無資料 | — 無資料 | 這次錄製沒有警戒區段 |
+| 有無爆音（削峰） | ✅ 過 | — 無資料 | 削峰樣本 0（16-bit）／0（浮點 ≥ 0.999）；峰值 -0.9 dBFS |
+| 有無長時間完全無聲或丟拍 | ✅ 過 | ✅ 過 | 無聲段 0 個；規則拍點 ±40 ms 內找不到起音：1／204（0.5%） |
+| 盲區前 0.4 秒的預告音在 1～3 kHz 聽得出來 | ✅ 過 | ✅ 過 | 相對前 1 秒平均：中位 +20.5 dB、最小 +13.1 dB、≥ +6 dB 的 7／7 次（+16.2、+24.5、+13.1、+25.4、+19.1、+24.6、+20.5） |
+| 警戒時低音拍在 200～600 Hz 聽得出來 | — 無資料 | — 無資料 | 這次錄製沒有警戒時的低音拍；巡邏時（對照，不計）15 拍中位 +7.1 dB |
+| 不合拍腳步比合拍腳步在 1～4 kHz 突出 ≥ 12 dB | ✅ 過 | ✅ 過 | 相對前 0.3 秒的上升中位：^step_?loud$ 26.2 dB（16 步）、^step_?masked$ 1.3 dB（33 步），差 24.9 dB；絕對峰值 -25.3 對 -44.9 dB（差 19.6 dB）；合拍腳步中附近沒有顯著鼓點的 18 步峰值中位 -51.7 dB |
+
+## 注意
+
+- 餘韻的主判定用「窗前 1.0～0.15 秒包絡的**中位數** + 3 dB」當背景（總控 11/10 夜決定）：和當初量出 1.3 秒、訂 0.5～0.8 秒門檻是同一個量法。設計 7.5 文字寫的「窗前 1 秒平均」並列在門檻表當參考：平均會被窗前的鼓點拉高（鼓聲不停，窗前 1 秒裡有好幾下鼓），背景變高、包絡更早回到「背景 + 3 dB」以內，所以同一窗量出的餘韻比較短（11/10 夜試錄：中位數背景 1.0 秒、平均背景 0.4 秒）。設定在 `analyze.mjs` 的 `TH.coverTailBase`。
+- 錄音用無頭 Chromium：預設 `--mute-audio`（不從喇叭出聲，分接點在 destination 前，錄音不受影響）、網址加 `nolock=1`（不鎖實體滑鼠）。**不加 `mute=1`**：它把遊戲總閘音量設 0，會錄到靜音。
+- 程式玩家照抄規則測試的策略，數字代表「這套策略」的表現，不是真人；真人的手感以 11/11 試玩為準。

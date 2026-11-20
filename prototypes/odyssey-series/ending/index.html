@@ -1,0 +1,222 @@
+<title>往西</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 終章：大廳的門關上之後。依存檔換句子，最後整理這一趟。單一夜色主題。
+ * 出處（不上畫面）：
+ *   父子殺掉求婚者（畫面只寫門關上，不寫血）【電影；原典 第 22 卷】
+ *   奧德修斯把王位交給忒勒馬科斯，和潘妮洛普往西航行【電影，細節待確認】
+ *   弓弦唱得像燕子【原典 第 21 卷】
+ *   橄欖樹做的床（潘妮洛普的試探）【原典 第 23 卷；電影是否有演待確認】
+ *   歐邁俄斯閂門【原典 第 21 卷】
+ *   知情者、記帳、年數、同伴名單的變化【改編】
+ *   冥府裡叫出的名字、跟著的亡魂【改編】
+ *   比箭失敗：求婚者大笑，可以再拉一次【改編】
+ */
+:root {
+  --night: #0b0a0c;
+  --deep: #141217;
+  --line: #342c26;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #ddd3c2;
+  --dim: #978b7b;
+  --blood: #d0694d;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--night); }
+body { color: var(--ash); font-family: var(--body); line-height: 1.8; }
+.hero { position: relative; height: 52svh; min-height: 280px; overflow: hidden; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hero h1 {
+  position: absolute; left: 0; right: 0; bottom: 14%; margin: 0; text-align: center; font-family: var(--display); font-weight: 900;
+  color: var(--lamp); font-size: clamp(40px, 8vw, 76px); letter-spacing: .4em; padding-left: .4em; text-shadow: 0 4px 24px rgba(0,0,0,.7);
+}
+.hero h1.lose { color: var(--blood); }
+.home { position: absolute; top: 14px; right: var(--gutter-r); font-size: 13px; color: var(--ash); text-decoration: none; text-shadow: 0 1px 6px #000; z-index: 2; }
+.wrap { max-width: 640px; margin: 0 auto; padding: 28px var(--gutter-r) 56px var(--gutter-l); box-sizing: border-box; }
+.story p {
+  margin: 0 0 16px; font-family: var(--display); font-size: clamp(17px, 2.2vw, 20px); color: var(--ash); text-wrap: pretty;
+  opacity: 0; transform: translateY(6px); transition: opacity 1.1s, transform 1.1s;
+}
+.story p.on { opacity: 1; transform: none; }
+.story p.quote { color: var(--lamp); }
+.story p.last { color: var(--lamp); font-weight: 600; }
+.next { font-size: 13px; color: var(--dim); margin: 6px 0 0; }
+h2 { font-family: var(--display); color: var(--bronze); font-size: 14px; letter-spacing: .3em; margin: 40px 0 12px; font-weight: 600; }
+dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 15px; }
+dt { color: var(--dim); }
+dd { margin: 0; color: var(--ash); }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
+.btn { font: 500 15px var(--body); border-radius: 3px; padding: 9px 20px; cursor: pointer; border: 1px solid var(--bronze); background: transparent; color: var(--lamp); text-decoration: none; display: inline-block; }
+.btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+.summary { opacity: 0; transition: opacity 1s; }
+.summary.on { opacity: 1; }
+.home a { color: inherit; text-decoration: none; }
+.home a:hover { color: var(--lamp); }
+.home a + a { margin-left: 14px; }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+</style>
+
+<header class="hero">
+  <canvas id="cv" aria-hidden="true"></canvas>
+  <nav class="home" aria-label="離開這一章"><a href="../index.html">回連作首頁</a><a class="hubLink" href="../../index.html" hidden>回總首頁</a></nav>
+  <h1 id="title">往西</h1>
+</header>
+<main class="wrap">
+  <div class="story" id="story"></div>
+  <p class="next" id="next">點一下或按空白鍵，讀下去。</p>
+  <section class="summary" id="summary">
+    <h2>這一趟</h2>
+    <dl id="facts"></dl>
+    <div class="actions" id="actions"></div>
+  </section>
+</main>
+
+<script src="../series.js"></script>
+<script src="../../nav.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = window.OdysseySeries;
+  const $ = id => document.getElementById(id);
+  // 出口：回連作首頁（＝這個遊戲的開場，存檔照舊）、回總首頁。nav.js 沒載到或沒有總首頁可去，就藏起「回總首頁」
+  const NAV = window.OdysseyNav, HAS_HUB = !!(NAV && NAV.hasHub());
+  const goSeries = () => { location.href = '../index.html'; };
+  const goHub = () => { if (NAV) NAV.goHub(); };
+  document.querySelectorAll('.hubLink').forEach(a => {
+    a.hidden = !HAS_HUB; if (HAS_HUB) a.href = NAV.hubUrl();
+    a.addEventListener('click', e => { e.preventDefault(); goHub(); });
+  });
+  // 單獨玩：網址帶 solo，或這台電腦沒有連作存檔 → 不讀也不寫、不清存檔
+  const solo = new URLSearchParams(location.search).has('solo') || !S.hasSave();
+  const save = solo ? S.fresh() : S.load();
+  const k = save.knowers, bow = save.bow;
+  const lose = !!(bow && !bow.win);
+  const NUM = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
+
+  // ---------------------------------------------------------------- 故事
+  const lines = [];
+  const L = (t, cls) => lines.push([t, cls || '']);
+  if (lose) {
+    $('title').textContent = '笑聲'; $('title').classList.add('lose');
+    L(bow.passed ? `箭穿過了${NUM[bow.passed]}把斧頭，就落在地上。` : '你拉不開那把弓。');
+    L('求婚者笑得把酒灑了一地。有人說，老乞丐該回門檻上討飯了。');
+    L(k.tele === 'knows' ? '忒勒馬科斯握緊了拳頭，看著你，沒有動。' : '忒勒馬科斯別過頭去。');
+    L('但大廳的門還開著，弓還在桌上。', '');
+    L('你聽見一個聲音在耳邊說：再一次。', 'quote');
+  } else {
+    L(bow ? '弓弦在你手裡唱了一聲，像燕子。箭穿過了十二把斧頭。' : '你拉開了那把弓。箭穿過了十二把斧頭。');
+    L(k.tele === 'knows' ? '忒勒馬科斯早就知道是你。他已經站到你身邊，手按著劍。'
+      : k.tele === 'suspects' ? '忒勒馬科斯看著你，終於確定了。他走到你身邊。'
+      : '忒勒馬科斯直到這一刻才認出父親。他什麼也沒問，走到你身邊。');
+    L(k.eum === 'knows' ? '院子裡，歐邁俄斯早已把門閂上。' : '歐邁俄斯愣了一下，然後轉身把院門閂上。');
+    L('大廳的門關上了。');
+    L(save.ledger > 0 ? `你在大廳裡記下的${save.ledger > 12 ? '那些' : NUM[save.ledger] + '筆'}帳，那天一筆一筆都算清了。` : '那天之後，再也沒有人在這座大廳裡喝別人的酒。');
+    L(k.pen === 'knows' ? '潘妮洛普早就認出了你。是她把弓拿出來的。'
+      : k.pen === 'suspects' ? '潘妮洛普看了你很久，問：我們的床，搬得動嗎？你說搬不動，床腳是一棵還活著的橄欖樹。她才走過來。'
+      : '潘妮洛普不肯相信。她要人把床搬出來。你說：搬不動——床腳是一棵還活著的橄欖樹。她哭了。');
+    L(`你在卡呂普索的島上數過${NUM[save.years]}年，回來的時候，兒子已經是個男人了。`);
+    // 你沒有忘記：叫出名字、安息的人；仍跟著你的人（和奧吉吉亞礁石上的人影同一份名單）
+    const named = Array.isArray(save.shadesNamed) ? save.shadesNamed : [];
+    const following = S.reefFigures(save);
+    if (!save.crewLost.length) L('從洞裡帶出來的人，你一個也沒有留在岸上。');
+    else {
+      if (named.length) L(`你沒有忘記：在冥府的黑霧裡，你叫出了${named.join('、')}的名字。${named.length > 1 ? '他們' : '他'}安息了。`);
+      if (following.length) L(`${named.length ? '' : '你沒有忘記：'}${following.join('、')}還跟著你，和在奧吉吉亞的礁石上一樣。`);
+    }
+    L('後來，你把王位交給了忒勒馬科斯。');
+    L('你和潘妮洛普上了船，往西航行。這一次，不是為了回家。', 'last');
+  }
+  const story = $('story');
+  lines.forEach(([t, cls]) => { const p = document.createElement('p'); p.textContent = t; if (cls) p.className = cls; story.appendChild(p); });
+  const ps = [...story.children];
+  let shown = 0, timer = 0;
+  function showNext() {
+    if (shown < ps.length) { ps[shown++].classList.add('on'); }
+    if (shown >= ps.length) { $('next').hidden = true; $('summary').classList.add('on'); clearInterval(timer); }
+  }
+  function showAll() { while (shown < ps.length) showNext(); }
+  showNext();
+  timer = setInterval(showNext, 2600);
+  document.addEventListener('click', e => { if (e.target.closest('a, button')) return; showNext(); });
+  window.addEventListener('keydown', e => { if (e.code === 'Space' && shown < ps.length) { e.preventDefault(); showNext(); } if (e.code === 'Escape') showAll(); });
+
+  // ---------------------------------------------------------------- 整理
+  const SHORE = { shoot: '拉弓射了沉睡的巨人', name: '對著巨人喊出了名字', leave: '默默離開' };
+  const WRATH = ['海神沒有記住你', '海神記住了你的名字', '海神的兒子流了血，海追著你'];
+  const KN = { tele: '忒勒馬科斯', eum: '歐邁俄斯', pen: '潘妮洛普' };
+  const knew = Object.keys(KN).filter(x => k[x] === 'knows').map(x => KN[x]);
+  const sus = Object.keys(KN).filter(x => k[x] === 'suspects').map(x => KN[x]);
+  const facts = [
+    ['岸邊', save.shore ? SHORE[save.shore] : '沒有走過'],
+    ['海神', WRATH[save.wrath]],
+    ['島上', `${save.years} 年`],
+    ['失去的同伴', save.crewLost.length ? save.crewLost.join('、') : '沒有'],
+    ['冥府', !Array.isArray(save.shadesNamed) ? '沒有走過'
+      : (save.shadesNamed.length ? `叫出 ${save.shadesNamed.join('、')}` : (save.crewLost.length ? '一個名字也沒叫出' : '沒有同伴在那裡'))
+        + (save.shadesFollowing.length ? `；跟著你的：${save.shadesFollowing.join('、')}` : '') + (save.nameless ? '（無名之人）' : '')],
+    ['記下的帳', `${save.ledger} 筆`],
+    ['認出你的人', (knew.length ? knew.join('、') : '沒有人') + (sus.length ? `（起疑：${sus.join('、')}）` : '')],
+    ['比箭', bow ? (bow.win ? '穿過十二把斧頭' : `穿過 ${bow.passed} 把，失手`) : '沒有比']
+  ];
+  $('facts').innerHTML = facts.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+  const act = $('actions');
+  function btn(text, fn, main) { const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (main ? ' main' : ''); b.textContent = text; b.onclick = fn; act.appendChild(b); return b; }
+  if (lose && !solo) btn('再拉一次弓', () => { S.save(null, S.advance(save, 'bow')); location.href = S.nextUrl('bow', '../'); }, true);
+  btn('再玩一次', solo ? () => location.reload() : () => { S.save(null, S.fresh()); location.href = '../index.html#cave'; }, !lose || solo);
+  btn('回連作首頁', goSeries);
+  if (HAS_HUB) btn('回總首頁', goHub);
+  if (!solo) S.save(null, S.advance(save, lose ? 'bow' : 'ending'));
+
+  // ---------------------------------------------------------------- 背景：往西的船（輸了：大廳裡的燈火）
+  const cv = $('cv'), cx = cv.getContext('2d');
+  const t0 = performance.now();
+  function draw(now) {
+    const t = (now - t0) / 1000, w = cv.clientWidth, h = cv.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (lose) drawHall(t, w, h); else drawSea(t, w, h);
+    const g = cx.createLinearGradient(0, h * .7, 0, h); g.addColorStop(0, 'rgba(11,10,12,0)'); g.addColorStop(1, 'rgba(11,10,12,1)'); cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+    requestAnimationFrame(draw);
+  }
+  function drawSea(t, w, h) {
+    const sky = cx.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#1d1a2c'); sky.addColorStop(.42, '#6a3e3a'); sky.addColorStop(.6, '#d98c50'); sky.addColorStop(.62, '#3a2a30'); sky.addColorStop(1, '#120e12');
+    cx.fillStyle = sky; cx.fillRect(0, 0, w, h);
+    const hz = h * .62, sx = w * .8, sr = Math.min(w, h) * .07;
+    const gl = cx.createRadialGradient(sx, hz, sr * .4, sx, hz, sr * 6); gl.addColorStop(0, 'rgba(255,190,110,.45)'); gl.addColorStop(1, 'rgba(255,190,110,0)'); cx.fillStyle = gl; cx.fillRect(0, 0, w, h);
+    cx.fillStyle = '#ffd59a'; cx.beginPath(); cx.arc(sx, hz, sr, Math.PI, 0); cx.fill();
+    // 伊薩卡的山與宮殿（東邊，左側）
+    cx.fillStyle = '#1a1418'; cx.beginPath(); cx.moveTo(0, hz); cx.lineTo(0, hz - h * .2); cx.quadraticCurveTo(w * .12, hz - h * .3, w * .24, hz - h * .12); cx.lineTo(w * .32, hz); cx.closePath(); cx.fill();
+    cx.fillRect(w * .07, hz - h * .29, w * .07, h * .04); for (let i = 0; i < 5; i++) cx.fillRect(w * .072 + i * w * .015, hz - h * .25, w * .006, h * .05);
+    cx.fillStyle = '#2a1e22'; cx.fillRect(0, hz, w, h - hz);
+    for (let i = 0; i < 28; i++) { const y = hz + (i / 28) ** 1.6 * (h - hz), len = 16 + i * 6; cx.fillStyle = `rgba(255,200,130,${.28 * (1 - i / 28)})`; cx.fillRect(sx - len / 2 + Math.sin(t * 1.3 + i * 1.7) * 6, y, len, 1.5); }
+    // 船：慢慢往西（往右）駛去
+    const bx = w * (.3 + Math.min(.38, t * .006)), by = hz + h * .05 + Math.sin(t * 1.1) * 1.5, s = Math.min(w, h) * .12 * (1 - Math.min(.3, t * .004));
+    cx.fillStyle = '#0c090b';
+    cx.beginPath(); cx.moveTo(bx - s * .6, by); cx.quadraticCurveTo(bx, by + s * .2, bx + s * .6, by); cx.lineTo(bx + s * .7, by - s * .12); cx.lineTo(bx - s * .7, by - s * .12); cx.closePath(); cx.fill();
+    cx.fillRect(bx - s * .02, by - s * .9, s * .04, s * .8);
+    cx.beginPath(); cx.moveTo(bx - s * .35, by - s * .82); cx.quadraticCurveTo(bx, by - s * .7, bx + s * .35, by - s * .82); cx.lineTo(bx + s * .3, by - s * .28); cx.lineTo(bx - s * .3, by - s * .28); cx.closePath(); cx.fill();
+    // 兩個人影
+    cx.fillRect(bx - s * .22, by - s * .3, s * .05, s * .18); cx.beginPath(); cx.arc(bx - s * .195, by - s * .34, s * .03, 0, 7); cx.fill();
+    cx.fillRect(bx - s * .12, by - s * .28, s * .05, s * .16); cx.beginPath(); cx.arc(bx - s * .095, by - s * .32, s * .028, 0, 7); cx.fill();
+  }
+  function drawHall(t, w, h) {
+    cx.fillStyle = '#120c08'; cx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 6; i++) {
+      const x = w * (.1 + i * .16), f = .7 + .3 * Math.sin(t * 7 + i * 2) * Math.sin(t * 3.1 + i);
+      const g = cx.createRadialGradient(x, h * .45, 4, x, h * .45, h * .5 * f); g.addColorStop(0, 'rgba(240,170,90,.35)'); g.addColorStop(1, 'rgba(240,170,90,0)'); cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+      cx.fillStyle = '#1e140c'; cx.fillRect(x - w * .015, h * .1, w * .03, h * .9);
+    }
+    // 十二把斧頭
+    for (let i = 0; i < 12; i++) { const x = w * (.2 + i * .055), y = h * .7 - i * 2, s = 18 - i; cx.strokeStyle = '#8a6a40'; cx.lineWidth = 3; cx.beginPath(); cx.arc(x, y - s, s * .35, 0, 7); cx.stroke(); cx.fillStyle = '#3a2a1a'; cx.fillRect(x - 1.5, y - s * .6, 3, s * 1.6); }
+  }
+  requestAnimationFrame(draw);
+  window.__ending = { showAll, get lose() { return lose; } };
+})();
+</script>

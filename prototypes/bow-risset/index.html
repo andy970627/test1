@@ -1,0 +1,1047 @@
+<title>比箭・Risset 版</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 第一人稱：上方整塊是大廳（three.js），文字介面浮在上面；下方一排實驗開關。單一夜色主題（同比箭）。 */
+:root {
+  --night: #120e0a;
+  --wood: #2a2018;
+  --line: #3a2d22;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #d6c8b1;
+  --dim: #9a8b75;
+  --blood: #d0694d;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--night); }
+body { color: var(--ash); font-family: var(--body); }
+.stage {
+  position: relative; width: 100%; height: calc(100svh - 56px); min-height: 360px; max-height: 80vw;
+  background: #000; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+@media (max-aspect-ratio: 4/5) { .stage { height: 74svh; max-height: none; } }
+canvas#cv { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.hud { position: absolute; inset: 0; pointer-events: none; }
+/* 驟降：全場靜止——四周暗下來、顏色退掉一點（只在那 0.5 秒） */
+.still { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 18%, rgba(4,3,2,.55) 55%, rgba(4,3,2,.92) 100%); opacity: 0; transition: opacity .25s ease-out; }
+.still.on { opacity: 1; transition: none; }
+/* 最高速：畫面邊緣跟著心跳泛紅 */
+.pulse { position: absolute; inset: 0; box-shadow: inset 0 0 90px 30px rgba(150, 30, 20, 1); opacity: 0; }
+.top {
+  position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 12px var(--gutter-r) 0 var(--gutter-l);
+}
+.title { font-family: var(--display); font-weight: 900; font-size: clamp(20px, 3vw, 28px); color: var(--lamp); letter-spacing: .06em; text-shadow: 0 2px 8px #000; }
+.sub { display: block; font-size: 13px; color: var(--bronze); text-shadow: 0 1px 4px #000; margin-top: 2px; letter-spacing: .04em; }
+.score { font-size: 13px; color: var(--dim); text-shadow: 0 1px 4px #000; white-space: nowrap; }
+.msg {
+  position: absolute; top: calc(var(--head, 44px) + 8px); left: 0; right: 0; margin: 0; text-align: center; font-size: 15px; line-height: 1.6;
+  padding: 0 var(--gutter-r) 0 var(--gutter-l); text-shadow: 0 1px 6px #000, 0 0 2px #000; text-wrap: balance;
+  transition: opacity .6s;
+}
+.panel { background: rgba(14, 10, 7, .72); border: 1px solid var(--line); border-radius: 4px; padding: 10px 14px; }
+.stringui { position: absolute; left: 50%; top: calc(var(--head, 44px) + 48px); transform: translateX(-50%); width: min(420px, calc(100% - 32px)); box-sizing: border-box; }
+.stringui p { margin: 0 0 8px; font-size: 14px; text-align: center; }
+.bar { position: relative; height: 14px; background: var(--line); }
+.bar .zone { position: absolute; top: 0; bottom: 0; left: 40%; width: 20%; background: rgba(240, 194, 122, .35); }
+.bar .needle { position: absolute; top: -6px; bottom: -6px; width: 4px; margin-left: -2px; left: 50%; background: var(--lamp); }
+.bar .needle.out { background: var(--blood); }
+.tension { margin-top: 10px; height: 6px; background: var(--line); }
+.tension i, .power i, .tempo i { display: block; height: 100%; width: 0; background: var(--bronze); }
+.drawui { position: absolute; left: var(--gutter-l); bottom: 18px; width: 210px; background: rgba(14, 10, 7, .62); padding: 8px 10px; border-radius: 4px; }
+.drawui span { display: block; font-size: 13px; color: var(--dim); margin-bottom: 6px; text-shadow: 0 1px 4px #000; }
+.drawui span.drop { color: var(--lamp); font-weight: 500; }
+.drawui span.fast { color: var(--blood); }
+.power, .tempo { height: 8px; background: rgba(58, 45, 34, .85); }
+.tempo { margin-top: 6px; height: 5px; }
+.tempo i { background: var(--blood); }
+.tempo.drop i { background: var(--lamp); }
+.power i.full { background: var(--lamp); }
+.hint {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); margin: 0; font-size: 13px; color: var(--dim);
+  text-shadow: 0 1px 4px #000; text-align: center; width: max-content; max-width: calc(100% - 280px);
+}
+/* 準心：心跳的圈。每一拍脹一下；越快越紅；驟降時收成一個亮點 */
+.heart {
+  position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+  border: 1.5px solid rgba(208, 105, 77, .55); box-sizing: border-box; will-change: transform;
+}
+.heart.drop { border-color: rgba(240, 194, 122, .95); border-width: 3px; }
+/* 光暈：跟著心跳一明一暗；驟降時靜止（世界內暗示「最穩的那一刻」） */
+.halo { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 220, 160, .0) 30%, rgba(255, 200, 120, .35) 46%, rgba(208, 105, 77, .0) 62%);
+  box-shadow: 0 0 22px 4px rgba(240, 194, 122, .35) inset; opacity: 0; will-change: transform, opacity; }
+.halo.drop { background: radial-gradient(circle, rgba(255, 240, 200, .9) 0%, rgba(255, 210, 140, .45) 12%, rgba(0, 0, 0, 0) 30%); box-shadow: none; }
+.result .ladder { color: var(--lamp); font-size: 15px; }
+.result .ladder small { display: block; color: var(--ash); font-size: 13px; margin-top: 2px; }
+.dot { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: rgba(240, 194, 122, .8); }
+.cue { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); margin: 0; font-family: var(--display); font-weight: 900; font-size: 20px; color: var(--blood); text-shadow: 0 1px 6px #000, 0 0 3px #000; opacity: 0; transition: opacity .15s; white-space: nowrap; }
+.cue.on { opacity: 1; }
+.cue.gold { color: var(--lamp); }
+/* 箭飛行：主題動機 12 個音，穿過一孔亮一個 */
+.theme { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); margin: 0; display: flex; gap: 10px; background: rgba(14, 10, 7, .62); padding: 6px 14px; border-radius: 4px; font-family: var(--display); font-size: 17px; color: rgba(154, 139, 117, .5); text-shadow: 0 1px 4px #000; }
+.theme b { font-weight: 600; transition: color .2s, transform .2s; }
+.theme b.on { color: var(--lamp); transform: translateY(-3px); }
+.theme b.miss { color: var(--blood); }
+.hold {
+  position: absolute; right: var(--gutter-r); bottom: 18px; width: 96px; height: 96px; border-radius: 50%;
+  border: 2px solid var(--bronze); background: rgba(42, 32, 24, .78); color: var(--lamp); font: 500 16px var(--body);
+  pointer-events: auto; touch-action: none;
+}
+.hold.on { background: rgba(185, 138, 75, .45); }
+.result {
+  position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); box-sizing: border-box;
+  text-align: center; pointer-events: auto; padding: 20px 18px;
+}
+.result h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4vw, 34px); margin: 0 0 10px; color: var(--blood); letter-spacing: .05em; }
+.result.win h2 { color: var(--lamp); }
+.result p { margin: 0 0 8px; line-height: 1.6; }
+.result .count { color: var(--dim); font-size: 14px; }
+.result button {
+  margin-top: 8px; font: 500 15px var(--body); color: var(--night); background: var(--lamp); border: 0; padding: 8px 18px; border-radius: 3px; cursor: pointer;
+}
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+/* 結果面板與暫停畫面的按鈕列：次要按鈕用描邊，窄螢幕自動換行 */
+.btnrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+.btnrow button { margin-top: 0; }
+.result button.alt, .pausebox button.alt { background: transparent; color: var(--lamp); border: 1px solid var(--bronze); }
+/* 暫停：蓋住整個舞台（遊戲時間與聲音都停） */
+.pausebox { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8, 6, 4, .82); pointer-events: auto; z-index: 3; padding: 16px; }
+.pausebox .panel { width: min(420px, 100%); box-sizing: border-box; text-align: center; padding: 20px 18px; }
+.pausebox h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4vw, 32px); margin: 0 0 8px; color: var(--lamp); letter-spacing: .1em; }
+.pausebox p { margin: 0 0 8px; font-size: 14px; color: var(--dim); line-height: 1.6; }
+.pausebox button { font: 500 15px var(--body); color: var(--night); background: var(--lamp); border: 0; padding: 8px 18px; border-radius: 3px; cursor: pointer; }
+.below { padding: 10px var(--gutter-r) 28px var(--gutter-l); max-width: 1040px; margin: 0 auto; display: grid; gap: 10px; }
+fieldset { border: 1px solid var(--line); padding: 8px 14px 10px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+legend { font-family: var(--display); color: var(--bronze); padding: 0 6px; letter-spacing: .12em; font-size: 13px; }
+label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+select, input { accent-color: var(--bronze); font: inherit; }
+select { background: var(--wood); color: var(--ash); border: 1px solid var(--line); padding: 2px 6px; }
+.keys { color: var(--dim); font-size: 13px; line-height: 1.7; margin: 0; }
+.keys b { color: var(--ash); font-weight: 500; }
+.note { color: var(--dim); font-size: 12px; margin: 0; }
+.note a { color: var(--bronze); }
+@media (max-width: 560px) {
+  .msg { font-size: 14px; top: calc(var(--head, 40px) + 6px); }
+  .stringui { top: calc(var(--head, 40px) + 42px); }
+  .drawui { width: 140px; }
+  .hint { display: none; }
+  .theme { gap: 5px; font-size: 14px; bottom: 126px; }
+}
+</style>
+
+<div class="stage" id="stage">
+  <canvas id="cv" aria-label="奧德修斯的大廳：十二把斧頭排成一列"></canvas>
+  <div class="hud">
+    <div class="pulse" id="pulse"></div>
+    <div class="still" id="still"></div>
+    <div class="top" id="top"><span><span class="title">比箭・Risset 版</span><span class="sub">心跳越來越快，等它斷掉的那半秒</span></span><span class="score" id="score"></span></div>
+    <p class="msg" id="msg"></p>
+    <div class="halo" id="halo" hidden></div>
+    <div class="heart" id="heartRing" hidden></div>
+    <div class="dot" id="dot" hidden></div>
+    <p class="cue" id="cue" aria-live="polite"></p>
+    <div class="stringui panel" id="stringUI" hidden>
+      <p id="stringTip">上弦：按住滑鼠，左右移動，讓指針留在亮區</p>
+      <div class="bar"><div class="zone"></div><div class="needle" id="needle"></div></div>
+      <div class="tension"><i id="tensionBar"></i></div>
+    </div>
+    <div class="drawui" id="drawUI" hidden>
+      <span id="drawLabel">拉弓</span>
+      <div class="power"><i id="powerBar"></i></div>
+      <div class="tempo" id="tempo" title="心跳"><i id="tempoBar"></i></div>
+    </div>
+    <p class="theme" id="theme" hidden aria-label="主題動機"></p>
+    <p class="hint" id="hint"></p>
+    <button class="hold" id="holdBtn" type="button" hidden>拉弓</button>
+    <div class="result panel" id="result" hidden>
+      <h2 id="resTitle"></h2>
+      <p id="resText"></p>
+      <p class="count" id="resCount"></p>
+      <p class="ladder" id="resHint" hidden></p>
+      <div class="btnrow">
+        <button type="button" id="retryBtn">再來一次（R）</button>
+        <button type="button" class="alt btnIntro">回到開場</button>
+        <button type="button" class="alt btnHub">回總首頁</button>
+      </div>
+    </div>
+  </div>
+  <div class="pausebox" id="pause" hidden>
+    <div class="panel">
+      <h2>暫停</h2>
+      <p>心跳和大廳都停住了。</p>
+      <div class="btnrow">
+        <button type="button" id="btnResume">繼續（Esc）</button>
+        <button type="button" class="alt btnIntro">回到開場</button>
+        <button type="button" class="alt btnHub">回總首頁</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="below">
+  <p class="keys"><b>瞄準</b>：點一下畫面鎖住滑鼠，移動滑鼠看；拉弓時手會放慢、視線會集中。<b>Esc</b> 放開滑鼠並暫停（可回開場或總首頁）。<br>
+  <b>上弦</b>：按住滑鼠左右移動，讓指針待在亮區。弦越繃越緊，琴聲一路往上爬、永遠到不了頂。<br>
+  <b>射箭</b>：按住拉弓（或空白鍵），放開射出。拉弓時心跳越來越快，準心跟著每一下心跳晃，越快晃得越大；
+  快到極點時心跳<b>突然斷掉約半秒</b>、全場靜止——這時準心最穩，放手。錯過了就等下一次，但一輪比一輪急、手也越來越晃。<b>R</b>：再來一次。<br>
+  <b>起鬨</b>：心跳最快時求婚者拍桌、噓你、丟骨頭；心跳斷掉的那一刻，大廳一起噤聲。<br>
+  <b>箭飛出去</b>：慢動作，每穿過一個孔，奏出主題的下一個音，十二孔奏完一整句。<br>
+  手機上：上弦時手指按住畫面左右拖；瞄準時手指拖曳畫面，按住右下的圓鈕拉弓。</p>
+  <fieldset id="opts">
+    <legend>實驗開關</legend>
+    <label><input type="checkbox" id="optString" checked> 上弦階段</label>
+    <label><input type="checkbox" id="optFatigue" checked> 越撐越晃</label>
+    <label><input type="checkbox" id="optHeckle" checked> 起鬨干擾</label>
+    <label><input type="checkbox" id="optGuide"> 彈道輔助線</label>
+    <label>斧孔 <select id="optHole"><option value="normal">普通</option><option value="easy">寬鬆</option><option value="hard">嚴格</option></select></label>
+  </fieldset>
+  <p class="note">改開關會從頭開始比試。和呼吸判定的原版比較：<a href="../bow-contest/index.html">伊薩卡比箭（呼吸版）</a>。</p>
+</div>
+
+<script src="../nav.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="rules.js"></script>
+<script src="audio.js"></script>
+<script>
+(() => {
+  const R = window.BowRissetRules, T = R.TUNING, H = T.shootHeight;
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), cv = $('cv');
+  const ui = {
+    score: $('score'), msg: $('msg'), stringUI: $('stringUI'), stringTip: $('stringTip'), needle: $('needle'), tension: $('tensionBar'),
+    drawUI: $('drawUI'), drawLabel: $('drawLabel'), power: $('powerBar'), tempo: $('tempo'), tempoBar: $('tempoBar'), hint: $('hint'), hold: $('holdBtn'),
+    result: $('result'), resTitle: $('resTitle'), resText: $('resText'), resCount: $('resCount'), retry: $('retryBtn'),
+    heart: $('heartRing'), dot: $('dot'), halo: $('halo'), resHint: $('resHint'), cue: $('cue'), still: $('still'), pulse: $('pulse'), theme: $('theme'),
+  };
+  const opt = { string: $('optString'), fatigue: $('optFatigue'), heckle: $('optHeckle'), guide: $('optGuide'), hole: $('optHole') };
+  const DEBUG = /(^|[?#&])debug\b/.test(location.search + location.hash);
+  const NOLOCK = DEBUG && /nolock/.test(location.search + location.hash);
+  if (!window.THREE) { ui.msg.textContent = '畫面無法載入。'; return; }
+
+  // ================================================================ 聲音（audio.js；時間全部跟著規則）
+  // 遊戲時鐘 clock：聲音開始之後 = 音訊時間 − offset（offset 固定），所以規則算的心跳時刻可以直接排進音訊時鐘。
+  let ac = null, snd = null, offset = null, clock = 0;
+  function audio() {
+    if (!ac) {
+      try {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        snd = window.BowRissetAudio.createAudio(ac, { rules: R, log: DEBUG || !!window.__rec });
+      } catch (e) { ac = null; snd = null; }
+    }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return snd;
+  }
+  const sfx = new Proxy({}, { get: (_, k) => (...a) => { if (snd && ac.state === 'running') snd.sfx[k](...a); } });
+  function setCreak(v) { if (snd) snd.setCreak(v); }
+  function setGrind(v) { if (snd) snd.setGrind(v); }
+  function nextClock(dt) {
+    if (ac && ac.state === 'running') {
+      if (offset === null) offset = ac.currentTime - clock;
+      clock = Math.max(clock, ac.currentTime - offset);
+    } else clock += dt;
+    return clock;
+  }
+  function audioAt(t) { return offset === null ? null : t + offset; }
+
+  // ================================================================ three.js 場景（大廳、斧頭、人物、箭、弓與手：複製自 prototypes/bow-contest/index.html）
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.25;
+  renderer.autoClear = false;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x080604);
+  scene.fog = new THREE.FogExp2(0x0b0805, 0.028);
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.02, 80);
+  camera.rotation.order = 'YXZ';
+
+  // 前景（弓與手）用另一台相機，視角固定，不跟著瞄準拉近
+  const vScene = new THREE.Scene();
+  const vCam = new THREE.PerspectiveCamera(58, 1, 0.01, 5);
+
+  function canvasTex(w, h, draw, repeatX, repeatY) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeatX || 1, repeatY || 1); t.anisotropy = 4; return t;
+  }
+  const rnd = R.createRng(20); // 佈景固定，每次一樣
+  const plankTex = canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = '#3a291b'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 8; i++) {
+      const x = i * 64, tone = 40 + rnd() * 22;
+      g.fillStyle = `rgb(${tone + 18},${tone + 2},${tone - 14})`; g.fillRect(x + 1, 0, 62, h);
+      for (let k = 0; k < 40; k++) { g.fillStyle = `rgba(20,12,6,${.06 + rnd() * .1})`; g.fillRect(x + rnd() * 62, 0, 1 + rnd() * 2, h); }
+      g.fillStyle = '#1a120b'; g.fillRect(x, 0, 2, h); g.fillRect(x, (rnd() * h) | 0, 64, 2);
+    }
+  }, 4, 10);
+  const wallTex = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#4a3a2a'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2200; i++) { const v = rnd(); g.fillStyle = `rgba(${v > .5 ? '90,72,52' : '24,18,12'},${.12 + rnd() * .2})`; g.fillRect(rnd() * w, rnd() * h, 2 + rnd() * 5, 2 + rnd() * 4); }
+    g.fillStyle = 'rgba(0,0,0,.25)'; for (let y = 0; y < h; y += 64) g.fillRect(0, y, w, 3);
+  }, 6, 2);
+  const glowTex = canvasTex(128, 128, (g, w, h) => {
+    const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    r.addColorStop(0, 'rgba(255,240,200,1)'); r.addColorStop(.25, 'rgba(255,180,90,.8)'); r.addColorStop(.6, 'rgba(220,100,30,.25)'); r.addColorStop(1, 'rgba(200,80,20,0)');
+    g.fillStyle = r; g.fillRect(0, 0, w, h);
+  });
+
+  const M = {
+    floor: new THREE.MeshStandardMaterial({ map: plankTex, roughness: .9 }),
+    wall: new THREE.MeshStandardMaterial({ map: wallTex, roughness: 1, color: 0xb8a088 }),
+    dark: new THREE.MeshStandardMaterial({ color: 0x1a120c, roughness: 1 }),
+    beam: new THREE.MeshStandardMaterial({ color: 0x2b1d12, roughness: .9 }),
+    column: new THREE.MeshStandardMaterial({ color: 0x5a2f1c, roughness: .7 }),   // 塗了紅的木柱
+    stone: new THREE.MeshStandardMaterial({ color: 0x5a5046, roughness: 1 }),
+    earth: new THREE.MeshStandardMaterial({ color: 0x241a11, roughness: 1 }),
+    haft: new THREE.MeshStandardMaterial({ color: 0x5b4028, roughness: .8 }),
+    bronze: new THREE.MeshStandardMaterial({ color: 0xc08a48, metalness: .55, roughness: .38 }),
+    table: new THREE.MeshStandardMaterial({ color: 0x4a321f, roughness: .8 }),
+    skin: new THREE.MeshStandardMaterial({ color: 0xa06a48, roughness: .8 }),
+    hair: new THREE.MeshStandardMaterial({ color: 0x1d140d, roughness: 1 }),
+  };
+  const box = (w, h, d, m) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  const cyl = (r1, r2, h, m, seg) => new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg || 12), m);
+
+  // 大廳：x -6 … 6，z +4 … -26
+  const HALL_W = 12, Z0 = 4, Z1 = T.doorZ;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, Z0 - Z1), M.floor);
+  floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, (Z0 + Z1) / 2); scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, Z0 - Z1), M.dark);
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(0, 6.5, (Z0 + Z1) / 2); scene.add(ceil);
+  for (const sx of [-1, 1]) {
+    const w = box(.4, 6.5, Z0 - Z1, M.wall); w.position.set(sx * (HALL_W / 2 + .2), 3.25, (Z0 + Z1) / 2); scene.add(w);
+  }
+  const back = box(HALL_W, 6.5, .4, M.wall); back.position.set(0, 3.25, Z0 + .2); scene.add(back);
+  // 盡頭的門：門外的庭院有火光
+  for (const sx of [-1, 1]) { const p = box(5.2, 6.5, .5, M.wall); p.position.set(sx * 3.4, 3.25, Z1 - .25); scene.add(p); }
+  const lintel = box(1.6, 3.6, .5, M.wall); lintel.position.set(0, 4.7, Z1 - .25); scene.add(lintel);
+  for (const sx of [-1, 1]) { const j = box(.18, 2.9, .6, M.beam); j.position.set(sx * .89, 1.45, Z1 - .25); scene.add(j); }
+  const yard = new THREE.Mesh(new THREE.PlaneGeometry(6, 5), new THREE.MeshBasicMaterial({ color: 0x6a3a18, fog: false }));
+  yard.position.set(0, 2.2, Z1 - 3.5); scene.add(yard);
+  const yardGround = new THREE.Mesh(new THREE.PlaneGeometry(6, 4), new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 1 }));
+  yardGround.rotation.x = -Math.PI / 2; yardGround.position.set(0, 0, Z1 - 2.2); scene.add(yardGround);
+  // 屋樑
+  for (let z = Z0 - 1; z > Z1; z -= 3) { const b = box(HALL_W, .3, .35, M.beam); b.position.set(0, 6.2, z); scene.add(b); }
+  // 柱子
+  for (const sx of [-1, 1]) for (const z of [1.5, -4.5, -10.5, -16.5, -22.5]) {
+    const c = cyl(.22, .26, 6.3, M.column, 16); c.position.set(sx * 3.7, 3.15, z); scene.add(c);
+    const base = cyl(.36, .4, .2, M.stone, 16); base.position.set(sx * 3.7, .1, z); scene.add(base);
+    const cap = box(.6, .18, .6, M.beam); cap.position.set(sx * 3.7, 6.2, z); scene.add(cap);
+  }
+  // 斧頭的溝
+  const trenchLen = T.axeCount * T.axeSpacing + 1.4, trenchZ = -(T.axeFirst + (T.axeCount - 1) * T.axeSpacing / 2);
+  const trench = new THREE.Mesh(new THREE.PlaneGeometry(.34, trenchLen), new THREE.MeshBasicMaterial({ color: 0x080503 }));
+  trench.rotation.x = -Math.PI / 2; trench.position.set(0, .004, trenchZ); scene.add(trench);
+  for (const sx of [-1, 1]) { const m = box(.2, .035, trenchLen, M.earth); m.position.set(sx * .27, .018, trenchZ); scene.add(m); }
+
+  // 火光：灶火、油燈、門外
+  const flames = [];
+  function flame(x, y, z, size, light) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+    sp.position.set(x, y, z); sp.scale.set(size, size * 1.3, 1); scene.add(sp);
+    const f = { sp, size, light, base: light ? light.intensity : 0, ph: rnd() * 10 };
+    flames.push(f); return f;
+  }
+  scene.add(new THREE.HemisphereLight(0x5a4030, 0x120c08, .55));
+  // 灶（大廳右側）
+  const hearthLight = new THREE.PointLight(0xff8a3a, 3.2, 16, 1.6); hearthLight.position.set(4.6, 1.1, -9); scene.add(hearthLight);
+  const hearth = cyl(.9, 1, .25, M.stone, 24); hearth.position.set(4.6, .125, -9); scene.add(hearth);
+  const embers = cyl(.7, .7, .05, new THREE.MeshBasicMaterial({ color: 0x8a2a08 }), 20); embers.position.set(4.6, .27, -9); scene.add(embers);
+  flame(4.6, .8, -9, 1.5, hearthLight); flame(4.4, .55, -8.8, .9); flame(4.8, .6, -9.2, .8);
+  // 油燈架
+  const lampL = new THREE.PointLight(0xffb066, 1.7, 11, 1.7); lampL.position.set(-1.5, 2.0, -5); scene.add(lampL);
+  const lampR = new THREE.PointLight(0xffb066, 1.5, 11, 1.7); lampR.position.set(1.5, 2.0, -15); scene.add(lampR);
+  for (const [x, z, l] of [[-1.5, -5, lampL], [1.5, -15, lampR], [1.5, -3, null], [-1.5, -13, null], [-1.5, -20.5, null], [1.5, -20.5, null]]) {
+    const pole = cyl(.025, .035, 1.75, M.bronze); pole.position.set(x, .875, z); scene.add(pole);
+    const bowl = cyl(.13, .05, .08, M.bronze, 14); bowl.position.set(x, 1.79, z); scene.add(bowl);
+    flame(x, 1.93, z, .42, l);
+  }
+  const doorLight = new THREE.PointLight(0xff9a50, 2.2, 10, 1.6); doorLight.position.set(0, 2, Z1 - 1.5); scene.add(doorLight);
+  flame(1.6, .9, Z1 - 3.4, 1.4, doorLight);
+
+  // ---------------------------------------------------------------- 斧頭
+  const axeGroup = new THREE.Group(); scene.add(axeGroup);
+  let axes = [];
+  function buildAxes(diff, offset) {
+    axeGroup.children.slice().forEach(o => { axeGroup.remove(o); o.traverse(m => { if (m.geometry) m.geometry.dispose(); }); });
+    axes = [];
+    const r = R.holeRadius(diff), R0 = r + .065, bw = T.plateHalf - .02, bh = .17;
+    const shape = new THREE.Shape();
+    const a = Math.PI / 3;
+    shape.moveTo(R0 * Math.cos(a), R0 * Math.sin(a));
+    shape.absarc(0, 0, R0, a, Math.PI - a, false);
+    shape.quadraticCurveTo(-bw * .45, R0 * .5, -bw, bh);
+    shape.quadraticCurveTo(-bw - .05, 0, -bw, -bh);
+    shape.quadraticCurveTo(-bw * .45, -R0 * .5, R0 * Math.cos(Math.PI + a), R0 * Math.sin(Math.PI + a));
+    shape.absarc(0, 0, R0, Math.PI + a, 2 * Math.PI - a, false);
+    shape.quadraticCurveTo(bw * .45, -R0 * .5, bw, -bh);
+    shape.quadraticCurveTo(bw + .05, 0, bw, bh);
+    shape.quadraticCurveTo(bw * .45, R0 * .5, R0 * Math.cos(a), R0 * Math.sin(a));
+    const hole = new THREE.Path(); hole.absarc(0, 0, r, 0, Math.PI * 2, true); shape.holes.push(hole);
+    const headGeo = new THREE.ExtrudeGeometry(shape, { depth: .022, bevelEnabled: true, bevelThickness: .004, bevelSize: .004, bevelSegments: 1, curveSegments: 40 });
+    headGeo.translate(0, 0, -.011);
+    const rimGeo = new THREE.TorusGeometry(r + .004, .009, 8, 48);
+    const haftLen = H - R0 + .02;
+    R.axePositions(offset).forEach((p, i) => {
+      const g = new THREE.Group(); g.position.set(p.x, 0, p.z);
+      const head = new THREE.Mesh(headGeo, M.bronze); head.position.y = p.y; g.add(head);
+      const rimMat = new THREE.MeshStandardMaterial({ color: 0xd9a35a, metalness: .5, roughness: .3, emissive: 0xffc070, emissiveIntensity: 0 });
+      const rim = new THREE.Mesh(rimGeo, rimMat); rim.position.y = p.y; g.add(rim);
+      const haft = cyl(.022, .026, haftLen, M.haft, 8); haft.position.y = haftLen / 2 - .05; g.add(haft);
+      axeGroup.add(g);
+      axes.push({ g, rimMat, lit: 0 });
+    });
+  }
+
+  // ---------------------------------------------------------------- 人物
+  const cloaks = [0x6b2a3a, 0x7a3b1c, 0x8a7a5a, 0x3e3a5c, 0x8c5a2a, 0x5c1e1e, 0x9a8c70, 0x4a2f4f];
+  function person(cloak, standing) {
+    const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+    const cm = new THREE.MeshStandardMaterial({ color: cloak, roughness: .95 });
+    const seatY = standing ? .95 : .48;
+    if (standing) { const legs = cyl(.17, .2, .95, cm, 10); legs.position.y = .47; g.add(legs); }
+    else {
+      const thigh = box(.32, .14, .42, cm); thigh.position.set(0, .5, .16); g.add(thigh);
+      const shin = box(.28, .48, .14, cm); shin.position.set(0, .24, .36); g.add(shin);
+    }
+    const torso = cyl(.16, .24, .66, cm, 12); torso.position.y = .33; body.add(torso);
+    body.position.y = seatY;
+    const headG = new THREE.Group(); headG.position.y = .74; body.add(headG);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.11, 14, 10), M.skin); headG.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(.118, 14, 8, 0, Math.PI * 2, 0, Math.PI * .55), M.hair); hair.position.y = .01; hair.rotation.x = -.25; headG.add(hair);
+    const beard = new THREE.Mesh(new THREE.SphereGeometry(.07, 8, 6), M.hair); beard.position.set(0, -.08, .06); beard.scale.set(1, .8, .7); headG.add(beard);
+    for (const sx of [-1, 1]) {
+      const arm = cyl(.045, .05, .5, cm, 8); arm.position.set(sx * .2, .38, .12); arm.rotation.x = -1.0; arm.rotation.z = sx * .15; body.add(arm);
+    }
+    return { g, body, headG, seatY };
+  }
+  const suitors = [];
+  const chairM = M.table;
+  [-1, 1].forEach(sx => {
+    for (let k = 0; k < 7; k++) {
+      const z = -2.6 - k * 2.4 - (sx > 0 ? 1.1 : 0);
+      const p = person(cloaks[(k * 3 + (sx > 0 ? 1 : 0)) % cloaks.length], false);
+      p.g.position.set(sx * 2.45, 0, z);
+      p.g.rotation.y = sx < 0 ? Math.PI / 2 - .35 : -(Math.PI / 2 - .35);
+      scene.add(p.g);
+      const seat = box(.46, .06, .46, chairM); seat.position.set(0, .45, .02); p.g.add(seat);
+      const backr = box(.46, .55, .05, chairM); backr.position.set(0, .75, -.22); backr.rotation.x = -.15; p.g.add(backr);
+      const tbl = box(.5, .05, .42, M.table); tbl.position.set(sx * 1.85, .62, z + .2); scene.add(tbl);
+      const leg = cyl(.03, .03, .6, M.table, 6); leg.position.set(sx * 1.85, .3, z + .2); scene.add(leg);
+      const cup = cyl(.05, .035, .08, M.bronze, 10); cup.position.set(sx * 1.85 + .1, .69, z + .1); scene.add(cup);
+      const bread = new THREE.Mesh(new THREE.SphereGeometry(.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0x8a6030, roughness: 1 }));
+      bread.scale.y = .5; bread.position.set(sx * 1.85 - .1, .67, z + .28); scene.add(bread);
+      // 起鬨前舉起的酒杯（世界內暗示：有人舉杯，起鬨就要來了）
+      const raised = new THREE.Group(); raised.visible = false; p.body.add(raised);
+      const rArm = cyl(.045, .05, .55, new THREE.MeshStandardMaterial({ color: cloaks[(k * 3 + (sx > 0 ? 1 : 0)) % cloaks.length], roughness: .95 }), 8);
+      rArm.position.set(.2, .78, .05); rArm.rotation.z = -.2; raised.add(rArm);
+      const rCup = cyl(.06, .04, .1, new THREE.MeshStandardMaterial({ color: 0xc08a48, metalness: .55, roughness: .3, emissive: 0xffb050, emissiveIntensity: .6 }), 10);
+      rCup.position.set(.26, 1.08, .05); raised.add(rCup);
+      suitors.push({ ...p, raised, ph: rnd() * 10, laugh: 0, rate: 11 + rnd() * 5 });
+    }
+  });
+  // 特勒馬科斯：站在斧頭旁，手持長矛
+  const tele = person(0xb8aa8a, true);
+  tele.g.position.set(1.45, 0, -4.2); tele.g.rotation.y = -1.0; scene.add(tele.g);
+  const spear = cyl(.015, .015, 2.3, M.haft, 6); spear.position.set(.28, 1.15, .1); tele.g.add(spear);
+  const spearTip = new THREE.Mesh(new THREE.ConeGeometry(.03, .16, 6), M.bronze); spearTip.position.set(.28, 2.38, .1); tele.g.add(spearTip);
+
+  // ---------------------------------------------------------------- 飛行的箭（世界裡）
+  function makeArrow(scale) {
+    const g = new THREE.Group();
+    const shaftM = new THREE.MeshStandardMaterial({ color: 0x9a7a52, roughness: .7 });
+    const shaft = cyl(.005, .005, .78, shaftM, 6); shaft.rotation.x = Math.PI / 2; shaft.position.z = .39; g.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(.012, .06, 6), M.bronze); tip.rotation.x = -Math.PI / 2; tip.position.z = -.02; g.add(tip);
+    const fM = new THREE.MeshStandardMaterial({ color: 0xd8d0c0, roughness: 1, side: THREE.DoubleSide });
+    for (let i = 0; i < 3; i++) {
+      const holder = new THREE.Group(); holder.rotation.z = i * Math.PI * 2 / 3;
+      const ff = new THREE.Mesh(new THREE.PlaneGeometry(.12, .03), fM);
+      ff.rotation.y = Math.PI / 2; ff.position.set(0, .017, .7); holder.add(ff); g.add(holder);
+    }
+    g.scale.setScalar(scale || 1);
+    return g;
+  }
+  const worldArrow = makeArrow(1); worldArrow.visible = false; scene.add(worldArrow);
+  // 箭頭朝 -z：用 lookAt 時要讓 -z 對準速度方向
+  const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
+  function placeArrow(obj, shot, t, sink) {
+    const p = R.positionAt(shot, t), v = R.velocityAt(shot, t), sp = Math.hypot(v.x, v.y, v.z) || 1;
+    const k = (sink || 0) / sp;
+    obj.position.set(p.x + v.x * k, p.y + v.y * k, p.z + v.z * k);
+    tmpV.set(obj.position.x - v.x, obj.position.y - v.y, obj.position.z - v.z); obj.lookAt(tmpV);
+  }
+
+
+  // 對準時 12 孔連成一道光的通道（世界內暗示「視線」）：孔的金邊依預測彈道穿過的孔數亮起，全部穿過時多一道細光
+  const beamLen = (T.axeCount - 1) * T.axeSpacing + .6;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, beamLen, 8, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xffd890, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  beam.rotation.x = Math.PI / 2; beam.visible = false; scene.add(beam);
+  let channel = 0;                          // 預測彈道穿過幾個孔（0..12）
+
+  // 起鬨丟過來的骨頭
+  const bone = new THREE.Group(); bone.visible = false; scene.add(bone);
+  { const bm = new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: .8 });
+    const shaft = cyl(.018, .018, .22, bm, 6); shaft.rotation.z = Math.PI / 2; bone.add(shaft);
+    for (const sx of [-1, 1]) { const k = new THREE.Mesh(new THREE.SphereGeometry(.03, 8, 6), bm); k.position.x = sx * .11; bone.add(k); } }
+  const boneFly = { on: false, t: 0, dur: .5, from: new THREE.Vector3(), to: new THREE.Vector3() };
+
+  // 彈道輔助線
+  // 箭到每一把斧頭時的位置畫成小點：點都落在孔裡就會過
+  const guideGeo = new THREE.BufferGeometry(); guideGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(T.axeCount * 3), 3));
+  const guide = new THREE.Points(guideGeo, new THREE.PointsMaterial({ color: 0x9fe0ff, size: 4, sizeAttenuation: false, transparent: true, opacity: .85, fog: false, depthTest: false }));
+  guide.frustumCulled = false; guide.visible = false; scene.add(guide);
+
+  // ---------------------------------------------------------------- 前景：弓、弦、箭、雙手
+  vScene.add(new THREE.AmbientLight(0x6a4a34, .55));
+  const vLight = new THREE.PointLight(0xffa860, 1.6, 4, 1.5); vLight.position.set(.7, .3, .2); vScene.add(vLight);
+  const vRim = new THREE.DirectionalLight(0xff9050, .5); vRim.position.set(-.5, .4, -1); vScene.add(vRim);
+  const bowG = new THREE.Group(); vScene.add(bowG);
+  const bowM = new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: .45, metalness: .1 });
+  const hornM = new THREE.MeshStandardMaterial({ color: 0xcdb894, roughness: .4 });
+  let bowMesh = null;
+  const BOW_L = .64;
+  const gripWrap = cyl(.02, .02, .12, new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 1 }), 10); bowG.add(gripWrap);
+  const tipTop = new THREE.Mesh(new THREE.SphereGeometry(.012, 8, 6), hornM), tipBot = tipTop.clone(); bowG.add(tipTop, tipBot);
+  const UP = new THREE.Vector3(0, 1, 0);
+  const stringM = new THREE.MeshBasicMaterial({ color: 0xe8dcc4 });
+  const strA = cyl(.0016, .0016, 1, stringM, 4), strB = strA.clone(); bowG.add(strA, strB);
+  function seg(mesh, a, b) {
+    tmpV.copy(b).sub(a); const len = Math.max(1e-4, tmpV.length());
+    mesh.position.copy(a).addScaledVector(tmpV, .5); mesh.scale.set(1, len, 1);
+    mesh.quaternion.setFromUnitVectors(UP, tmpV.normalize());
+  }
+  const vArrow = makeArrow(1); bowG.add(vArrow);
+  const handM = new THREE.MeshStandardMaterial({ color: 0x9a6444, roughness: .75 });
+  const sleeveM = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 1 });   // 乞丐的破衣
+  const leftHand = new THREE.Group(); vScene.add(leftHand);
+  { const fist = box(.07, .1, .07, handM); leftHand.add(fist); const thumb = box(.025, .05, .03, handM); thumb.position.set(.035, .03, .02); leftHand.add(thumb); }
+  const leftArm = cyl(.03, .042, 1, sleeveM, 8); vScene.add(leftArm);
+  const rightHand = new THREE.Group(); vScene.add(rightHand);
+  { const fist = box(.05, .065, .07, handM); rightHand.add(fist); for (let i = 0; i < 3; i++) { const f = box(.012, .02, .045, handM); f.position.set(-.035, .025 - i * .022, -.02); rightHand.add(f); } }
+  const rightArm = cyl(.026, .034, 1, sleeveM, 8); vScene.add(rightArm);
+
+  function bowPoint(t, c, ly) { return new THREE.Vector3(0, t * ly, c * t * t + .02 * (1 - t * t)); }
+  let lastBowKey = '';
+  const vTop = new THREE.Vector3(), vBot = new THREE.Vector3(), vNock = new THREE.Vector3(), vFree = new THREE.Vector3();
+  // pose: 0 上弦姿勢、1 瞄準姿勢；tension 0..1；pull 0..1
+  function updateViewmodel(pose, tension, pull, showArrow, sway, t) {
+    const strung = tension >= 1;
+    const c = strung ? .13 + .1 * pull : -.11 + .24 * tension;   // 反曲弓：沒上弦時弓臂往外翻
+    const ly = BOW_L * (1 - .05 * pull);
+    const key = c.toFixed(3) + ly.toFixed(3);
+    if (key !== lastBowKey) {
+      lastBowKey = key;
+      const pts = []; for (let i = 0; i <= 16; i++) pts.push(bowPoint(-1 + i / 8, c, ly));
+      if (bowMesh) { bowG.remove(bowMesh); bowMesh.geometry.dispose(); }
+      bowMesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, .013, 6, false), bowM); bowG.add(bowMesh);
+    }
+    vTop.copy(bowPoint(1, c, ly)); vBot.copy(bowPoint(-1, c, ly));
+    tipTop.position.copy(vTop); tipBot.position.copy(vBot);
+    gripWrap.position.set(0, 0, .02);
+    // 姿勢：上弦時弓斜放低、靠中間；瞄準時立在左前方
+    const lerp = (a, b) => a + (b - a) * pose;
+    const sw = sway || { yaw: 0, pitch: 0 };
+    // 上弦偏離亮區：弓臂發抖（越偏越久抖越兇）
+    const tr = bowTremble ? bowTremble * (.006 * Math.sin(t * 71) + .004 * Math.sin(t * 113)) : 0;
+    bowG.position.set(lerp(.06, -.13) + sw.yaw * 4 + tr, lerp(-.36, -.12) + sw.pitch * 4 + tr * .6, lerp(-1.0, -.72));
+    bowG.rotation.set(lerp(-.55, 0), 0, lerp(1.25, .06) + tr * 6);
+    if (strung) {
+      vNock.set(0, 0, c + .3 * pull);
+      seg(strA, vTop, vNock); seg(strB, vNock, vBot);
+    } else {
+      // 弦掛在下端，右手把弦往上端拉
+      vFree.set(.0, ly * (.55 + .4 * tension), c + .02 + .06 * (1 - tension));
+      seg(strA, vBot, vFree); strB.visible = false;
+    }
+    strB.visible = strung;
+    vArrow.visible = showArrow;
+    if (showArrow) { vArrow.position.set(-.024, .004, vNock.z - .78); vArrow.rotation.set(0, 0, 0); }
+    // 手
+    bowG.updateMatrixWorld();
+    leftHand.position.set(0, 0, .02).applyMatrix4(bowG.matrixWorld); leftHand.quaternion.copy(bowG.quaternion);
+    const hold = strung ? vNock.clone().add(new THREE.Vector3(.012, -.01, .03)) : vFree.clone().add(new THREE.Vector3(.02, 0, .03));
+    rightHand.position.copy(hold.applyMatrix4(bowG.matrixWorld)); rightHand.quaternion.copy(bowG.quaternion);
+    const shake = Math.sin(t * 40) * .002 * (strung ? 0 : tension);
+    rightHand.position.x += shake;
+    seg(leftArm, leftHand.position, tmpV2.set(lerp(-.1, -.32), lerp(-.75, -.6), lerp(-.55, -.3)));
+    // 右前臂只露一小截，往右下方伸出
+    tmpV.set(.04, -.13, .03).applyQuaternion(bowG.quaternion).add(rightHand.position);
+    seg(rightArm, rightHand.position.clone(), tmpV.clone());
+  }
+
+  // ================================================================ 遊戲狀態（規則在 rules.js 的 createRound / stepRound）
+  let bowTremble = 0, ladderNote = null;      // 弓臂發抖量；暗示階梯第 2、3 階的文字（下一輪開頭再說一次）
+  let round = null, attempts = 0, best = 0, time = 0, fov = 55, resultAt = 0, flightDoneAt = 0;
+  let pendingEnd = null, resultShowAt = 0;
+  const input = { down: false, stringDx: 0, look: { yaw: 0, pitch: 0 } };
+  let locked = false, touchUI = false;
+  let bot = null, botOpts = null, botNextAt = 0, botRounds = 0;   // 程式玩家（除錯、錄音用）
+
+  function diff() { return opt.hole.value; }
+  function roundOptions() {
+    return { difficulty: diff(), stringPhase: opt.string.checked, fatigue: opt.fatigue.checked, heckle: opt.heckle.checked };
+  }
+  function buildTheme() {
+    ui.theme.textContent = '';
+    R.THEME12.notes.forEach(n => { const b = document.createElement('b'); b.textContent = n.name.replace(/\d/, ''); ui.theme.appendChild(b); });
+  }
+  function newRound(full) {
+    const prev = !full && round ? { strungOnce: round.strungOnce, hints: round.hints } : { hints: round ? round.hints : null };
+    round = R.createRound(roundOptions(), Math.random, prev, clock);
+    if (full) { attempts = 0; best = 0; buildAxes(diff(), round.axeOffset); }
+    resultAt = 0; flightDoneAt = 0; pendingEnd = null; resultShowAt = 0;
+    input.down = false; input.stringDx = 0; input.look.yaw = input.look.pitch = 0;
+    bone.visible = false; boneFly.on = false; cueTimer = 0; ui.cue.classList.remove('on');
+    suitors.forEach(p => { p.stand = 0; p.laugh = 0; });
+    holdT.id = null; touch.id = null; touch.pressed = false; ui.hold.classList.remove('on');
+    axes.forEach(a => { a.lit = 0; });
+    worldArrow.visible = false;
+    ui.result.hidden = true; ui.theme.hidden = true; buildTheme();
+    if (bot) bot = R.createBot(nextBotOpts());
+    if (ladderNote) { say(ladderNote, 9); ladderNote = null; } else say(round.intro, 6);
+    setCreak(0); setGrind(0); ui.resHint.hidden = true;
+    suitors.forEach(p => { p.raised.visible = false; });
+    if (snd) { snd.stopNotes(); snd.follow(round.heart, offset); }
+    refreshHud();
+  }
+  let cueTimer = 0;
+  function cue(text, sec, gold) { ui.cue.textContent = text; ui.cue.classList.add('on'); ui.cue.classList.toggle('gold', !!gold); cueTimer = sec; }
+  let msgTimer = 0;
+  function say(text, hold) { ui.msg.textContent = text; ui.msg.style.opacity = 1; msgTimer = hold || 5; }
+
+  function refreshHud() {
+    const ph = round.phase;
+    ui.score.textContent = `第 ${attempts + (round.flight ? 0 : 1)} 箭　最好 ${best} / 12`;
+    ui.stringUI.hidden = ph !== 'string';
+    ui.drawUI.hidden = ph !== 'aim';
+    ui.heart.hidden = ui.dot.hidden = ph !== 'aim';
+    if (ph !== 'aim') ui.halo.hidden = true;
+    ui.hold.hidden = !touchUI || ph !== 'aim';
+    ui.stringTip.textContent = touchUI ? '上弦：手指按住畫面左右拖，讓指針留在亮區' : '上弦：按住滑鼠，左右移動，讓指針留在亮區';
+    let hint = '';
+    if (ph === 'string' || ph === 'aim') {
+      if (!touchUI && !locked && !bot) hint = '點一下畫面鎖住滑鼠（Esc 放開）';
+      else if (ph === 'aim') hint = touchUI ? '拖曳瞄準，按住圓鈕拉弓，心跳斷掉時放開' : '按住拉弓，心跳斷掉時放開';
+    }
+    ui.hint.textContent = hint; ui.hint.hidden = !hint || !ui.theme.hidden;
+  }
+
+  function presentResult(r) {
+    best = Math.max(best, r.passed);
+    ui.result.classList.toggle('win', r.win);
+    ui.resTitle.textContent = r.title; ui.resText.textContent = r.text;
+    const when = !round.flight ? '' : r.inDrop ? '　在心跳斷掉時放手' : r.stage === 'fast' ? '　在心跳最快時放手' : '';
+    ui.resCount.textContent = round.flight ? `穿過 ${r.passed} / 12 個孔　最好 ${best} / 12${when}` : '';
+    resultAt = time;
+    input.down = false; setCreak(0);
+    if (!r.win) { suitors.forEach(s => { s.laugh = 1; }); sfx.laugh(); }
+    if (document.pointerLockElement) document.exitPointerLock();
+    resultShowAt = time + (r.win ? 1.2 : .65);
+    ui.msg.textContent = ''; msgTimer = 0;
+    if (snd) snd.follow(round.heart, offset);
+    if (bot) botNextAt = time + 3;
+    refreshHud();
+  }
+
+  function onEvents(evs) {
+    for (const e of evs) {
+      if (e.type === 'heckleCue') {
+        const p = suitors[e.who % suitors.length]; p.stand = 1; p.cupT = 1.6;
+        cue(e.label + '——', .9); sfx.knock(); setTimeout(() => sfx.cue(e.kind), 260);
+        if (e.kind === 'bone') {
+          boneFly.on = true; boneFly.t = 0; boneFly.dur = Math.max(.25, e.lead);
+          p.g.getWorldPosition(boneFly.from); boneFly.from.y = 1.4;
+          boneFly.to.set((Math.random() - .5) * .8, .05, -.6 - Math.random() * .5); bone.visible = true;
+        }
+      }
+      else if (e.type === 'heckleHit') { sfx.hit(e.kind); const p = suitors[e.who % suitors.length]; p.laugh = Math.max(p.laugh, .8); }
+      else if (e.type === 'dropStart') { cue(R.TEXT.dropWord, .5, true); if (cueTimer && boneFly.on) { boneFly.on = false; bone.visible = false; } }
+      else if (e.type === 'drawStart' || e.type === 'cancel') { if (snd) snd.follow(round.heart, offset); if (e.type === 'cancel') say(e.text); }
+      else if (e.type === 'strung') { setCreak(0); sfx.swallow(); sfx.thunder(); say(e.text, 6); refreshHud(); }
+      else if (e.type === 'slip') { sfx.slip(); setGrind(0); }
+      else if (e.type === 'hint') onHint(e);
+      else if (e.type === 'fire') {
+        attempts++; sfx.twang(); worldArrow.visible = true; guide.visible = false;
+        ui.theme.hidden = false; ui.cue.classList.remove('on');
+        if (snd) { snd.follow(round.heart, offset); const at = audioAt(e.at); if (at !== null) snd.playNotes(e.flight.notes, at); }
+        refreshHud();
+      }
+      else if (e.type === 'pass') { axes[e.axe].lit = 1; ui.theme.children[e.axe].classList.add('on'); }
+      else if (e.type === 'stop') {
+        flightDoneAt = time;
+        if (e.kind === 'hit') sfx.thunk(); else if (e.kind !== 'door') sfx.land();
+        if (e.kind !== 'door') { const n = round.flight.res.passed; if (ui.theme.children[n]) ui.theme.children[n].classList.add('miss'); }
+      }
+      else if (e.type === 'result') {
+        const wait = round.flight ? (e.result.win ? 1.0 : .7) : 0;
+        pendingEnd = { at: time + wait, result: e.result };
+      }
+    }
+  }
+
+  // 暗示階梯：第 1 階只有世界內暗示；第 2 階一行文字、第 3 階加按鍵說明（結果面板上、下一輪開頭各說一次）
+  function onHint(e) {
+    if (e.level < 2) { if (ladderNote && e.key) ladderNote = null; return; }
+    const text = e.text + (e.keys ? '　' + e.keys : '');
+    ladderNote = text;
+    ui.resHint.innerHTML = '';
+    ui.resHint.append(e.text);
+    if (e.keys) { const sm = document.createElement('small'); sm.textContent = e.keys; ui.resHint.append(sm); }
+    ui.resHint.hidden = false;
+  }
+
+  function press() {
+    audio();
+    if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); return; }
+    if (round.phase === 'flight') return;
+    input.down = true;
+  }
+  function release() { input.down = false; }
+
+  // ================================================================ 輸入（像素 → 規則單位；同比箭）
+  const SENS = .0022, TOUCH_SENS = .0042;
+  const MOUSE_PX_PER_UNIT = 220;
+  function stringUnitsFromTouch(dxPx) { return dxPx / Math.max(1, stage.clientWidth) * T.string.handSpan; }
+  function lookBy(dx, dy, base) { const k = base * (fov / 55); input.look.yaw -= dx * k; input.look.pitch -= dy * k; }
+  const touch = { id: null, x: 0, y: 0, pressed: false };
+  const holdT = { id: null, x: 0, y: 0 };
+
+  cv.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse') {
+      touchUI = true; touch.id = e.pointerId; touch.x = e.clientX; touch.y = e.clientY;
+      try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+      audio();
+      if (round.result) { if (!pendingEnd && time - resultAt > .5) newRound(false); }
+      else if (round.phase === 'string') { press(); touch.pressed = input.down; }
+      refreshHud(); return;
+    }
+    if (e.button !== 0) return;
+    if (!locked && !NOLOCK && cv.requestPointerLock && !round.result) { try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+    press();
+  });
+  window.addEventListener('mouseup', e => { if (e.button === 0) release(); });
+  let lockAt = 0;
+  document.addEventListener('mousemove', e => {
+    if (touch.id !== null) return;
+    if (!locked && e.target !== cv) return;
+    const dx = e.movementX || 0, dy = e.movementY || 0;
+    if (Math.abs(dx) > 200 || Math.abs(dy) > 200 || performance.now() - lockAt < 80) return;
+    if (round.phase === 'string') { if (input.down) input.stringDx += dx / MOUSE_PX_PER_UNIT; }
+    else if (round.phase === 'aim') lookBy(dx, dy, SENS);
+  });
+  document.addEventListener('pointerlockchange', () => {
+    const was = locked;
+    locked = document.pointerLockElement === cv; lockAt = performance.now(); refreshHud();
+    // 玩家按 Esc 解除鎖定＝暫停（結果面板自己放開滑鼠時不算）
+    if (was && !locked && !paused && !round.result && !pendingEnd) pauseGame(true);
+  });
+  document.addEventListener('pointerlockerror', () => { locked = false; });
+  cv.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse' || e.pointerId !== touch.id) return;
+    const dx = e.clientX - touch.x, dy = e.clientY - touch.y; touch.x = e.clientX; touch.y = e.clientY;
+    if (round.phase === 'string') { if (input.down) input.stringDx += stringUnitsFromTouch(dx); }
+    else if (round.phase === 'aim') lookBy(dx, dy, TOUCH_SENS);
+  });
+  const endTouch = e => {
+    if (e.pointerId !== touch.id) return;
+    touch.id = null;
+    if (touch.pressed) { touch.pressed = false; if (holdT.id === null) release(); }
+  };
+  cv.addEventListener('pointerup', endTouch); cv.addEventListener('pointercancel', endTouch);
+  ui.hold.addEventListener('pointerdown', e => {
+    e.preventDefault(); touchUI = true; holdT.id = e.pointerId; holdT.x = e.clientX; holdT.y = e.clientY;
+    try { ui.hold.setPointerCapture(e.pointerId); } catch (_) {}
+    ui.hold.classList.add('on'); press();
+  });
+  ui.hold.addEventListener('pointermove', e => {
+    if (e.pointerId !== holdT.id) return;
+    const dx = e.clientX - holdT.x, dy = e.clientY - holdT.y; holdT.x = e.clientX; holdT.y = e.clientY;
+    if (round.phase === 'aim') lookBy(dx * .5, dy * .5, TOUCH_SENS);
+  });
+  const holdEnd = e => { if (e.pointerId !== holdT.id) return; holdT.id = null; ui.hold.classList.remove('on'); release(); };
+  ui.hold.addEventListener('pointerup', holdEnd); ui.hold.addEventListener('pointercancel', holdEnd);
+  ui.hold.addEventListener('contextmenu', e => e.preventDefault());
+  if (window.matchMedia && matchMedia('(pointer: coarse)').matches) touchUI = true;
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { onEscape(); return; }
+    if (paused) return;
+    if (e.key === 'r' || e.key === 'R') { audio(); newRound(false); }
+    else if (e.code === 'Space' && !e.repeat && (locked || document.activeElement === document.body || document.activeElement === cv)) { e.preventDefault(); press(); }
+  });
+  window.addEventListener('keyup', e => { if (e.code === 'Space') release(); });
+  ui.retry.addEventListener('click', () => { audio(); newRound(false); });
+  for (const k in opt) opt[k].addEventListener('change', () => { if (k === 'guide') return; newRound(true); });
+
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = vCam.aspect = w / h;
+    // 窄螢幕：前景相機拉寬一點，弓不會擠滿畫面
+    vCam.fov = w / h < .8 ? 74 : 58;
+    camera.updateProjectionMatrix(); vCam.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage); resize();
+  // 頂端標題列（含連作那一行）有多高，提示文字和上弦面板就往下排多少，不會壓在一起
+  const topBar = $('top'), hud = topBar.parentNode;
+  const placeHead = () => {
+    hud.style.setProperty('--head', topBar.offsetHeight + 'px');
+    // 上弦面板排在提示文字下面（提示換成兩行也不會壓到）
+    const m = ui.msg, below = m.textContent ? m.offsetTop + m.offsetHeight + 10 : 0;
+    ui.stringUI.style.top = below ? `max(${below}px, calc(var(--head) + 48px))` : '';
+  };
+  new ResizeObserver(placeHead).observe(topBar); new ResizeObserver(placeHead).observe(ui.msg); placeHead();
+
+  // ================================================================ 更新
+  const easeOut = x => 1 - (1 - x) * (1 - x);
+  let poseT = 0, frozen = false, beatPulse = 0;
+  // 程式玩家：交替「抓驟降」與「抓最高速」（alternate），方便錄音比較
+  function nextBotOpts() {
+    const o = Object.assign({}, botOpts || {});
+    if (o.alternate) o.release = botRounds % 2 === 0 ? 'drop' : 'peak';
+    return o;
+  }
+  function update(dt) {
+    time += dt;
+    const now = nextClock(dt);
+    if (pendingEnd && time >= pendingEnd.at) { const r = pendingEnd.result; pendingEnd = null; presentResult(r); }
+    if (resultShowAt && time >= resultShowAt) { resultShowAt = 0; ui.result.hidden = false; ui.theme.hidden = true; refreshHud(); }
+    if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) ui.msg.style.opacity = 0; }
+
+    let inp = { now, down: input.down, stringDx: input.stringDx, look: input.look };
+    if (bot) {
+      if (round.result) { if (botNextAt && time >= botNextAt && !pendingEnd) { botNextAt = 0; botRounds++; newRound(false); } }
+      else { const b = bot(round); inp = { now, down: b.down, stringDx: b.stringDx, look: b.look }; }
+    }
+    const evs = R.stepRound(round, dt, inp);
+    input.stringDx = 0; input.look.yaw = input.look.pitch = 0;
+    onEvents(evs);
+    if (window.__bowEvents) for (const e of evs) window.__bowEvents.push({ type: e.type, at: audioAt(e.at !== undefined ? e.at : now), j: e.j, kind: e.kind, axe: e.axe });
+    if (cueTimer > 0) { cueTimer -= dt; if (cueTimer <= 0) ui.cue.classList.remove('on'); }
+
+    const ph = round.phase, d = round.draw, f = round.flight, hb = round.hb || R.heartAt(round.heart, now);
+    frozen = ph === 'aim' && hb.drop;                     // 驟降：全場靜止
+    if (boneFly.on && !frozen) {
+      boneFly.t += dt; const u = Math.min(1, boneFly.t / boneFly.dur);
+      bone.position.lerpVectors(boneFly.from, boneFly.to, u); bone.position.y += Math.sin(u * Math.PI) * .6;
+      bone.rotation.set(u * 9, u * 5, 0);
+      if (u >= 1) boneFly.on = false;
+    }
+    // 上弦：謝帕德音階跟著張力上爬
+    if (snd) {
+      if (ph === 'string') snd.setShepard(input.down || !!bot, R.shepardPos(round.str.tension), round.str.tension);
+      else snd.setShepard(false, R.shepardPos(round.strungOnce ? 1 : round.str.tension), 0);
+    }
+    if (ph === 'string') setCreak((input.down || bot) ? .3 + round.str.tension * .7 : 0);
+    else if (ph === 'aim') setCreak(d.drawing && d.power < 1 ? .4 : 0);
+    // 上弦偏離：摩擦聲＋弓臂發抖（outTime ÷ outLimit 越接近 1 越快滑掉）
+    if (ph === 'string' && (input.down || bot)) {
+      const out = Math.max(0, Math.abs(round.str.needle) - T.string.zone);
+      const g = out > 0 ? Math.min(1, .35 + out * 1.2 + round.str.outTime / T.string.outLimit * .5) : 0;
+      setGrind(g); bowTremble += (g - bowTremble) * Math.min(1, dt * 20);
+    } else { if (bowTremble) setGrind(0); bowTremble += (0 - bowTremble) * Math.min(1, dt * 10); if (bowTremble < .01) bowTremble = 0; }
+
+    // 心跳脈動（畫面跟著規則的拍點）：最近 0.25 秒內的拍加總
+    beatPulse = 0;
+    if (ph === 'aim') for (const b of R.heartBeatsBetween(round.heart, now - .25, now + 1e-6)) {
+      const u = now - b.t; beatPulse += (b.k < 0 ? .5 : b.gain) * Math.exp(-u / .07);
+    }
+
+    let targetFov = 55;
+    if (ph === 'aim') targetFov = 55 - 37 * easeOut(d.drawing ? d.power : 0);
+    if (f) targetFov = 50;
+    fov += (targetFov - fov) * Math.min(1, dt * (f ? 3 : 8));
+    poseT += ((ph === 'string' ? 0 : 1) - poseT) * Math.min(1, dt * 4);
+
+    axes.forEach(a => { a.rimMat.emissiveIntensity = a.lit * 2.2; a.lit = Math.max(f && f.res.win && f.done ? .35 : 0, a.lit - dt * .25); });
+    if (!frozen) {
+      // 求婚者：人聲越大（心跳越快）越躁動；箭在飛時屏息
+      const crowd = round.crowd || 0;
+      suitors.forEach(p => {
+        p.laugh = Math.max(0, p.laugh - dt * .3);
+        p.stand = Math.max(0, (p.stand || 0) - dt * .5);
+        p.cupT = Math.max(0, (p.cupT || 0) - dt); p.raised.visible = p.cupT > 0 && ph === 'aim';
+        const l = Math.max(p.laugh, ph === 'aim' ? (crowd - .3) * .9 : 0), b = Math.abs(Math.sin(time * p.rate + p.ph));
+        p.headG.rotation.x = -.45 * l * b + Math.sin(time * .7 + p.ph) * .04;
+        p.body.position.y = p.seatY + .03 * l * b + .3 * Math.min(1, p.stand * 1.6);
+        p.body.rotation.x = -.12 * l;
+      });
+      flames.forEach(fl => {
+        const k = .85 + .1 * Math.sin(time * 9 + fl.ph) + .07 * Math.sin(time * 23 + fl.ph * 2) + .05 * (Math.random() - .5);
+        fl.sp.scale.set(fl.size * k, fl.size * 1.3 * k, 1);
+        if (fl.light) fl.light.intensity = fl.base * (.85 + .2 * k);
+      });
+    }
+  }
+
+  // ================================================================ 繪製
+  function render() {
+    const d = round.draw, f = round.flight, aim = round.aim, ph = round.phase;
+    const aiming = ph === 'aim', hb = round.hb || { drop: false, p: 0, mode: 'rest' };
+    camera.fov = fov; camera.updateProjectionMatrix();
+    const winView = f && f.done && f.res.win && time - flightDoneAt > .35;
+    if (winView) {
+      camera.position.set(0, H, 0);
+      camera.rotation.set(aim.pitch * .3, 0, 0, 'YXZ');
+      camera.fov = 26; camera.updateProjectionMatrix();
+      const ap = R.positionAt(f.shot, f.t); worldArrow.position.set(ap.x, ap.y, ap.z);
+    } else if (f) {
+      // 慢動作跟拍：相機在箭的右上後方（避開斧刃與斧柄），看箭一個孔一個孔穿過去
+      const ap = R.positionAt(f.shot, f.t), av = R.velocityAt(f.shot, f.t);
+      const fz = f.done ? Math.max(ap.z, T.doorZ + 2) : ap.z;
+      camera.position.set(ap.x + .46, H + .24, fz + 1.15);
+      tmpV.set(ap.x + .05, H, fz - 1.6);
+      camera.lookAt(tmpV);
+      worldArrow.position.set(ap.x, ap.y, ap.z);
+      tmpV.set(ap.x - av.x, ap.y - av.y, ap.z - av.z);
+      worldArrow.lookAt(tmpV);
+      if (f.done && f.res.stop.kind === 'hit') worldArrow.rotation.z += Math.sin((time - flightDoneAt) * 40) * .002 * Math.max(0, 1 - (time - flightDoneAt));
+    } else {
+      const sw = aiming ? d.sway : { yaw: 0, pitch: 0, x: 0, y: 0 };
+      camera.position.set(sw.x, H + sw.y, 0);
+      camera.rotation.set(aim.pitch + sw.pitch, aim.yaw + sw.yaw, 0, 'YXZ');
+    }
+
+    // 對準時的光通道：用拉滿的彈道＋現在的晃動預測，穿過的孔金邊亮起，12 孔全過時亮出一道細光
+    channel = 0;
+    if (aiming && round.strungOnce) {
+      const pres = R.simulate(R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power: 1, sway: d.sway }), round.difficulty, round.axeOffset);
+      channel = pres.passed;
+    }
+    const steady = aiming && hb.drop && d.drawing;
+    axes.forEach((a, i) => { if (aiming && i < channel) a.rimMat.emissiveIntensity = Math.max(a.rimMat.emissiveIntensity, (steady ? 1.6 : .9) * (1 - i / 30)); });
+    beam.visible = aiming && channel >= T.axeCount;
+    if (beam.visible) {
+      const o = round.axeOffset; beam.position.set(o.x, H + o.y, -(T.axeFirst + (T.axeCount - 1) * T.axeSpacing / 2));
+      beam.material.opacity = steady ? .55 : .25 + .1 * Math.sin(time * 6);
+    }
+
+    if (opt.guide.checked && aiming) {
+      const shot = R.makeShot({ yaw: aim.yaw, pitch: aim.pitch, power: d.drawing ? Math.max(.3, d.power) : 1, sway: d.sway });
+      const arr = guideGeo.attributes.position.array;
+      for (let i = 0; i < T.axeCount; i++) { const p = R.positionAt(shot, (R.axeZ(i) - shot.origin.z) / shot.vel.z); arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z; }
+      guideGeo.attributes.position.needsUpdate = true; guide.visible = true;
+    } else guide.visible = false;
+
+    const stringing = ph === 'string' || (ph === 'result' && !round.strungOnce);
+    const tension = stringing ? round.str.tension : 1;
+    const pull = aiming ? easeOut(d.drawing ? d.power : 0) : 0;
+    updateViewmodel(poseT, tension, pull, !stringing && !f, aiming ? d.sway : null, time);
+
+    renderer.clear();
+    renderer.render(scene, camera);
+    if (!f) { renderer.clearDepth(); renderer.render(vScene, vCam); }
+
+    // HUD
+    ui.still.classList.toggle('on', frozen);
+    const fastGlow = aiming && d.drawing && hb.mode === 'risset' && !hb.drop ? Math.max(0, hb.p - .55) / .45 : 0;
+    ui.pulse.style.opacity = (fastGlow * (.25 + .5 * Math.min(1, beatPulse))).toFixed(3);
+    if (ph === 'string') {
+      const n = R.clamp(round.str.needle, -1, 1);
+      ui.needle.style.left = (50 + n * 50) + '%';
+      ui.needle.classList.toggle('out', round.str.outTime > 0);
+      ui.tension.style.width = (round.str.tension * 100) + '%';
+    }
+    if (aiming) {
+      ui.power.style.width = (d.power * 100) + '%';
+      ui.power.className = d.power >= 1 ? 'full' : '';
+      const st = d.stage;
+      ui.drawLabel.textContent = !d.drawing ? '拉弓' : st === 'drawing' ? '拉弓…心跳加快'
+        : st === 'drop' ? '心跳斷了——放手' : st === 'fast' ? R.TEXT.fastWord : '心跳越來越快…';
+      ui.drawLabel.className = st === 'drop' ? 'drop' : st === 'fast' ? 'fast' : '';
+      const tempo = hb.mode === 'risset' ? (hb.drop ? 1 : hb.p) : 0;
+      ui.tempoBar.style.width = (tempo * 100) + '%';
+      ui.tempo.classList.toggle('drop', !!hb.drop);
+      // 準心圈：隨心跳收縮擴張，心跳越快幅度越大；驟降時收成一點、光暈靜止
+      const drop = !!(hb.drop && d.drawing);
+      const fastK = d.drawing && hb.mode === 'risset' ? hb.p : 0;
+      const s = drop ? .1 : .72 + Math.min(.9, beatPulse * (.18 + .55 * fastK)) + fastK * .2;
+      ui.heart.style.transform = `scale(${s.toFixed(3)})`;
+      ui.heart.classList.toggle('drop', drop);
+      ui.halo.hidden = !d.drawing;
+      ui.halo.classList.toggle('drop', drop);
+      if (drop) { ui.halo.style.opacity = '1'; ui.halo.style.transform = 'scale(1)'; }
+      else { ui.halo.style.opacity = (.25 + Math.min(.6, beatPulse * .45)).toFixed(3); ui.halo.style.transform = `scale(${(.8 + Math.min(.7, beatPulse * (.15 + .45 * fastK))).toFixed(3)})`; }
+    }
+  }
+
+  let last = performance.now(), hudTick = 0, paused = false;
+  function loop(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    if (!paused) { update(dt); render(); }
+    if ((hudTick += dt) > .25) { hudTick = 0; refreshHud(); }
+    requestAnimationFrame(loop);
+  }
+
+  // ================================================================ 暫停／回到開場／回總首頁
+  // 暫停：遊戲迴圈不更新、音訊環境 suspend（音訊時鐘停住，規則時鐘 clock 跟著停，心跳不會跳拍）
+  let pausedAt = 0;
+  function pauseGame(fromUnlock) {
+    if (paused) return;
+    paused = true; pausedAt = fromUnlock ? performance.now() : 0;
+    input.down = false; touch.pressed = false; holdT.id = null; ui.hold.classList.remove('on');
+    if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (_) {} }
+    try { if (ac && ac.state === 'running') ac.suspend(); } catch (_) {}
+    $('pause').hidden = false;
+  }
+  function resumeGame() {
+    if (!paused) return;
+    $('pause').hidden = true;
+    const go = () => { paused = false; last = performance.now(); };
+    // 等音訊真的恢復再放行，規則時鐘才不會比聲音先走
+    if (ac && ac.state === 'suspended') { ac.resume().then(go, go); } else go();
+  }
+  function onEscape() {
+    if (paused) { if (performance.now() - pausedAt > 300) resumeGame(); }   // 解鎖觸發的暫停：同一下 Esc 不立刻又繼續
+    else if (ui.result.hidden && !pendingEnd) pauseGame(false);
+  }
+  // 這一版沒有獨立的開場字卡：「回到開場」＝頁內重設成剛打開頁面的狀態（第 1 箭、從上弦開始、成績歸零）
+  function backToIntro() {
+    if (snd) { snd.stopNotes(); }
+    setCreak(0); setGrind(0);
+    ladderNote = null;
+    $('pause').hidden = true;
+    newRound(true);
+    const go = () => { paused = false; last = performance.now(); };
+    if (ac && ac.state === 'suspended') { ac.resume().then(go, go); } else go();
+    try { window.scrollTo(0, 0); } catch (_) {}
+  }
+  $('btnResume').addEventListener('click', resumeGame);
+  const NAV = window.OdysseyNav;
+  const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
+  document.querySelectorAll('.btnIntro').forEach(b => b.addEventListener('click', backToIntro));
+  document.querySelectorAll('.btnHub').forEach(b => {
+    b.hidden = !hasHub;
+    b.addEventListener('click', () => { try { NAV.goHub(); } catch (err) { console.warn('無法前往總首頁', err); } });
+  });
+
+  newRound(true);
+  requestAnimationFrame(loop);
+
+  // ================================================================ 除錯／錄音（網址帶 ?debug，或錄音工具注入 window.__rec 時才有）
+  if (DEBUG || window.__rec) {
+    window.bowRissetDebug = {
+      R, get state() { return round; }, get input() { return input; }, get audio() { return snd; }, get offset() { return offset; },
+      get clock() { return clock; },
+      startAudio() { return !!audio(); },
+      advance(sec) { for (let t = 0; t < sec - 1e-9; t += 1 / 60) update(1 / 60); render(); return round.phase; },
+      pause(on) { paused = !!on; },
+      pauseGame() { pauseGame(false); }, resumeGame, backToIntro, get paused() { return paused; },
+      // 程式玩家：opts 同 BowRissetRules.createBot，另加 alternate（一輪抓驟降、一輪抓最高速）
+      autoplay(o) { botOpts = o || { release: 'drop' }; botRounds = 0; bot = R.createBot(nextBotOpts()); refreshHud(); return true; },
+      stopAutoplay() { bot = null; },
+      skipString() { if (round.phase === 'string') { round.str.tension = 1; round.str.done = true; round.phase = 'aim'; round.strungOnce = true; refreshHud(); } },
+      window() { return R.aimWindow(diff()); },
+    };
+  }
+})();
+</script>

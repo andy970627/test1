@@ -1,44 +1,44 @@
-# 雙盲洞穴 Implementation Plan
+# 雙盲洞穴實作計畫
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **給代理執行者：** 必要的子技能：使用 superpowers:subagent-driven-development（建議）或 superpowers:executing-plans，逐項工作執行本計畫。步驟用核取方塊（`- [ ]`）語法追蹤進度。
 
-**Goal:** 把獨眼巨人洞穴改成「雙盲＋推巨石」：全黑洞穴裡用聲音看見，躲開循聲而來的瞎眼巨人，在天亮前把巨石推出縫逃走。
+**目標：** 把獨眼巨人洞穴改成「雙盲＋推巨石」：全黑洞穴裡用聲音看見，躲開循聲而來的瞎眼巨人，在天亮前把巨石推出縫逃走。
 
-**Architecture:** 規則（聲音、巨人狀態機、巨石、天亮、迴圈狀態）放在無 Unity 依賴的 `Odyssey.Core`，用 NUnit 先寫測試。Unity 層放在 `Assets/Odyssey/Echo/`，用靜態 `SoundBus` 廣播每個聲音，回聲著色器（`EchoField`）和巨人（`BlindCyclops`）都訂閱它。`BlindGameLoop` 取代 `CaveGameLoop`。
+**架構：** 規則（聲音、巨人狀態機、巨石、天亮、迴圈狀態）放在無 Unity 依賴的 `Odyssey.Core`，用 NUnit 先寫測試。Unity 層放在 `Assets/Odyssey/Echo/`，用靜態 `SoundBus` 廣播每個聲音，回聲著色器（`EchoField`）和巨人（`BlindCyclops`）都訂閱它。`BlindGameLoop` 取代 `CaveGameLoop`。
 
-**Tech Stack:** Unity 6000.3.14f1、URP 17.3.0 Forward+、Input System（只用 `Keyboard.current`／`Mouse.current`）、C#、NUnit 3.14（`dotnet test tools/CoreTests`）、HLSL。
+**技術組成：** Unity 6000.3.14f1、URP 17.3.0 Forward+、Input System（只用 `Keyboard.current`／`Mouse.current`）、C#、NUnit 3.14（`dotnet test tools/CoreTests`）、HLSL。
 
-**Spec:** `docs/superpowers/specs/2026-10-10-blind-cave-design.md`
+**規格：** `docs/superpowers/specs/2026-10-10-blind-cave-design.md`
 
-## Global Constraints
+## 全域限制
 
 - 所有場景、物件、文字都必須出自《奧德賽》；玩家看得到的文字一律繁體中文。
-- 不 stage 使用者未提交的修改：`Assets/Editor.meta`、`Assets/Editor/HubForceResolve.cs(.meta)`、`Assets/Settings/PC_RPAsset.asset`、`ProjectSettings/*`、`ProjectSettings/SceneTemplateSettings.json`、`Assets/Scenes/*.unity(.meta)`、`docs/design/`、`handoff-odyssey-cyclops-cave.md`。一律 `git add <明確路徑>`。
+- 不把使用者未提交的修改加入暫存區（stage）：`Assets/Editor.meta`、`Assets/Editor/HubForceResolve.cs(.meta)`、`Assets/Settings/PC_RPAsset.asset`、`ProjectSettings/*`、`ProjectSettings/SceneTemplateSettings.json`、`Assets/Scenes/*.unity(.meta)`、`docs/design/`、`handoff-odyssey-cyclops-cave.md`。一律 `git add <明確路徑>`。
 - `Odyssey.Core` 不能引用 UnityEngine（asmdef `noEngineReferences: true`）；平面位置用 `System.Numerics.Vector2`（X＝世界 x，Y＝世界 z）。
 - 每個任務結束都要 `powershell -File tools/compile-check.ps1` 輸出「建置成功」，`dotnet test tools/CoreTests` 全過。
 - 半徑 = 聲量 × 20 m；聲量：蹲走 0.15、跑 0.4、拍手 0.5、石子 0.6、巨石 1.0、羊叫 0.5、巨人 0.15。
 - 提交訊息結尾加 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。
 - F1 除錯面板預設開啟、大字、圖像化、不顯示檔案路徑。
 
-## Review Focus
+## 審查重點
 
-1. **聲音剛好在半徑邊界、或就在巨人腳下（距離 0）**：邊界算聽得到，距離 0 不能產生 NaN。測試見 Task 1、Task 3。
-2. **同一幀既被抓又天亮**：只算第一個失敗，不丟例外、不重複吃同伴。`BlindGameLoop.Fail` 先檢查 `Phase == Night`（Task 7），`CaveLoopState` 測試確認第二次 `Fail` 會丟例外（Task 7）。
-3. **巨石推滿 8 格後還按住 E**：進度停在 8，不溢位，也不會再發出巨響。測試見 Task 2。
-4. **巨人守石時玩家繼續推**：守石重新計時，不會卡在原地。測試見 Task 3。
-5. **超過 16 個聲音同時存在**（跑步＋巨人腳步＋多隻羊叫）：最舊的聲波被取代，不閃爍也不出錯。由 Task 4 的 `EchoField` 環狀緩衝處理，實測時注意。
+1. **聲音剛好在半徑邊界、或就在巨人腳下（距離 0）**：邊界算聽得到，距離 0 不能產生 NaN。測試見 工作 1、工作 3。
+2. **同一幀既被抓又天亮**：只算第一個失敗，不丟例外、不重複吃同伴。`BlindGameLoop.Fail` 先檢查 `Phase == Night`（工作 7），`CaveLoopState` 測試確認第二次 `Fail` 會丟例外（工作 7）。
+3. **巨石推滿 8 格後還按住 E**：進度停在 8，不溢位，也不會再發出巨響。測試見 工作 2。
+4. **巨人守石時玩家繼續推**：守石重新計時，不會卡在原地。測試見 工作 3。
+5. **超過 16 個聲音同時存在**（跑步＋巨人腳步＋多隻羊叫）：最舊的聲波被取代，不閃爍也不出錯。由 工作 4 的 `EchoField` 環狀緩衝處理，實測時注意。
 
 ---
 
-### Task 1: 聲音規則
+### 工作 1：聲音規則
 
-**Files:**
-- Create: `Assets/Odyssey/Core/SoundEvent.cs`（`SoundKind`、`SoundSource`、`SoundEvent`）
-- Create: `Assets/Odyssey/Core/SoundRules.cs`
-- Test: `Assets/Odyssey/Tests/Editor/SoundRulesTests.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Core/SoundEvent.cs`（`SoundKind`、`SoundSource`、`SoundEvent`）
+- 新增：`Assets/Odyssey/Core/SoundRules.cs`
+- 測試：`Assets/Odyssey/Tests/Editor/SoundRulesTests.cs`
 
-**Interfaces:**
-- Produces:
+**介面：**
+- 產出：
   - `enum SoundKind { Step, Run, Clap, Stone, Boulder, Bleat, Cyclops }`
   - `enum SoundSource { Player, Cyclops, Sheep }`
   - `readonly struct SoundEvent { SoundKind Kind; Vector2 Position; float Loudness; float Time; SoundEvent(SoundKind kind, Vector2 position, float loudness, float time) }`
@@ -50,7 +50,7 @@
     - `SoundEvent Create(SoundKind kind, Vector2 position, float time, IReadOnlyList<SoundEvent> recentBleats)`：套用羊叫遮蔽
     - `bool CanHear(SoundEvent e, Vector2 listener, float radiusMultiplier = 1f)`
 
-- [ ] **Step 1: 寫失敗測試** `SoundRulesTests`
+- [ ] **步驟 1：寫失敗測試** `SoundRulesTests`
   - `Loudness_MatchesSpec`：Step 0.15、Run 0.4、Clap 0.5、Stone 0.6、Boulder 1.0、Bleat 0.5、Cyclops 0.15。
   - `Radius_IsTwentyTimesLoudness`：`Radius(0.5f) == 10f`。
   - `Source_StoneAndBoulderArePlayer_BleatIsSheep_CyclopsIsCyclops`
@@ -62,59 +62,59 @@
   - `CanHear_BoundaryInclusive`：拍手在 (10,0)、聽者在 (0,0) → true；(10.01,0) → false。
   - `CanHear_RadiusMultiplier`：石子在 (7,0)、`radiusMultiplier: 0.5f` → false；(6,0) → true。
   - `CanHear_CyclopsOwnSoundIsNeverHeard`：Kind=Cyclops、距離 0 → false。
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests --filter SoundRulesTests`
   預期：編譯失敗，找不到 `SoundRules`。
-- [ ] **Step 3: 實作** `SoundEvent.cs`、`SoundRules.cs`（namespace `Odyssey.Core`）
+- [ ] **步驟 3：實作** `SoundEvent.cs`、`SoundRules.cs`（命名空間 `Odyssey.Core`）
   `Create` 只在 `kind != Bleat` 時檢查遮蔽：任何羊叫符合「`0 ≤ time - bleat.Time ≤ MaskSeconds`」且「距離 ≤ `MaskRadius`」就乘上 `MaskFactor`。
-- [ ] **Step 4: 執行測試確認通過**
+- [ ] **步驟 4：執行測試確認通過**
   執行：`dotnet test tools/CoreTests`
   預期：全過。
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   `git add Assets/Odyssey/Core/SoundEvent.cs Assets/Odyssey/Core/SoundRules.cs Assets/Odyssey/Tests/Editor/SoundRulesTests.cs`
   訊息：`feat(blind): sound rules — loudness, radius, bleat masking`
 
-### Task 2: 巨石、天亮、石子記憶
+### 工作 2：巨石、天亮、石子記憶
 
-**Files:**
-- Create: `Assets/Odyssey/Core/BoulderModel.cs`、`DawnClock.cs`、`DecoyMemory.cs`
-- Test: `Assets/Odyssey/Tests/Editor/BoulderDawnDecoyTests.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Core/BoulderModel.cs`、`DawnClock.cs`、`DecoyMemory.cs`
+- 測試：`Assets/Odyssey/Tests/Editor/BoulderDawnDecoyTests.cs`
 
-**Interfaces:**
-- Produces:
+**介面：**
+- 產出：
   - `sealed class BoulderModel { const int StepsToOpen = 8; int Progress; bool IsOpen; bool Push(); void Reset(); }`
     - `Push()` 有前進時回傳 true；已開時回傳 false，`Progress` 不變。
   - `sealed class DawnClock { const float DefaultNightSeconds = 240f; DawnClock(float nightSeconds = 240f); float Elapsed; float Fraction; bool IsDawn; void Tick(float dt); void Reset(); }`
     - `Fraction` 限制在 0～1。
   - `sealed class DecoyMemory { const int FooledLimit = 3; const float LearnedMultiplier = 0.5f; int Fooled; float StoneRadiusMultiplier; void RecordFooled(); void Reset(); }`
 
-- [ ] **Step 1: 寫失敗測試**
+- [ ] **步驟 1：寫失敗測試**
   - `Boulder_EightPushesOpens`：推 7 次 `IsOpen == false`，第 8 次 true。
   - `Boulder_PushWhenOpen_ReturnsFalseAndStaysAtEight`：推第 9 次回傳 false，`Progress == 8`。
   - `Boulder_Reset_GoesToZero`
   - `Dawn_After240Seconds_IsDawn`：`Tick(239.9f)` → false；再 `Tick(0.2f)` → true，`Fraction == 1f`。
   - `Dawn_FractionHalfway`：`Tick(120f)` → `Fraction == 0.5f`。
   - `Decoy_ThirdFooledHalvesStoneRadius`：2 次後倍率 1，3 次後 0.5；`Reset` 後回 1。
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests --filter BoulderDawnDecoyTests`
   預期：編譯失敗。
-- [ ] **Step 3: 實作三個類別**
-- [ ] **Step 4: 執行測試確認通過**
+- [ ] **步驟 3：實作三個類別**
+- [ ] **步驟 4：執行測試確認通過**
   執行：`dotnet test tools/CoreTests`
   預期：全過。
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   訊息：`feat(blind): boulder progress, dawn clock, decoy memory`
 
-### Task 3: 巨人大腦
+### 工作 3：巨人大腦
 
-**Files:**
-- Create: `Assets/Odyssey/Core/CyclopsBrain.cs`
-- Modify: `Assets/Odyssey/Core/Side.cs`：`FailReason` 新增 `Bumped`、`Dawn`。舊值暫留，Task 7 刪除。
-- Test: `Assets/Odyssey/Tests/Editor/CyclopsBrainTests.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Core/CyclopsBrain.cs`
+- 修改：`Assets/Odyssey/Core/Side.cs`：`FailReason` 新增 `Bumped`、`Dawn`。舊值暫留，工作 7 刪除。
+- 測試：`Assets/Odyssey/Tests/Editor/CyclopsBrainTests.cs`
 
-**Interfaces:**
-- Consumes: Task 1 的 `SoundEvent`、`SoundRules.CanHear`；Task 2 的 `DecoyMemory`。
-- Produces:
+**介面：**
+- 使用：工作 1 的 `SoundEvent`、`SoundRules.CanHear`；工作 2 的 `DecoyMemory`。
+- 產出：
   - `enum CyclopsState { Listen, Investigate, Search, Guard }`
   - `sealed class CyclopsBrain`
     - 常數：`WalkSpeed = 2.5f`、`RunSpeed = 4f`、`ArriveDistance = 0.5f`、`SearchSeconds = 3f`、`GuardSearchSeconds = 6f`、`SearchRadius = 1.5f`、`BumpDistance = 1f`
@@ -138,7 +138,7 @@
   3. Search 中 `|player - Position| ≤ SearchRadius` → 回傳 `Touched`。時間到就回到 Listen；如果這次是在追石子，呼叫 `memory.RecordFooled()`。
 - 距離為 0 時不能做正規化（避免 NaN）。
 
-- [ ] **Step 1: 寫失敗測試** `CyclopsBrainTests`
+- [ ] **步驟 1：寫失敗測試** `CyclopsBrainTests`
   共同設定：巨人在 (0,0)、巨石在 (0,9)、新的 `DecoyMemory`。
 
   | 測試 | 情境 | 預期 |
@@ -160,29 +160,29 @@
   | | 搜索 4 秒後聽到 Boulder | StateElapsed 歸 0 |
   | `Bump_AnyState` | Listen，玩家在 (0.9,0) | 回傳 Bumped |
   | `SoundAtOwnPosition_NoNaN` | 拍手在 (0,0)，Tick | 進入 Search，Position 不是 NaN |
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests --filter CyclopsBrainTests`
   預期：編譯失敗。
-- [ ] **Step 3: 依上面的規則實作 `CyclopsBrain`；在 `FailReason` 加上 `Bumped`、`Dawn`**
-- [ ] **Step 4: 執行測試確認通過**
+- [ ] **步驟 3：依上面的規則實作 `CyclopsBrain`；在 `FailReason` 加上 `Bumped`、`Dawn`**
+- [ ] **步驟 4：執行測試確認通過**
   執行：`dotnet test tools/CoreTests`
   預期：全過。另外跑 `powershell -File tools/compile-check.ps1`，預期「建置成功」。
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   訊息：`feat(blind): cyclops brain — listen, investigate, search, guard`
 
-### Task 4: 回聲著色器與聲音廣播
+### 工作 4：回聲著色器與聲音廣播
 
-**Files:**
-- Create: `Assets/Odyssey/Echo/Echo.shader`（`Shader "Odyssey/Echo"`）
-- Create: `Assets/Odyssey/Echo/SoundBus.cs`、`EchoField.cs`、`EchoMaterials.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Echo/Echo.shader`（`Shader "Odyssey/Echo"`）
+- 新增：`Assets/Odyssey/Echo/SoundBus.cs`、`EchoField.cs`、`EchoMaterials.cs`
 
-**Interfaces:**
-- Consumes: Task 1 的 `SoundKind`、`SoundEvent`、`SoundRules`。
-- Produces:
+**介面：**
+- 使用：工作 1 的 `SoundKind`、`SoundEvent`、`SoundRules`。
+- 產出：
   - `static class SoundBus`
     - `event Action<SoundEvent, Vector3> Emitted`
     - `void Emit(SoundKind kind, Vector3 worldPos)`：用 `Time.time`，並以最近 1 秒內的羊叫做遮蔽
-    - `void Clear()`：清掉事件訂閱與羊叫紀錄；`BlindGameLoop.Awake` 呼叫，避免關閉 Domain Reload 時殘留
+    - `void Clear()`：清掉事件訂閱與羊叫紀錄；`BlindGameLoop.Awake` 呼叫，避免關閉 Domain Reload（網域重新載入）時殘留
   - `class EchoField : MonoBehaviour`
     - 常數：`MaxPulses = 16`、`SpreadSeconds = 1f`、`FadeSeconds = 2.5f`
     - `static EchoField Instance`
@@ -209,21 +209,21 @@
   - 用 `Shader.SetGlobalVectorArray` 傳入；陣列固定長度 16，避免 Unity 鎖住第一次的陣列大小。
   - 聲波滿了就取代最舊的一個。
 
-- [ ] **Step 1: 寫 `SoundBus`、`EchoField`、`EchoMaterials`、`Echo.shader`**
-- [ ] **Step 2: 編譯檢查**
+- [ ] **步驟 1：寫 `SoundBus`、`EchoField`、`EchoMaterials`、`Echo.shader`**
+- [ ] **步驟 2：編譯檢查**
   執行：`powershell -File tools/compile-check.ps1`
-  預期：「建置成功」。著色器的語法要等 Unity 匯入時才會被檢查，Task 7 實測時確認 Console 沒有 shader 錯誤。
-- [ ] **Step 3: 提交**
+  預期：「建置成功」。著色器的語法要等 Unity 匯入時才會被檢查，工作 7 實測時確認 Console 沒有著色器錯誤。
+- [ ] **步驟 3：提交**
   訊息：`feat(blind): echo shader, echo field and sound bus`
 
-### Task 5: 黑暗洞穴、巨石與石子
+### 工作 5：黑暗洞穴、巨石與石子
 
-**Files:**
-- Create: `Assets/Odyssey/Echo/BlindCaveBuilder.cs`、`Boulder.cs`、`StonePickup.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Echo/BlindCaveBuilder.cs`、`Boulder.cs`、`StonePickup.cs`
 
-**Interfaces:**
-- Consumes: `CaveBuilder.Build(Transform, int)`、`CaveBuilder.GroundHeight(Vector3)`、`CaveLayout`、`EchoMaterials.Create`、`OdysseyMaterials.Create(color, emission)`。
-- Produces:
+**介面：**
+- 使用：`CaveBuilder.Build(Transform, int)`、`CaveBuilder.GroundHeight(Vector3)`、`CaveLayout`、`EchoMaterials.Create`、`OdysseyMaterials.Create(color, emission)`。
+- 產出：
   - `struct BlindCaveLayout { CaveLayout Cave; Boulder Boulder; Vector3[] StoneSpots; }`
   - `static class BlindCaveBuilder { BlindCaveLayout Build(Transform root, int seed); }`
     1. 呼叫 `CaveBuilder.Build`。
@@ -241,21 +241,21 @@
     - `Vector3 GapPoint`：縫的中心
   - `class StonePickup : MonoBehaviour { void Init(Vector3 pos); bool Taken; void Respawn(); }`：半徑 0.15 m 的球，回聲材質
 
-- [ ] **Step 1: 寫三個檔案**
-- [ ] **Step 2: 編譯檢查**
+- [ ] **步驟 1：寫三個檔案**
+- [ ] **步驟 2：編譯檢查**
   執行：`powershell -File tools/compile-check.ps1`
   預期：「建置成功」。
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind): dark cave builder, boulder with dawn gap, stone pickups`
 
-### Task 6: 玩家、巨人、羊
+### 工作 6：玩家、巨人、羊
 
-**Files:**
-- Create: `Assets/Odyssey/Echo/EchoPlayer.cs`、`ThrownStone.cs`、`BlindCyclops.cs`、`WanderingSheep.cs`
+**檔案：**
+- 新增：`Assets/Odyssey/Echo/EchoPlayer.cs`、`ThrownStone.cs`、`BlindCyclops.cs`、`WanderingSheep.cs`
 
-**Interfaces:**
-- Consumes: `FirstPersonPlayer`（`walkSpeed`、`InputEnabled`、`CameraTransform`）、`SoundBus.Emit`、`Boulder`、`StonePickup`、`CyclopsBrain`、`ProceduralAudio.Bleat()`／`Roar()`／`GiantBreath()`。
-- Produces:
+**介面：**
+- 使用：`FirstPersonPlayer`（`walkSpeed`、`InputEnabled`、`CameraTransform`）、`SoundBus.Emit`、`Boulder`、`StonePickup`、`CyclopsBrain`、`ProceduralAudio.Bleat()`／`Roar()`／`GiantBreath()`。
+- 產出：
   - `class EchoPlayer : MonoBehaviour`（和 `FirstPersonPlayer` 放在同一個物件上）
     - 常數：`CrouchSpeed = 1.5f`、`RunSpeed = 4f`、`CrouchStepSeconds = 0.6f`、`RunStepSeconds = 0.35f`、`MaxStones = 3`、`StartStones = 1`、`PushHoldSeconds = 1f`、`PushReach = 1.5f`、`PickupReach = 0.8f`
     - `void Init(FirstPersonPlayer body, Boulder boulder, IReadOnlyList<StonePickup> pickups, Func<bool> boulderOpen)`
@@ -288,40 +288,40 @@
     - 每 9～20 秒 `SoundBus.Emit(Bleat, 位置)`，並以 3D 音效播放 `Bleat()`，音量 0.35。
     - 外觀：身體、頭、四腳的基本形狀，回聲材質；大公羊大 1.3 倍，有角。
 
-- [ ] **Step 1: 寫四個檔案**
-- [ ] **Step 2: 編譯檢查**
+- [ ] **步驟 1：寫四個檔案**
+- [ ] **步驟 2：編譯檢查**
   執行：`powershell -File tools/compile-check.ps1`
   預期：「建置成功」。
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind): echo player, thrown stones, blind cyclops, wandering sheep`
 
-### Task 7: 夜晚迴圈接上、舊玩法移除
+### 工作 7：夜晚迴圈接上、舊玩法移除
 
-**Files:**
-- Modify: `Assets/Odyssey/Core/CaveLoopState.cs`
+**檔案：**
+- 修改：`Assets/Odyssey/Core/CaveLoopState.cs`
   - `LoopPhase { Intro, Night, Caught, Escaped, Wiped }`
   - 移除 `Grabbed()`；`IntroDone` 改成 Intro → Night，`Escape` 改成 Night → Escaped，`Fail` 只能在 Night 呼叫。
-- Modify: `Assets/Odyssey/Core/Side.cs`
+- 修改：`Assets/Odyssey/Core/Side.cs`
   - 改名為 `FailReason.cs`，只留 `enum FailReason { None, Touched, Bumped, Dawn }`；刪除 `Side`。
-- Modify: `Assets/Odyssey/Core/FailReasonText.cs`：
+- 修改：`Assets/Odyssey/Core/FailReasonText.cs`：
   - `Touched` →「巨人循著聲音摸到了你」
   - `Bumped` →「你撞上了巨人」
   - `Dawn` →「天亮了，巨人把石頭推了回去」
-- Modify: `Assets/Odyssey/Core/PlaytestCsv.cs`
+- 修改：`Assets/Odyssey/Core/PlaytestCsv.cs`
   - `Header = "time,night,crew,boulder,phase,outcome,seconds"`
   - `Line(DateTime time, int night, int crew, int boulder, LoopPhase phase, string outcome, float seconds)`
-- Create: `Assets/Odyssey/Echo/BlindGameLoop.cs`
-- Modify: `Assets/Odyssey/Editor/OdysseyPlaytestSceneBuilder.cs`：改為建立 `BlindGameLoop`，場景存成 `Assets/Scenes/BlindCave.unity`。
-- Delete:
+- 新增：`Assets/Odyssey/Echo/BlindGameLoop.cs`
+- 修改：`Assets/Odyssey/Editor/OdysseyPlaytestSceneBuilder.cs`：改為建立 `BlindGameLoop`，場景存成 `Assets/Scenes/BlindCave.unity`。
+- 刪除：
   - Core：`ClingModel.cs`、`ClingParams.cs`、`PatSequence.cs`、`PatStep.cs`、`PatQueue.cs`、`PatJudge.cs`、`FlockSchedule.cs`、`NoiseModel.cs`
   - Cave：`ClingController.cs`、`SheepFlock.cs`、`Sheep.cs`、`Cyclops.cs`、`CaveGameLoop.cs`
   - 對應的 `.meta` 檔
   - 測試：`ClingModelTests.cs`、`CycloPatQueueTests.cs`、`FlockScheduleTests.cs`、`NoiseModelTests.cs`、`PatJudgeTests.cs`、`PatSequenceTests.cs`（含 `.meta`）
-- Test: 修改 `CaveLoopStateTests.cs`、`FailReasonTextTests.cs`、`PlaytestCsvTests.cs`
+- 測試：修改 `CaveLoopStateTests.cs`、`FailReasonTextTests.cs`、`PlaytestCsvTests.cs`
 
-**Interfaces:**
-- Consumes: Task 1～6 的全部介面；`LoopFailScreen.Instance.ShowMessage(year, title, subtitle, onBlackout, onComplete, speed)`。
-- Produces（給 Task 8 的 `DebugPanel` 讀）：`BlindGameLoop` 的公開唯讀屬性
+**介面：**
+- 使用：工作 1～6 的全部介面；`LoopFailScreen.Instance.ShowMessage(year, title, subtitle, onBlackout, onComplete, speed)`。
+- 產出（給 工作 8 的 `DebugPanel` 讀）：`BlindGameLoop` 的公開唯讀屬性
   - `CaveLoopState State`、`CrewRoster Roster`、`BoulderModel BoulderProgress`、`DawnClock Dawn`、`DecoyMemory Decoys`
   - `BlindCyclops Cyclops`、`Vector3 PlayerPosition`、`IReadOnlyList<WanderingSheep> Sheep`、`BlindCaveLayout Layout`、`IReadOnlyList<string> Deaths`
   - `float transitionSpeed = 2f`
@@ -331,7 +331,7 @@
   - `SoundBus.Clear()`
   - `BlindCaveBuilder.Build`
   - 建立玩家（`FirstPersonPlayer`＋`EchoPlayer`）、`EchoField`、`BlindCyclops`
-  - 9 隻 `WanderingSheep`（index 0 是大公羊）、6 個 `StonePickup`
+  - 9 隻 `WanderingSheep`（索引 0 是大公羊）、6 個 `StonePickup`
   - CSV 路徑 `Application.persistentDataPath/cyclops_playtest.csv`
 - **StartNight**：
   - 玩家傳送到 `PlayerSpawn`；巨人、巨石、天亮、石子記憶、玩家石子、撿取物全部重置。
@@ -345,7 +345,7 @@
   - `State.Escape()`，播「你逃出去了。」／「但你對著巨人喊出了自己的名字。」
   - CSV 記 `Escaped`；之後等玩家按 R 重新開始。
 - **Fail(reason)**：
-  - 先檢查 `Phase == Night`，否則直接 return。
+  - 先檢查 `Phase == Night`，否則直接返回。
   - 關閉輸入、`Cyclops.Roar()`、玩家轉頭面向巨人。
   - 死亡紀錄加一行「第 N 夜・原因」，CSV 記錄 `boulder = Progress`。
   - 被吃還有同伴：播「第 N 夜・<原因>」／「巨人吃掉了一名同伴」／「第 N+1 夜・剩下 X 名同伴」；黑幕時重置世界，播完 → `CaughtDone` + `StartNight`，不再另播開場。
@@ -355,7 +355,7 @@
   - 推巨石時畫一條小進度弧。
   - 開場後 12 秒內顯示操作提示：「WASD 蹲著走・Shift 跑・Q 拍手・左鍵 丟石子・對巨石按住 E 推・F1 除錯」。
 
-- [ ] **Step 1: 改測試**
+- [ ] **步驟 1：改測試**
   - `CaveLoopStateTests`：
     - 把 `Grabbed()` 拿掉，`Cling` 改成 `Night`，`Swept`／`FlockGone` 換成 `Touched`／`Dawn`。
     - 新增 `FailTwice_SecondThrows`：在 Night `Fail` 一次之後再 `Fail` → `InvalidOperationException`。
@@ -363,27 +363,27 @@
   - `PlaytestCsvTests.Line_UsesInvariantFormat`：
     - 呼叫 `Line(new DateTime(2026,10,10,12,0,0), 3, 10, 5, LoopPhase.Night, "Dawn", 12.34f)`
     - 預期 `"2026-10-10 12:00:00,3,10,5,Night,Dawn,12.3"`
-- [ ] **Step 2: 執行測試確認失敗**
+- [ ] **步驟 2：執行測試確認失敗**
   執行：`dotnet test tools/CoreTests`
   預期：編譯失敗（`LoopPhase.Night` 不存在）。
-- [ ] **Step 3: 修改 Core、刪除舊檔（`git rm`）、寫 `BlindGameLoop`、改場景建立選單**
-- [ ] **Step 4: 驗證**
+- [ ] **步驟 3：修改 Core、刪除舊檔（`git rm`）、寫 `BlindGameLoop`、改場景建立選單**
+- [ ] **步驟 4：驗證**
   - `dotnet test tools/CoreTests` → 全過
   - `powershell -File tools/compile-check.ps1` → 「建置成功」
   - `git grep -n "Cling\|PatQueue\|SheepFlock" -- Assets` → 沒有結果
-- [ ] **Step 5: 提交**
+- [ ] **步驟 5：提交**
   `git add` 明確路徑加上 `git rm` 的檔案，不用 `-A`。
   訊息：`feat(blind): night loop with boulder and dawn; remove sheep-cling gameplay`
 
-### Task 8: F1 除錯面板
+### 工作 8：F1 除錯面板
 
-**Files:**
-- Create: `Assets/Odyssey/Echo/DebugPanel.cs`
-- Modify: `Assets/Odyssey/Echo/BlindGameLoop.cs`：Awake 時 `AddComponent<DebugPanel>().Init(this)`
+**檔案：**
+- 新增：`Assets/Odyssey/Echo/DebugPanel.cs`
+- 修改：`Assets/Odyssey/Echo/BlindGameLoop.cs`：Awake 時 `AddComponent<DebugPanel>().Init(this)`
 
-**Interfaces:**
-- Consumes: Task 7 的 `BlindGameLoop` 唯讀屬性、`EchoField.Instance.Active`、`CyclopsBrain.State`。
-- Produces:
+**介面：**
+- 使用：工作 7 的 `BlindGameLoop` 唯讀屬性、`EchoField.Instance.Active`、`CyclopsBrain.State`。
+- 產出：
   - `class DebugPanel : MonoBehaviour`
   - `public bool showDebug = true`
   - `void Init(BlindGameLoop loop)`
@@ -402,20 +402,20 @@
   - 「石子吸引力」：滿格 = 1、學會後半格，旁邊用 3 個點表示被騙次數。
 - **死亡紀錄**：最近 6 行。
 
-- [ ] **Step 1: 寫 `DebugPanel` 並接上**
-- [ ] **Step 2: 驗證**
+- [ ] **步驟 1：寫 `DebugPanel` 並接上**
+- [ ] **步驟 2：驗證**
   - `powershell -File tools/compile-check.ps1` → 「建置成功」
   - `dotnet test tools/CoreTests` → 全過
-- [ ] **Step 3: 提交**
+- [ ] **步驟 3：提交**
   訊息：`feat(blind): graphical F1 debug panel with top-down map`
 
-### Task 9: 交付前檢查
+### 工作 9：交付前檢查
 
-- [ ] **Step 1: 對照規格逐節檢查**
+- [ ] **步驟 1：對照規格逐節檢查**
   規格第 3～9 節逐條對照實作，數值完全一致（聲量、速度、秒數、格數、顏色、文字）。
-- [ ] **Step 2: 回報使用者**
+- [ ] **步驟 2：回報使用者**
   說明要在 Unity 執行 `Odyssey → Create Playtest Scene` 再按 Play，並列出還沒實測的項目：
-  - Console 是否有 shader 錯誤
+  - Console 是否有著色器錯誤
   - 聲波看不看得懂
   - 推石的窗口夠不夠
   - 240 秒是否合適

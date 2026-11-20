@@ -1,0 +1,283 @@
+<title>回家的路</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 系列首頁：標題、章節地圖、繼續／重新開始。單一夜色主題。
+ * 出處（不上畫面）：
+ *   洞穴、岸邊射箭【電影】；喊出名字【原典】；默默離開【改編】
+ *   冥府（西農、阿伽門農）【電影】；在黑霧裡叫出同伴的名字【改編】
+ *   卡呂普索的島七年【原典】、站在礁石上的同伴【改編】、雅典娜小像【電影】
+ *   乞丐潛入、比箭【原典＋電影，細節見各章】；終章交出王位、往西航行【電影，細節待確認】
+ */
+:root {
+  --night: #0d0b09;
+  --deep: #15110d;
+  --wood: #241b14;
+  --line: #3a2d22;
+  --bronze: #b98a4b;
+  --lamp: #f0c27a;
+  --ash: #d6c8b1;
+  --dim: #9a8b75;
+  --sea: #6f8fa6;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--night); }
+body { color: var(--ash); font-family: var(--body); line-height: 1.7; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 var(--gutter-r) 48px var(--gutter-l); box-sizing: border-box; }
+.hero {
+  position: relative; padding: clamp(48px, 10vh, 110px) var(--gutter-r) 28px var(--gutter-l); text-align: center; overflow: hidden;
+}
+.hero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 40%; background: linear-gradient(rgba(13,11,9,0), var(--night)); z-index: 0; pointer-events: none; }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.hero > *:not(canvas) { position: relative; z-index: 1; }
+.kicker { font-family: var(--display); color: var(--bronze); letter-spacing: .5em; font-size: 13px; margin: 0 0 8px; padding-left: .5em; }
+h1 {
+  font-family: var(--display); font-weight: 900; color: var(--lamp); margin: 0; letter-spacing: .14em; padding-left: .14em;
+  font-size: clamp(40px, 9vw, 84px); line-height: 1.15; text-shadow: 0 4px 24px rgba(0,0,0,.8);
+}
+.intro { max-width: 34em; margin: 18px auto 0; color: var(--ash); font-size: 16px; text-wrap: pretty; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 26px; }
+.btn {
+  font: 500 16px var(--body); border-radius: 3px; padding: 10px 22px; cursor: pointer; border: 1px solid var(--bronze);
+  background: transparent; color: var(--lamp); text-decoration: none; display: inline-block;
+}
+.btn.main { background: var(--lamp); color: var(--night); border-color: var(--lamp); }
+.btn:hover { filter: brightness(1.12); }
+.btn.warn { border-color: #c26b4f; color: #f0a184; }
+.where { color: var(--dim); font-size: 13px; margin: 10px 0 0; min-height: 1.7em; }
+h2 { font-family: var(--display); color: var(--bronze); font-size: 15px; letter-spacing: .3em; margin: 40px 0 14px; font-weight: 600; }
+.map { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; counter-reset: ch; }
+@media (max-width: 860px) { .map { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 520px) { .map { grid-template-columns: 1fr; } }
+.ch {
+  position: relative; border: 1px solid var(--line); background: var(--deep); padding: 14px 14px 12px; border-radius: 3px;
+  display: flex; flex-direction: column; gap: 6px; min-height: 150px;
+}
+.ch .no { font-family: var(--display); color: var(--dim); font-size: 12px; letter-spacing: .2em; }
+.ch h3 { margin: 0; font-family: var(--display); font-size: 18px; color: var(--ash); letter-spacing: .06em; font-weight: 600; }
+.ch p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.6; flex: 1; }
+.ch .state { font-size: 12px; color: var(--dim); }
+.ch a.solo { font-size: 13px; color: var(--bronze); text-decoration: none; align-self: flex-start; }
+.ch a.solo:hover { text-decoration: underline; }
+.ch.done { border-color: #4a3a2a; }
+.ch.done .state { color: var(--bronze); }
+.ch.done h3 { color: var(--bronze); }
+.ch.here { border-color: var(--lamp); box-shadow: 0 0 0 1px var(--lamp) inset, 0 0 24px rgba(240,194,122,.12); }
+.ch.here .state { color: var(--lamp); }
+.ch.here h3 { color: var(--lamp); }
+.cave {
+  margin-top: 28px; border: 1px solid var(--line); background: var(--deep); border-radius: 3px; padding: 18px; display: grid; gap: 12px;
+}
+.cave h3 { margin: 0; font-family: var(--display); color: var(--lamp); font-size: 20px; letter-spacing: .08em; }
+.cave p { margin: 0; color: var(--ash); font-size: 15px; }
+.cave .small { color: var(--dim); font-size: 13px; }
+.cave video { width: 100%; max-height: 60vh; background: #000; border: 1px solid var(--line); }
+.cave .row { display: flex; flex-wrap: wrap; gap: 10px; }
+.facts { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--dim); font-size: 13px; }
+.facts b { color: var(--ash); font-weight: 500; }
+.foot { margin-top: 36px; color: var(--dim); font-size: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+</style>
+
+<header class="hero">
+    <canvas id="sky" aria-hidden="true"></canvas>
+    <p class="kicker">奧德賽連作</p>
+    <h1>回家的路</h1>
+    <p class="intro">特洛伊燒完了，你帶著人往西航行。<br>海很大，神很記仇。從巨人的洞穴到自己家的門檻，每一個選擇都會跟著你上岸。</p>
+    <div class="actions">
+      <a class="btn main" id="btnContinue" href="#">開始</a>
+      <button class="btn" id="btnRestart" type="button">重新開始</button>
+      <a class="btn" id="btnHub" href="../index.html" hidden>回總首頁</a>
+    </div>
+    <p class="where" id="where"></p>
+  </header>
+<div class="wrap">
+
+  <h2>航程</h2>
+  <ol class="map" id="map"></ol>
+
+  <section class="cave" id="cave" hidden>
+    <h3>第一章　洞穴</h3>
+    <div id="caveVideo" hidden>
+      <video id="vid" controls preload="metadata" playsinline></video>
+    </div>
+    <div id="caveCard">
+      <p>你們跟著羊群走進洞裡，才發現這是巨人的家。巨人瞎了，洞口被巨石封住。你看不見，只能聽——等他睡著，從石縫裡鑽出去。</p>
+      <p class="small">這一章是主線的 Unity 版，網頁版還沒放上來。直接從洞口外面接著走。</p>
+    </div>
+    <div class="row">
+      <a class="btn main" id="btnCavePlay" href="cave/index.html" hidden>走進洞穴</a>
+      <button class="btn" id="btnOut" type="button">走出洞口</button>
+    </div>
+  </section>
+
+  <div class="facts" id="facts"></div>
+  <p class="foot">進度只存在這台電腦的瀏覽器裡。鍵盤加滑鼠遊玩；各章也能單獨玩，單獨玩不會動到進度。</p>
+</div>
+
+<script src="series.js"></script>
+<script src="../nav.js"></script>
+<script>
+(function () {
+  'use strict';
+  const S = window.OdysseySeries;
+  const $ = id => document.getElementById(id);
+
+  // 章節地圖：一章對應存檔裡的一個或多個步驟
+  const CHAPTERS = [
+    { id: 'cave', no: '第一章', name: '洞穴', line: '在黑暗裡聽巨人的呼吸，帶同伴鑽出石縫。', steps: ['cave'], solo: null },
+    { id: 'shore', no: '銜接', name: '岸邊', line: '巨人睡著了。拉弓、喊名，還是默默離開？', steps: ['shore'], solo: 'shore/index.html?solo=1' },
+    { id: 'underworld', no: '銜接', name: '冥府', line: '黑霧裡，他們一個一個走過來。叫得出名字嗎？', steps: ['underworld'], solo: 'underworld/index.html?solo=1' },
+    { id: 'ogygia', no: '第二章', name: '奧吉吉亞', line: '卡呂普索的島。一年一年刻在沙上。', steps: ['ogygia'], solo: 'ogygia/index.html?solo=1' },
+    { id: 'beggar', no: '第三章', name: '門檻上的乞丐', line: '穿上破衣，走過宮門，走進滿是求婚者的大廳。', steps: ['beggar-gate', 'beggar-hall'], solo: '../beggar-hall/index.html' },
+    { id: 'bow', no: '第四章', name: '比箭', line: '上弦，拉滿，穿過十二把斧頭。', steps: ['bow'], solo: '../bow-contest/index.html' },
+    { id: 'ending', no: '終章', name: '終章', line: '大廳的門關上之後。', steps: ['ending'], solo: 'ending/index.html?solo=1' }
+  ];
+  const STEP_NAME = { cave: '洞穴', shore: '岸邊', underworld: '冥府', ogygia: '奧吉吉亞', 'beggar-gate': '門檻上的乞丐（宮門）', 'beggar-hall': '門檻上的乞丐（大廳）', bow: '比箭', ending: '終章' };
+  const SHORE_NAME = { shoot: '拉弓射了他', name: '喊出了名字', leave: '默默離開' };
+
+  let save = S.load();
+  let started = S.hasSave();
+  let caveMode = 'card'; // 'unity' | 'video' | 'card'
+
+  function chapterIndexOfStep(step) { return CHAPTERS.findIndex(c => c.steps.includes(step)); }
+
+  function renderMap() {
+    const cur = started ? chapterIndexOfStep(save.step) : -1;
+    $('map').innerHTML = '';
+    CHAPTERS.forEach((c, i) => {
+      const li = document.createElement('li');
+      li.className = 'ch' + (i < cur ? ' done' : i === cur ? ' here' : '');
+      const state = i < cur ? '走過了' : i === cur ? '你在這裡' : '';
+      li.innerHTML = `<span class="no">${c.no}</span><h3>${c.name}</h3><p>${c.line}</p><span class="state">${state}</span>`;
+      const a = document.createElement('a');
+      a.className = 'solo';
+      if (c.id === 'cave') { a.href = '#cave'; a.textContent = '看這一章'; a.onclick = e => { e.preventDefault(); showCave(true); }; }
+      else { a.href = c.solo; a.textContent = '單獨玩 →'; }
+      li.appendChild(a);
+      $('map').appendChild(li);
+    });
+  }
+
+  function renderTop() {
+    const btn = $('btnContinue');
+    if (started) {
+      btn.textContent = save.step === 'ending' ? '看終章' : '繼續';
+      $('where').textContent = '上次停在：' + STEP_NAME[save.step];
+    } else {
+      btn.textContent = '開始';
+      $('where').textContent = '';
+    }
+    btn.href = save.step === 'cave' ? '#cave' : S.nextUrl(save.step, '');
+    const f = [];
+    if (started && save.shore) f.push(`<span>岸邊：<b>${SHORE_NAME[save.shore]}</b></span>`, `<span>島上：<b>${save.years} 年</b></span>`);
+    if (started && save.crewLost.length) f.push(`<span>失去的同伴：<b>${save.crewLost.join('、')}</b></span>`);
+    if (started && Array.isArray(save.shadesNamed)) f.push(`<span>冥府：<b>叫出 ${save.shadesNamed.length} 個名字${save.shadesFollowing.length ? `，${save.shadesFollowing.length} 個跟著` : ''}</b></span>`);
+    if (started && save.ledger) f.push(`<span>記下的帳：<b>${save.ledger}</b></span>`);
+    $('facts').innerHTML = f.join('');
+  }
+
+  function goCave() {
+    if (caveMode === 'unity') {
+      // Unity 版不會寫存檔：先把進度推到岸邊，回來按「繼續」就接得上
+      S.save(null, S.advance(save, 'shore'));
+      location.href = 'cave/index.html';
+    } else showCave(true);
+  }
+  function showCave(scroll) {
+    $('cave').hidden = false;
+    if (scroll) $('cave').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  $('btnContinue').addEventListener('click', e => {
+    if (save.step === 'cave') { e.preventDefault(); goCave(); }
+  });
+  let armed = 0;
+  $('btnRestart').addEventListener('click', () => {
+    const b = $('btnRestart');
+    if (started && Date.now() - armed > 3000) { armed = Date.now(); b.textContent = '再按一次：抹掉進度'; b.classList.add('warn'); setTimeout(() => { b.textContent = '重新開始'; b.classList.remove('warn'); }, 3000); return; }
+    // 抹掉進度：大按鈕回到「開始」（走出洞口或進 Unity 洞穴時才寫新存檔）
+    save = S.fresh();
+    S.clear(null);
+    started = false;
+    goCave();
+    renderMap(); renderTop();
+  });
+  $('btnOut').addEventListener('click', () => {
+    save = S.advance(save, 'shore');
+    S.save(null, save);
+    location.href = S.nextUrl('shore', '');
+  });
+  $('btnCavePlay').addEventListener('click', e => { e.preventDefault(); caveMode = 'unity'; goCave(); });
+
+  // 洞穴章：有 Unity 網頁版就連過去；沒有就找影片；都沒有就放說明卡
+  async function exists(url) {
+    try {
+      const r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+      return r.ok;
+    } catch (e) { return false; }
+  }
+  (async function probeCave() {
+    if (await exists('cave/index.html')) {
+      caveMode = 'unity';
+      $('btnCavePlay').hidden = false;
+      $('caveCard').querySelector('.small').textContent = '主線 Unity 網頁版。逃出洞口之後，回到這一頁按「繼續」，接著走岸邊。';
+    } else if (await exists('cave/cave.mp4')) {
+      caveMode = 'video';
+      $('vid').src = 'cave/cave.mp4';
+      $('caveVideo').hidden = false;
+      $('caveCard').querySelector('.small').textContent = '主線 Unity 版的實機影片。看完從洞口外面接著走。';
+    }
+    if (location.hash === '#cave') goCave();
+  })();
+
+  renderMap(); renderTop();
+
+  // 回總首頁：nav.js 沒載到，或沒有總首頁可去，就不顯示（不動存檔）
+  const NAV = window.OdysseyNav;
+  if (NAV && NAV.hasHub()) {
+    const hub = $('btnHub');
+    hub.href = NAV.hubUrl(); hub.hidden = false;
+    hub.addEventListener('click', e => { e.preventDefault(); NAV.goHub(); });
+  }
+
+  // ---------------------------------------------------------------- 標題背景：夜海與月
+  const cv = $('sky'), cx = cv.getContext('2d');
+  const stars = Array.from({ length: 90 }, () => [Math.random(), Math.random() * 0.62, Math.random() * 1.2 + 0.3, Math.random() * 6]);
+  function draw(t) {
+    const w = cv.clientWidth, h = cv.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const g = cx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#07090f'); g.addColorStop(0.62, '#141a24'); g.addColorStop(0.64, '#0b0f15'); g.addColorStop(1, '#0d0b09');
+    cx.fillStyle = g; cx.fillRect(0, 0, w, h);
+    for (const s of stars) { cx.globalAlpha = 0.35 + 0.35 * Math.sin(t / 900 + s[3]); cx.fillStyle = '#e9e1cf'; cx.fillRect(s[0] * w, s[1] * h, s[2], s[2]); }
+    cx.globalAlpha = 1;
+    const mx = w * 0.78, my = h * 0.22, mr = Math.max(14, Math.min(w, h) * 0.05);
+    const glow = cx.createRadialGradient(mx, my, mr * 0.5, mx, my, mr * 5);
+    glow.addColorStop(0, 'rgba(240,220,180,.22)'); glow.addColorStop(1, 'rgba(240,220,180,0)');
+    cx.fillStyle = glow; cx.fillRect(0, 0, w, h);
+    cx.fillStyle = '#efe4c8'; cx.beginPath(); cx.arc(mx, my, mr, 0, Math.PI * 2); cx.fill();
+    const hz = h * 0.63;
+    for (let i = 0; i < 26; i++) {
+      const y = hz + (i / 26) ** 1.6 * (h - hz), a = 0.18 * (1 - i / 26);
+      const len = 20 + i * 4, off = Math.sin(t / 700 + i * 1.7) * 6;
+      cx.fillStyle = `rgba(240,220,180,${a})`;
+      cx.fillRect(mx - len / 2 + off, y, len, 1.2);
+    }
+    // 遠方的船
+    const sx = w * 0.18 + Math.sin(t / 3000) * 4, sy = hz - 2 + Math.sin(t / 900) * 1.2;
+    cx.fillStyle = '#05070a';
+    cx.beginPath(); cx.moveTo(sx - 26, sy); cx.quadraticCurveTo(sx, sy + 9, sx + 26, sy); cx.lineTo(sx + 30, sy - 5); cx.lineTo(sx - 30, sy - 5); cx.closePath(); cx.fill();
+    cx.fillRect(sx - 1, sy - 34, 2, 30);
+    cx.beginPath(); cx.moveTo(sx - 14, sy - 31); cx.lineTo(sx + 14, sy - 31); cx.lineTo(sx + 12, sy - 12); cx.lineTo(sx - 12, sy - 12); cx.closePath(); cx.fill();
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
+</script>

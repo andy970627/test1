@@ -1,0 +1,1018 @@
+<title>大廳復仇</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<style>
+/* 畫面層：規則全在 vengeance.js（VengeanceRules），聲音全在 audio.js（VengeanceAudio）。
+   這裡只負責畫、讀輸入、把事件轉給聲音。單一深色主題（夜裡的大廳、爐火） */
+:root {
+  --night: #0c0907;
+  --panel: rgba(12, 9, 7, .84);
+  --line: #3a2e24;
+  --fire: #f0a85a;     /* 爐火、強調 */
+  --ash: #e2d8c8;      /* 主要文字 */
+  --dim: #9a8e7c;      /* 次要文字 */
+  --warn: #e0b04a;     /* 預備攻擊 */
+  --danger: #d04a32;   /* 受傷 */
+  --still: #9fb4d8;    /* 空檔（凍結） */
+  --bronze: #c8a060;   /* 忒勒馬科斯的盾 */
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --text: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;
+  --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px);
+  --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--night); color: var(--ash); font-family: var(--text); overflow: hidden; }
+body:not(.playing) .hud { display: none !important; }
+canvas#cv { position: fixed; inset: 0; display: block; width: 100%; height: 100%; cursor: crosshair; }
+.hud { position: fixed; pointer-events: none; }
+#chill { inset: 0; background: #4f6ea8; mix-blend-mode: color; opacity: 0; }
+#red { inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(160, 30, 15, .8) 100%); opacity: 0; }
+#edgeL, #edgeR, #edgeC { top: 0; bottom: 0; width: 22%; opacity: 0; }
+#edgeL { left: 0; background: linear-gradient(90deg, rgba(224, 176, 74, .55), transparent); }
+#edgeR { right: 0; background: linear-gradient(270deg, rgba(224, 176, 74, .55), transparent); }
+#edgeC { left: 0; right: 0; width: auto; box-shadow: inset 0 0 120px 26px rgba(224, 176, 74, .7); }
+#cross { left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px; }
+#cross i { position: absolute; background: var(--ash); opacity: .8; }
+#cross i:nth-child(1) { left: 13px; top: 0; width: 2px; height: 9px; }
+#cross i:nth-child(2) { left: 13px; bottom: 0; width: 2px; height: 9px; }
+#cross i:nth-child(3) { top: 13px; left: 0; height: 2px; width: 9px; }
+#cross i:nth-child(4) { top: 13px; right: 0; height: 2px; width: 9px; }
+#cross.steady i { background: var(--still); opacity: 1; }
+#status { left: calc(18px + var(--sl)); bottom: calc(20px + var(--sb)); display: grid; gap: 8px; font-size: 13px; color: var(--dim); text-shadow: 0 1px 3px #000; }
+#status .row { display: flex; align-items: center; gap: 8px; }
+#hp b { display: inline-block; width: 14px; height: 14px; margin-right: 4px; border: 1px solid var(--ash); transform: rotate(45deg); }
+#hp b.on { background: var(--ash); }
+#quiver { display: flex; gap: 3px; align-items: flex-end; }
+#quiver b { display: block; width: 3px; height: 22px; background: var(--fire); border-radius: 1px; }
+#quiver b.off { background: var(--line); height: 14px; }
+#breath { width: 120px; height: 4px; background: var(--line); position: relative; }
+#breath b { position: absolute; inset: 0 auto 0 0; width: 100%; background: var(--still); }
+#tele { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); text-align: right; font-size: 13px; color: var(--dim); text-shadow: 0 1px 3px #000; display: grid; gap: 4px; justify-items: end; }
+#tele .name { font-family: var(--display); color: var(--ash); font-size: 15px; }
+#tele .state { color: var(--dim); }
+#tele.up .state { color: var(--bronze); }
+#tele.cool .state { color: var(--danger); }
+#beat { display: flex; gap: 6px; }
+#beat b { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--bronze); opacity: .5; }
+#beat b.now { background: var(--bronze); opacity: 1; }
+#phase { right: calc(18px + var(--sr)); top: calc(16px + var(--st)); width: 230px; font-size: 11px; color: var(--dim); display: grid; gap: 4px; text-shadow: 0 1px 3px #000; }
+#phase .track { position: relative; height: 8px; background: var(--line); }
+#phase .fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #4a6a9a, #c0803a 60%, #c23a2c); }
+#phase .gapw { position: absolute; inset: 0 auto 0 0; background: var(--still); opacity: .9; }
+#phase .bass { position: absolute; top: -3px; width: 4px; height: 14px; margin-left: -2px; background: var(--bronze); border-radius: 2px; }
+#title { left: calc(18px + var(--sl)); top: calc(16px + var(--st)); font-family: var(--display); font-size: 14px; letter-spacing: .14em; color: var(--dim); text-shadow: 0 1px 3px #000; }
+#title b { display: block; color: var(--ash); font-size: 18px; font-weight: 600; }
+#title .diff { display: inline-block; margin-top: 4px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 3px; font-family: var(--text); font-size: 11px; letter-spacing: .06em; color: var(--ash); background: rgba(12, 9, 7, .55); }
+#title .diff.hard { border-color: var(--danger); color: #f0a090; }
+#title .diff.easy { border-color: var(--still); color: var(--still); }
+#title .diff.dyn { border-color: var(--fire); }
+#warn { left: 50%; top: 58%; transform: translateX(-50%); font-size: 20px; font-family: var(--display); color: var(--warn); text-shadow: 0 1px 3px #000, 0 0 10px #000; text-align: center; white-space: nowrap; }
+#warn .k, #hint .k { display: inline-block; border: 1px solid currentColor; padding: 0 6px; margin: 0 3px; border-radius: 3px; font-size: .8em; font-family: var(--text); }
+#hint { left: 50%; bottom: calc(26px + var(--sb)); transform: translateX(-50%); text-align: center; font-size: 16px; line-height: 1.5; text-shadow: 0 1px 3px #000, 0 0 8px #000; width: min(680px, calc(100vw - 32px)); }
+#hint.ladder { color: var(--fire); }
+#hint .keysline { display: block; font-size: 14px; color: var(--ash); margin-top: 2px; }
+#msgs { left: 50%; top: calc(18px + var(--st)); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(560px, calc(100vw - 32px)); }
+#msgs div { background: var(--panel); padding: 6px 14px; font-size: 15px; line-height: 1.5; text-align: center; animation: fade 4s forwards; }
+@keyframes fade { 0%, 80% { opacity: 1 } 100% { opacity: 0 } }
+#tags { inset: 0; }
+#tags div { position: absolute; transform: translate(-50%, -100%); font-size: 12px; color: var(--ash); text-shadow: 0 1px 2px #000, 0 0 6px #000; white-space: nowrap; font-family: var(--display); }
+#tags div small { display: block; text-align: center; color: var(--bronze); font-family: var(--text); font-size: 11px; }
+
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(8, 6, 4, .9); overflow-y: auto; padding: calc(24px + var(--st)) calc(16px + var(--sr)) calc(24px + var(--sb)) calc(16px + var(--sl)); z-index: 5; }
+.card { max-width: 620px; width: 100%; display: grid; gap: 14px; }
+.card h1 { font-family: var(--display); font-weight: 900; font-size: clamp(32px, 7vw, 52px); margin: 0; color: var(--fire); letter-spacing: .12em; }
+.card h2 { font-family: var(--display); font-weight: 900; font-size: clamp(24px, 4.5vw, 34px); margin: 0; text-wrap: balance; }
+.card p { margin: 0; line-height: 1.8; max-width: 60ch; }
+.card .lead { font-family: var(--display); font-size: clamp(18px, 3vw, 21px); line-height: 1.9; }
+.card .dim { color: var(--dim); font-size: 13px; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
+.keys dt { color: var(--fire); white-space: nowrap; }
+.keys dd { margin: 0; min-width: 0; }
+label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; }
+.opts { display: grid; gap: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--line); }
+.seg button { border: 0; border-right: 1px solid var(--line); padding: 7px 18px; color: var(--dim); background: transparent; font-size: 15px; }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--fire); color: #1a1008; font-weight: 500; }
+.seg button.on[data-diff="hard"] { background: var(--danger); color: #fff3ee; }
+.seg button.on[data-diff="easy"] { background: var(--still); color: #0c1424; }
+.optrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.optrow .label { color: var(--fire); font-size: 14px; white-space: nowrap; }
+#diffDesc { min-height: 1.6em; }
+input { accent-color: var(--fire); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; }
+button { font: inherit; font-size: 16px; background: transparent; color: var(--ash); border: 1px solid var(--fire); padding: 9px 18px; cursor: pointer; }
+button.primary { background: var(--fire); color: #1a1008; font-weight: 500; }
+button:hover { filter: brightness(1.12); }
+:focus-visible { outline: 2px solid var(--fire); outline-offset: 2px; }
+@media (max-width: 640px) { #phase { width: 150px; } #warn { font-size: 16px; white-space: normal; width: calc(100vw - 32px); } }
+/* 試玩數據（遙測，docs/design/2026-11-08-telemetry.md）：裝置選擇、告知、快問、匯出 */
+#telBox { border: 1px solid var(--line, #3a3024); padding: 8px 12px; display: grid; gap: 6px; font-size: 14px; }
+#telBox .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+#telBox .note, .telNote { font-size: 12px; opacity: .75; margin: 0; line-height: 1.6; }
+.btnExport { font-size: 14px; padding: 5px 12px; }
+#survey { border: 1px solid var(--line, #3a3024); padding: 10px 12px; display: grid; gap: 8px; text-align: left; font-size: 14px; max-width: 560px; }
+#survey legend { color: var(--fire); padding: 0 4px; }
+#survey .q { display: grid; gap: 4px; }
+#survey .scale { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+#survey .scale small { opacity: .7; font-size: 12px; }
+#survey textarea { font: inherit; font-size: 14px; background: rgba(0,0,0,.35); color: inherit; border: 1px solid var(--line, #3a3024); padding: 6px; min-height: 48px; resize: vertical; }
+#survey .row button { font-size: 14px; padding: 5px 12px; }
+</style>
+
+<canvas id="cv"></canvas>
+<div class="hud" id="chill"></div>
+<div class="hud" id="red"></div>
+<div class="hud" id="edgeL"></div><div class="hud" id="edgeR"></div><div class="hud" id="edgeC"></div>
+<div class="hud" id="tags"></div>
+<div class="hud" id="cross"><i></i><i></i><i></i><i></i></div>
+<div class="hud" id="title"><b>大廳復仇</b><span id="left">頭目 4 名</span><br><span class="diff" id="diffHud">標準・3 拍</span></div>
+<div class="hud" id="phase"><span>節奏（藍＝空檔，金＝低音拍）</span><div class="track"><div class="fill"></div><div class="gapw"></div></div></div>
+<div class="hud" id="status">
+  <div class="row" id="hp"></div>
+  <div class="row"><div id="quiver"></div><span id="qn">12</span></div>
+  <div class="row"><span>屏息</span><div id="breath"><b></b></div></div>
+</div>
+<div class="hud" id="tele"><span class="name">忒勒馬科斯</span><span class="state" id="teleState">跟著低音按 Q／右鍵</span><div id="beat"><b></b><b></b><b></b></div></div>
+<div class="hud" id="warn"></div>
+<div class="hud" id="hint"></div>
+<div class="hud" id="msgs"></div>
+
+<!-- 開場字卡 -->
+<div class="screen" id="intro">
+  <div class="card">
+    <h1>大廳復仇</h1>
+    <p class="lead">乞丐射穿了十二把斧頭，扯下破衣：他是奧德修斯。<br>大廳的門關上了。</p>
+    <p>你離家二十年，求婚者占了你的家、逼你的妻子改嫁。現在你站在門檻上，手裡是剛穿過斧孔的弓，兒子忒勒馬科斯在你身旁。</p>
+    <p>鼓聲會越來越急，求婚者越逼越近；鼓聲<strong>突然斷掉</strong>的那一瞬間，全場凍結——那就是放箭的時候。</p>
+    <dl class="keys">
+      <dt>滑鼠</dt><dd>瞄準（先點一下畫面鎖定滑鼠）</dd>
+      <dt>左鍵</dt><dd>放箭：鼓聲斷掉的空檔最穩；鼓聲裡放箭會失準，還會暴露位置</dd>
+      <dt>Shift</dt><dd>閃避：有人舉矛或撲上來，快命中時按</dd>
+      <dt>空白鍵</dt><dd>按住屏息：撲上來的人會撲空（擲矛躲不掉）</dd>
+      <dt>Q 或 滑鼠右鍵</dt><dd>跟著最低沉的鼓聲按：忒勒馬科斯舉盾，替你擋下一次攻擊</dd>
+      <dt>W A S D／E</dt><dd>在門檻前走動／撿起地上的箭（箭只有 12 支）</dd>
+      <dt>Esc</dt><dd>暫停（可回開場或總首頁）</dd>
+    </dl>
+    <div class="opts">
+      <div class="optrow">
+        <span class="label">難度</span>
+        <div class="seg" id="diffSeg" role="radiogroup" aria-label="難度">
+          <button type="button" data-diff="easy" role="radio" aria-checked="false">輕鬆</button>
+          <button type="button" data-diff="normal" role="radio" aria-checked="true" class="on">標準</button>
+          <button type="button" data-diff="hard" role="radio" aria-checked="false">殘酷</button>
+        </div>
+      </div>
+      <p class="dim" id="diffDesc"></p>
+      <label><input type="checkbox" id="oDynamic"> 越危險越快：每倒一名頭目，一輪就少一個低音拍（最短 2 拍）<span class="dim" id="dynNote"></span></label>
+      <label><input type="checkbox" id="oPhase" checked> 顯示節奏條（視覺輔助）</label>
+    </div>
+    <div id="telBox" role="group" aria-label="試玩數據">
+      <div class="mrow">
+        <span>播放裝置</span>
+        <label><input type="radio" name="oDevice" value="speaker"> 喇叭</label>
+        <label><input type="radio" name="oDevice" value="wired"> 耳機（有線）</label>
+        <label><input type="radio" name="oDevice" value="bt"> 耳機（藍牙）</label>
+      </div>
+      <p class="note">本頁會在你的瀏覽器裡記錄試玩數據，只存在本機，按「匯出」才會產生檔案。不記姓名、帳號或任何個人資料。</p>
+      <div class="mrow"><button type="button" class="btnExport">匯出數據</button><span class="telNote telCount"></span></div>
+    </div>
+    <div class="surveySlot"></div>
+    <div class="row"><button class="primary" id="btnStart">關上門，開始</button></div>
+    <p class="dim">建議戴耳機。所有聲音都是即時合成。</p>
+  </div>
+</div>
+
+<!-- 暫停：遊戲時間與聲音都停 -->
+<div class="screen" id="pause" hidden>
+  <div class="card">
+    <h2>暫停</h2>
+    <p class="dim">鼓聲停住了。按 Esc 或「繼續」回到大廳。</p>
+    <div class="row">
+      <button class="primary" id="btnResume">繼續</button>
+      <button type="button" class="btnIntro">回到開場</button>
+      <button type="button" class="btnHub">回總首頁</button>
+    </div>
+  </div>
+</div>
+
+<!-- 失敗 -->
+<div class="screen" id="fail" hidden>
+  <div class="card">
+    <h2>你倒在門檻上。</h2>
+    <p class="dim" id="failWhy">鼓聲最急的時候最危險：看到有人舉矛就閃，跟著低音讓兒子舉盾。</p>
+    <div class="row"><button class="primary" id="btnRetry">重來（R）</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="surveySlot"></div>
+    <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
+  </div>
+</div>
+
+<!-- 勝利 -->
+<div class="screen" id="win" hidden>
+  <div class="card">
+    <h2>最強的求婚者倒下了</h2>
+    <p>其餘的人丟下兵器，跪在爐火邊求饒。二十年後，奧德修斯終於回到自己的家。</p>
+    <p class="dim" id="winStats"></p>
+    <div class="row"><button id="btnAgain">再玩一次（R）</button><button type="button" class="btnIntro">回到開場</button><button type="button" class="btnHub">回總首頁</button></div>
+    <div class="surveySlot"></div>
+    <div class="row"><button type="button" class="btnExport">匯出數據</button></div>
+  </div>
+</div>
+
+<!-- 一局結束的三題快問（可略過；在開場、失敗、勝利畫面之間移動） -->
+<fieldset id="survey" hidden>
+  <legend>快問三題（可略過）</legend>
+  <div class="q"><span>這一局，你聽得出鼓聲「突然斷掉」的那一下嗎？</span>
+    <div class="scale"><small>完全聽不出</small><label><input type="radio" name="sqDrop" value="1">1</label><label><input type="radio" name="sqDrop" value="2">2</label><label><input type="radio" name="sqDrop" value="3">3</label><label><input type="radio" name="sqDrop" value="4">4</label><label><input type="radio" name="sqDrop" value="5">5</label><small>每次都聽得很清楚</small></div></div>
+  <div class="q"><span>難度如何？</span>
+    <div class="scale"><small>太簡單</small><label><input type="radio" name="sqDiff" value="1">1</label><label><input type="radio" name="sqDiff" value="2">2</label><label><input type="radio" name="sqDiff" value="3">3</label><label><input type="radio" name="sqDiff" value="4">4</label><label><input type="radio" name="sqDiff" value="5">5</label><small>太難</small></div></div>
+  <div class="q"><span>好玩嗎？</span>
+    <div class="scale"><small>不好玩</small><label><input type="radio" name="sqFun" value="1">1</label><label><input type="radio" name="sqFun" value="2">2</label><label><input type="radio" name="sqFun" value="3">3</label><label><input type="radio" name="sqFun" value="4">4</label><label><input type="radio" name="sqFun" value="5">5</label><small>很好玩</small></div></div>
+  <label class="q"><span>還有什麼想說的？（可不填）</span><textarea id="sqNote" maxlength="2000"></textarea></label>
+  <div class="row"><button type="button" class="primary" id="btnSurveySend">送出</button><button type="button" id="btnSurveySkip">略過</button></div>
+</fieldset>
+<p class="dim" id="surveyThanks" hidden>謝謝！已記下（只存在這台電腦）。</p>
+
+<script src="../nav.js"></script>
+<script>
+// 試玩數據模組：一般從上一層載入；在 claude.ai 試玩頁（沙盒裡沒有上一層）改載同目錄的 telemetry.js
+document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(location.hostname) ? '' : '../') + 'telemetry.js"><\/script>');
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="audio.js"></script>
+<script src="vengeance.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const Rules = window.VengeanceRules, AudioMod = window.VengeanceAudio;
+if (!Rules || !AudioMod || !window.THREE) {
+  $('btnStart').disabled = true;
+  $('btnStart').textContent = '載入失敗：找不到 ' + (!Rules ? 'vengeance.js' : !AudioMod ? 'audio.js' : 'three.js');
+  return;
+}
+const K = Rules.T;
+
+// ============================================================
+// three.js 場景：門檻在 z = 0，大廳往 −z
+// ============================================================
+const canvas = $('cv');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+const FOG = 0x140e0a;
+scene.background = new THREE.Color(FOG);
+scene.fog = new THREE.Fog(FOG, 8, 30);
+const camera = new THREE.PerspectiveCamera(70, 1, .05, 120);
+camera.rotation.order = 'YXZ';
+scene.add(camera);
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+const matCache = {};
+const M = c => matCache[c] || (matCache[c] = new THREE.MeshLambertMaterial({ color: c }));
+const MB = c => matCache['b' + c] || (matCache['b' + c] = new THREE.MeshBasicMaterial({ color: c }));
+function box(w, h, d, c, x, y, z, parent = scene) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), M(c)); m.position.set(x, y, z); parent.add(m); return m; }
+function cyl(rt, rb, h, c, x, y, z, parent = scene, seg = 10) { const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), M(c)); m.position.set(x, y, z); parent.add(m); return m; }
+function sphere(r, c, x, y, z, parent = scene) { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), M(c)); m.position.set(x, y, z); parent.add(m); return m; }
+
+// 大廳（外觀參考乞丐回家 beggar-hall：煙燻黑的梁、柱子、爐火、長桌）
+scene.add(new THREE.HemisphereLight(0x7a6450, 0x1a120c, .7));
+const hearthLight = new THREE.PointLight(0xff9a50, 1.6, 22, 1.6); hearthLight.position.set(0, 1.6, -10); scene.add(hearthLight);
+const doorLight = new THREE.PointLight(0xffb070, .9, 12, 1.8); doorLight.position.set(0, 3, -2.5); scene.add(doorLight);
+box(17, .1, 23, 0x3d2f22, 0, -.05, -9.5);                       // 地板
+box(17, .2, 23, 0x1a130d, 0, 5.2, -9.5);                        // 屋頂
+for (let z = -1; z > -21; z -= 3.2) box(16.6, .25, .3, 0x241a12, 0, 5.0, z);   // 梁
+box(.3, 5.2, 23, 0x3e3226, -8.4, 2.6, -9.5); box(.3, 5.2, 23, 0x3e3226, 8.4, 2.6, -9.5);   // 側牆
+box(17, 5.2, .3, 0x3a2e22, 0, 2.6, -21);                         // 後牆
+// 門檻與關上的門（身後）
+box(17, 5.2, .3, 0x3a2e22, 0, 2.6, 1.2);
+box(2.6, 3.6, .2, 0x4a3520, 0, 1.8, 1.0); box(.25, 3.9, .4, 0x5a4228, -1.4, 1.95, .9); box(.25, 3.9, .4, 0x5a4228, 1.4, 1.95, .9); box(3.1, .3, .4, 0x5a4228, 0, 3.9, .9);
+box(3.2, .12, .8, 0x6a5a48, 0, .06, .1);                          // 石門檻
+// 柱子
+for (const z of [-4, -9, -14, -19]) for (const x of [-4.6, 4.6]) cyl(.3, .34, 5, 0x5a4636, x, 2.5, z);
+// 爐火
+cyl(1.3, 1.5, .5, 0x4a4038, 0, .25, -10, scene, 16);
+const flames = [];
+[0xf0a85a, 0xd8602a, 0xffd890].forEach((c, i) => { const m = new THREE.Mesh(new THREE.ConeGeometry(.5 - i * .1, 1.4 - i * .25, 7), MB(c)); m.position.set((i - 1) * .25, 1.1, -10); scene.add(m); flames.push(m); });
+// 長桌（翻倒的、立著的）
+box(1, .8, 5, 0x4a3524, -6.6, .4, -6); box(1, .8, 5, 0x4a3524, 6.6, .4, -6);
+box(1, .8, 4, 0x4a3524, -2.8, .4, -15.5); box(4, .8, 1, 0x4a3524, 3, .4, -10.8);
+// 牆上的火把（攻擊那一側的火把會閃一下：世界內暗示「閃避方向」）
+const torches = [];
+for (const [x, z] of [[-8.1, -3.5], [8.1, -3.5], [-8.1, -9], [8.1, -9], [-8.1, -15], [8.1, -15]]) {
+  box(.12, .7, .12, 0x2a1f16, x, 2.4, z);
+  const f = new THREE.Mesh(new THREE.ConeGeometry(.15, .45, 6), new THREE.MeshBasicMaterial({ color: 0xf2b866 })); f.position.set(x, 2.95, z); scene.add(f); flames.push(f);
+  torches.push({ x, z, mesh: f, flash: 0 });
+}
+const torchFlash = new THREE.PointLight(0xffd090, 0, 9, 1.6); scene.add(torchFlash);
+function flashTorch(x, z) {                // 離出手者最近、而且和他在同一側（相對玩家視線）的火把
+  const P = game.player, side = Math.sign(Rules.wrapAngle(Rules.yawTo(x - P.x, z - P.z) - V.yaw)) || 1;
+  let best = null, bd = 1e9;
+  for (const T of torches) {
+    const a = Rules.wrapAngle(Rules.yawTo(T.x - P.x, T.z - P.z) - V.yaw);
+    const d = Math.hypot(T.x - x, T.z - z) + (Math.sign(a) === side ? 0 : 30);
+    if (d < bd) { bd = d; best = T; }
+  }
+  if (best) { best.flash = 1; torchFlash.position.set(best.x * .95, 2.9, best.z); torchFlash.userData.k = 1; }
+}
+const panOf = (x, z) => { const P = game.player, a = Rules.wrapAngle(Rules.yawTo(x - P.x, z - P.z) - V.yaw); return clamp(-Math.sin(a), -1, 1); };
+// 掛在牆上的盾（裝飾）
+for (const z of [-7, -12, -17]) { const s = cyl(.5, .5, .08, 0x8a6a3a, -8.2, 3.2, z, scene, 16); s.rotation.z = Math.PI / 2; }
+
+// ---------- 人物 ----------
+function figure(color, tall, opt = {}) {
+  const g = new THREE.Group(), up = new THREE.Group(); g.add(up);
+  const s = tall ? 1.1 : 1;
+  cyl(.22 * s, .32 * s, 1.25 * s, color, 0, .62 * s, 0, up);               // 身體（長袍）
+  sphere(.16 * s, 0xb08a68, 0, 1.42 * s, 0, up);                             // 頭
+  sphere(.165 * s, opt.hair || 0x2a1c12, 0, 1.47 * s, .03, up);             // 頭髮（後腦）
+  const pivot = new THREE.Group(); pivot.position.set(.3 * s, 1.15 * s, 0); up.add(pivot);
+  box(.09, .55 * s, .09, color, 0, -.27 * s, 0, pivot);                      // 持兵器的手
+  const pivotL = new THREE.Group(); pivotL.position.set(-.3 * s, 1.15 * s, 0); up.add(pivotL);
+  box(.09, .55 * s, .09, color, 0, -.27 * s, 0, pivotL);
+  let spear = null, table = null, shield = null, chair = null, aura = null;
+  if (opt.spear) { spear = cyl(.025, .025, 2.0, 0x6a5030, 0, -.5, 0, pivot, 5); const tip = new THREE.Mesh(new THREE.ConeGeometry(.05, .2, 5), M(0xb89a60)); tip.position.y = 1.08; spear.add(tip); }
+  if (opt.table) { table = box(1.0, .8, .08, 0x5a4026, 0, .85, -.4, up); }
+  if (opt.chair) {                                                         // 撲上來前舉起的椅子（預備動作）
+    chair = new THREE.Group(); chair.visible = false;
+    box(.42, .05, .42, 0x5a4026, 0, 0, 0, chair); for (const [cx, cz] of [[-.17, -.17], [.17, -.17], [-.17, .17], [.17, .17]]) box(.04, .4, .04, 0x4a3420, cx, -.22, cz, chair);
+    box(.42, .4, .04, 0x5a4026, 0, .22, -.19, chair);
+    chair.position.set(0, 2.0 * s, .05); up.add(chair);
+  }
+  if (opt.aura) {                                                          // 最強的求婚者：腳下一圈火光、頭上一道金箍
+    aura = new THREE.Mesh(new THREE.RingGeometry(.42, .62, 28), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: .55, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
+    aura.rotation.x = -Math.PI / 2; aura.position.y = .03; g.add(aura);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(.165 * s, .022, 6, 18), MB(0xf0b040)); band.rotation.x = Math.PI / 2; band.position.y = 1.5 * s; up.add(band);
+  }
+  if (opt.shield) { shield = cyl(.42, .42, .06, 0xa07a40, 0, 0, 0, scene, 18); shield.rotation.x = Math.PI / 2; const boss = sphere(.08, 0xd0b070, 0, -.04, 0, shield); boss.scale.y = .5; pivotL.add(shield); shield.position.set(-.05, -.35, -.2); }
+  scene.add(g);
+  return { g, up, pivot, pivotL, spear, table, shield, chair, aura, fall: 0, kneel: 0 };
+}
+let figs = new Map();             // 求婚者 id → 圖形
+let tele = null;                  // 忒勒馬科斯
+let floorArrowMeshes = new Map();
+const transient = [];             // 飛行中的箭、矛
+
+function clearFigures() {
+  for (const f of figs.values()) scene.remove(f.g);
+  figs = new Map();
+  for (const m of floorArrowMeshes.values()) scene.remove(m);
+  floorArrowMeshes = new Map();
+  for (const tr of transient) scene.remove(tr.mesh);
+  transient.length = 0;
+  if (tele) scene.remove(tele.g);
+  $('tags').innerHTML = '';
+}
+function buildFigures(game) {
+  clearFigures();
+  for (const s of game.suitors) {
+    const f = figure(s.color, s.leader, { spear: true, table: s.hp > 1, chair: s.hp <= 1, aura: s.leader, hair: s.leader ? 0x1a120a : 0x3a2a1a });
+    f.g.position.set(s.x, 0, s.z);
+    f.vx = s.x; f.vz = s.z;
+    if (s.leader) {
+      const tag = document.createElement('div');
+      tag.innerHTML = `${s.title}${s.name}<small></small>`;
+      $('tags').appendChild(tag); f.tag = tag;
+    }
+    figs.set(s.id, f);
+  }
+  tele = figure(0x3c5a4a, false, { shield: true, hair: 0x4a3420 });
+  tele.shield.material = new THREE.MeshLambertMaterial({ color: 0xa07a40, emissive: 0x000000 });   // 盾牌在低音拍上反光（獨立材質）
+  tele.g.position.set(-1.7, 0, -2.6);
+}
+// 弓（掛在鏡頭上）
+const bow = new THREE.Group(); camera.add(bow);
+{
+  const arc = new THREE.Mesh(new THREE.TorusGeometry(.42, .018, 6, 24, Math.PI * .9), M(0x5a3a1e));
+  arc.rotation.z = Math.PI / 2 - Math.PI * .45; arc.position.x = -.2; bow.add(arc);
+  const str = new THREE.Mesh(new THREE.CylinderGeometry(.003, .003, .84, 3), MB(0xd8d0c0)); str.position.x = -.21 + .42 * Math.cos(Math.PI * .45) ; bow.add(str);
+  bow.userData.arrow = new THREE.Mesh(new THREE.CylinderGeometry(.008, .008, .8, 4), M(0xb09060));
+  bow.userData.arrow.rotation.x = Math.PI / 2; bow.userData.arrow.position.set(-.05, 0, -.25); bow.add(bow.userData.arrow);
+  // 空檔時箭頭泛光（世界內暗示「現在可以放箭」）
+  bow.userData.tip = new THREE.Mesh(new THREE.SphereGeometry(.035, 10, 8), new THREE.MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  bow.userData.tip.position.set(-.05, 0, -.66); bow.add(bow.userData.tip);
+  bow.position.set(.36, -.24, -.7); bow.rotation.set(0, .25, -.35); bow.scale.setScalar(.45);
+}
+
+// ============================================================
+// 狀態
+// ============================================================
+let actx = null, audio = null, game = null;
+const V = { yaw: 0, pitch: -.04 };
+const keys = {};
+let pend = {};
+let showPhase = true;
+let difficulty = 'normal', dynamic = false;   // 開場字卡選的；重來（R）沿用，回到開場可以再選
+let lastFrame = performance.now();
+let paused = false, pausedAt = 0;   // Esc 暫停；pausedAt：解鎖觸發暫停的時刻（同一下 Esc 不立刻又繼續）
+const hintState = { tele: false, shot: false, shown: 0 };
+let ladder = null;                // 暗示階梯第 2、3 階的文字 { key, html, until }
+let hintsCarry = null;            // 重來時沿用的失敗次數（規則的 g.hints）
+
+// ============================================================
+// 試玩數據（遙測）：共用的 ../telemetry.js；沒載到就全部略過，照常能玩
+// 設計：docs/design/2026-11-08-telemetry.md。大廳復仇一局＝開始到倒下或勝利（重來就是新的一局）。
+// 狀態名稱和木馬之夜對齊，摘要工具才能共用：空檔（全場凍結）記成 'blind'，其他記成 'drum'。
+// ============================================================
+const TEL = window.Telemetry || null;
+// 自動上傳試玩數據：只有 claude.ai 試玩頁有 window.claude（資料庫能力）；本機與 itch.io 版沒有，照舊只存本機、手動匯出
+if (TEL && window.claude && typeof window.claude.use === 'function') {
+  window.claude.use('db').then((db) => {
+    if (!db) return;
+    TEL.setSink((r) => db.doc('runs/' + r.runId).set(r));
+  }).catch(() => {});
+}
+
+const BUILD = (document.querySelector('meta[name="odyssey-build"]') || {}).content || window.ODYSSEY_BUILD || 'dev';
+const tel = { lastT: null, lastMs: 0, surveyWhen: null };
+const TEL_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyQ', 'KeyF', 'KeyR', 'Mouse0', 'Mouse2']);
+function telDevice() { const el = document.querySelector('input[name="oDevice"]:checked'); return el ? el.value : 'unknown'; }
+function telClock() { const g = game; if (!g) return { t: actx ? actx.currentTime : null }; return { t: g.time, ci: g.cycle ? g.cycle.index : null, p: g.cycle ? g.cycle.p : null, z: null }; }
+function telState() { const g = game; if (!g || !g.cycle) return 'menu'; if (g.phase !== 'play') return g.phase; return g.cycle.gap ? 'blind' : 'drum'; }
+/** 時間差（秒，正 = 晚按）：舉盾（Q／右鍵）對最近的低音拍；放箭（左鍵／F）對最近的空檔開頭。 */
+function telOffs(at, code) {
+  const g = game; if (!g || !g.cycle || !Number.isFinite(at)) return null;
+  const o = {};
+  if (code === 'KeyQ' || code === 'Mouse2') { try { o.bass = Rules.bassBeatNear(at, g.bass.anchor, g.bass.period).off; } catch (e) {} }
+  else if (code === 'Mouse0' || code === 'KeyF') {
+    try { const c = Rules.cycleOf(g, at); const cands = [c.start, c.start + c.len]; let b = cands[0]; for (const x of cands) if (Math.abs(at - x) < Math.abs(at - b)) b = x; o.blind = at - b; } catch (e) {}
+  } else return null;
+  return o;
+}
+function telInput(code, down) {
+  if (!TEL || !TEL.active() || !game || paused || game.phase !== 'play' || !TEL_KEYS.has(code)) return;
+  try { const at = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0); TEL.input(code, at, { down, state: telState(), off: down ? telOffs(at, code) : null }); } catch (e) {}
+}
+function telStart() {
+  if (!TEL || !game) return;
+  try {
+    TEL.start({ proto: 'vengeance', version: BUILD, device: telDevice(), clock: telClock, env: TEL.collectEnv({
+      outputLatency: actx ? actx.outputLatency : null, baseLatency: actx ? actx.baseLatency : null, sampleRate: actx ? actx.sampleRate : null,
+      toggles: { difficulty, dynamic, phaseBar: showPhase }, query: location.search || '' }) });
+    tel.lastT = null; tel.lastMs = 0;
+    setTimeout(() => { try { if (TEL.active() && actx) TEL.env({ outputLatency: actx.outputLatency, baseLatency: actx.baseLatency }); } catch (e) {} }, 2000);
+  } catch (e) { console.warn('試玩數據：開局失敗', e); }
+}
+/** 每幀（規則推進、事件處理之後）：累計主動時間（N1：空檔、或腳邊有箭可撿）與幀率。 */
+function telFrame() {
+  if (!TEL || !TEL.active() || !game || game.phase !== 'play') return;
+  try {
+    const nowMs = performance.now(), t = game.time, P = game.player;
+    const pick = (game.floorArrows || []).some(a => Math.hypot(a.x - P.x, a.z - P.z) <= game.T.PICK_R);
+    if (tel.lastT != null && t != null) TEL.tick(t - tel.lastT, { active: !!game.cycle.gap || pick, state: telState(), frameDt: tel.lastMs ? (nowMs - tel.lastMs) / 1000 : null });
+    tel.lastT = t; tel.lastMs = nowMs;
+  } catch (e) {}
+}
+function telEnd(outcome) {
+  if (!TEL || !TEL.active()) return;
+  try { TEL.endRun({ outcome, stats: game && game.stats ? game.stats : null }); } catch (e) {}
+  telCount();
+}
+function telCount() {
+  if (!TEL) return;
+  let n = 0; try { n = TEL.runs().length; } catch (e) {}
+  document.querySelectorAll('.telCount').forEach(el => { el.textContent = n ? `這台電腦已存 ${n} 局（最多 ${TEL.MAX_RUNS} 局）` : '還沒有紀錄'; });
+}
+function telExport() { if (!TEL) return; try { TEL.save(); TEL.exportJSON(); setTimeout(() => { try { TEL.exportCSV(); } catch (e) {} }, 400); } catch (e) {} }
+function telSurveyShow(when) {
+  const box = $('survey');
+  if (!TEL || TEL.surveyed() || !TEL.last()) { box.hidden = true; return; }
+  const slot = document.querySelector('#' + when + ' .surveySlot'); if (!slot) return;
+  box.querySelectorAll('input').forEach(i => { i.checked = false; }); $('sqNote').value = '';
+  slot.appendChild(box); slot.appendChild($('surveyThanks'));
+  box.hidden = false; $('surveyThanks').hidden = true; tel.surveyWhen = when;
+}
+function telSurveyDone(skipped) {
+  if (TEL) {
+    const v = n => { const el = document.querySelector('input[name="' + n + '"]:checked'); return el ? +el.value : null; };
+    try { TEL.survey(skipped ? { skipped: true, when: tel.surveyWhen } : { drop: v('sqDrop'), difficulty: v('sqDiff'), fun: v('sqFun'), note: $('sqNote').value.trim(), when: tel.surveyWhen }); } catch (e) {}
+  }
+  $('survey').hidden = true; $('surveyThanks').hidden = !!skipped;
+}
+if (TEL) {
+  const last = TEL.lastDevice();
+  const r = last && document.querySelector('input[name="oDevice"][value="' + last + '"]'); if (r) r.checked = true;
+  document.querySelectorAll('input[name="oDevice"]').forEach(i => i.addEventListener('change', () => { TEL.rememberDevice(i.value); TEL.setDevice(i.value); }));
+  document.querySelectorAll('.btnExport').forEach(b => { b.onclick = telExport; });
+  $('btnSurveySend').onclick = () => telSurveyDone(false);
+  $('btnSurveySkip').onclick = () => telSurveyDone(true);
+  window.addEventListener('pagehide', () => { try { TEL.save(); } catch (e) {} });
+  telCount();
+} else {
+  $('telBox').hidden = true;
+  document.querySelectorAll('.btnExport').forEach(b => { b.hidden = true; });
+}
+
+function msg(text, color) {
+  const d = document.createElement('div'); d.textContent = text; if (color) d.style.color = color;
+  $('msgs').appendChild(d); setTimeout(() => d.remove(), 4100);
+  while ($('msgs').children.length > 3) $('msgs').firstChild.remove();
+}
+// HUD 依這一局的常數（KT = game.T）；節奏條與低音圓點依目前循環的長度（動態模式下每輪可能不同）
+function buildHud(KT) {
+  $('hp').innerHTML = '<span>生命</span>' + Array.from({ length: KT.HP }, () => '<b></b>').join('');
+  $('quiver').innerHTML = Array.from({ length: KT.ARROWS }, () => '<b></b>').join('');
+  setPhaseBar(KT, KT.CYCLE);
+}
+function setPhaseBar(KT, len) {
+  const beats = Math.max(1, Math.round(len / KT.BASS_PERIOD));
+  const tr = $('phase').querySelector('.track');
+  tr.querySelectorAll('.bass').forEach(b => b.remove());
+  for (let i = 0; i < beats; i++) { const b = document.createElement('div'); b.className = 'bass'; b.style.left = ((KT.BASS_OFFSET + i * KT.BASS_PERIOD) / len * 100) + '%'; tr.appendChild(b); }
+  tr.querySelector('.gapw').style.width = (KT.GAP_LEN / len * 100) + '%';
+  $('beat').innerHTML = Array.from({ length: beats }, () => '<b></b>').join('');
+  updateDiffHud(KT, len);
+}
+const DIFF_DESC = {
+  easy: '4 拍一輪（9.6 秒）・閃避窗口寬・求婚者每輪只出手一次・箭 14・生命 4',
+  normal: '3 拍一輪（7.2 秒）・倒下 2 名頭目後每輪出手兩次・箭 12・生命 3',
+  hard: '2 拍一輪（4.8 秒）・閃避窗口窄・倒下 1 名頭目就每輪出手兩次・箭 10・生命 2・鼓聲裡放箭更不準'
+};
+function updateDiffHud(KT, len) {
+  const el = $('diffHud'), label = (Rules.DIFFICULTY[difficulty] || {}).label || '標準';
+  const beats = Math.round(len / KT.BASS_PERIOD);
+  el.textContent = label + (dynamic ? '・越危險越快' : '') + '・' + beats + ' 拍';
+  el.className = 'diff ' + difficulty + (dynamic ? ' dyn' : '');
+}
+function setDifficulty(d) {
+  difficulty = Rules.DIFFICULTY[d] ? d : 'normal';
+  $('diffSeg').querySelectorAll('button').forEach(b => { const on = b.dataset.diff === difficulty; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  $('diffDesc').textContent = DIFF_DESC[difficulty];
+  $('dynNote').textContent = difficulty === 'hard' ? '（殘酷本來就是 2 拍，開了也不會更快）' : '';
+  updateDiffHud(Rules.constantsFor(difficulty), Rules.constantsFor(difficulty).CYCLE);
+}
+
+function startGame() {
+  if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
+  if (actx.state === 'suspended') actx.resume();
+  const t0 = actx.currentTime + 0.4;
+  game = Rules.createGame({ t0, seed: (Math.random() * 1e9) | 0, hints: hintsCarry, difficulty, dynamic });
+  hintsCarry = game.hints; ladder = null; laterCues.length = 0;
+  if (TEL && TEL.active()) telEnd('restart');
+  const KT = game.T;
+  // 聲音層的循環由規則給（cycleAt）：動態模式下每個循環長度不同，聲音照規則的循環表排
+  const cycleAt = t => (game ? Rules.cycleOf(game, t) : null);
+  if (!audio) audio = AudioMod.createAudio(actx, { t0, cycle: KT.CYCLE, gap: KT.GAP_LEN, bassPeriod: KT.BASS_PERIOD, bassOffset: KT.BASS_OFFSET, cycleAt });
+  else audio.setClock({ t0, cycle: KT.CYCLE, gap: KT.GAP_LEN, cycleAt });
+  buildHud(KT);
+  buildFigures(game);
+  V.yaw = 0; V.pitch = -.04;
+  pend = {};
+  hintState.tele = false; hintState.shot = false; hintState.shown = actx.currentTime;
+  $('intro').hidden = true; $('fail').hidden = true; $('win').hidden = true;
+  $('win').querySelector('h2').textContent = '最強的求婚者倒下了';
+  document.body.classList.add('playing');
+  setHint('先聽：最低沉的那一聲鼓，每隔一陣子響一次。跟著它按 <span class="k">Q</span>，忒勒馬科斯會舉盾。');
+  telStart();                                    // 試玩數據：一局從這裡開始
+  $('survey').hidden = true; $('surveyThanks').hidden = true;
+  lockPointer();
+}
+function setHint(h) { $('hint').innerHTML = h || ''; }
+
+// ============================================================
+// 事件 → 聲音與畫面
+// ============================================================
+const nameOf = id => { const s = game.suitors.find(x => x.id === id); return s ? (s.leader ? s.title + s.name : '一名求婚者') : ''; };
+function onEvent(e) {
+  if (TEL && TEL.active()) { try { TEL.event('out', e); } catch (err) {} }   // 試玩數據：規則事件原樣記
+  if (e.type === 'attack_warn') e.pan = panOf(e.x, e.z);
+  if (audio && e.type !== 'hint' && e.type !== 'cycle') audio.cue(e.type, null, e);
+  const f = e.by ? figs.get(e.by) : e.id ? figs.get(e.id) : null;
+  switch (e.type) {
+    case 'shoot': flyArrow(e); if (!e.gap) msg('鼓聲裡放箭：手在晃，弓弦聲也暴露了你的位置', 'var(--warn)'); else hintState.shot = true; break;
+    case 'down': if (f) { f.fall = 0.001; if (f.tag) f.tag.remove(); } msg(e.leader ? `${nameOf(e.id)}倒下了` + (e.left ? `（還有 ${e.left} 名頭目）` : '') : '一名求婚者倒下了', e.leader ? 'var(--fire)' : null); break;
+    case 'shield_hit': { if (f && f.table) { f.table.rotation.x = .3; } msg(`箭釘在${nameOf(e.id)}舉起的桌板上——再一箭`); const a = game.floorArrows.find(x => x.id === e.arrow); if (a) landSound(a.x, a.z, e.t); break; }
+    case 'miss': landSound(e.x, e.z, e.t); break;
+    case 'hint': onHint(e); break;
+    case 'bow_busy': msg('一個空檔只來得及射一箭'); break;
+    case 'empty': msg('箭袋空了', 'var(--warn)'); break;
+    case 'attack_warn': flashTorch(e.x, e.z); break;
+    case 'dodge_ok': msg('閃過了', 'var(--still)'); break;
+    case 'breath_ok': msg('你屏住呼吸——他撲了個空', 'var(--still)'); break;
+    case 'block': msg('忒勒馬科斯舉盾擋下！', 'var(--bronze)'); break;
+    case 'hurt': $('red').style.transition = 'none'; $('red').style.opacity = 1; requestAnimationFrame(() => { $('red').style.transition = 'opacity .8s'; $('red').style.opacity = 0; }); msg(e.kind === 'spear' ? '被矛擦中！' : '被撲倒在地，又掙扎起身！', 'var(--danger)'); break;
+    case 'tele_ok': hintState.tele = true; shieldFlash = 1; break;
+    case 'tele_miss': msg('沒對上低音，忒勒馬科斯慌了一下'); break;
+    case 'tele_busy': msg('盾剛被撞開，他還在穩住'); break;
+    case 'gasp': msg('憋不住了，大口喘氣——他們聽見了', 'var(--warn)'); break;
+    case 'pick': msg(`撿起 ${e.n} 支箭`); break;
+    case 'pick_none': msg('附近沒有箭'); break;
+    case 'surrender': for (const s of game.suitors) if (!s.down) { const g = figs.get(s.id); if (g) g.kneel = 0.001; } break;
+    case 'win': onWin(); break;
+    case 'fall': onFail(); break;
+    case 'cycle': setPhaseBar(game.T, e.len); if (dynamic && e.len < (game.cycles[game.cycles.length - 2] || e).len) msg(`鼓聲更急了：一輪只剩 ${e.beats} 拍`, 'var(--fire)'); break;
+  }
+}
+// 暗示階梯：第 2 階一行文字、第 3 階加按鍵；第 1 階（或成功退回）收起同一個機制的文字
+function onHint(e) {
+  if (e.level < 2) { if (ladder && ladder.key === e.key) { ladder = null; setHint(''); } return; }
+  const keysHtml = e.keys ? `<span class="keysline">${e.keys.replace(/(Shift|空白鍵|左鍵|W A S D|Q|E|F)(?![a-z])/g, '<span class="k">$1</span>')}</span>` : '';
+  ladder = { key: e.key, html: e.text + keysHtml, until: actx.currentTime + (e.level >= 3 ? 12 : 8) };
+}
+// 箭落地的聲音：在落點那一側；落在空檔裡就延到空檔結束後（暗示聲不蓋住驟降）
+function landSound(x, z, t) {
+  if (!audio) return;
+  let at = t + .32;
+  const cy = Rules.cycleAt(at, game.t0, game.T);
+  if (cy.gap) at = cy.start + game.T.GAP_LEN + .04;
+  const P = game.player;
+  laterCues.push({ name: 'arrow_land', at, data: { pan: panOf(x, z), dist: Math.hypot(x - P.x, z - P.z) } });   // 到時候才交給聲音層
+  floorPing = { x, z, at };
+}
+let shieldFlash = 0, floorPing = null;
+const laterCues = [];
+function onWin() {
+  audio && audio.stopRhythm(1.2);
+  document.body.classList.remove('playing'); unlockPointer();
+  const s = game.stats;
+  telEnd('win'); telSurveyShow('win');
+  $('winStats').textContent = `用時 ${s.winAt.toFixed(0)} 秒・放箭 ${s.shots}（空檔 ${s.gapShots}）・閃過 ${s.dodges + s.breaths}・兒子擋下 ${s.blocks}・受傷 ${s.hurts}`;
+  setTimeout(() => { if (game && game.phase === 'win') $('win').hidden = false; }, 3500);
+}
+function onFail() {
+  audio && audio.stopRhythm(0.8);
+  telEnd('fail'); telSurveyShow('fail');
+  document.body.classList.remove('playing'); unlockPointer();
+  setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 1200);
+}
+
+// 箭的飛行：從弓到命中點（或落點），0.15 秒
+function flyArrow(e) {
+  const P = game.player;
+  const from = new THREE.Vector3(P.x + .2, game.T.EYE_Y - .15, P.z - .3);
+  let to;
+  if (e.target) { const q = Rules.suitorPos(game, game.suitors.find(s => s.id === e.target), game.time); to = new THREE.Vector3(q.x, 1.2, q.z); }
+  else { const fw = Rules.forward(e.yaw); const d = 9; to = new THREE.Vector3(P.x + fw.x * d, game.T.EYE_Y + Math.tan(e.pitch) * d, P.z + fw.z * d); }
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .8, 4), MB(0xe8d8b8));
+  scene.add(m);
+  transient.push({ mesh: m, from, to, t0: performance.now(), dur: 150, kind: 'arrow' });
+}
+function flySpear(A) {
+  const f = figs.get(A.by); if (!f) return;
+  const P = game.player;
+  const from = new THREE.Vector3(f.g.position.x, 1.6, f.g.position.z);
+  const to = new THREE.Vector3(P.x + (Math.random() - .5) * .6, 1.5, P.z + .3);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, 2, 5), M(0x6a5030));
+  scene.add(m);
+  transient.push({ mesh: m, from, to, t0: performance.now(), dur: 360, kind: 'spear', ttl: 1600 });
+  if (f.spear) f.spear.visible = false;
+  if (audio) {                             // 破風聲從出手那一側；萬一落在空檔就延到空檔後
+    let at = actx.currentTime; const cy = Rules.cycleAt(at, game.t0, game.T);
+    if (cy.gap) at = cy.start + game.T.GAP_LEN + .01;
+    laterCues.push({ name: 'spear_fly', at, data: { pan: panOf(from.x, from.z) } });
+  }
+}
+
+// ============================================================
+// 每幀
+// ============================================================
+const tmpV = new THREE.Vector3();
+function loop(now) {
+  requestAnimationFrame(loop);
+  const wallDt = Math.min(.1, (now - lastFrame) / 1000); lastFrame = now;
+  const frozenNow = game && actx && game.phase === 'play' && game.cycle.gap;
+  if (!frozenNow) { for (const fl of flames) fl.scale.y = .85 + Math.random() * .3; hearthLight.intensity = 1.5 + Math.random() * .2; }   // 空檔：火也凝住
+  if (!game || !actx || paused) { renderer.render(scene, camera); return; }   // 暫停：只畫，不推進規則
+  const t = actx.currentTime;
+  const lat = actx.outputLatency || actx.baseLatency || 0;
+
+  // 輸入 → 規則
+  const fw = Rules.forward(V.yaw), rt = { x: Math.cos(V.yaw), z: -Math.sin(V.yaw) };
+  const f = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
+  const s = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+  const input = {
+    yaw: V.yaw, pitch: V.pitch,
+    mx: fw.x * f + rt.x * s, mz: fw.z * f + rt.z * s,
+    breath: !!keys.Space,
+    shoot: !!pend.shoot, shootAt: pend.shootAt,
+    dodge: !!pend.dodge, dodgeAt: pend.dodgeAt,
+    tele: !!pend.tele, teleAt: pend.teleAt,
+    pick: !!pend.pick
+  };
+  pend = {};
+  for (let i = laterCues.length - 1; i >= 0; i--) if (t >= laterCues[i].at - .03) { const c = laterCues.splice(i, 1)[0]; if (audio) audio.cue(c.name, Math.max(c.at, t), c.data); }
+  const wasPlay = game.phase === 'play';
+  Rules.step(game, t, input);
+  for (const e of game.events) onEvent(e);
+  telFrame();
+  for (const e of game.events) if (e.type === 'attack_warn') { const A = game.attacks.find(a => a.id === e.attack); if (A) A._fx = false; }
+  // 擲矛：命中前 0.36 秒出手
+  for (const A of game.attacks) if (A.type === 'spear' && !A._thrown && !A.cancelled && t >= A.impact - .36 && t < A.impact + .2) { A._thrown = true; flySpear(A); }
+
+  const P = game.player, cy = game.cycle, playing = game.phase === 'play';
+  const gap = playing && cy.gap;
+
+  // 鏡頭：空檔裡完全穩；其他時候隨相位晃（越快晃越大，表示放箭會失準）
+  const sway = playing && !gap ? (.004 + .03 * cy.p * cy.p) : 0;
+  const sx = Math.sin(t * 7.3) * sway + Math.sin(t * 13.1) * sway * .4, sy = Math.cos(t * 5.9) * sway * .7;
+  const hurtK = Math.max(0, 1 - (t - P.hurtAt) / .4);
+  const dodgeK = Math.max(0, 1 - (t - P.dodgeAt) / .45);
+  camera.position.set(P.x + Math.sin(dodgeK * Math.PI) * .45, K.EYE_Y - (P.breathing ? .12 : 0) - Math.sin(dodgeK * Math.PI) * .15, P.z);
+  camera.rotation.set(V.pitch + sy + (Math.random() - .5) * hurtK * .08, V.yaw + sx, Math.sin(dodgeK * Math.PI) * -.12);
+  bow.position.y = -.24 + Math.sin(t * 2) * .004;
+  bow.userData.arrow.visible = P.arrows > 0 && game.lastShotCycle !== cy.index;
+  // 空檔：箭頭泛光（還能射才亮）
+  const tipK = gap && bow.userData.arrow.visible ? .75 + .25 * Math.sin(t * 30) : 0;
+  bow.userData.tip.material.opacity += (tipK - bow.userData.tip.material.opacity) * (gap ? 1 : .3);
+  // 攻擊那一側的火把閃一下
+  for (const T of torches) {
+    T.flash = Math.max(0, T.flash - wallDt * 2.2);
+    T.mesh.material.color.setHex(T.flash > .05 ? 0xfff2c8 : 0xf2b866);
+    T.mesh.scale.setScalar(1 + T.flash * 1.6);
+  }
+  torchFlash.userData.k = Math.max(0, (torchFlash.userData.k || 0) - wallDt * 2.2);
+  torchFlash.intensity = 2.6 * torchFlash.userData.k;
+  $('cross').style.transform = `translate(${(-sx * 900).toFixed(1)}px, ${(sy * 900).toFixed(1)}px)`;
+  $('cross').classList.toggle('steady', gap);
+  $('chill').style.opacity = gap ? .55 : 0;
+
+  // 求婚者
+  const k = 1 - Math.exp(-wallDt * 5);
+  const P0 = new THREE.Vector3(P.x, 0, P.z);
+  for (const st of game.suitors) {
+    const fg = figs.get(st.id); if (!fg) continue;
+    const q = Rules.suitorPos(game, st, t);
+    if (gap || st.down) { /* 空檔：凍結（位置已經在最近處）*/ if (st.down) { fg.vx = q.x; fg.vz = q.z; } else { fg.vx += (q.x - fg.vx) * Math.min(1, k * 3); fg.vz += (q.z - fg.vz) * Math.min(1, k * 3); } }
+    else {
+      const lunging = game.attacks.some(A => A.by === st.id && A.type === 'lunge' && !A.cancelled && t >= A.warn && t <= A.impact + .6);
+      const kk = lunging ? 1 : k;
+      fg.vx += (q.x - fg.vx) * kk; fg.vz += (q.z - fg.vz) * kk;
+    }
+    fg.g.position.set(fg.vx, 0, fg.vz);
+    if (!st.down) fg.g.rotation.y = Math.atan2(P.x - fg.vx, P.z - fg.vz);
+    // 預備動作：擲矛舉手、撲上來前傾
+    const A = game.attacks.find(a => a.by === st.id && !a.done && !a.cancelled && t >= a.warn);
+    let armT = -.2, lean = 0;
+    if (A && A.type === 'spear') armT = -2.6;
+    if (A && A.type === 'lunge') { lean = .25; armT = -2.7; }
+    if (playing && !gap && !A) armT = -.2 - cy.p * .8;        // 越快越兇：舉起兵器
+    if (gap) { /* 凍結 */ } else fg.pivot.rotation.x += (armT - fg.pivot.rotation.x) * Math.min(1, k * 2);
+    fg.up.rotation.x += (lean - fg.up.rotation.x) * Math.min(1, k * 2);
+    if (fg.spear && !A && !fg.spear.visible && !st.down) fg.spear.visible = true;
+    // 撲上來的預備：舉起椅子過頭（擲矛的預備＝舉矛）
+    if (fg.chair) { const lift = !!(A && A.type === 'lunge') && !st.down; fg.chair.visible = lift; if (lift && fg.spear) fg.spear.visible = false; }
+    if (!gap) {
+      if (A && A.type === 'lunge') fg.pivotL.rotation.x += (-2.7 - fg.pivotL.rotation.x) * Math.min(1, k * 3);
+      else if (!fg.kneel) fg.pivotL.rotation.x += (0 - fg.pivotL.rotation.x) * Math.min(1, k * 2);
+    }
+    if (fg.aura) { fg.aura.visible = !st.down && !st.surrender; if (!gap) fg.aura.material.opacity = .4 + .2 * Math.sin(t * 9 + fg.vx) + .1 * Math.random(); }
+    if (fg.table) fg.table.visible = st.hpLeft > 1 && !st.down;
+    // 倒地（悶響＋倒地動作，不寫血腥）
+    if (fg.fall > 0 && fg.fall < 1) { fg.fall = Math.min(1, fg.fall + wallDt / .55); }
+    if (fg.fall > 0) { const e = fg.fall * fg.fall; fg.up.rotation.x = e * 1.5; fg.up.position.y = -e * .12; fg.pivot.rotation.x = -.2; if (fg.spear) fg.spear.visible = false; }
+    // 投降：跪下、雙手舉起
+    if (fg.kneel > 0) { fg.kneel = Math.min(1, fg.kneel + wallDt / .8); fg.up.position.y = -.42 * fg.kneel; fg.pivot.rotation.x = -2.8 * fg.kneel; fg.pivotL.rotation.x = -2.8 * fg.kneel; fg.up.rotation.x = 0; if (fg.spear) fg.spear.visible = false; }
+    // 頭目名牌
+    if (fg.tag) {
+      tmpV.set(fg.vx, 2.25, fg.vz).project(camera);
+      const vis = tmpV.z < 1 && Math.abs(tmpV.x) < 1.1 && Math.abs(tmpV.y) < 1.1;
+      fg.tag.style.display = vis ? '' : 'none';
+      if (vis) { fg.tag.style.left = ((tmpV.x + 1) / 2 * innerWidth) + 'px'; fg.tag.style.top = ((1 - tmpV.y) / 2 * innerHeight) + 'px'; }
+      fg.tag.querySelector('small').textContent = st.hpLeft > 1 ? '舉著桌板' : '';
+    }
+  }
+  // 名牌互相重疊時往上錯開
+  const placed = [];
+  for (const fg of figs.values()) if (fg.tag && fg.tag.isConnected && fg.tag.style.display !== 'none') {
+    let x = parseFloat(fg.tag.style.left), y = parseFloat(fg.tag.style.top);
+    for (const q of placed) if (Math.abs(q.x - x) < 130 && Math.abs(q.y - y) < 30) y = q.y - 30;
+    fg.tag.style.top = y + 'px'; placed.push({ x, y });
+  }
+  // 忒勒馬科斯：盾舉著＝舉到胸前；冷卻中＝垂下
+  if (tele) {
+    const up = game.tele.until >= t && t >= game.tele.coolUntil;
+    const cool = t < game.tele.coolUntil;
+    const want = up ? -1.45 : cool ? .3 : -.2;
+    tele.pivotL.rotation.x += (want - tele.pivotL.rotation.x) * Math.min(1, k * 4);
+    tele.g.rotation.y = Math.PI + .2;
+    tele.up.rotation.z = cool ? .08 : 0;
+    // 盾牌在低音拍上反光（拍子剛過時最亮），對拍舉盾時再亮一下
+    const bbN = Rules.bassBeatNear(t, game.bass.anchor, game.bass.period);
+    const glint = playing && bbN.off >= -.02 ? Math.exp(-Math.max(0, bbN.off) / .16) * (bbN.off < .6 ? 1 : 0) : 0;
+    shieldFlash = Math.max(0, shieldFlash - wallDt * 2.5);
+    const sk = Math.min(1, glint * .7 + shieldFlash);
+    tele.shield.material.emissive.setRGB(sk * 1.0, sk * .8, sk * .45);
+  }
+  // 地上的箭
+  const ids = new Set(game.floorArrows.map(a => a.id));
+  for (const [id, m] of floorArrowMeshes) if (!ids.has(id)) { scene.remove(m); floorArrowMeshes.delete(id); }
+  for (const a of game.floorArrows) if (!floorArrowMeshes.has(a.id)) {
+    const g = new THREE.Group(); g.position.set(a.x, .03, a.z);
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(.012, .012, .8, 4), MB(0xe8d0a0)); sh.rotation.z = Math.PI / 2; sh.rotation.y = Math.random() * 3; g.add(sh);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.3, .34, 20), new THREE.MeshBasicMaterial({ color: 0xf0a85a, transparent: true, opacity: .5, side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; g.add(ring);
+    g.userData.ring = ring; g.userData.ph = Math.random() * 6;
+    scene.add(g); floorArrowMeshes.set(a.id, g);
+  }
+  // 地上的箭微微發亮（呼吸般脈動）；剛落地的那支亮一下
+  for (const [id, g] of floorArrowMeshes) {
+    const a = game.floorArrows.find(x => x.id === id);
+    const fresh = a && floorPing && Math.abs(a.x - floorPing.x) < .01 && Math.abs(a.z - floorPing.z) < .01 && t >= floorPing.at && t < floorPing.at + .6 ? 1 : 0;
+    g.userData.ring.material.opacity = .35 + .25 * Math.sin(t * 3 + g.userData.ph) + .4 * fresh;
+    g.userData.ring.scale.setScalar(1 + .5 * fresh);
+  }
+  // 飛行物
+  for (let i = transient.length - 1; i >= 0; i--) {
+    const tr = transient[i], u = (now - tr.t0) / tr.dur;
+    if (u >= 1) {
+      tr.mesh.position.copy(tr.to);
+      if (tr.kind === 'arrow' || now - tr.t0 > (tr.ttl || 0)) { scene.remove(tr.mesh); transient.splice(i, 1); }
+      continue;
+    }
+    tr.mesh.position.lerpVectors(tr.from, tr.to, u);
+    tmpV.subVectors(tr.to, tr.from).normalize();
+    tr.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tmpV);
+  }
+
+  // HUD
+  if (wasPlay) updateHud(t);
+  renderer.render(scene, camera);
+}
+
+function updateHud(t) {
+  const P = game.player, cy = game.cycle;
+  $('hp').querySelectorAll('b').forEach((b, i) => b.classList.toggle('on', i < P.hp));
+  const qb = $('quiver').querySelectorAll('b');
+  qb.forEach((b, i) => b.classList.toggle('off', i >= P.arrows));
+  $('qn').textContent = P.arrows > game.T.ARROWS ? P.arrows : P.arrows + ' 支箭' + (game.floorArrows.length ? `（地上 ${game.floorArrows.length}）` : '');
+  $('breath').firstElementChild.style.width = ((1 - P.breathT / game.T.BREATH_MAX) * 100) + '%';
+  $('left').textContent = `頭目還剩 ${Rules.leadersLeft(game)} 名`;
+  // 忒勒馬科斯
+  const T = game.tele, up = T.until >= t && t >= T.coolUntil, cool = t < T.coolUntil;
+  $('tele').classList.toggle('up', up); $('tele').classList.toggle('cool', cool);
+  $('teleState').textContent = cool ? `盾被撞開，${Math.ceil(T.coolUntil - t)} 秒後才能再舉` : up ? '盾舉著（下一擊他會擋）' : '跟著低音按 Q／右鍵';
+  // 低音圓點：這一輪的第幾拍（圓點數 = 這一輪的拍數）
+  const bb = Rules.bassBeatNear(t, game.bass.anchor, game.bass.period);
+  const bi = Math.round((bb.beat - cy.start - game.T.BASS_OFFSET) / game.bass.period);
+  $('beat').querySelectorAll('b').forEach((b, i) => b.classList.toggle('now', i === bi && Math.abs(bb.off) < .2));
+  // 節奏條
+  $('phase').hidden = !showPhase;
+  if (showPhase) $('phase').querySelector('.fill').style.width = (cy.index < 0 ? 0 : cy.p * 100) + '%';
+  // 預備攻擊提示
+  const act = Rules.activeAttacks(game, t);
+  let w = '', side = null;
+  if (act.length) {
+    const A = act.sort((a, b) => a.impact - b.impact)[0];
+    const f = figs.get(A.by);
+    if (f) { const ang = Rules.wrapAngle(Rules.yawTo(f.vx - P.x, f.vz - P.z) - V.yaw); side = ang > .5 ? 'L' : ang < -.5 ? 'R' : 'C'; }
+    // 暗示階梯：第 1 階只有世界內暗示（舉矛／舉椅、出鞘／吸氣聲、那一側的火把）；被打中 2 次起才出文字，3 次起加按鍵
+    const lv = Rules.hintLevel(game.hints, 'attack');
+    if (lv >= 2) {
+      w = A.type === 'spear' ? `${nameOf(A.by)}舉起長矛` : `${nameOf(A.by)}舉起椅子要撲上來`;
+      w += lv >= 3 ? (A.type === 'spear' ? '——<span class="k">Shift</span> 閃避' : '——<span class="k">Shift</span> 閃避，或按住 <span class="k">空白鍵</span> 屏息') : '——閃開或屏息';
+      if (T.until >= A.impact && A.impact >= T.coolUntil) w += '<br><small style="color:var(--bronze)">（盾舉著：躲不掉也有兒子擋）</small>';
+    }
+  }
+  $('warn').innerHTML = w;
+  $('edgeL').style.opacity = side === 'L' ? 1 : 0; $('edgeR').style.opacity = side === 'R' ? 1 : 0; $('edgeC').style.opacity = side === 'C' ? .8 : 0;
+  // 教學提示
+  const since = t - hintState.shown;
+  $('hint').classList.toggle('ladder', !!(ladder && t < ladder.until));
+  if (ladder && t < ladder.until) { if ($('hint').innerHTML !== ladder.html) setHint(ladder.html); return; }
+  if (ladder) { ladder = null; setHint(''); }
+  if (cy.index >= 1 && !hintState.shot && since > 5) setHint('鼓聲<b>突然斷掉</b>、畫面泛藍凍結的那一瞬間，瞄準求婚者按 <span class="k">左鍵</span>。頭目頭上有名字。');
+  else if (hintState.tele && hintState.shot) setHint(game.floorArrows.length && P.arrows <= 3 ? '箭快沒了：走到地上發光的箭旁邊按 <span class="k">E</span>' : '');
+  else if (!hintState.tele && since > 14) setHint('最低沉的那一聲鼓（右下角的金色圓點）響的時候按 <span class="k">Q</span>，讓忒勒馬科斯舉盾');
+}
+
+// ============================================================
+// 輸入
+// ============================================================
+let locked = false, lockFailed = false, drag = null;
+function lockPointer() {
+  if (lockFailed) return;
+  try {
+    if (!canvas.requestPointerLock) { lockFailed = true; return; }
+    const r = canvas.requestPointerLock();
+    if (r && r.catch) r.catch(() => { lockFailed = true; });
+  } catch (e) { lockFailed = true; }
+}
+function unlockPointer() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {} }
+document.addEventListener('pointerlockerror', () => { lockFailed = true; });
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === canvas;
+  if (!locked && active()) pause(true);          // 按 Esc 會先解除滑鼠鎖定：解除時進暫停（勝負時自己放開滑鼠不算，那時已不在 play）
+});
+const active = () => game && game.phase === 'play' && !paused;
+function shootNow() {
+  if (!active()) return;
+  pend.shoot = true; pend.shootAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+  telInput('Mouse0', true);
+}
+function teleNow() {   // 舉盾：Q 或滑鼠右鍵，記按鍵當下的音訊時間
+  if (!active()) return;
+  pend.tele = true; pend.teleAt = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+}
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', e => {
+  if (!active()) return;
+  if (e.button === 2) { teleNow(); telInput('Mouse2', true); return; }   // 右鍵＝舉盾（右手按節奏、左手走位）
+  if (locked) { if (e.button === 0) shootNow(); return; }
+  drag = { x: e.clientX, y: e.clientY, moved: 0, button: e.button };
+  if (!lockFailed) lockPointer();
+});
+window.addEventListener('mouseup', e => {
+  if (drag && !locked && drag.button === 0 && drag.moved < 5 && lockFailed) shootNow();   // 鎖不住滑鼠時：拖曳＝看，點一下＝放箭
+  drag = null;
+});
+window.addEventListener('mousemove', e => {
+  if (!active()) return;
+  let dx = 0, dy = 0;
+  if (locked) { dx = e.movementX; dy = e.movementY; }
+  else if (drag) { dx = e.clientX - drag.x; dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy); }
+  V.yaw -= dx * .0022;
+  V.pitch = clamp(V.pitch - dy * .0022, -1.2, .9);
+});
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.closest && e.target.closest('#survey')) return;   // 在快問裡打字，不當遊戲按鍵
+  if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+  const was = keys[e.code]; keys[e.code] = true;
+  if (!game) return;
+  if (e.code === 'Escape') { if (paused) { if (performance.now() - pausedAt > 300) resume(); } else if (active()) pause(false); return; }
+  if (paused) return;
+  if (e.code === 'KeyR' && (game.phase === 'fail' || game.phase === 'win')) { startGame(); return; }
+  if (!active() || e.repeat || was) return;
+  const at = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
+  if (e.code !== 'KeyF') telInput(e.code, true);   // F 走 shootNow，記成 Mouse0（放箭）
+  if (e.code === 'KeyQ') teleNow();
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { pend.dodge = true; pend.dodgeAt = at; }
+  if (e.code === 'KeyE') pend.pick = true;
+  if (e.code === 'KeyF') shootNow();          // 備用放箭鍵（觸控板）
+});
+window.addEventListener('keyup', e => { if (keys[e.code]) telInput(e.code, false); keys[e.code] = false; });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+// ============================================================
+// 暫停／回到開場／回總首頁
+// ============================================================
+// 暫停：音訊環境 suspend。規則的時間就是 actx.currentTime，所以時間和聲音一起停，繼續時不會跳拍
+function pause(fromUnlock) {
+  if (paused || !active()) return;
+  paused = true; pausedAt = fromUnlock ? performance.now() : 0;
+  for (const k in keys) keys[k] = false;
+  pend = {}; drag = null;
+  unlockPointer();
+  try { if (actx && actx.state === 'running') actx.suspend(); } catch (e) {}
+  $('pause').hidden = false;
+}
+function resume() {
+  if (!paused) return;
+  paused = false;
+  $('pause').hidden = true;
+  try { if (actx && actx.state === 'suspended') actx.resume(); } catch (e) {}
+  lockPointer();
+}
+// 開場前的背景：擺好求婚者、鏡頭站在門檻上
+function showPreview() {
+  const g0 = Rules.createGame({ t0: 0 });
+  buildFigures(g0);
+  camera.position.set(0, K.EYE_Y, -.8); camera.rotation.set(-.04, 0, 0);
+}
+// 回到開場：頁內重設。聲音整個銷毀（下次開始重建，不會兩套疊在一起）、清掉排程中的音效與飛行物、回開場字卡
+function backToIntro() {
+  if (game && game.phase === 'play') telEnd('quit');
+  paused = false;
+  unlockPointer();
+  if (audio) { try { audio.destroy(); } catch (e) {} audio = null; }
+  game = null; hintsCarry = null; ladder = null; laterCues.length = 0; floorPing = null; shieldFlash = 0;
+  for (const k in keys) keys[k] = false;
+  pend = {}; drag = null;
+  setHint(''); $('msgs').innerHTML = ''; $('warn').textContent = '';
+  $('red').style.opacity = 0;
+  $('pause').hidden = true; $('fail').hidden = true; $('win').hidden = true;
+  document.body.classList.remove('playing');
+  showPreview();
+  $('intro').hidden = false; $('intro').scrollTop = 0;
+  telSurveyShow('intro'); telCount();
+}
+
+$('btnStart').onclick = startGame;
+$('btnRetry').onclick = startGame;
+$('btnAgain').onclick = startGame;
+$('btnResume').onclick = resume;
+$('oPhase').onchange = e => { showPhase = e.target.checked; };
+$('oDynamic').onchange = e => { dynamic = e.target.checked; setDifficulty(difficulty); };
+$('diffSeg').querySelectorAll('button').forEach(b => { b.onclick = () => setDifficulty(b.dataset.diff); });
+setDifficulty('normal');
+const NAV = window.OdysseyNav;
+const hasHub = !!(NAV && typeof NAV.hasHub === 'function' && NAV.hasHub());
+document.querySelectorAll('.btnIntro').forEach(b => { b.onclick = backToIntro; });
+document.querySelectorAll('.btnHub').forEach(b => {
+  b.hidden = !hasHub;
+  b.onclick = () => { try { NAV.goHub(); } catch (e) { console.warn('無法前往總首頁', e); } };
+});
+
+showPreview();
+
+window.VengeanceDebug = { telemetry: TEL, pause, resume, backToIntro, setDifficulty, get difficulty() { return difficulty; }, get dynamic() { return dynamic; }, set dynamic(v) { dynamic = !!v; $('oDynamic').checked = dynamic; setDifficulty(difficulty); },
+  get paused() { return paused; }, get ladder() { return ladder; }, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, V, keys, scene, shoot: shootNow, start: startGame };
+requestAnimationFrame(loop);
+})();
+</script>

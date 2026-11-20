@@ -1,0 +1,11 @@
+[
+  { "wait": 1500 },
+  { "mark": "序 3 張字卡：空白鍵翻頁" },
+  { "press": "Space" }, { "wait": 1200 },
+  { "press": "Space" }, { "wait": 1200 },
+  { "press": "Space" }, { "wait": 600 },
+  { "mark": "進木馬，交給程式玩家" },
+  { "waitFor": "window.TroyDebug.game.story === 'outro'", "timeout": 230 },
+  { "wait": 1500 },
+  { "mark": "終：城門開了" }
+]

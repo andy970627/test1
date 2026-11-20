@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>今日試玩清單</title>
+<link rel="stylesheet" href="ui-tokens.css">
+<style>
+  /* 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：頁首題字＋拍帶；完成用海青；可按的用青銅 */
+  main { max-width:980px; margin:0 auto; padding:28px var(--gutter-r) 96px var(--gutter-l); }
+  header .ui-title { margin:0 0 14px; }
+  .lead { color:var(--muted); margin:14px 0 20px; max-width:var(--measure); }
+  .card { background:var(--stone); border:1px solid transparent; border-left:3px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
+  .card.done { border-left-color:var(--beat); }
+  .card h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .card h2 .n { color:var(--muted); }
+  .card h2 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .card.done h2 .st { color:var(--beat); }
+  .how { color:var(--parchment); margin:4px 0 10px; max-width:var(--measure); }
+  .links { display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .links a { display:inline-block; padding:5px 12px; border:1px solid var(--bronze); border-radius:var(--r-btn); color:var(--bronze); text-decoration:none; font-weight:500; font-size:var(--fs-14); }
+  .links a:hover { background:var(--bronze-wash); }
+  fieldset { border:0; border-top:1px solid var(--rule); padding:10px 0 0; margin:14px 0 0; }
+  legend { font-weight:500; padding:0; float:left; width:100%; margin-bottom:2px; }
+  .qh { clear:both; color:var(--muted); font-size:var(--fs-14); margin:0 0 6px; max-width:var(--measure); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); }
+  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; }
+  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #msg { color:var(--beat); font-size:var(--fs-14); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 class="ui-title lg">今日試玩清單</h1>
+    <div id="strip"></div>
+  </header>
+  <p class="lead">2026-11-15，11/18 加第 7、8 項，11/21 加第 9～11 項（單人期末選題原型）。一項一項試：點連結（在同一分頁打開）→ 照「怎麼試」玩 → 按上一頁回來點選答案。全部試完按最下面「複製結果」，貼回對話給總控。答案會自動存在這台電腦的瀏覽器裡，關掉再開也還在。請戴耳機、用電腦與真鍵盤。</p>
+  <div id="list"></div>
+  <div class="bar">
+    <button class="ui-btn primary" id="copy">複製結果</button>
+    <button class="ui-btn" id="reset">清除答案</button>
+    <span id="msg"></span>
+  </div>
+</main>
+<script src="troy-prologue/risset.js"></script>
+<script src="beatstrip.js"></script>
+<script>
+if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'));
+const ITEMS = [
+  { id:'drum', title:'鼓越來越快 H0～H4（約 5 分鐘）',
+    how:'H0 是現在的鼓；H1 半快；H2 最快；H3 在 60 秒內一路變快；H4 分四階、每 15 秒跳一階。（這四題剛才已在對話答過，已幫你勾好，可改。）',
+    links:[['H0','troy-prologue/audio-test.html?ill=H0'],['H1','troy-prologue/audio-test.html?ill=H1'],['H2','troy-prologue/audio-test.html?ill=H2'],['H3','troy-prologue/audio-test.html?ill=H3'],['H4','troy-prologue/audio-test.html?ill=H4']],
+    qs:[
+      ['H1、H2 哪一個才算夠快？', '比較 H1 和 H2 上面那層密密的鼓：哪一個聽起來才像「很急、在趕」？H0 是現在遊戲裡的速度，當對照。',['H1 就夠','H2 才夠','H2 太吵','都不夠'],'H2 才夠'],
+      ['H3、H4 有沒有一路越來越快的累積感？', 'H3、H4 各聽滿 60 秒：前面和後面比，是不是真的越來越快、壓力一直往上疊？H3 是平滑地升，H4 是一階一階跳（像每進一區快一階）。',['有，H3 連續升好','有，H4 分階好','沒有'],'有，H3 連續升好'],
+      ['速度上去後，還聽不聽得出「又從頭來了」？', '鼓聲每 6 秒會偷偷回到同樣的狀態。速度快起來以後，耳朵還抓不抓得到這個「回到原點」的瞬間？',['聽不出','還聽得出','每個不一樣'],'每個不一樣'],
+      ['H2 裡，讓你踩的低鼓和最響一擊還聽不聽得清？', '在最快的 H2 裡：底下那條較低、較厚的鼓（遊戲裡要踩在它上面走）和每圈最響的那一下，有沒有被上面密的鼓蓋掉？',['都聽得清','低鼓被蓋掉','一擊被蓋掉'],'都聽得清'],
+    ]},
+  { id:'reveal', title:'最響一擊照亮場景，整關（約 5 分鐘）',
+    how:'平常比較暗；最響一擊落下時，衛兵輪廓（含牆後）亮半秒。按 <kbd>[</kbd> <kbd>]</kbd> 可調暗度。',
+    links:[['整關（照亮版）','troy-prologue/index.html?reveal=1']],
+    qs:[
+      ['兩擊之間，靠火把光點和耳朵，夠不夠知道衛兵大概在哪？', '不靠那一擊的閃光，只靠遠處火把的小光點和腳步聲，你知不知道衛兵大概在哪個方向、多遠？',['夠','不夠']],
+      ['那一擊落下時，你通常拿來動手還是看？', '那一擊之後 0.6 秒衛兵察覺不到你（可以衝、暗殺），同時畫面也會亮。你會趁機行動，還是光顧著看，變成每次都站著等下一擊？',['看完就動，不會一直等','大多拿來看，會一直等','大多拿來動手']],
+      ['0.5 秒夠不夠看清楚？隔牆看到輪廓像不像作弊？', '輪廓亮 0.5 秒：來不來得及看清衛兵位置和面向？牆後的衛兵也會描邊，這樣會不會讓遊戲太簡單、像透視外掛？',['夠，不像作弊','太短','隔牆太像作弊']],
+      ['前後兩區暗度差、追殺時的閃光？', '前兩區比後兩區亮一階（讓新手先熟悉）；被追殺時每一擊都會閃。這兩點會不會不合理或刺眼？',['都沒問題','暗度差不合理','追殺時太閃']],
+    ]},
+  { id:'knock', title:'敲暗號（重試，有新教學）',
+    how:'跟著畫面上的四步教學卡。看下方拍點條或準星倒數圈，在拍上按 <kbd>T</kbd>；按 <kbd>Y</kbd> 聽同伴示範。三下＝引開、兩下＝現在，停 1 秒結束一組。',
+    links:[['敲暗號試驗場','troy-prologue/index.html?lab=horse']],
+    qs:[
+      ['現在學不學得會、敲不敲得準？', '照四步教學：畫面下方拍點條的拍點滑到中間直線、或準星的圈縮到底時按 T。每按一下上方會顯示「準／太早／太晚」。',['學得會、敲得準','學得會，但敲不準','還是不知道怎麼敲']],
+      ['三下和兩下分不分得清？', '連敲三下＝叫同伴引開衛兵，連敲兩下＝「現在」。停 1 秒算一組結束。你敲的時候，系統認得對不對？同伴示範時你聽得出是幾下嗎？',['分得清','偶爾搞混','分不清']],
+    ]},
+  { id:'bow', title:'弓弦',
+    how:'拉弓：試聽頁的「弓弦」面板，按住 <kbd>B</kbd> 拉弓（音調隨張力上升）、放開射出；試著讓放開那一刻剛好落在最響一擊。彈弦引開：查看試驗場按 <kbd>V</kbd>，在拍上或掩護窗內衛兵不理你，拍外衛兵會過來查看。',
+    links:[['拉弓（試聽頁）','troy-prologue/audio-test.html?ill=H0'],['彈弦引開（查看試驗場）','troy-prologue/index.html?lab=check']],
+    qs:[
+      ['拉弓的上升音和越打越密一起衝到那一擊，感覺成不成立？', '按住 B 拉弓，音調會一路往上升；試著配合鼓越打越密，在最響一擊那一刻放開。這種「一起衝到頂」的感覺有沒有出來？面板會顯示你放開時差幾毫秒。',['成立，很有感','有一點','不成立']],
+      ['彈弦引開衛兵好不好用？', '在查看試驗場按 V 空彈弓弦：落在拍上或最響一擊後的 0.6 秒內，衛兵不理你；落在拍外，最近的衛兵會走過來查看。這個用法好不好懂、好不好用？',['好用','規則懂，但不好控制','不好用']],
+    ]},
+  { id:'keys', title:'空白鍵與 Alt（真鍵盤）',
+    how:'任何一關。走路或跑步中按 <kbd>空白鍵</kbd> 應該立刻停下並屏息；按住 <kbd>Alt</kbd> 是蹲。跑步中（按著 <kbd>Shift</kbd>）按 <kbd>Alt</kbd>，看會不會跳出瀏覽器選單或切換輸入法。',
+    links:[['整關（預設版）','troy-prologue/index.html']],
+    qs:[
+      ['空白鍵立刻停下屏息的手感？', '走路或跑步中按住空白鍵：應該立刻停住並屏住呼吸（剛跑完還在喘時會停下但屏不住氣，畫面會提示）。手感對不對？',['對，就是要這樣','停得太突然','沒有立刻停']],
+      ['Alt 蹲有沒有出問題？', '按住 Alt 蹲下走。特別試：跑步中（按著 Shift）按 Alt，Windows 有時會切換輸入法，或瀏覽器跳到選單列，有沒有發生？',['沒問題','會跳出瀏覽器選單','跑步中會切換輸入法','其他（寫在備註）']],
+    ]},
+  { id:'drive', title:'鼓越來越快，進遊戲了（整關，約 3 分鐘）',
+    how:'這次鼓聲真的會越打越快：同一區待越久越快、每進一區更快、被追殺直接到最快，甩掉追兵會慢慢降回。你要踩的拍換成底下較低、較厚的鼓。最後可以用「DRIVE 關閉」版比較一次。',
+    links:[['整關（越來越快）','troy-prologue/index.html'],['整關（DRIVE 關閉，對照）','troy-prologue/index.html?drive=0']],
+    qs:[
+      ['玩到後段，有沒有越來越緊張、越來越急的感覺？', '和「DRIVE 關閉」版比：開著的時候，是不是一路被鼓聲催著、壓力越來越大？',['有，很明顯','有一點','沒有差別']],
+      ['到最後兩區（窄巷、城門）最快的時候，聽不聽得出鼓聲在「又從頭來了」？', '鼓聲每幾秒會偷偷回到同樣的狀態。最快的時候，耳朵還抓不抓得到那個回到原點的瞬間？抓得到的話，礙不礙事？',['聽不出','聽得出，但不礙事','聽得出，而且礙事']],
+      ['最快的時候會不會太吵、太累，或聽不清要踩的拍？', '最快時每秒要打將近 100 下。底下那條讓你踩的低鼓還清楚嗎？耳朵會不會累？畫面會不會卡？',['都還好','太吵或耳朵累','踩的拍聽不清','畫面會卡']],
+    ]},
+  { id:'final', title:'期末七段版，從序玩到終（約 8～10 分鐘）',
+    how:'期末要交的完整流程：先看 3 張開場字卡（木馬進城、全城慶祝、夜深），再從木馬肚子裡出發，依序走過木馬下、廣場、慶宴的街、窄巷、沒有火的後街（特別暗），最後到城門，看結尾字卡。字卡按 <kbd>空白鍵</kbd> 或點一下翻頁，<kbd>Esc</kbd> 跳過。',
+    links:[['期末七段版（序→終）','troy-prologue/index.html?map=final']],
+    qs:[
+      ['開場和結尾字卡，故事看不看得懂？', '3 張開場字卡交代木馬進城、全城慶祝、夜深；結尾是城門打開、希臘人湧進城。沒讀過奧德賽的人，看完知不知道自己是誰、要去哪？',['看得懂','大概懂','看不懂']],
+      ['七段走下來，長度和節奏如何？', '程式玩家約 1 分半走完，真人大概 8～10 分鐘。有沒有哪一段太長、太無聊，或太短一下就過？在備註寫是哪一段。',['剛好','太長','太短','某一段有問題']],
+      ['「沒有火的後街」那麼暗，好不好玩？', '這一段刻意把燈調暗，只能靠最響一擊的照亮和耳朵找衛兵。是有緊張感，還是看不到只能亂走？',['緊張好玩','太暗、亂走','和別段差不多']],
+      ['換區順不順？', '每段之間有一道牆和一個關口，走過關口出口就換下一段。有沒有卡住、要來回走好幾次才換得過去的地方？',['都很順','偶爾要走兩次','有地方卡住']],
+      ['期末版適合放上 12/27–29 班展嗎？','路人只停一兩分鐘：如果只開放前兩區、約兩分鐘，搭配旁邊循環播放影片，夠吸引人嗎？',['很適合','改一下可以','不適合']],
+    ]},
+  { id:'editor', title:'關卡編輯器，看一眼就好（約 2 分鐘，選做）',
+    how:'給建築同學畫新兩區用的網頁工具：上面選工具（牆、矮掩體、影子、衛兵、起點、出口），在地圖上按住拖曳來畫；右邊「檢查」會逐區標出過、提醒、不過；按「在遊戲裡試」直接進遊戲走一次。',
+    links:[['關卡編輯器','level-editor.html']],
+    qs:[
+      ['同學拿到這個，自己畫得出一區嗎？', '想像建築同學第一次打開：不用你教，看得懂怎麼畫牆、放衛兵、試玩嗎？',['畫得出來','要教一下','太難']],
+    ]},
+  { id:'garden', title:'【選題原型】音樂花園（約 5 分鐘）',
+    how:'單人期末的候選之一：上傳一首你手機或電腦裡的歌，畫面依歌的段落變化（前奏日出、主歌長草、副歌開花、間奏星空）。上方可切換專心、輕鬆、放空三種模式；底部時間軸的段落邊界可以拖。網址加 ?demo=1 是班展用的自動展示。這是網頁連結，會開在 claude.ai。',
+    links:[['音樂花園（上傳一首歌）','https://claude.ai/artifact/DQzAvGwnjfbhJWdnfm5ZmK']],
+    qs:[
+      ['自動切出的段落準不準？','看時間軸的色塊和你聽到的副歌、間奏對不對得上，差幾秒內算準。',['大致準','差一點','很不準']],
+      ['放著聽舒服嗎？','切到放空模式聽半首：畫面會讓你想一直開著，還是很快就膩或干擾聽歌？',['想一直開','普通','干擾或會膩']],
+      ['想把它做成期末嗎？','只看這個原型給你的感覺。',['想','還好','不想']],
+      ['適合放上 12/27–29 班展嗎？','想像班展現場：很吵、路人只停一兩分鐘、旁邊有人在看。這個放在攤位上會吸引人、玩得懂嗎？',['很適合','改一下可以','不適合']],
+    ]},
+  { id:'routine', title:'【選題原型】作息模擬（約 3 分鐘）',
+    how:'單人期末的候選之一：先用 Q／W 調起床時間、A／S 調想睡幾小時，系統往回推出就寢、藍光截止和晚餐時間；接著晚上 5 個情境按 1／2／3 選；最後看小人演出隔天。按 R 重來一輪，兩輪會並排比較。這是網頁連結，會開在 claude.ai。',
+    links:[['作息模擬','https://claude.ai/artifact/N8MVVgCCUj3JtPY1CMShUY']],
+    qs:[
+      ['隔天的演出有說服力嗎？','看完會覺得「真的會這樣」，還是只像在看分數？',['有說服力','普通','只像分數']],
+      ['好玩，還是像在作答？','玩第二輪時，是在做取捨，還是已經知道正確答案？',['在做取捨','有點像作答','就是作答']],
+      ['想把它做成期末嗎？','只看這個原型給你的感覺。',['想','還好','不想']],
+      ['適合放上 12/27–29 班展嗎？','想像班展現場：很吵、路人只停一兩分鐘、旁邊有人在看。這個放在攤位上會吸引人、玩得懂嗎？',['很適合','改一下可以','不適合']],
+    ]},
+  { id:'cavewe', title:'【選題原型】雙盲洞穴網頁房間（約 3 分鐘，要戴耳機）',
+    how:'單人期末的候選之一：畫面全黑，只靠耳機裡的聲音找出口。W 前進、Q／E 轉身，跟著海風聲走，別靠近巨人的鼾聲。卡住可以開「試驗場」連結看地圖作弊。要先開本機伺服器（總控會開好）。',
+    links:[['雙盲洞穴網頁房間','blind-cave-web/index.html'],['試驗場（看得到地圖）','blind-cave-web/index.html?debug=1'],['班展觀眾視圖','blind-cave-web/index.html?spectator=1']],
+    qs:[
+      ['只靠聲音找得到出口嗎？','不開試驗場，第一次大概幾分鐘找到？',['3 分鐘內','找很久','找不到']],
+      ['分得出聲音在前面還是後面嗎？','一般耳機最容易混淆前後。轉身時聽得出海風是從正前方還是正後方來？',['分得出','有時混淆','分不出']],
+      ['想把它做成期末嗎？','只看這個原型給你的感覺。',['想','還好','不想']],
+      ['適合放上 12/27–29 班展嗎？','想像班展現場：很吵、路人只停一兩分鐘、旁邊有人在看。這個放在攤位上會吸引人、玩得懂嗎？',['很適合','改一下可以','不適合']],
+    ]},
+];
+const KEY = 'playtest-2026-11-15';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+const list = document.getElementById('list');
+ITEMS.forEach((it, i) => {
+  const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
+  let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
+  it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
+  h += '</div>';
+  it.qs.forEach(([q, hint, opts, def], k) => {
+    const name = it.id + '-' + k;
+    if (saved[name] === undefined && def) saved[name] = def;
+    h += `<fieldset><legend>${q}</legend><div class="qh">${hint}</div>`;
+    opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
+    h += '</fieldset>';
+  });
+  h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
+  c.innerHTML = h; list.appendChild(c);
+});
+save();
+function refresh() {
+  ITEMS.forEach(it => {
+    const n = it.qs.filter((_, k) => saved[it.id + '-' + k]).length;
+    const c = document.getElementById('c-' + it.id);
+    c.classList.toggle('done', n === it.qs.length);
+    c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
+  });
+}
+list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.target.name] = e.target.value; save(); refresh(); } });
+list.addEventListener('input', e => { if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
+refresh();
+document.getElementById('copy').onclick = async () => {
+  let out = '試玩結果（2026-11-15 清單）\n';
+  ITEMS.forEach((it, i) => {
+    out += `\n${i + 1}. ${it.title}\n`;
+    it.qs.forEach(([q], k) => { out += `- ${q}：${saved[it.id + '-' + k] || '（未答）'}\n`; });
+    if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
+  });
+  const msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(out); msg.textContent = '已複製，貼回對話即可。'; }
+  catch (e) { prompt('複製下面文字：', out); }
+};
+document.getElementById('reset').onclick = () => { if (confirm('清除所有答案？')) { saved = {}; save(); location.reload(); } };
+</script>
+</body>
+</html>

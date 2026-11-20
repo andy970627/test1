@@ -1,0 +1,1118 @@
+<title>換層試驗場：特洛伊之夜</title>
+<style>
+  :root {
+    --bg-dark: #07080c;      /* 設計系統 night */
+    --panel-bg: rgba(8, 9, 14, .82);   /* panel */
+    --border-color: #2a2c38;  /* line */
+    --text-main: #d6cfc2;     /* ash */
+    --text-dim: #8a8478;      /* dim */
+    --accent-gold: #f0a85a;   /* fire */
+    --accent-blue: #9fb0d8;   /* moon */
+    --accent-red: #c23a2c;    /* blood */
+    --accent-torch: #ff9d3b;
+    --touch-h: 0px;   /* 觸控按鈕列的高度（觸控模式時由 .touch 設定），頁面底部留空給它 */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* 手機：取消雙擊縮放與 300 毫秒點擊延遲 */
+  html { touch-action: manipulation; -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--bg-dark);
+    color: var(--text-main);
+    font-family: "Noto Sans TC", "PingFang TC", system-ui, sans-serif;   /* 設計系統 text */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    user-select: none;
+    min-height: 100vh;
+  }
+
+  .sandbox-container {
+    width: 100%;
+    max-width: 960px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* 提示標語條 */
+  .hint-banner {
+    background: linear-gradient(90deg, rgba(240, 168, 90, 0.12), rgba(18, 20, 32, 0.85));
+    border-left: 4px solid var(--accent-gold);
+    padding: 10px 16px;
+    border-radius: 0;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #f0e6cf;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  /* 畫布區域 */
+  .canvas-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* 數字面板與即時參數調校 */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  @media (max-width: 768px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+  }
+
+  .panel-box {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+    padding: 14px 18px;
+    font-size: 13px;
+  }
+
+  .panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent-gold);
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .readout-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .readout-row:last-child { border-bottom: none; }
+  .readout-label { color: var(--text-dim); }
+  .readout-val { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600; }
+
+  /* 滑桿調節列 */
+  .slider-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 50px;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .slider-row label { color: var(--text-dim); font-size: 12px; }
+  .slider-row input[type="range"] {
+    accent-color: var(--accent-gold);
+    cursor: pointer;
+  }
+  .slider-row span {
+    font-family: monospace;
+    font-size: 12px;
+    text-align: right;
+  }
+
+  .controls-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .btn {
+    background: #252a3d;
+    color: var(--text-main);
+    border: 1px solid #3d4563;
+    padding: 6px 16px;
+    border-radius: 0;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .btn:hover { background: #333a54; border-color: var(--accent-gold); color: #fff; }
+
+  /* 結束覆蓋畫面 */
+  .overlay-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 11, 16, 0.9);
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    z-index: 100;
+    backdrop-filter: blur(4px);
+    padding: 24px;
+    text-align: center;
+  }
+  .overlay-title { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .overlay-win { color: var(--accent-gold); }
+  .overlay-fail { color: var(--accent-red); }
+  .overlay-stats {
+    background: rgba(255,255,255,0.04);
+    padding: 12px 24px;
+    border-radius: 0;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+
+  .key-pill {
+    display: inline-block;
+    background: #1c2133;
+    border: 1px solid #434c6e;
+    border-radius: 0;
+    padding: 1px 6px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #e5eaf5;
+  }
+
+  /* 開始畫面：手機的聲音要等使用者點一下才能開（瀏覽器規定），鍵盤按任何鍵也算 */
+  .start-gate {
+    position: absolute; inset: 0; z-index: 110;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background: rgba(10, 11, 16, 0.86); text-align: center; padding: 16px;
+  }
+  .start-gate[hidden] { display: none; }
+  .start-gate .lab-brief { max-width: 560px; text-align: left; font-size: 13px; line-height: 1.6; border-left: 3px solid var(--accent-gold); background: rgba(8, 9, 14, .82); padding: 8px 12px; } /* 開頭三行 */
+  .start-gate .lab-brief b { color: var(--accent-gold); }
+  .start-gate .btn-big { font-size: 20px; padding: 14px 32px; border-radius: 0; background: var(--accent-gold); border-color: var(--accent-gold); color: #1a1008; }
+  .start-gate small { color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+
+  /* 觸控按鈕列：固定在畫面底部，左「前進（按住）」、右「換層」，上排小按鈕「重來」「聲部譜」 */
+  .touch-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+    display: none;
+    grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(10, 11, 16, 0.94); border-top: 1px solid var(--border-color);
+  }
+  body.touch .touch-bar { display: grid; }
+  .touch-only { display: none; }
+  body.touch .touch-only { display: inline; }
+  body.touch { --touch-h: 168px; padding-bottom: calc(var(--touch-h) + 12px + env(safe-area-inset-bottom, 0px)); }
+  .touch-bar .row-small { grid-column: 1 / -1; display: flex; gap: 10px; }
+  .touch-bar button {
+    touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    border-radius: 6px; border: 1px solid #3a3c48; background: #12131a; color: var(--text-main);
+    font-family: inherit;
+  }
+  .touch-bar .row-small button { flex: 1; height: 44px; font-size: 15px; }
+  .touch-bar .row-small button[aria-pressed="false"] { color: var(--text-dim); }
+  .touch-bar .pad { height: 104px; font-size: 22px; font-weight: 700; line-height: 1.25; }
+  .touch-bar .pad small { display: block; font-size: 12px; font-weight: 400; color: var(--text-dim); }
+  .touch-bar #tWalk.on { background: #1c2230; border-color: var(--accent-blue); }
+  .touch-bar #tSwitch { background: #1f170e; border-color: #7a5a30; }
+  .touch-bar #tSwitch.flash { background: #5a3f1e; border-color: var(--accent-gold); }
+
+  @media (max-width: 600px) {
+    body { padding: 8px; }
+    .sandbox-container { gap: 8px; }
+    .hint-banner { font-size: 14px; padding: 8px 12px; min-height: 0; }
+    .slider-row { grid-template-columns: 1fr 44px; }
+    .slider-row label { grid-column: 1 / -1; }
+    .panel-title { flex-wrap: wrap; gap: 6px; }
+    .overlay-title { font-size: 22px; }
+    .overlay-modal { gap: 10px; padding: 12px; }
+    .overlay-stats { padding: 8px 14px; font-size: 13px; line-height: 1.6; max-height: 60%; overflow: auto; }
+  }
+</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+<div class="sandbox-container">
+  <!-- 提示文字列 -->
+  <div class="hint-banner" id="hintBox">
+    按住 W 往前走，腳步會落在鼓點上、被鼓聲蓋住。你踩的那條鼓會越來越快。
+  </div>
+
+  <!-- 主畫布視窗（上半巷子、下半聲部譜） -->
+  <div class="canvas-card">
+    <canvas id="viewCanvas" width="960" height="480"></canvas>
+    <div class="overlay-modal" id="overlayModal">
+      <div class="overlay-title" id="overlayTitle">順利通過</div>
+      <div class="overlay-stats" id="overlayDetails"></div>
+      <button class="btn" id="btnOverlayRestart">重新開始（R）</button>
+    </div>
+    <div class="start-gate" id="startGate">
+      <div class="lab-brief" id="labBrief">
+        <div><b>測</b>：只靠耳朵，聽不聽得出底下的慢鼓進來了、在對的那一拍換過去</div>
+        <div><b>操作</b>：W 按住前進・Q 換層・R 重來（手機：左下「前進」、右下「換層」）</div>
+        <div><b>看</b>：「最近換層偏差」幾毫秒（正數是按晚）、火把顏色（黃轉紅＝疑心升高）</div>
+      </div>
+      <button class="btn btn-big" id="btnStart">點一下開始</button>
+      <small>請戴耳機。<span class="kb-only">鍵盤：按住 W 前進、Q 換層、R 重來（按任何鍵也能開始）。</span><span class="touch-only">左下按住「前進」，右下按「換層」。</span></small>
+    </div>
+  </div>
+
+  <!-- 下方儀表與即時微調 -->
+  <div class="dashboard-grid">
+    <!-- 數字讀數面板 -->
+    <div class="panel-box">
+      <div class="panel-title">
+        <span>數值狀態面板</span>
+        <span style="font-size:12px; color:var(--text-dim);">操作：<span class="key-pill">W</span> 前行 / <span class="key-pill">Q</span> 換層 / <span class="key-pill">R</span> 重來<span class="touch-only">；觸控：底部按鈕</span></span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">目前聲部年齡 u / 音量 / 拍距</span>
+        <span class="readout-val" id="valCurrentRide">-</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">底層慢鼓年齡 u / 音量</span>
+        <span class="readout-val" id="valNextRide">-</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">換層窗狀態</span>
+        <span class="readout-val" id="valWindow">-</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">最近換層偏差 (毫秒)</span>
+        <span class="readout-val" id="valLastOffset">-</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">衛兵警戒疑心</span>
+        <span class="readout-val" id="valSusp">0.0%</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">步數 / 露餡出聲 / 換層次數</span>
+        <span class="readout-val" id="valStats">0 / 0 / 0</span>
+      </div>
+    </div>
+
+    <!-- 常數即時調校 -->
+    <div class="panel-box">
+      <div class="panel-title">
+        <span>實驗常數微調</span>
+        <label style="font-size:12px; color:var(--text-dim); cursor:pointer;">
+          <input type="checkbox" id="aidToggle" checked onchange="toggleAid(this.checked)"> 啟用聲部譜輔助
+        </label>
+      </div>
+
+      <div class="slider-row">
+        <label for="slCycle">CYCLE (循環秒數)</label>
+        <input type="range" id="slCycle" min="6" max="16" step="1" value="10" oninput="updateParamLabel('CYCLE', this.value)">
+        <span id="lblCYCLE">10</span>
+      </div>
+
+      <div class="slider-row">
+        <label for="slStrideMin">STRIDE_MIN (最短步距)</label>
+        <input type="range" id="slStrideMin" min="0.3" max="0.9" step="0.05" value="0.6" oninput="updateParamLabel('STRIDE_MIN', this.value)">
+        <span id="lblSTRIDE_MIN">0.60</span>
+      </div>
+
+      <div class="slider-row">
+        <label for="slCoverGain">COVER_GAIN (遮蓋門檻)</label>
+        <input type="range" id="slCoverGain" min="0.05" max="0.35" step="0.02" value="0.15" oninput="updateParamLabel('COVER_GAIN', this.value)">
+        <span id="lblCOVER_GAIN">0.15</span>
+      </div>
+
+      <div class="slider-row">
+        <label for="slSwitchWin">SWITCH_WIN (合拍寬限)</label>
+        <input type="range" id="slSwitchWin" min="0.05" max="0.3" step="0.01" value="0.15" oninput="updateParamLabel('SWITCH_WIN', this.value)">
+        <span id="lblSWITCH_WIN">0.15</span>
+      </div>
+
+      <div class="slider-row">
+        <label for="slRideBoost">RIDE_BOOST_DB (所騎強調)</label>
+        <input type="range" id="slRideBoost" min="0" max="6" step="0.5" value="2" oninput="updateParamLabel('RIDE_BOOST_DB', this.value)">
+        <span id="lblRIDE_BOOST_DB">2.0</span>
+      </div>
+
+      <div class="slider-row">
+        <label for="slKnockGain">ENTER_KNOCK_GAIN (敲擊係數)</label>
+        <input type="range" id="slKnockGain" min="0" max="1" step="0.05" value="0.5" oninput="updateParamLabel('ENTER_KNOCK_GAIN', this.value)">
+        <span id="lblENTER_KNOCK_GAIN">0.50</span>
+      </div>
+
+      <div class="controls-row">
+        <span style="font-size:11px; color:var(--text-dim);">滑桿變更後按重來按鍵生效</span>
+        <button class="btn" onclick="restartGame()">套用並重來 (R)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 觸控按鈕（手機）：按下的時刻和鍵盤走同一條路（pointerdown，用聲音時鐘記），不等 click -->
+<div class="touch-bar" id="touchBar">
+  <div class="row-small">
+    <button type="button" id="tRestart">重來</button>
+    <button type="button" id="tAid" aria-pressed="true">聲部譜：開</button>
+  </div>
+  <button type="button" class="pad" id="tWalk">前進<small>按住</small></button>
+  <button type="button" class="pad" id="tSwitch">換層<small>兩條鼓同時落下時按</small></button>
+</div>
+
+<script src="rules.js"></script>
+<script src="audio.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // 解析網址參數
+  var params = new URLSearchParams(window.location.search);
+  // 自動檢查用（docs/process/agent-notes/README.md「瀏覽器測試規矩」）：?mute=1 完全不出聲。
+  // 所有接到喇叭（destination）的聲音改接一個音量 0 的總閘；音訊環境照常建立，因為規則用音訊時鐘推進。
+  // 這一頁不鎖滑鼠，所以 ?nolock=1 不用處理。一般試玩不帶參數，不受影響。
+  if (params.get('mute') === '1' && window.AudioNode && window.AudioDestinationNode) {
+    var connect0 = AudioNode.prototype.connect;
+    AudioNode.prototype.connect = function (dest) {
+      var args = Array.prototype.slice.call(arguments);
+      if (dest instanceof AudioDestinationNode) {
+        var c = dest.context;
+        if (!c.__muteGate) { c.__muteGate = c.createGain(); c.__muteGate.gain.value = 0; connect0.call(c.__muteGate, dest); }
+        args[0] = c.__muteGate;
+      }
+      return connect0.apply(this, args);
+    };
+  }
+  var visualAid = params.get('aid') !== '0';
+  document.getElementById('aidToggle').checked = visualAid;
+
+  var canvas = document.getElementById('viewCanvas');
+  var ctx2d = canvas.getContext('2d');
+  // 手機直式：畫布內部寬度改 480（高度不變），顯示出來高一倍、字大一倍；繪圖都照 canvas.width 排，不用另外改
+  function fitCanvas() {
+    var vw = Math.min(window.innerWidth || 960, document.documentElement.clientWidth || 960);
+    var want = vw < 600 ? 480 : 960;
+    if (canvas.width !== want) canvas.width = want;
+  }
+  fitCanvas();
+  window.addEventListener('resize', fitCanvas);
+
+  // 音訊與規則實例
+  var audioCtx = null;
+  var audio = null;
+  var game = null;
+  var footprints = []; // 歷史腳印：{x, type: 'masked'|'loud', t}
+  var switchHistory = []; // 換層偏差歷史：{off, ok}
+  var lastOffText = '-';
+
+  var keysDown = { walk: false };
+  var switchTriggerTime = null;
+
+  // 提示狀態追蹤
+  var hints = LayerRideRules.hintsFor(LayerRideRules.T);
+  var shownHints = {
+    intro: true,
+    switch: false,
+    thin: false,
+    fast: false,
+    off: false,
+    caught: false
+  };
+
+  // 觸控模式：手指當主要輸入的裝置（手機、平板）自動開；?touch=1 強制開、?touch=0 強制關。鍵盤一直都能用
+  var touchMode = params.get('touch') === '1' ||
+    (params.get('touch') !== '0' && ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window)));
+  if (touchMode) document.body.classList.add('touch');
+
+  function setHint(text) {
+    var box = document.getElementById('hintBox');
+    if (!box) return;
+    // 規則層的提示寫的是鍵盤按鍵；觸控模式改成畫面上的按鈕名稱（規則檔不動）
+    if (touchMode && text) text = text.replace(/按住 W/g, '按住「前進」').replace(/按 Q/g, '按「換層」');
+    box.textContent = text;
+  }
+
+  // 取得目前滑桿設定參數
+  function getCustomT() {
+    return {
+      CYCLE: parseFloat(document.getElementById('slCycle').value),
+      STRIDE_MIN: parseFloat(document.getElementById('slStrideMin').value),
+      COVER_GAIN: parseFloat(document.getElementById('slCoverGain').value),
+      SWITCH_WIN: parseFloat(document.getElementById('slSwitchWin').value),
+      RIDE_BOOST_DB: parseFloat(document.getElementById('slRideBoost').value),
+      ENTER_KNOCK_GAIN: parseFloat(document.getElementById('slKnockGain').value)
+    };
+  }
+
+  // 初始化網址覆寫參數
+  function applyUrlParams() {
+    var keys = ['CYCLE', 'STRIDE_MIN', 'COVER_GAIN', 'SWITCH_WIN', 'RIDE_BOOST_DB', 'ENTER_KNOCK_GAIN'];
+    keys.forEach(function (k) {
+      if (params.has(k)) {
+        var val = parseFloat(params.get(k));
+        var sliderMap = {
+          CYCLE: 'slCycle',
+          STRIDE_MIN: 'slStrideMin',
+          COVER_GAIN: 'slCoverGain',
+          SWITCH_WIN: 'slSwitchWin',
+          RIDE_BOOST_DB: 'slRideBoost',
+          ENTER_KNOCK_GAIN: 'slKnockGain'
+        };
+        var sl = document.getElementById(sliderMap[k]);
+        if (sl) {
+          sl.value = val;
+          updateParamLabel(k, val);
+        }
+      }
+    });
+  }
+
+  window.updateParamLabel = function (k, val) {
+    var el = document.getElementById('lbl' + k);
+    if (el) el.textContent = (+val).toFixed(k === 'CYCLE' ? 0 : 2);
+  };
+
+  window.toggleAid = function (enabled) {
+    visualAid = !!enabled;
+    document.getElementById('aidToggle').checked = visualAid;
+    var b = document.getElementById('tAid');
+    if (b) { b.setAttribute('aria-pressed', visualAid ? 'true' : 'false'); b.textContent = '聲部譜：' + (visualAid ? '開' : '關'); }
+  };
+  window.toggleAid(visualAid);
+
+  function initAudioIfNeeded() {
+    if (!audioCtx) {
+      var AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContextClass();
+      audio = LayerRideAudio.createAudio(audioCtx, { rules: LayerRideRules });
+      window.LayerRideDebug = { game: game, audio: audio, ctx: audioCtx, rules: LayerRideRules };
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  window.restartGame = function () {
+    initAudioIfNeeded();
+    var customT = getCustomT();
+    try {
+      var nowT = audio ? audio.now() : 0;
+      game = LayerRideRules.createGame({ t0: nowT, seed: Math.floor(Math.random() * 10000), T: customT });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+
+    footprints = [];
+    switchHistory = [];
+    lastOffText = '-';
+    shownHints = { intro: true, switch: false, thin: false, fast: false, off: false, caught: false };
+    setHint(hints.intro);
+
+    document.getElementById('overlayModal').style.display = 'none';
+    if (window.LayerRideDebug) {
+      window.LayerRideDebug.game = game;
+    }
+  };
+
+  // 事件分派系統（A14: 涵蓋所有 11 個事件名稱）
+  function handleGameEvent(e) {
+    if (!audio) return;
+    audio.cue(e);
+
+    switch (e.type) {
+      case 'window_open':
+        if (!shownHints.switch) {
+          shownHints.switch = true;
+          setHint(hints.switch);
+        }
+        break;
+
+      case 'window_close':
+        break;
+
+      case 'voice_in':
+        break;
+
+      case 'switch_none':
+        break;
+
+      case 'switch_ok':
+        lastOffText = (e.off * 1000).toFixed(0) + ' ms (準)';
+        switchHistory.push({ off: e.off, ok: true });
+        break;
+
+      case 'switch_off':
+        lastOffText = (e.off * 1000).toFixed(0) + ' ms (離拍)';
+        switchHistory.push({ off: e.off, ok: false });
+        if (!shownHints.off) {
+          shownHints.off = true;
+          setHint(hints.off);
+        }
+        break;
+
+      case 'step_masked':
+        footprints.push({ x: e.x, type: 'masked', t: e.t });
+        break;
+
+      case 'step_loud':
+        footprints.push({ x: e.x, type: 'loud', t: e.t });
+        if (e.cause === 'thin' && !shownHints.thin) {
+          shownHints.thin = true;
+          setHint(hints.thin);
+        } else if (e.cause === 'fast' && !shownHints.fast) {
+          shownHints.fast = true;
+          setHint(hints.fast);
+        }
+        break;
+
+      case 'guard_hear':
+        break;
+
+      case 'caught':
+        setHint(hints.caught);
+        showGameOver(false);
+        break;
+
+      case 'win':
+        showGameOver(true);
+        break;
+    }
+  }
+
+  function showGameOver(isWin) {
+    var modal = document.getElementById('overlayModal');
+    var title = document.getElementById('overlayTitle');
+    var details = document.getElementById('overlayDetails');
+
+    title.textContent = isWin ? '趁夜潛越成功' : '衛兵察覺逮捕';
+    title.className = 'overlay-title ' + (isWin ? 'overlay-win' : 'overlay-fail');
+
+    var offSummary = switchHistory.map(function (s, i) {
+      return '換層 #' + (i + 1) + ': ' + (s.off * 1000).toFixed(0) + ' ms ' + (s.ok ? '✓' : '✗');
+    }).join('<br>');
+
+    details.innerHTML =
+      '總耗時：' + (game.time - game.t0).toFixed(2) + ' 秒<br>' +
+      '出聲次數：' + game.stats.loud + ' 次<br>' +
+      '換層次數：' + game.stats.switches + ' 次<br>' +
+      (offSummary ? '<div style="margin-top:6px; font-size:12px; color:#a0a8be;">' + offSummary + '</div>' : '');
+
+    modal.style.display = 'flex';
+  }
+
+  // ---------- 輸入：鍵盤和觸控走同一條路 ----------
+  // 換層的時刻用聲音時鐘記：currentTime − 輸出延遲 − 事件從發生到處理的時間（evt.timeStamp，夾在 0～0.1 秒；
+  // 觸控事件常晚一兩幀才送到，不扣掉會被算成按晚）
+  function markSwitch(evt) {
+    initAudioIfNeeded();
+    if (!audioCtx) return;
+    var lag = 0;
+    if (evt && typeof evt.timeStamp === 'number' && evt.timeStamp > 0 && window.performance) {
+      lag = Math.max(0, Math.min(0.1, (performance.now() - evt.timeStamp) / 1000));
+    }
+    switchTriggerTime = audioCtx.currentTime - (audioCtx.outputLatency || 0) - lag;
+  }
+  function setWalk(on) {
+    keysDown.walk = !!on;
+    var b = document.getElementById('tWalk');
+    if (b) b.classList.toggle('on', keysDown.walk);
+  }
+
+  // 開始：手機要使用者的手勢才能出聲。點開始（或按任何鍵）→ 開聲音、從頭來
+  var started = false;
+  function begin() {
+    initAudioIfNeeded();
+    document.getElementById('startGate').hidden = true;
+    if (!started) { started = true; restartGame(); }
+  }
+  function onGatePress(evt) { evt.preventDefault(); begin(); }
+  document.getElementById('btnStart').addEventListener('pointerdown', onGatePress);
+  document.getElementById('startGate').addEventListener('pointerdown', onGatePress);
+  // iOS 有時要在放開（touchend／click）時才肯開聲音，多試一次
+  ['touchend', 'click'].forEach(function (type) {
+    document.addEventListener(type, function () { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { passive: true });
+  });
+
+  // 鍵盤
+  window.addEventListener('keydown', function (evt) {
+    if (!started) begin();
+    initAudioIfNeeded();
+    if (evt.code === 'KeyW' || evt.key === 'w' || evt.key === 'W' || evt.key === 'ArrowUp') {
+      setWalk(true);
+    }
+    if ((evt.code === 'KeyQ' || evt.key === 'q' || evt.key === 'Q') && !evt.repeat) {
+      markSwitch(evt);
+    }
+    if (evt.code === 'KeyR' || evt.key === 'r' || evt.key === 'R') {
+      restartGame();
+    }
+  });
+
+  window.addEventListener('keyup', function (evt) {
+    if (evt.code === 'KeyW' || evt.key === 'w' || evt.key === 'W' || evt.key === 'ArrowUp') {
+      setWalk(false);
+    }
+  });
+
+  // 觸控按鈕：pointerdown 就算（不等 click），擋掉長按選單、捲動與縮放
+  function press(id, down, up) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', function (evt) {
+      evt.preventDefault();
+      if (!started) begin();
+      try { el.setPointerCapture(evt.pointerId); } catch (e) {}
+      down(evt);
+    });
+    if (up) ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (type) {
+      el.addEventListener(type, function () { up(); });
+    });
+    el.addEventListener('contextmenu', function (evt) { evt.preventDefault(); });
+  }
+  press('tWalk', function () { setWalk(true); }, function () { setWalk(false); });
+  press('tSwitch', function (evt) {
+    markSwitch(evt);
+    var b = document.getElementById('tSwitch');
+    b.classList.add('flash');
+    setTimeout(function () { b.classList.remove('flash'); }, 120);
+  });
+  press('tRestart', function () { restartGame(); });
+  press('tAid', function () { window.toggleAid(!visualAid); });
+  press('btnOverlayRestart', function () { restartGame(); });
+  document.getElementById('touchBar').addEventListener('touchmove', function (evt) { evt.preventDefault(); }, { passive: false });
+  // 切到別的 App 或分頁時放開「前進」，免得回來時人自己一直走
+  document.addEventListener('visibilitychange', function () { if (document.hidden) setWalk(false); });
+  window.addEventListener('blur', function () { setWalk(false); });
+
+  // 繪圖核心
+  function render(nowT) {
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+
+    var w = canvas.width;
+    var hAlley = 220;
+    var hSpec = 260;
+
+    // ----- 上半部：暗夜巷道 -----
+    // 巷道背景石牆
+    ctx2d.fillStyle = '#0f111a';
+    ctx2d.fillRect(0, 0, w, hAlley);
+
+    // 地面
+    var groundY = 180;
+    ctx2d.fillStyle = '#181b26';
+    ctx2d.fillRect(0, groundY, w, hAlley - groundY);
+    ctx2d.strokeStyle = '#2a2f42';
+    ctx2d.lineWidth = 2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, groundY);
+    ctx2d.lineTo(w, groundY);
+    ctx2d.stroke();
+
+    var laneLen = game.T.LANE; // 18 米
+    function worldToScreenX(x) {
+      var margin = 60;
+      return margin + (x / laneLen) * (w - margin * 2);
+    }
+
+    // 牆面火把光暈
+    var torchX = worldToScreenX(game.guard.x);
+    var suspFactor = Math.min(1, game.guard.susp);
+    var flicker = Math.sin(nowT * 12) * 4;
+    var torchGrad = ctx2d.createRadialGradient(torchX, 70, 10, torchX, 70, 140 + flicker);
+    var torchR = Math.floor(255);
+    var torchG = Math.floor(160 * (1 - suspFactor) + 60 * suspFactor);
+    var torchB = Math.floor(50 * (1 - suspFactor));
+    torchGrad.addColorStop(0, 'rgba(' + torchR + ',' + torchG + ',' + torchB + ', 0.35)');
+    torchGrad.addColorStop(1, 'rgba(' + torchR + ',' + torchG + ',' + torchB + ', 0)');
+    ctx2d.fillStyle = torchGrad;
+    ctx2d.beginPath();
+    ctx2d.arc(torchX, 70, 140 + flicker, 0, Math.PI * 2);
+    ctx2d.fill();
+
+    // 火把本體
+    ctx2d.fillStyle = '#5c4028';
+    ctx2d.fillRect(torchX - 3, 75, 6, 25);
+    ctx2d.fillStyle = 'rgb(' + torchR + ',' + torchG + ',' + torchB + ')';
+    ctx2d.beginPath();
+    ctx2d.arc(torchX, 72, 6, 0, Math.PI * 2);
+    ctx2d.fill();
+
+    // 衛兵站姿
+    var guardX = worldToScreenX(game.guard.x);
+    var guardFacing = (game.player.x > game.guard.x) ? 1 : -1;
+    ctx2d.fillStyle = '#68738a';
+    ctx2d.fillRect(guardX - 8, groundY - 50, 16, 50); // 身軀
+    ctx2d.fillStyle = '#8f9cb5';
+    ctx2d.beginPath();
+    ctx2d.arc(guardX + guardFacing * 3, groundY - 58, 8, 0, Math.PI * 2); // 頭盔
+    ctx2d.fill();
+    // 衛兵長矛
+    ctx2d.strokeStyle = '#a6b2c9';
+    ctx2d.lineWidth = 2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(guardX - 10, groundY);
+    ctx2d.lineTo(guardX - 10, groundY - 75);
+    ctx2d.stroke();
+
+    // 歷史腳印渲染
+    for (var f = 0; f < footprints.length; f++) {
+      var fp = footprints[f];
+      var fpx = worldToScreenX(fp.x);
+      var age = nowT - fp.t;
+      var alpha = Math.max(0.1, 1 - age / 12);
+      ctx2d.fillStyle = (fp.type === 'masked')
+        ? 'rgba(159, 176, 216, ' + alpha + ')'
+        : 'rgba(255, 120, 40, ' + alpha + ')';
+      ctx2d.beginPath();
+      ctx2d.ellipse(fpx, groundY + 8 + (f % 2) * 5, 4, 2, 0, 0, Math.PI * 2);
+      ctx2d.fill();
+    }
+
+    // 玩家身影
+    var playerX = worldToScreenX(game.player.x);
+    ctx2d.fillStyle = '#364052';
+    ctx2d.fillRect(playerX - 6, groundY - 44, 12, 44);
+    ctx2d.fillStyle = '#4f5d75';
+    ctx2d.beginPath();
+    ctx2d.arc(playerX + 2, groundY - 50, 7, 0, Math.PI * 2);
+    ctx2d.fill();
+
+    // 巷弄終點標記（東側出口）
+    var endX = worldToScreenX(laneLen);
+    ctx2d.strokeStyle = 'rgba(240, 168, 90, 0.4)';
+    ctx2d.setLineDash([4, 4]);
+    ctx2d.beginPath();
+    ctx2d.moveTo(endX, groundY - 80);
+    ctx2d.lineTo(endX, groundY);
+    ctx2d.stroke();
+    ctx2d.setLineDash([]);
+    ctx2d.fillStyle = 'rgba(240, 168, 90, 0.6)';
+    ctx2d.font = '11px sans-serif';
+    ctx2d.fillText('東端脫離點', endX - 28, groundY - 88);
+
+    // ----- 分隔線 -----
+    ctx2d.strokeStyle = '#222838';
+    ctx2d.lineWidth = 2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(0, hAlley);
+    ctx2d.lineTo(w, hAlley);
+    ctx2d.stroke();
+
+    // ----- 下半部：聲部譜（四軌節奏視覺化，供試驗判定） -----
+    if (!visualAid) {
+      ctx2d.fillStyle = '#08090d';
+      ctx2d.fillRect(0, hAlley, w, hSpec);
+      ctx2d.fillStyle = '#3d4459';
+      ctx2d.font = '14px sans-serif';
+      ctx2d.textAlign = 'center';
+      ctx2d.fillText('聲部譜輔助已關閉（僅憑雙耳聆聽換層時機）', w / 2, hAlley + hSpec / 2);
+      ctx2d.textAlign = 'left';
+      return;
+    }
+
+    var rowH = (hSpec - 20) / game.T.LAYERS;
+    var specTop = hAlley + 10;
+    var nowLineX = w * 0.25; // 25% 處為「現在時刻」線
+
+    // 繪製「現在」垂直基準線
+    ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx2d.lineWidth = 1;
+    ctx2d.beginPath();
+    ctx2d.moveTo(nowLineX, specTop);
+    ctx2d.lineTo(nowLineX, specTop + hSpec - 20);
+    ctx2d.stroke();
+    ctx2d.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx2d.font = '10px monospace';
+    ctx2d.fillText('目前時間', nowLineX - 20, specTop - 2);
+
+    // 取得未來 3 秒內的所有拍點
+    var futureSec = 3.0;
+    var beats = LayerRideRules.beatsBetween(nowT - 0.5, nowT + futureSec, game);
+
+    // 取得當前換層窗
+    var currentWindows = LayerRideRules.switchWindows(nowT - 0.5, nowT + futureSec, game);
+    var rideId = game.ride.id;
+    var voices = LayerRideRules.voicesAt(nowT, game);
+
+    // 4 列，慢的在下 (k=0)、快的在上 (k=3)
+    for (var k = 0; k < 4; k++) {
+      var rowY = specTop + (3 - k) * rowH; // k=0 最慢在最底下
+      var v = (k < voices.length) ? voices[k] : null;
+      var isRidden = v && (v.id === rideId);
+
+      // 列底色（亮度隨音量，騎不住時變暗）
+      var baseGain = v ? v.gain : 0;
+      var canRide = v ? v.rideable : false;
+      var rowAlpha = Math.max(0.04, baseGain * 0.18);
+      ctx2d.fillStyle = canRide
+        ? 'rgba(159, 176, 216, ' + rowAlpha + ')'
+        : 'rgba(20, 22, 30, 0.6)';
+      ctx2d.fillRect(0, rowY, w, rowH - 4);
+
+      // 太快時加斜線
+      if (v && v.u < game.T.LAYERS && v.interval < game.T.STRIDE_MIN) {
+        ctx2d.strokeStyle = 'rgba(217, 74, 74, 0.15)';
+        ctx2d.lineWidth = 1;
+        for (var sx = -rowH; sx < w; sx += 12) {
+          ctx2d.beginPath();
+          ctx2d.moveTo(sx, rowY + rowH - 4);
+          ctx2d.lineTo(sx + rowH, rowY);
+          ctx2d.stroke();
+        }
+      }
+
+      // 現在騎的聲部外框加亮
+      if (isRidden) {
+        ctx2d.strokeStyle = '#f0a85a';   // 畫布不認 CSS 變數，直接寫色碼
+        ctx2d.lineWidth = 2;
+        ctx2d.strokeRect(1, rowY, w - 2, rowH - 4);
+      }
+
+      // 聲部名稱與音量標籤
+      ctx2d.fillStyle = isRidden ? '#f0a85a' : '#8a8478';
+      ctx2d.font = '11px monospace';
+      var vLabel = v
+        ? ('聲部 #' + v.id + ' (u=' + v.u.toFixed(2) + ' / 音量=' + v.gain.toFixed(2) + (isRidden ? ' [目前踩著]' : '') + ')')
+        : '無';
+      ctx2d.fillText(vLabel, 10, rowY + 16);
+    }
+
+    // 換層窗連接帶
+    if (currentWindows.length > 0) {
+      var win = currentWindows[0];
+      var winX1 = nowLineX + ((win.from - nowT) / futureSec) * (w - nowLineX);
+      var winX2 = nowLineX + ((win.to - nowT) / futureSec) * (w - nowLineX);
+
+      // 找到目前騎的聲部與底下那條對應的 rowY
+      var rideIdx = -1;
+      for (var vi = 0; vi < voices.length; vi++) {
+        if (voices[vi].id === rideId) rideIdx = vi;
+      }
+
+      if (rideIdx > 0) {
+        var topRowY = specTop + (3 - rideIdx) * rowH;
+        var bottomRowY = specTop + (3 - (rideIdx - 1)) * rowH + rowH - 4;
+        var drawX1 = Math.max(0, winX1);
+        var drawX2 = Math.min(w, winX2);
+
+        if (drawX2 > drawX1) {
+          ctx2d.fillStyle = 'rgba(240, 168, 90, 0.14)';
+          ctx2d.fillRect(drawX1, topRowY, drawX2 - drawX1, bottomRowY - topRowY);
+          ctx2d.strokeStyle = 'rgba(240, 168, 90, 0.4)';
+          ctx2d.strokeRect(drawX1, topRowY, drawX2 - drawX1, bottomRowY - topRowY);
+        }
+
+        // 重合拍豎線
+        for (var bi = 0; bi < win.beats.length; bi++) {
+          var bt = win.beats[bi];
+          var bx = nowLineX + ((bt - nowT) / futureSec) * (w - nowLineX);
+          if (bx >= 0 && bx <= w) {
+            ctx2d.strokeStyle = '#f0a85a';
+            ctx2d.lineWidth = 3;
+            ctx2d.beginPath();
+            ctx2d.moveTo(bx, topRowY);
+            ctx2d.lineTo(bx, bottomRowY);
+            ctx2d.stroke();
+          }
+        }
+      }
+    }
+
+    // 拍點繪製（方塊往左流動）
+    for (var pIdx = 0; pIdx < beats.length; pIdx++) {
+      var beat = beats[pIdx];
+      var bx = nowLineX + ((beat.t - nowT) / futureSec) * (w - nowLineX);
+      if (bx < -10 || bx > w + 10) continue;
+
+      // 尋找拍點對應的繪製行軌道
+      var bTrack = -1;
+      for (var tj = 0; tj < voices.length; tj++) {
+        if (voices[tj].id === beat.id) bTrack = tj;
+      }
+      if (bTrack < 0) continue;
+
+      var bRowY = specTop + (3 - bTrack) * rowH;
+      var bSize = 6 + beat.gain * 12;
+      ctx2d.fillStyle = (beat.id === rideId) ? '#f0a85a' : '#9fb0d8';
+      ctx2d.globalAlpha = Math.max(0.2, beat.gain);
+      ctx2d.fillRect(bx - bSize / 2, bRowY + (rowH - 4) / 2 - bSize / 2, bSize, bSize);
+      ctx2d.globalAlpha = 1.0;
+    }
+  }
+
+  // 數字儀表板資料刷新
+  function updateDashboard() {
+    if (!game) return;
+    var voices = LayerRideRules.voicesAt(game.time, game);
+    var rideId = game.ride.id;
+
+    var curV = null;
+    var nextV = null;
+    for (var i = 0; i < voices.length; i++) {
+      if (voices[i].id === rideId) curV = voices[i];
+      if (voices[i].id === rideId + 1) nextV = voices[i];
+    }
+
+    // 聲部譜關閉（?aid=0）＝只靠耳朵：騎的聲部、下一條、換層窗這三列會直接說出換層時機，一起藏起來（規格第 6 節第 5 項）；
+    // 偏差、疑心、步數是事後的結果，照常顯示
+    if (!visualAid) {
+      ['valCurrentRide', 'valNextRide', 'valWindow'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { el.textContent = '（聲部譜關閉）'; el.style.color = 'var(--text-dim)'; }
+      });
+    } else {
+    var elCur = document.getElementById('valCurrentRide');
+    if (elCur) {
+      elCur.style.color = '';   // 從「聲部譜關閉」切回來時恢復原色
+      elCur.textContent = curV
+        ? (curV.u.toFixed(2) + ' / ' + curV.gain.toFixed(2) + ' / ' + curV.interval.toFixed(2) + 's')
+        : '無';
+    }
+
+    var elNext = document.getElementById('valNextRide');
+    if (elNext) {
+      elNext.style.color = '';
+      elNext.textContent = nextV
+        ? (nextV.u.toFixed(2) + ' / ' + nextV.gain.toFixed(2))
+        : (rideId + 1 > Math.floor((game.time - game.t0) / game.T.CYCLE) ? '尚未進場' : '無');
+    }
+
+    var elWin = document.getElementById('valWindow');
+    if (elWin) {
+      if (game.window.open) {
+        var remain = Math.max(0, game.window.to - game.time);
+        elWin.textContent = '開啟中 (剩餘 ' + remain.toFixed(1) + 's)';
+        elWin.style.color = 'var(--accent-gold)';
+      } else {
+        elWin.textContent = '閉闔';
+        elWin.style.color = 'var(--text-dim)';
+      }
+    }
+
+    }
+
+    var elOff = document.getElementById('valLastOffset');
+    if (elOff) elOff.textContent = lastOffText;
+
+    var elSusp = document.getElementById('valSusp');
+    if (elSusp) {
+      var pct = (game.guard.susp * 100).toFixed(1) + '%';
+      elSusp.textContent = pct;
+      elSusp.style.color = (game.guard.susp > 0.6) ? 'var(--accent-red)' : 'var(--text-main)';
+    }
+
+    var elStats = document.getElementById('valStats');
+    if (elStats) {
+      elStats.textContent = game.stats.steps + ' / ' + game.stats.loud + ' / ' + game.stats.switches;
+    }
+  }
+
+  // 主迴圈
+  function mainLoop() {
+    requestAnimationFrame(mainLoop);
+
+    var nowT = audio ? audio.now() : 0;
+    if (game && game.phase === 'play') {
+      var input = {
+        walk: keysDown.walk,
+        switchAt: switchTriggerTime
+      };
+      switchTriggerTime = null;
+
+      LayerRideRules.step(game, nowT, input);
+
+      if (audio) {
+        audio.update(game);
+      }
+
+      var events = LayerRideRules.drain(game);
+      for (var idx = 0; idx < events.length; idx++) {
+        handleGameEvent(events[idx]);
+      }
+    }
+
+    if (game) {
+      render(nowT);
+      updateDashboard();
+    }
+  }
+
+  applyUrlParams();
+  restartGame();
+  requestAnimationFrame(mainLoop);
+})();
+</script>
+<script>
+// 共用導覽（回試玩切換台、說明側欄）：先找 ../nav.js（repo、本機伺服器），找不到再找同一層的 nav.js（發布成試玩頁時可一起帶上）；
+// 兩個都沒有就不掛，遊戲照常能玩。手機版說明鈕往上讓開底部的觸控按鈕列。
+(function () {
+  var HELP = {
+    "title": "換層試驗場",
+    "brief": [
+      ["測", "只靠耳朵，聽不聽得出底下的慢鼓進來了、在對的那一拍換過去"],
+      ["操作", "W 按住前進・Q 換層・R 重來（手機：左下「前進」、右下「換層」）"],
+      ["看", "「最近換層偏差」幾毫秒（正數是按晚）、火把顏色（黃轉紅＝疑心升高）"]
+    ],
+    "what": [
+      "按住前進，腳步落在你踩的那條鼓上；它會越來越快，跟不上前要在對的那一拍換到底下的慢鼓（換層）。",
+      "真正要回答的是：只靠耳朵，聽不聽得出慢鼓進來了。"
+    ],
+    "watch": [
+      "太早換，新鼓太小聲蓋不住腳步；太晚換，腳跟不上會踩亂出聲。",
+      "只有兩條鼓同時落下的那一拍換得乾淨；底下那條很輕，要仔細聽。",
+      "出聲會讓衛兵疑心升高，火把由黃轉紅，滿了就被發現。",
+      "先看著聲部譜（畫面下半的鼓點列）玩一次，再用 ?aid=0 關掉它只靠耳朵。",
+      "手機：左下按住「前進」、右下按「換層」；鍵盤：W 前進、Q 換層、R 重來。"
+    ],
+    "panel": [
+      [
+        "目前聲部年齡 u / 音量 / 拍距",
+        "你踩的那條鼓：進場後過了幾圈（0 剛進、4 淡出）、音量（0～1）、兩拍隔幾秒"
+      ],
+      [
+        "底層慢鼓年齡 u / 音量",
+        "底下那條慢鼓的同樣數字；還沒進場顯示「尚未進場」"
+      ],
+      [
+        "換層窗狀態",
+        "開啟中（剩幾秒）＝現在可以換層"
+      ],
+      [
+        "最近換層偏差",
+        "上次換層離最佳時機幾毫秒；正數是按晚"
+      ],
+      [
+        "衛兵警戒疑心",
+        "疑心百分比，超過 60% 變紅"
+      ],
+      [
+        "步數 / 露餡出聲 / 換層次數",
+        "累計走幾步、幾步出聲、換了幾次"
+      ],
+      [
+        "（聲部譜關閉）",
+        "?aid=0 時前三列藏起來，因為它們會直接說出換層時機"
+      ]
+    ],
+    "questions": [
+      "關掉聲部譜，只靠耳朵，聽不聽得出底下那條慢鼓進來了？",
+      "換層那一下，有沒有「我跟著音樂換手、它卻一直在加速」的感覺？",
+      "太早、太晚、按歪三種錯，分不分得出自己錯在哪？",
+      "每個循環換一次，會不會太忙或太單調？",
+      "如果潛行時走路就是這樣「踩在一條鼓上、太快就換到慢的那條」，你會想要嗎？還是只想在某些時候換？"
+    ],
+    "src": [
+      "2026-11-10-direction-b-layer-sandbox.md 第 1、2、6、9 節",
+      "2026-11-11-companion-mechanics.md 第 11.6 節"
+    ]
+  };
+  function mount() {
+    var N = window.OdysseyNav; if (!N || !N.mount) return;
+    N.mount({ help: HELP, switchInto: document.querySelector('.sandbox-container'), key: 'KeyH', id: 'layer-ride',
+      mobileBottom: document.body.classList.contains('touch') ? 186 : 0 });
+  }
+  function load(src, next) { var s = document.createElement('script'); s.src = src; s.onload = mount; s.onerror = next; document.body.appendChild(s); }
+  load('../nav.js', function () { load('nav.js', function () {}); });
+})();
+</script>
