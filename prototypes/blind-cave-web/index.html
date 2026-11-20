@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>雙盲洞穴・網頁一間房</title>
+<link rel="stylesheet" href="../ui-tokens.css">
+<style>
+  html, body { height: 100%; }
+  body { background: #000; overflow: hidden; }
+  /* 全黑畫面：玩家模式只有黑底與旁白字；試驗場與觀眾視圖才畫地圖 */
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .say { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(36em, 90vw);
+    text-align: center; font: 500 var(--fs-20)/var(--lh-body) var(--font-body); color: var(--parchment);
+    transition: opacity 1.2s; pointer-events: none; }
+  .say small { display: block; margin-top: 12px; font-size: var(--fs-14); color: var(--muted); }
+  .say.dim { opacity: 0; }
+  body.debug .say { top: auto; bottom: 24px; transform: translateX(-50%); background: var(--stone); padding: 8px 16px; border-radius: var(--r-panel); }
+  body.debug .say.dim { opacity: 0; }
+  .end { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--stone);
+    border: 1px solid var(--rule); border-radius: var(--r-panel); padding: 24px 28px; min-width: min(22em, 90vw); text-align: center; }
+  .end h2 { margin: 0 0 8px; font: 900 var(--fs-28)/var(--lh-title) var(--font-title); }
+  .end.win { border-top: 4px solid var(--beat); }
+  .end.fail { border-top: 4px solid var(--blood); }
+  .end p.line { margin: 0 0 16px; }
+  .end dl { display: grid; grid-template-columns: auto auto; gap: 4px 16px; justify-content: center; margin: 0 0 18px; }
+  .end dt { color: var(--muted); text-align: right; } .end dd { margin: 0; text-align: left; }
+  .end button { font: 500 var(--fs-16) var(--font-body); background: transparent; color: var(--bronze);
+    border: 1px solid var(--bronze); border-radius: var(--r-btn); padding: 6px 16px; margin: 0 4px; cursor: pointer; }
+  .end button:hover { background: var(--bronze-wash); }
+  /* 試驗場面板 */
+  .panel { position: fixed; left: 12px; top: 12px; width: 300px; max-height: calc(100% - 24px); overflow: auto;
+    background: var(--stone); border: 1px solid var(--rule); border-radius: var(--r-panel); padding: 12px 14px;
+    font-size: var(--fs-14); line-height: 1.55; }
+  .panel h3 { margin: 10px 0 4px; font-size: var(--fs-14); color: var(--muted); font-weight: 500; }
+  .panel h3:first-child { margin-top: 0; }
+  .panel .row { display: flex; justify-content: space-between; gap: 8px; }
+  .panel .row b { font-weight: 500; }
+  .panel label { display: grid; grid-template-columns: 1fr 70px 44px; align-items: center; gap: 6px; margin: 2px 0; }
+  .panel label.chk { grid-template-columns: auto 1fr; }
+  .panel input[type=range] { width: 70px; accent-color: var(--bronze); }
+  .panel .hist { font-size: var(--fs-12); color: var(--muted); }
+  .ok { color: var(--beat); } .warn { color: var(--torch); }
+  /* 觀眾視圖的頁首 */
+  .spec-head { position: fixed; left: 0; right: 0; top: 0; padding: 14px var(--gutter-r) 10px var(--gutter-l);
+    display: flex; gap: 24px; align-items: baseline; flex-wrap: wrap; background: var(--night); border-bottom: 1px solid var(--rule); }
+  .spec-head h1 { margin: 0; font: 900 var(--fs-28)/var(--lh-title) var(--font-title); }
+  .spec-head .stat { font-size: var(--fs-20); }
+  .spec-head .stat span { color: var(--muted); font-size: var(--fs-14); margin-right: 6px; }
+  .spec-foot { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px var(--gutter-r) 12px var(--gutter-l);
+    color: var(--muted); font-size: var(--fs-14); background: var(--night); border-top: 1px solid var(--rule); }
+  body.spectator, body.debug { background: var(--night); }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="say" class="say" hidden></div>
+<div id="end" class="end" hidden></div>
+<div id="panel" class="panel" hidden></div>
+<div id="specHead" class="spec-head" hidden></div>
+<div id="specFoot" class="spec-foot" hidden>玩家戴著耳機、眼前全黑，只聽得到聲音；這張地圖只有你們看得到。海青＝洞口（海風），紅＝熟睡的巨人（走進紅色虛線圈就會醒，橘色虛線圈內鼾聲變急），白點＝滴水，青銅三角形＝玩家與面向。</div>
+
+<script src="cave.js"></script>
+<script src="../nav.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.BlindCave, L = C.LEVEL, P = C.defaultParams();
+  var Q = new URLSearchParams(location.search);
+  var DEBUG = Q.get('debug') === '1', SPECTATOR = Q.get('spectator') === '1', MUTE = Q.get('mute') === '1';
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('cv'), g2 = cv.getContext('2d');
+  if (DEBUG) document.body.classList.add('debug');
+  if (SPECTATOR) document.body.classList.add('spectator');
+
+  // 顏色只取設計代號
+  var css = getComputedStyle(document.documentElement);
+  function tok(n, d) { var v = css.getPropertyValue(n).trim(); return v || d; }
+  var COL = { night: tok('--night', '#0E1322'), stone: tok('--stone', '#232838'), parchment: tok('--parchment', '#F2ECDD'),
+    bronze: tok('--bronze', '#C9A55C'), beat: tok('--beat', '#6FB3A6'), torch: tok('--torch', '#E8893B'), blood: tok('--blood', '#B02A1E') };
+
+  var LINES = {
+    intro: '戴上耳機。W 前進，Q／E 轉身。跟著海風找出口，別吵醒巨人。',
+    win: '海風撲在臉上，奧德修斯摸到了洞口的岩緣，悄悄鑽了出去。',
+    fail: '鼾聲斷了。巨人睜開那隻獨眼，伸手摸向奧德修斯。'
+  };
+
+  var S = C.createState(L);
+  var history = [];
+  try { history = JSON.parse(localStorage.getItem('blindCaveWeb.history') || '[]'); } catch (e) { history = []; }
+  var manual = false;   // 自動化測試接手時，不讓鍵盤與每幀步進動到狀態
+
+  // ---------------- 聲音 ----------------
+  var A = null;   // { ctx, master, srcs:{exit,giant,drip}, noise }
+  function audioInit() {
+    if (A) return A;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    var ctx = new Ctx();
+    var master = ctx.createGain(); master.gain.value = MUTE ? 0 : 0.9;
+    var comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
+    master.connect(comp); comp.connect(ctx.destination);
+    var nb = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate), d = nb.getChannelData(0);
+    for (var i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    A = { ctx: ctx, master: master, noise: nb, srcs: {} };
+    // 每個持續聲源：聲音 → 音色（低通，處理前後混淆）→ 焦點增益 → HRTF 定位 → 主音量
+    function chain(name, pos, level) {
+      var tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 16000; tone.Q.value = 0.5;
+      var focus = ctx.createGain(); focus.gain.value = 1;
+      var lvl = ctx.createGain(); lvl.gain.value = level;
+      var pan = ctx.createPanner();
+      pan.panningModel = 'HRTF'; pan.distanceModel = 'inverse'; pan.refDistance = 1.5; pan.rolloffFactor = 1; pan.maxDistance = 40;
+      setPos(pan, pos.x, pos.y);
+      tone.connect(focus); focus.connect(lvl); lvl.connect(pan); pan.connect(master);
+      A.srcs[name] = { input: tone, tone: tone, focus: focus, pan: pan, pos: pos };
+      return tone;
+    }
+    function noise() { var n = ctx.createBufferSource(); n.buffer = nb; n.loop = true; n.loopStart = Math.random() * 3; n.start(); return n; }
+
+    // 出口：海浪（低頻起伏）＋風聲（高頻呼嘯），目標聲
+    var exIn = chain('exit', L.exit, 2.2);
+    var wv = noise(), wbp = ctx.createBiquadFilter(); wbp.type = 'bandpass'; wbp.frequency.value = 450; wbp.Q.value = 0.6;
+    var wg = ctx.createGain(); wg.gain.value = 0.55;
+    var lfo = ctx.createOscillator(); lfo.frequency.value = 0.14; var ld = ctx.createGain(); ld.gain.value = 0.45; lfo.connect(ld); ld.connect(wg.gain); lfo.start();
+    wv.connect(wbp); wbp.connect(wg); wg.connect(exIn);
+    var wn = noise(), whp = ctx.createBiquadFilter(); whp.type = 'bandpass'; whp.frequency.value = 2400; whp.Q.value = 2.5;
+    var wng = ctx.createGain(); wng.gain.value = 0.35;
+    var lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.07; var ld2 = ctx.createGain(); ld2.gain.value = 700; lfo2.connect(ld2); ld2.connect(whp.frequency); lfo2.start();
+    wn.connect(whp); whp.connect(wng); wng.connect(exIn);
+
+    chain('giant', L.giant, 1.6);   // 鼾聲由排程器一段一段送進來
+    chain('drip', L.drip, 1.0);     // 滴水同上
+    // 滴水的回聲
+    var dIn = A.srcs.drip.input;
+    var dly = ctx.createDelay(1); dly.delayTime.value = 0.21;
+    var fb = ctx.createGain(); fb.gain.value = 0.35; var dlp = ctx.createBiquadFilter(); dlp.type = 'lowpass'; dlp.frequency.value = 2500;
+    A.dripBus = ctx.createGain(); A.dripBus.connect(dIn); A.dripBus.connect(dly); dly.connect(dlp); dlp.connect(fb); fb.connect(dly); dlp.connect(dIn);
+    A.nextSnore = ctx.currentTime + 0.5; A.nextDrip = ctx.currentTime + 0.8;
+    return A;
+  }
+  function setPos(p, x, y) {
+    if (p.positionX) { p.positionX.value = x; p.positionY.value = 0; p.positionZ.value = y; } else p.setPosition(x, 0, y);
+  }
+  function setListener() {
+    var l = A.ctx.listener, fx = Math.cos(S.a), fz = Math.sin(S.a);
+    // 俯視 (x, y) 對到聲音空間 (X=x, Y=0, Z=y)；上方向 (0,1,0) 時，右手邊剛好是 y 增加的方向
+    if (l.positionX) {
+      l.positionX.value = S.x; l.positionY.value = 0; l.positionZ.value = S.y;
+      l.forwardX.value = fx; l.forwardY.value = 0; l.forwardZ.value = fz;
+      l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
+    } else { l.setPosition(S.x, 0, S.y); l.setOrientation(fx, 0, fz, 0, 1, 0); }
+  }
+  function env(g, t, a, peak, hold, r) {
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.setValueAtTime(peak, t + a + hold); g.gain.exponentialRampToValueAtTime(0.0001, t + a + hold + r);
+  }
+  function oneNoise(t, dur) { var n = A.ctx.createBufferSource(); n.buffer = A.noise; n.start(t, Math.random() * 3); n.stop(t + dur + 0.05); return n; }
+  // 鼾聲：吐氣低吼＋吸氣嘶聲；靠近（翻身距離內）時節奏變急、多一聲鼻哼
+  function snore(t, stirred) {
+    var ctx = A.ctx, out = A.srcs.giant.input;
+    var o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(stirred ? 68 : 52, t); o.frequency.linearRampToValueAtTime(stirred ? 60 : 46, t + 1.4);
+    var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
+    var g = ctx.createGain(); env(g, t, 0.3, 0.5, 0.7, 0.5);
+    o.connect(lp); lp.connect(g); g.connect(out); o.start(t); o.stop(t + 1.6);
+    var n = oneNoise(t + 1.8, 1.1), bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 1;
+    var g2n = ctx.createGain(); env(g2n, t + 1.8, 0.5, 0.25, 0.2, 0.4);
+    n.connect(bp); bp.connect(g2n); g2n.connect(out);
+    if (stirred) {
+      var s2 = ctx.createOscillator(); s2.type = 'square'; s2.frequency.setValueAtTime(110, t + 1.5); s2.frequency.exponentialRampToValueAtTime(70, t + 1.7);
+      var sl = ctx.createBiquadFilter(); sl.type = 'lowpass'; sl.frequency.value = 600;
+      var sg = ctx.createGain(); env(sg, t + 1.5, 0.02, 0.6, 0.05, 0.15);
+      s2.connect(sl); sl.connect(sg); sg.connect(out); s2.start(t + 1.5); s2.stop(t + 1.8);
+    }
+    return stirred ? 2.9 : 3.8;
+  }
+  function drip(t) {
+    var ctx = A.ctx, o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(2300, t); o.frequency.exponentialRampToValueAtTime(750, t + 0.07);
+    var g = ctx.createGain(); env(g, t, 0.004, 0.5, 0.01, 0.13);
+    o.connect(g); g.connect(A.dripBus); o.start(t); o.stop(t + 0.2);
+    return 1.4 + Math.random() * 0.9;
+  }
+  // 撞牆：悶響＋碎石聲，從撞到的那一點傳出來
+  function bumpSound(x, y) {
+    var ctx = A.ctx, t = ctx.currentTime;
+    var pan = ctx.createPanner(); pan.panningModel = 'HRTF'; pan.distanceModel = 'inverse'; pan.refDistance = 1; setPos(pan, x, y); pan.connect(A.master);
+    var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(55, t + 0.12);
+    var g = ctx.createGain(); env(g, t, 0.005, 0.9, 0.02, 0.14); o.connect(g); g.connect(pan); o.start(t); o.stop(t + 0.25);
+    var n = oneNoise(t, 0.12), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2500;
+    var ng = ctx.createGain(); env(ng, t, 0.003, 0.25, 0.01, 0.08); n.connect(hp); hp.connect(ng); ng.connect(pan);
+  }
+  function audioTick() {
+    if (!A) return;
+    var ctx = A.ctx, now = ctx.currentTime;
+    setListener();
+    if (S.phase === 'play' || S.phase === 'ready') {
+      while (A.nextSnore < now + 0.3) A.nextSnore += snore(Math.max(A.nextSnore, now), S.stirred);
+      while (A.nextDrip < now + 0.3) A.nextDrip += drip(Math.max(A.nextDrip, now));
+    } else { A.nextSnore = Math.max(A.nextSnore, now + 1.5); A.nextDrip = Math.max(A.nextDrip, now + 1); }
+    ['exit', 'giant', 'drip'].forEach(function (k) {
+      var s = A.srcs[k], rel = C.relAngle(S, s.pos.x, s.pos.y);
+      s.tone.frequency.setTargetAtTime(C.toneCutoff(rel, P), now, 0.05);
+      if (k === 'exit') {
+        var on = Math.abs(rel) * 180 / Math.PI <= P.focusCone;
+        s.focus.gain.setTargetAtTime(on ? Math.pow(10, P.focusDb / 20) : 1, now, 0.08);
+      }
+    });
+    // 結束後海風留著、其他聲淡出：過關時浪聲變大，失敗時全部收掉
+    var target = S.phase === 'fail' ? 0.0001 : (MUTE ? 0 : 0.9);
+    A.master.gain.setTargetAtTime(target, now, S.phase === 'fail' ? 1.2 : 0.1);
+  }
+
+  // 旁白：字幕＋（不靜音時）系統語音
+  var sayTimer = 0;
+  function say(text, sub, keep) {
+    var el = $('say'); el.hidden = false; el.classList.remove('dim');
+    el.innerHTML = ''; el.appendChild(document.createTextNode(text));
+    if (sub) { var s = document.createElement('small'); s.textContent = sub; el.appendChild(s); }
+    clearTimeout(sayTimer);
+    if (!keep) sayTimer = setTimeout(function () { el.classList.add('dim'); }, 6000);
+    if (!MUTE && window.speechSynthesis && window.SpeechSynthesisUtterance) {
+      try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = 1; speechSynthesis.speak(u); } catch (e) {}
+    }
+  }
+
+  // ---------------- 流程 ----------------
+  function start() {
+    if (SPECTATOR) return;
+    audioInit();
+    if (A && A.ctx.state === 'suspended') A.ctx.resume();
+    S = C.createState(L); S.phase = 'play';
+    $('end').hidden = true;
+    say(LINES.intro);
+    broadcast(true);
+  }
+  function finish() {
+    var rec = { at: new Date().toISOString(), result: S.phase, seconds: +S.t.toFixed(1), bumps: S.bumps, minGiant: +S.minGiant.toFixed(2) };
+    history.unshift(rec); history = history.slice(0, 20);
+    try { localStorage.setItem('blindCaveWeb.history', JSON.stringify(history)); } catch (e) {}
+    say(S.phase === 'win' ? LINES.win : LINES.fail, null, true);
+    var el = $('end'); el.className = 'end ' + S.phase; el.hidden = false; el.innerHTML = '';
+    var h = document.createElement('h2'); h.textContent = S.phase === 'win' ? '逃出洞穴' : '巨人醒了'; el.appendChild(h);
+    var dl = document.createElement('dl');
+    [['秒數', rec.seconds + ' 秒'], ['撞牆', rec.bumps + ' 次'], ['離巨人最近', rec.minGiant + ' 公尺']].forEach(function (r) {
+      var dt = document.createElement('dt'); dt.textContent = r[0]; var dd = document.createElement('dd'); dd.textContent = r[1]; dl.appendChild(dt); dl.appendChild(dd);
+    });
+    el.appendChild(dl);
+    var b = document.createElement('button'); b.type = 'button'; b.textContent = '再來一次（空白鍵）'; b.onclick = start; el.appendChild(b);
+    if (window.OdysseyNav && OdysseyNav.hasHub()) { var hb = document.createElement('button'); hb.type = 'button'; hb.textContent = '總首頁'; hb.onclick = function () { OdysseyNav.goHub(); }; el.appendChild(hb); }
+    setTimeout(function () { $('say').classList.add('dim'); }, 4000);
+    drawHist();
+    broadcast(true);
+  }
+
+  // ---------------- 輸入 ----------------
+  var keys = {};
+  var KEYMAP = { KeyW: 'f', ArrowUp: 'f', KeyS: 'b', ArrowDown: 'b', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r', KeyQ: 'tl', KeyE: 'tr' };
+  addEventListener('keydown', function (e) {
+    if (SPECTATOR) return;
+    if (KEYMAP[e.code]) { keys[KEYMAP[e.code]] = true; e.preventDefault(); }
+    if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat && S.phase !== 'play') { start(); e.preventDefault(); }
+    if (e.code === 'KeyR' && !e.repeat && S.phase === 'play') start();
+  });
+  addEventListener('keyup', function (e) { if (KEYMAP[e.code]) keys[KEYMAP[e.code]] = false; });
+  addEventListener('blur', function () { keys = {}; });
+  cv.addEventListener('pointerdown', function () { if (!SPECTATOR && S.phase !== 'play') start(); });
+  function keyInput() {
+    return { fwd: (keys.f ? 1 : 0) - (keys.b ? 1 : 0), strafe: (keys.r ? 1 : 0) - (keys.l ? 1 : 0), turn: (keys.tr ? 1 : 0) - (keys.tl ? 1 : 0) };
+  }
+
+  function advance(input, dt) {
+    var was = S.phase;
+    C.step(L, S, input, dt, P);
+    S.events.forEach(function (ev) { if (ev.type === 'bump' && A) bumpSound(ev.x, ev.y); });
+    if (was === 'play' && S.phase !== 'play') finish();
+  }
+
+  // ---------------- 觀眾視圖：同一台電腦的兩個視窗用 BroadcastChannel 傳狀態 ----------------
+  var bc = null; try { bc = new BroadcastChannel('blind-cave-web'); } catch (e) {}
+  var lastCast = 0, spec = { last: null, got: 0 };
+  function snapshot() {
+    return { x: S.x, y: S.y, a: S.a, t: S.t, phase: S.phase, bumps: S.bumps, minGiant: S.minGiant, stirred: S.stirred, trail: S.trail, wake: P.wake, stir: P.stir };
+  }
+  function broadcast(force) {
+    if (!bc || SPECTATOR) return;
+    var now = performance.now();
+    if (!force && now - lastCast < 80) return;
+    lastCast = now;
+    try { bc.postMessage(snapshot()); } catch (e) {}
+  }
+  if (bc && SPECTATOR) bc.onmessage = function (e) { spec.last = e.data; spec.got++; };
+
+  // ---------------- 畫面 ----------------
+  var DPR = 1, VW = 0, VH = 0;
+  function resize() { DPR = window.devicePixelRatio || 1; VW = innerWidth; VH = innerHeight; cv.width = VW * DPR; cv.height = VH * DPR; }
+  addEventListener('resize', resize); resize();
+
+  function drawMap(st, box, opts) {
+    var sc = Math.min(box.w / L.w, box.h / L.h), ox = box.x + (box.w - L.w * sc) / 2, oy = box.y + (box.h - L.h * sc) / 2;
+    function X(x) { return ox + x * sc; } function Y(y) { return oy + y * sc; }
+    var c = g2;
+    c.fillStyle = COL.stone; c.fillRect(X(0), Y(0), L.w * sc, L.h * sc);
+    c.strokeStyle = COL.parchment; c.globalAlpha = 0.5; c.lineWidth = 2; c.strokeRect(X(0), Y(0), L.w * sc, L.h * sc); c.globalAlpha = 1;
+    c.fillStyle = COL.night; L.rocks.forEach(function (b) { c.fillRect(X(b.x), Y(b.y), b.w * sc, b.h * sc); });
+    c.strokeStyle = COL.parchment; c.globalAlpha = 0.25; L.rocks.forEach(function (b) { c.strokeRect(X(b.x), Y(b.y), b.w * sc, b.h * sc); }); c.globalAlpha = 1;
+    // 洞口
+    c.fillStyle = COL.beat; c.globalAlpha = 0.25; c.beginPath(); c.arc(X(L.exit.x), Y(L.exit.y), L.exit.r * sc, 0, 7); c.fill(); c.globalAlpha = 1;
+    c.beginPath(); c.arc(X(L.exit.x), Y(L.exit.y), 0.25 * sc, 0, 7); c.fill();
+    // 巨人：醒來圈（虛線血紅）、翻身圈（虛線火把橘）
+    var wake = st.wake || P.wake, stir = st.stir || P.stir;
+    c.setLineDash([6, 6]);
+    c.strokeStyle = COL.torch; c.globalAlpha = 0.6; c.beginPath(); c.arc(X(L.giant.x), Y(L.giant.y), stir * sc, 0, 7); c.stroke();
+    c.strokeStyle = COL.blood; c.globalAlpha = 1; c.lineWidth = 3; c.beginPath(); c.arc(X(L.giant.x), Y(L.giant.y), wake * sc, 0, 7); c.stroke();
+    c.setLineDash([]); c.lineWidth = 2;
+    c.fillStyle = COL.blood; c.beginPath(); c.arc(X(L.giant.x), Y(L.giant.y), 0.6 * sc, 0, 7); c.fill();
+    // 滴水
+    c.fillStyle = COL.parchment; c.beginPath(); c.arc(X(L.drip.x), Y(L.drip.y), 0.15 * sc, 0, 7); c.fill();
+    // 足跡
+    if (st.trail && st.trail.length > 1) {
+      c.strokeStyle = COL.bronze; c.globalAlpha = 0.45; c.lineWidth = Math.max(2, 0.08 * sc); c.beginPath();
+      st.trail.forEach(function (p, i) { if (i) c.lineTo(X(p[0]), Y(p[1])); else c.moveTo(X(p[0]), Y(p[1])); });
+      c.lineTo(X(st.x), Y(st.y)); c.stroke(); c.globalAlpha = 1; c.lineWidth = 2;
+    }
+    // 聲源連線與距離（試驗場）
+    if (opts.lines) {
+      c.font = '500 ' + (12 * 1) + 'px ' + tok('--font-body', 'sans-serif');
+      [[L.exit, COL.beat], [L.giant, COL.blood], [L.drip, COL.parchment]].forEach(function (p) {
+        c.strokeStyle = p[1]; c.globalAlpha = 0.5; c.beginPath(); c.moveTo(X(st.x), Y(st.y)); c.lineTo(X(p[0].x), Y(p[0].y)); c.stroke(); c.globalAlpha = 1;
+        var d = C.dist(st.x, st.y, p[0].x, p[0].y);
+        c.fillStyle = COL.parchment; c.fillText(d.toFixed(1) + ' m', X((st.x + p[0].x) / 2) + 4, Y((st.y + p[0].y) / 2) - 4);
+      });
+    }
+    // 玩家：青銅三角形指向朝向
+    var px = X(st.x), py = Y(st.y), r = Math.max(8, 0.45 * sc);
+    c.save(); c.translate(px, py); c.rotate(st.a);
+    c.fillStyle = COL.bronze; c.beginPath(); c.moveTo(r, 0); c.lineTo(-r * 0.7, r * 0.6); c.lineTo(-r * 0.7, -r * 0.6); c.closePath(); c.fill();
+    c.restore();
+  }
+
+  function fmt(n, k) { return (+n).toFixed(k == null ? 1 : k); }
+  function drawPanel() {
+    var dE = C.dist(S.x, S.y, L.exit.x, L.exit.y), dG = C.dist(S.x, S.y, L.giant.x, L.giant.y), dD = C.dist(S.x, S.y, L.drip.x, L.drip.y);
+    var rE = C.relAngle(S, L.exit.x, L.exit.y), rG = C.relAngle(S, L.giant.x, L.giant.y), rD = C.relAngle(S, L.drip.x, L.drip.y);
+    var el = $('live'); if (!el) return;
+    el.innerHTML =
+      row('狀態', { ready: '按空白鍵開始', play: '進行中', win: '<span class="ok">過關</span>', fail: '<span class="warn">失敗</span>' }[S.phase]) +
+      row('秒數／撞牆', fmt(S.t) + ' 秒／' + S.bumps + ' 次') +
+      row('位置', fmt(S.x) + ', ' + fmt(S.y)) +
+      row('朝向', Math.round(S.a * 180 / Math.PI) + '°') +
+      row('海風（出口）', fmt(dE) + ' m・' + C.bearingText(rE)) +
+      row('鼾聲（巨人）', '<span class="' + (dG < P.stir ? 'warn' : '') + '">' + fmt(dG) + ' m</span>・' + C.bearingText(rG)) +
+      row('滴水', fmt(dD) + ' m・' + C.bearingText(rD)) +
+      row('離巨人最近', fmt(S.minGiant, 2) + ' m') +
+      row('浪聲音色', Math.round(C.toneCutoff(rE, P)) + ' Hz' + (Math.abs(rE) * 180 / Math.PI <= P.focusCone ? '・<span class="ok">正對 +' + P.focusDb + ' dB</span>' : ''));
+    function row(k, v) { return '<div class="row"><span>' + k + '</span><b>' + v + '</b></div>'; }
+  }
+  function buildPanel() {
+    var el = $('panel'); el.hidden = false;
+    el.innerHTML = '<h3>即時數字</h3><div id="live"></div><h3>常數（即時調）</h3><div id="knobs"></div><h3>最近幾局（存在這台電腦）</h3><div id="hist" class="hist"></div>';
+    var K = [['wake', '醒來距離 m', 1, 4, 0.1], ['stir', '翻身距離 m', 2, 7, 0.1], ['speed', '走速 m/s', 0.8, 4, 0.1], ['turnSpeed', '轉身 rad/s', 0.8, 4, 0.1],
+      ['fbDark', '背後音色 Hz', 400, 8000, 100], ['focusDb', '正對加大 dB', 0, 10, 0.5]];
+    var box = $('knobs');
+    K.forEach(function (k) {
+      var lab = document.createElement('label'); var sp = document.createElement('span'); sp.textContent = k[1];
+      var inp = document.createElement('input'); inp.type = 'range'; inp.min = k[2]; inp.max = k[3]; inp.step = k[4]; inp.value = P[k[0]];
+      var out = document.createElement('output'); out.textContent = P[k[0]];
+      inp.oninput = function () { P[k[0]] = +inp.value; out.textContent = inp.value; };
+      lab.appendChild(sp); lab.appendChild(inp); lab.appendChild(out); box.appendChild(lab);
+    });
+    var lc = document.createElement('label'); lc.className = 'chk';
+    var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = P.frontBack; cb.onchange = function () { P.frontBack = cb.checked; };
+    lc.appendChild(cb); lc.appendChild(document.createTextNode('前後音色（背後的聲音變悶）')); box.appendChild(lc);
+    drawHist();
+  }
+  function drawHist() {
+    var el = $('hist'); if (!el) return;
+    el.innerHTML = history.length ? history.slice(0, 8).map(function (h) {
+      return (h.result === 'win' ? '過關' : '失敗') + '・' + h.seconds + ' 秒・撞 ' + h.bumps + '・最近 ' + h.minGiant + ' m';
+    }).join('<br>') : '還沒有紀錄';
+  }
+
+  function drawSpecHead(st) {
+    var el = $('specHead');
+    var ph = !st ? '等待玩家視窗…' : { ready: '準備中', play: '摸黑前進中', win: '逃出洞穴！', fail: '巨人醒了' }[st.phase];
+    var cls = st && st.phase === 'win' ? 'ok' : st && (st.phase === 'fail' || st.stirred) ? 'warn' : '';
+    el.innerHTML = '<h1>雙盲洞穴</h1><div class="stat ' + cls + '">' + ph + (st && st.phase === 'play' && st.stirred ? '・巨人翻身了' : '') + '</div>' +
+      (st ? '<div class="stat"><span>秒數</span>' + fmt(st.t) + '</div><div class="stat"><span>撞牆</span>' + st.bumps + '</div><div class="stat"><span>離巨人最近</span>' + fmt(st.minGiant) + ' m</div>' : '');
+  }
+
+  var lastT = performance.now(), frame = 0;
+  function loop(now) {
+    var dt = Math.min(0.05, (now - lastT) / 1000); lastT = now; frame++;
+    if (!SPECTATOR && !manual && S.phase === 'play') advance(keyInput(), dt);
+    audioTick();
+    broadcast(false);
+    g2.setTransform(DPR, 0, 0, DPR, 0, 0);
+    g2.fillStyle = (DEBUG || SPECTATOR) ? COL.night : '#000'; g2.fillRect(0, 0, VW, VH);
+    if (SPECTATOR) {
+      if (frame % 6 === 0) drawSpecHead(spec.last);
+      var top = $('specHead').offsetHeight + 12, bot = $('specFoot').offsetHeight + 12;
+      if (spec.last) drawMap(spec.last, { x: 16, y: top, w: VW - 32, h: VH - top - bot }, { lines: false });
+      else drawMap(C.createState(L), { x: 16, y: top, w: VW - 32, h: VH - top - bot }, { lines: false });
+    } else if (DEBUG) {
+      var left = VW > 760 ? 330 : 12;
+      drawMap(S, { x: left, y: 12, w: VW - left - 12, h: VH - 24 }, { lines: true });
+      if (frame % 6 === 0) { drawPanel(); }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // ---------------- 啟動 ----------------
+  if (SPECTATOR) {
+    $('specHead').hidden = false; $('specFoot').hidden = false; drawSpecHead(null);
+  } else {
+    if (DEBUG) buildPanel();
+    say('戴上耳機，按空白鍵或點一下畫面開始。', DEBUG ? '試驗場：左邊是數字與常數，右邊是玩家看不到的地圖。' : '畫面會一直是黑的，只靠聲音。');
+  }
+  if (window.OdysseyNav) {
+    try {
+      OdysseyNav.mount({
+        switchLink: DEBUG, key: DEBUG ? 'KeyH' : undefined,
+        help: DEBUG ? {
+          title: '雙盲洞穴・一間房',
+          brief: [['測什麼', '只靠聲音方向，能不能在全黑畫面找到出口'], ['怎麼操作', 'WASD／方向鍵移動，Q／E 轉身'], ['看哪個數字', '海風的方位與距離、離巨人最近']],
+          what: ['網頁 HRTF（模擬人頭與耳朵對聲音的濾波，讓耳機聽得出方向）＋一般耳機，夠不夠找到出口', '一般耳機容易前後搞混：背後的聲音會變悶、正對洞口時浪聲變大'],
+          watch: ['原地按 Q／E 轉一圈，浪聲在正前方時最亮最大', '靠近巨人（橘色虛線圈）鼾聲變急、多一聲鼻哼'],
+          panel: [['海風', '到出口的距離與方位'], ['浪聲音色', '低通截止頻率：越高越亮＝越接近正前方']],
+          questions: ['不看地圖，第一次多久找到出口？', '有沒有把背後的海風當成前面？', '鼾聲夠不夠讓你繞開巨人？'],
+          src: ['獨眼巨人洞穴【經典】', '海風指路、滴水地標【改編】']
+        } : null
+      });
+    } catch (e) { console.warn('說明側欄載入失敗', e); }
+  }
+  requestAnimationFrame(loop);
+
+  // ---------------- 給自動化測試與錄影用 ----------------
+  window.__blindCave = {
+    get state() { return { x: S.x, y: S.y, a: S.a, t: S.t, phase: S.phase, bumps: S.bumps, minGiant: S.minGiant, stirred: S.stirred }; },
+    level: L, params: P,
+    get history() { return history.slice(); },
+    get audio() { return A ? { state: A.ctx.state, master: A.master.gain.value, muted: MUTE } : null; },
+    get spectator() { return SPECTATOR ? { last: spec.last, got: spec.got } : null; },
+    mode: SPECTATOR ? 'spectator' : DEBUG ? 'debug' : 'play',
+    start: start,
+    setManual: function (on) { manual = !!on; },
+    step: function (input, dt) { advance(input || {}, dt || 1 / 30); broadcast(true); return this.state; },
+    relAngle: function (x, y) { return C.relAngle(S, x, y); }
+  };
+})();
+</script>
+</body>
+</html>
