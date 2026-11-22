@@ -36,7 +36,7 @@ body { margin: 0; background: var(--night); color: var(--parchment); font-family
 <div class="wrap">
   <header class="hero">
     <h1 class="ui-title xl">作品集</h1>
-    <p>四個可以直接玩的網頁作品。挑一個開始，玩完按瀏覽器的上一頁回來。</p>
+    <p>五個可以直接玩的網頁作品。挑一個開始，玩完按瀏覽器的上一頁回來。</p>
   </header>
   <ul class="list" id="list"></ul>
 </div>
@@ -54,6 +54,9 @@ const WORKS = [
   { title: '作息模擬', what: '決定今晚怎麼過，隔天的你會演給你看。',
     how: 'Q／W 調起床時間，A／S 調睡眠時數，1／2／3 做選擇，R 重來。', meta: '約 3 分鐘｜不需要聲音',
     links: [['開始玩', 'ext/routine-sim/index.html']] },
+  { title: '吟遊詩人敲桌', what: '宴會長桌上，跟著詩句敲空位。碰到求婚者的手、食物或酒杯就要忍住。',
+    how: '空白鍵敲桌，手機點畫面。字滑進框裡就敲。', meta: '約 1 分半｜喇叭或耳機',
+    links: [['開始玩', 'bard-table/index.html'], ['試驗場', 'bard-table/index.html?lab=1']] },
 ];
 const list = document.getElementById('list');
 WORKS.forEach(w => {

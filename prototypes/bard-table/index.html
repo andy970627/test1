@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>吟遊詩人敲桌</title>
+<link rel="stylesheet" href="../ui-tokens.css">
+<style>
+/* 吟遊詩人敲桌：畫面全部畫在 canvas，文字疊層用 DOM。網址參數：?lab=1 試驗場、?mute=1 靜音。 */
+html, body { height: 100%; overflow: hidden; }
+#stage { position: fixed; inset: 0; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#top { position: absolute; top: max(10px, env(safe-area-inset-top)); left: var(--gutter-l); right: var(--gutter-r); text-align: center; pointer-events: none; }
+#say { min-height: 1.6em; color: var(--muted); font-size: var(--fs-14); }
+#line { display: flex; justify-content: center; gap: clamp(2px, 1vw, 8px); font: 900 clamp(22px, 5.4vw, 40px)/1.25 var(--font-title); }
+#line span { width: 1.15em; color: var(--muted); }
+#line .now { color: var(--parchment); transform: scale(1.18); }
+#line .ok { color: var(--beat); }
+#line .bad { color: var(--torch); }
+#hud { display: flex; justify-content: center; gap: 18px; margin-top: 2px; font-size: var(--fs-14); color: var(--muted); }
+#hud b { color: var(--beat); font-weight: 500; }
+#hint { position: absolute; left: var(--gutter-l); right: var(--gutter-r); bottom: max(12px, env(safe-area-inset-bottom)); text-align: center; pointer-events: none; font-size: var(--fs-16); }
+#hint span { background: rgba(14, 19, 34, .78); padding: 4px 12px; border-radius: var(--r-panel); display: inline-block; }
+.over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(14, 19, 34, .72); }
+.card { width: min(520px, 100%); background: var(--stone); border-radius: var(--r-panel); padding: 22px; text-align: center; }
+.card p { margin: 10px 0 0; }
+.rules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
+.rules div { font-size: var(--fs-14); color: var(--muted); }
+.rules canvas { display: block; width: 100%; max-width: 76px; height: 64px; margin: 0 auto 2px; }
+.rules .yes { color: var(--beat); }
+.rules .no { color: var(--torch); }
+.go { margin-top: 16px; font-size: var(--fs-20); }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; font-size: var(--fs-14); color: var(--muted); }
+.stats b { display: block; font-size: var(--fs-20); color: var(--parchment); font-weight: 500; }
+.card a { display: inline-block; margin-top: 12px; font-size: var(--fs-14); }
+#lab { position: absolute; top: 8px; right: 8px; width: 270px; max-height: calc(100% - 16px); overflow: auto; background: rgba(35, 40, 56, .95); border-radius: var(--r-panel); padding: 10px 12px; font-size: var(--fs-12); cursor: default; }
+#lab h2 { margin: 0 0 4px; font-size: var(--fs-14); color: var(--bronze); }
+#lab label { display: block; margin-top: 6px; }
+#lab input { width: 100%; }
+#live { white-space: pre-wrap; margin: 4px 0; color: var(--parchment); }
+#labStrip { height: 30px; margin-top: 6px; }
+@media (max-width: 640px) {
+  #lab { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 38%; border-radius: 0; }
+  body.lab #hint { bottom: calc(38% + 6px); }
+  .card { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" role="img" aria-label="宴會長桌：字和障礙物由右往左滑向吟遊詩人的手"></canvas>
+  <div id="top" hidden>
+    <div id="say" aria-live="polite"></div>
+    <div id="line" aria-hidden="true"></div>
+    <div id="hud"><span>連擊 <b id="combo">0</b></span><span id="layer">只有鼓</span><span id="prog"></span></div>
+  </div>
+  <div id="hint" hidden><span></span></div>
+  <div class="over" id="title">
+    <div class="card">
+      <h1 class="ui-title md">吟遊詩人敲桌</h1>
+      <p>求婚者占了伊薩卡的大廳。吟遊詩人被逼著唱歌，只能敲桌上的空位打拍子。</p>
+      <div class="rules">
+        <div><canvas data-item="word"></canvas><span class="yes">字：敲</span></div>
+        <div><canvas data-item="hand"></canvas><span class="no">手：別敲</span></div>
+        <div><canvas data-item="food"></canvas><span class="no">食物：別敲</span></div>
+        <div><canvas data-item="cup"></canvas><span class="no">酒杯：別敲</span></div>
+      </div>
+      <p class="go"><kbd class="keyname">空白鍵</kbd> 開始</p>
+      <a href="../showcase.html">回作品集</a>
+    </div>
+  </div>
+  <div class="over" id="end" hidden>
+    <div class="card">
+      <h1 class="ui-title md" id="endTitle"></h1>
+      <p id="endText"></p>
+      <div class="stats" id="stats"></div>
+      <p class="go"><kbd class="keyname">空白鍵</kbd> 再唱一次</p>
+      <a href="../showcase.html">回作品集</a>
+    </div>
+  </div>
+  <div id="lab" hidden>
+    <h2>試驗場：固定兩行循環</h2>
+    <div id="live"></div>
+    <div id="knobs"></div>
+    <div id="labStrip"></div>
+  </div>
+</div>
+<script src="../troy-prologue/risset.js"></script>
+<script src="../beatstrip.js"></script>
+<script src="bard.js"></script>
+<script>
+'use strict';
+const Q = new URLSearchParams(location.search), LAB = Q.has('lab'), MUTE = Q.has('mute');
+const Rules = window.BardRules, $ = (id) => document.getElementById(id);
+const COARSE = matchMedia('(pointer: coarse)').matches, KEY = COARSE ? '點畫面' : '空白鍵';
+const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.querySelectorAll('.keyname').forEach((k) => { k.textContent = KEY; });
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COL = { night: css('--night'), stone: css('--stone'), parch: css('--parchment'), bronze: css('--bronze'), beat: css('--beat'), torch: css('--torch'), blood: css('--blood') };
+const FONT = '"Noto Serif TC","Songti TC",serif';
+
+let params = Rules.sanitize({});
+let offsetMs = 0;
+let G = null, phase = 'title', manual = false, endedAt = 0;
+const fx = { strike: 0, shake: 0, word: '', wordCol: COL.parch, wordAt: -9, parts: [], anger: 0 };
+const sfxLog = [];
+
+// ---------- 聲音 ----------
+let AC = null, master = null, clockBase = 0, usePerf = false, schedK = 0, noiseBuf = null;
+function ensureAudio() {
+  if (AC) return;
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = MUTE ? 0 : 0.8; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.4, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { AC = null; }
+}
+function tone(at, f, dur, gain, type, slideTo) {
+  if (!AC) return;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type || 'triangle'; o.frequency.setValueAtTime(f, at);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, at + dur);
+  g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(gain, at + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  o.connect(g); g.connect(master); o.start(at); o.stop(at + dur + 0.02);
+}
+function noise(at, dur, gain, freq, q, type) {
+  if (!AC) return;
+  const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  s.buffer = noiseBuf; f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = q || 1;
+  g.gain.setValueAtTime(gain, at); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  s.connect(f); f.connect(g); g.connect(master); s.start(at); s.stop(at + dur + 0.02);
+}
+const SCALE = [146.83, 174.61, 196, 220, 261.63, 293.66, 349.23, 392];
+const SFX = {
+  perfect(a, c) { noise(a, .07, .55, 900, 2); tone(a, 150, .13, .5, 'sine', 90); tone(a, SCALE[(c ? c.pos + c.line : 0) % 8] * 2, .3, .16, 'triangle'); },
+  good(a) { noise(a, .08, .4, 620, 2); tone(a, 130, .13, .4, 'sine', 85); },
+  hand(a) { tone(a, 210, .28, .4, 'sawtooth', 70); noise(a, .1, .5, 300, 1); },
+  food(a) { noise(a, .22, .6, 420, .7, 'lowpass'); tone(a, 95, .16, .3, 'sine', 55); },
+  cup(a) { tone(a, 1760, .32, .14, 'sine'); tone(a + .05, 2350, .24, .1, 'sine'); noise(a + .08, .2, .22, 3200, 4); },
+  miss(a) { tone(a, 110, .22, .16, 'sine', 62); },
+  off(a) { noise(a, .05, .28, 240, 1.5); tone(a, 233, .1, .1, 'square', 220); },
+  dodge(a) { tone(a, 1174, .16, .035, 'sine'); },
+};
+function playSfx(name, cell) { sfxLog.push(name); if (sfxLog.length > 200) sfxLog.shift(); if (AC && AC.state === 'running' && SFX[name]) SFX[name](AC.currentTime + 0.002, cell); }
+function pump(t) {     // 排程伴奏：鼓一直在，連擊夠了才加琴與和聲
+  if (!AC || usePerf || !G) return;
+  const P = G.P, total = P.lead + G.cells.length;
+  while (schedK < total && schedK * P.beat < t + 0.22) {
+    const at = clockBase + schedK * P.beat;
+    if (at > AC.currentTime) {
+      if (schedK < P.lead) tone(at, schedK === 0 ? 1320 : 990, .06, .2, 'square');
+      else {
+        const pos = (schedK - P.lead) % 8;
+        tone(at, pos % 4 === 0 ? 74 : 62, .2, pos % 4 === 0 ? .42 : .24, 'sine', 42);
+        if (G.combo >= P.comboLyre) tone(at + P.beat / 2, SCALE[(pos * 3 + 2) % 8], .42, .1, 'triangle');
+        if (G.combo >= P.comboChorus && pos % 4 === 0) [146.83, 220, 293.66].forEach((f) => tone(at, f, P.beat * 3.4, .05, 'sawtooth'));
+      }
+    }
+    schedK++;
+  }
+}
+function clock() {
+  const raw = (usePerf || !AC) ? performance.now() / 1000 - clockBase : AC.currentTime - clockBase - (AC.outputLatency || 0);
+  return raw;
+}
+
+// ---------- 流程 ----------
+async function begin() {
+  ensureAudio();
+  usePerf = true;
+  if (AC) {
+    try { await Promise.race([AC.resume(), new Promise((r) => setTimeout(r, 250))]); } catch (e) {}
+    if (AC.state === 'running') usePerf = false;
+  }
+  startRun();
+}
+function startRun() {
+  G = Rules.createGame(LAB ? Rules.LAB_CHART : Rules.CHART, params);
+  phase = 'play'; schedK = 0; fx.parts.length = 0; fx.word = ''; fx.anger = 0;
+  clockBase = (usePerf || !AC) ? performance.now() / 1000 : AC.currentTime + 0.12;
+  $('title').hidden = true; $('end').hidden = true; $('top').hidden = false;
+  renderLine(0); setSay('');
+}
+function toEnd() {
+  if (LAB) { startRun(); return; }
+  phase = 'end'; endedAt = performance.now(); fx.parts.length = 0;
+  const a = Rules.accuracy(G), v = Rules.verdict(a), s = G.counts, struck = s.struck.hand + s.struck.food + s.struck.cup;
+  $('endTitle').textContent = v.title; $('endText').textContent = v.text;
+  $('stats').innerHTML = [['正確率', Math.round(a * 100) + '%'], ['敲準', s.perfect + s.good], ['忍住', s.dodge], ['敲到東西', struck], ['漏拍', s.miss], ['錯拍', s.off]]
+    .map(([k, n]) => `<div><b>${n}</b>${k}</div>`).join('');
+  $('end').hidden = false; $('top').hidden = true; setHint('');
+}
+function toTitle() { phase = 'title'; G = null; $('end').hidden = true; $('title').hidden = false; $('top').hidden = true; setHint(''); }
+function setSay(s) { if ($('say').textContent !== s) $('say').textContent = s; }
+function setHint(html) { const el = $('hint').firstElementChild; if (el.dataset.v !== html) { el.dataset.v = html; el.innerHTML = html; } el.parentElement.hidden = !html; }
+
+let shownLine = -1;
+function renderLine(line) {
+  shownLine = line;
+  const row = G.cells.filter((c) => c.line === line);
+  $('line').innerHTML = row.map((c) => `<span data-i="${c.i}">${c.ch || '・'}</span>`).join('');
+}
+function paintLine(idx) {
+  document.querySelectorAll('#line span').forEach((s) => {
+    const i = +s.dataset.i, c = G.cells[i];
+    s.className = c.res === 'perfect' || c.res === 'good' || c.res === 'dodge' ? 'ok' : c.res ? 'bad' : i === idx ? 'now' : '';
+  });
+}
+const FEEDBACK = {
+  perfect: ['準', 'beat'], good: ['差一點', 'beat'], miss: ['漏拍', 'torch'], dodge: ['忍住', 'beat'],
+  hand: ['敲到手了', 'blood'], food: ['敲進食物', 'blood'], cup: ['打翻酒杯', 'blood'],
+};
+function feedback(text, col, t) { fx.word = text; fx.wordCol = COL[col]; fx.wordAt = t; }
+function burst(n, col, s) {
+  if (CALM) return;
+  for (let i = 0; i < n; i++) fx.parts.push({ x: 0, y: 0, vx: (Math.random() - .5) * s, vy: -Math.random() * s, life: 1, col });
+}
+function onEvent(e, t) {
+  if (e.type === 'dodge') { feedback(...FEEDBACK.dodge, t); playSfx('dodge', e.cell); }
+  else if (e.type === 'miss') { feedback(...FEEDBACK.miss, t); playSfx('miss', e.cell); }
+}
+function onResult(r, t) {
+  if (r.type === 'idle') { fx.strike = 1; return; }
+  fx.strike = 1;
+  if (r.type === 'perfect' || r.type === 'good') { feedback(...FEEDBACK[r.type], t); playSfx(r.type, r.cell); burst(r.type === 'perfect' ? 8 : 4, COL.beat, 260); }
+  else if (r.type === 'struck') {
+    feedback(...FEEDBACK[r.kind], t); playSfx(r.kind, r.cell); fx.shake = 1; fx.anger = 1;
+    burst(16, r.kind === 'cup' ? COL.blood : r.kind === 'food' ? COL.bronze : COL.parch, 420);
+  } else if (r.type === 'off') { feedback(r.side === 'early' ? '太早' : '太晚', 'torch', t); playSfx('off', r.cell); }
+  G.lastDt = r.dt; G.lastType = r.type === 'struck' ? r.kind : r.type;
+}
+function tap(atT) {
+  if (phase !== 'play') return null;
+  const t = atT != null ? atT : clock() - offsetMs / 1000;
+  const { events, result } = Rules.press(G, t);
+  events.forEach((e) => onEvent(e, t));
+  onResult(result, t);
+  return result;
+}
+function advanceTo(t) {
+  if (phase !== 'play') return;
+  Rules.advance(G, t).forEach((e) => onEvent(e, t));
+  if (G.phase === 'end') toEnd();
+}
+function act() {
+  if (phase === 'title') begin();
+  else if (phase === 'end') { if (performance.now() - endedAt > 900) begin(); }
+  else tap();
+}
+addEventListener('keydown', (e) => {
+  if (e.code !== 'Space') return;
+  if (e.target && e.target.tagName === 'INPUT') return;
+  e.preventDefault();
+  if (!e.repeat) act();
+});
+$('stage').addEventListener('pointerdown', (e) => {
+  if (e.target.closest('a, #lab')) return;
+  e.preventDefault();
+  act();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && phase === 'play' && !LAB && !manual) toTitle(); });
+
+// ---------- 畫 ----------
+const cv = $('cv'), c = cv.getContext('2d');
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function drawHand(g, x, y, s, dir, fill, line, armTo) {   // dir＝1 手臂從上方伸下來，-1 從下方伸上來
+  g.fillStyle = fill; g.strokeStyle = line; g.lineWidth = Math.max(2, s * .05);
+  rr(g, x - s * .15, Math.min(y, armTo), s * .3, Math.abs(armTo - y), s * .08); g.fill(); g.stroke();
+  for (let k = -1.5; k <= 1.5; k++) { rr(g, x + k * s * .135 - s * .055, y + (dir > 0 ? s * .05 : -s * .34), s * .11, s * .3, s * .05); g.fill(); g.stroke(); }
+  rr(g, x - s * .25, y - s * .15, s * .5, s * .3, s * .1); g.fill(); g.stroke();
+}
+function drawFood(g, x, y, s) {
+  g.fillStyle = COL.stone; g.strokeStyle = COL.parch; g.lineWidth = Math.max(1.5, s * .03);
+  g.beginPath(); g.ellipse(x, y + s * .1, s * .43, s * .29, 0, 0, 7); g.fill(); g.stroke();
+  g.fillStyle = COL.bronze; g.beginPath(); g.ellipse(x - s * .07, y, s * .27, s * .17, -.25, 0, 7); g.fill();
+  g.strokeStyle = COL.night; g.lineWidth = Math.max(1, s * .025);
+  for (let k = -1; k <= 1; k++) { g.beginPath(); g.moveTo(x - s * .07 + k * s * .1 - s * .03, y - s * .1); g.lineTo(x - s * .07 + k * s * .1 + s * .05, y + s * .1); g.stroke(); }
+  g.fillStyle = COL.parch; g.beginPath(); g.arc(x + s * .24, y + s * .08, s * .07, 0, 7); g.fill();
+}
+function drawCup(g, x, y, s) {
+  g.fillStyle = COL.bronze; g.strokeStyle = COL.parch; g.lineWidth = Math.max(1.5, s * .03);
+  g.beginPath(); g.moveTo(x - s * .36, y - s * .24); g.quadraticCurveTo(x, y + s * .3, x + s * .36, y - s * .24); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = COL.blood; g.beginPath(); g.ellipse(x, y - s * .24, s * .32, s * .07, 0, 0, 7); g.fill();
+  g.fillStyle = COL.bronze; g.fillRect(x - s * .035, y + s * .03, s * .07, s * .24);
+  g.beginPath(); g.ellipse(x, y + s * .3, s * .19, s * .05, 0, 0, 7); g.fill(); g.stroke();
+  g.strokeStyle = COL.bronze; g.lineWidth = Math.max(2, s * .05);
+  [-1, 1].forEach((d) => { g.beginPath(); g.arc(x + d * s * .39, y - s * .13, s * .09, 0, 7); g.stroke(); });
+}
+function drawItem(g, kind, x, y, s, topY) {
+  if (kind === 'hand') drawHand(g, x, y, s * .95, 1, COL.parch, COL.torch, topY != null ? topY : y - s * .5);
+  else if (kind === 'food') drawFood(g, x, y, s);
+  else if (kind === 'cup') drawCup(g, x, y, s);
+}
+function drawHall(W, tableTop, scroll, t) {
+  const g = c.createLinearGradient(0, 0, 0, tableTop);
+  g.addColorStop(0, COL.night); g.addColorStop(1, COL.stone);
+  c.fillStyle = g; c.fillRect(0, 0, W, tableTop);
+  const gap = 150, off = -((scroll * 18) % gap);
+  for (let x = off - gap; x < W + gap; x += gap) {         // 火把
+    const fl = .5 + .25 * Math.sin(t * 9 + x) + .15 * Math.sin(t * 17 + x * 2);
+    const ty = tableTop * .6, glow = c.createRadialGradient(x, ty, 2, x, ty, 58);
+    glow.addColorStop(0, 'rgba(232,137,59,' + (.2 + fl * .14) + ')'); glow.addColorStop(1, 'rgba(232,137,59,0)');
+    c.fillStyle = glow; c.fillRect(x - 58, ty - 58, 116, 116);
+    c.fillStyle = COL.night; c.fillRect(x - 2, ty + 6, 4, 24);
+    c.fillStyle = COL.torch; c.globalAlpha = .9; c.beginPath(); c.ellipse(x, ty, 4, 7 + fl * 3, 0, 0, 7); c.fill(); c.globalAlpha = 1;
+  }
+  const beatPhase = G ? Math.cos((t / G.P.beat) * Math.PI * 2) : 0, sway = G ? Math.min(1, G.combo / 12) : .2;
+  const sgap = 78, soff = -((scroll * 34) % sgap), H = tableTop;
+  c.fillStyle = COL.night;
+  for (let i = -1, x = soff - sgap; x < W + sgap; x += sgap, i++) {     // 求婚者剪影：連擊高跟著晃，敲錯時跳起來
+    const n = Math.abs(Math.round(x - soff) / sgap + Math.floor(scroll * 34 / sgap)) % 3;
+    const bob = beatPhase * 3 * sway - fx.anger * (8 + n * 4);
+    const hx = x + (n - 1) * 8, hy = H - 40 - n * 6 + bob;
+    c.beginPath(); c.arc(hx, hy, 12, 0, 7); c.fill();
+    c.beginPath(); c.moveTo(hx - 26, H + 2); c.quadraticCurveTo(hx - 24, hy + 13, hx, hy + 12); c.quadraticCurveTo(hx + 24, hy + 13, hx + 26, H + 2); c.fill();
+  }
+}
+function layout() {
+  const dpr = Math.min(2, devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const bottom = (LAB && W <= 640) ? H * .62 : H;
+  const tableTop = Math.round(bottom * .4), tableH = Math.round(bottom * .44);
+  const ppb = Math.max(70, Math.min(136, Math.min(W * .2, tableH * .72)));
+  return { W, H, tableTop, tableH, ppb, tapX: Math.round(Math.max(ppb * .9, W * .22)), midY: tableTop + tableH * .5 };
+}
+const IDLE = Rules.parseChart(Rules.CHART, Rules.sanitize({}));
+let lastF = performance.now();
+function draw() {
+  const nowMs = performance.now(), dtF = Math.min(.05, (nowMs - lastF) / 1000); lastF = nowMs;
+  const L = layout(), { W, H, tableTop, tableH, ppb, tapX, midY } = L;
+  const live = phase === 'play' && G;
+  const t = live ? (manual ? (G._t || 0) : clock()) : nowMs / 1000;
+  const beatLen = live ? G.P.beat : params.beat;
+  const pos = live ? t / beatLen - G.P.lead : (t / (beatLen * 1.7)) % IDLE.length;
+  const cells = live ? G.cells : IDLE;
+
+  c.save();
+  if (fx.shake > 0 && !CALM) c.translate((Math.random() - .5) * 12 * fx.shake, (Math.random() - .5) * 8 * fx.shake);
+  c.fillStyle = COL.night; c.fillRect(-20, -20, W + 40, H + 40);
+  drawHall(W, tableTop, pos, t);
+
+  // 長桌
+  const wood = c.createLinearGradient(0, tableTop, 0, tableTop + tableH);
+  wood.addColorStop(0, '#5B4628'); wood.addColorStop(1, '#3B2E1C');
+  c.fillStyle = wood; c.fillRect(-20, tableTop, W + 40, tableH);
+  c.fillStyle = COL.bronze; c.globalAlpha = .55; c.fillRect(-20, tableTop, W + 40, 3); c.globalAlpha = 1;
+  c.fillStyle = '#241C12'; c.fillRect(-20, tableTop + tableH, W + 40, H - tableTop - tableH + 20);
+  c.strokeStyle = 'rgba(14,19,34,.28)'; c.lineWidth = 1;
+  for (let k = 1; k < 4; k++) { const y = tableTop + tableH * k / 4; c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+
+  // 敲擊位置
+  const cellS = ppb * .9, pulse = live ? Math.max(0, 1 - Math.abs(pos - Math.round(pos)) * 5) : 0;
+  c.fillStyle = 'rgba(242,236,221,' + (.08 + pulse * .16) + ')'; rr(c, tapX - cellS / 2 - 3, midY - cellS / 2 - 3, cellS + 6, cellS + 6, 6); c.fill();
+  c.strokeStyle = COL.parch; c.lineWidth = 2 + pulse * 2; c.stroke();
+
+  // 格子
+  const a = Math.max(0, Math.floor(pos - (tapX + ppb) / ppb)), b = Math.min(cells.length - 1, Math.ceil(pos + (W - tapX + ppb) / ppb));
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  for (let i = a; i <= b; i++) {
+    const cell = cells[i], x = tapX + (i - pos) * ppb, res = live ? cell.res : null;
+    if (x < -ppb || x > W + ppb) continue;
+    if (cell.pos === 0) { c.strokeStyle = 'rgba(242,236,221,.2)'; c.beginPath(); c.moveTo(x - ppb / 2, tableTop + 4); c.lineTo(x - ppb / 2, tableTop + tableH - 4); c.stroke(); }
+    c.fillStyle = 'rgba(14,19,34,.26)'; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.fill();
+    if (cell.kind === 'word') {
+      c.font = `900 ${Math.round(cellS * .56)}px ${FONT}`;
+      c.fillStyle = res === 'perfect' || res === 'good' ? COL.beat : res === 'miss' ? COL.torch : COL.parch;
+      c.globalAlpha = res === 'miss' ? .6 : 1; c.fillText(cell.ch, x, midY + 2); c.globalAlpha = 1;
+      if (res === 'miss') { c.strokeStyle = COL.torch; c.lineWidth = 3; c.beginPath(); c.moveTo(x - cellS * .27, midY - cellS * .27); c.lineTo(x + cellS * .27, midY + cellS * .27); c.stroke(); }
+    } else {
+      c.save();
+      if (res === 'struck') { c.translate(x, midY); c.rotate(.42); c.translate(-x, -midY); }
+      c.globalAlpha = res === 'dodge' ? .55 : 1;
+      drawItem(c, cell.kind, x, midY, cellS * .92, tableTop - 2);
+      c.restore();
+      if (res === 'dodge') { c.strokeStyle = COL.beat; c.lineWidth = 3; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.stroke(); }
+      if (res === 'struck') { c.strokeStyle = COL.blood; c.lineWidth = 4; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.stroke(); }
+    }
+  }
+
+  // 粒子
+  fx.parts.forEach((p) => { p.x += p.vx * dtF; p.y += p.vy * dtF; p.vy += 900 * dtF; p.life -= dtF * 2.4; c.globalAlpha = Math.max(0, p.life); c.fillStyle = p.col; c.fillRect(tapX + p.x - 3, midY + p.y - 3, 6, 6); });
+  c.globalAlpha = 1; fx.parts = fx.parts.filter((p) => p.life > 0);
+
+  // 吟遊詩人的手：平常懸在格子下方，敲的時候落到格子上
+  const rest = midY + cellS * .74, hit = midY + cellS * .06, handY = rest + (hit - rest) * fx.strike;
+  drawHand(c, tapX, handY, cellS * .86, -1, COL.bronze, COL.night, H + 20);
+
+  // 判定字與數拍
+  if (live) {
+    const age = t - fx.wordAt;
+    if (fx.word && age >= 0 && age < .55) {
+      c.font = `900 ${Math.round(Math.max(24, ppb * .36))}px ${FONT}`;
+      c.textAlign = 'left'; const textX = Math.min(tapX - cellS / 2, W - c.measureText(fx.word).width - 10);
+      c.globalAlpha = 1 - Math.max(0, age - .3) / .25;
+      c.lineWidth = 5; c.strokeStyle = COL.night; c.strokeText(fx.word, textX, tableTop - 18 - age * 16);
+      c.fillStyle = fx.wordCol === COL.blood ? COL.parch : fx.wordCol; c.fillText(fx.word, textX, tableTop - 18 - age * 16);
+      c.globalAlpha = 1; c.textAlign = 'center';
+    }
+    if (pos < 0) {
+      const n = Math.ceil(-pos);
+      c.font = `900 ${Math.round(ppb * .6)}px ${FONT}`; c.fillStyle = COL.parch; c.fillText(String(n), tapX, midY + 2);
+    }
+  }
+  c.restore();
+
+  fx.strike = Math.max(0, fx.strike - dtF * 8); fx.shake = Math.max(0, fx.shake - dtF * 4.5); fx.anger = Math.max(0, fx.anger - dtF * 2.2);
+  if (live) updateDom(pos);
+}
+const SAY = { 2: '求婚者的手伸過來了。吟遊詩人只敲空位。', 6: '杯盤越疊越滿。', 10: '酒過三巡，桌上幾乎沒有空位。', 12: '門邊的老乞丐，靜靜聽著。' };
+function updateDom(pos) {
+  const idx = Math.max(0, Math.min(G.cells.length - 1, Math.round(pos))), cur = G.cells[idx];
+  if (cur.line !== shownLine) renderLine(cur.line);
+  paintLine(idx);
+  $('combo').textContent = G.combo;
+  $('layer').textContent = G.combo >= G.P.comboChorus ? '鼓＋琴＋和聲' : G.combo >= G.P.comboLyre ? '鼓＋琴' : '只有鼓';
+  $('prog').textContent = `第 ${cur.line + 1}／${G.cells[G.cells.length - 1].line + 1} 行`;
+  if (!LAB) {
+    if (SAY[cur.line]) setSay(SAY[cur.line]); else if (cur.line < 2) setSay('吟遊詩人敲起桌子，開口唱歌。');
+    if (cur.line < 2) setHint(`<kbd>${KEY}</kbd> 字滑進框裡就敲`);
+    else if (cur.line < 6) setHint(`<kbd>${KEY}</kbd> 只敲字，手、食物、酒杯都不敲`);
+    else setHint('');
+  } else setHint(`<kbd>${KEY}</kbd> 敲字，不敲東西`);
+  if (LAB) updateLab();
+}
+function loop() {
+  if (phase === 'play' && !manual) { const t = clock(); pump(t); advanceTo(t); }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- 開場圖例 ----------
+document.querySelectorAll('.rules canvas').forEach((el) => {
+  const dpr = Math.min(2, devicePixelRatio || 1), w = 76, h = 64;
+  el.width = w * dpr; el.height = h * dpr;
+  const g = el.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#5B4628'; rr(g, 2, 2, w - 4, h - 4, 4); g.fill();
+  if (el.dataset.item === 'word') { g.font = `900 34px ${FONT}`; g.fillStyle = COL.parch; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('歌', w / 2, h / 2 + 2); }
+  else drawItem(g, el.dataset.item, w / 2, h / 2 + 2, 50, 3);
+});
+
+// ---------- 試驗場 ----------
+const KNOBS = [
+  ['beat', '一拍（秒）', .4, 1, .005, 1], ['perfect', '準的寬度（毫秒）', 30, 120, 5, 1000],
+  ['good', '差一點的寬度（毫秒）', 60, 220, 5, 1000], ['offset', '輸入校正（毫秒）', -150, 150, 5, 1],
+];
+function updateLab() {
+  const s = G.counts, st = s.struck.hand + s.struck.food + s.struck.cup;
+  $('live').textContent = `上一下：${G.lastType || '—'}　偏差 ${G.lastDt != null ? Math.round(G.lastDt * 1000) + ' ms' : '—'}\n`
+    + `準 ${s.perfect}｜差一點 ${s.good}｜忍住 ${s.dodge}\n敲到 ${st}（手 ${s.struck.hand}／食 ${s.struck.food}／杯 ${s.struck.cup}）｜漏 ${s.miss}｜錯拍 ${s.off}\n`
+    + `判定：準 ±${Math.round(G.P.perfect * 1000)}、差一點 ±${Math.round(G.P.good * 1000)} ms｜連擊 ${G.combo}`;
+}
+if (LAB) {
+  document.body.classList.add('lab');
+  $('lab').hidden = false;
+  $('knobs').innerHTML = KNOBS.map(([k, name, lo, hi, step, m]) => {
+    const v = k === 'offset' ? offsetMs : params[k] * (m === 1000 ? 1000 : 1);
+    return `<label>${name}：<span id="v-${k}">${+v.toFixed(3)}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${step}" value="${v}"></label>`;
+  }).join('');
+  $('knobs').addEventListener('input', (e) => {
+    const k = e.target.dataset.k, K = KNOBS.find((x) => x[0] === k), v = +e.target.value;
+    $('v-' + k).textContent = v;
+    if (k === 'offset') { offsetMs = v; return; }
+    params = Rules.sanitize(Object.assign({}, params, { [k]: K[5] === 1000 ? v / 1000 : v }));
+    if (k === 'beat') { if (phase === 'play') startRun(); }
+    else if (G) { G.P.perfect = params.perfect; G.P.good = params.good; }
+  });
+  if (window.OdysseyBeat) OdysseyBeat.mount($('labStrip'), {
+    label: '拍帶：海青大點要敲，淡小點是障礙不敲',
+    source: () => {
+      if (!G || phase !== 'play') return { now: 0, beats: [] };
+      return { now: clock(), beats: G.cells.map((x) => ({ t: x.t, strong: x.kind === 'word', hit: false })) };
+    },
+  });
+}
+
+// 給自動檢查用：manual 模式下由腳本指定時間，不靠真實時鐘
+window.__bard = {
+  get state() { return G; }, get phase() { return phase; }, get params() { return params; }, sfx: sfxLog, mode: LAB ? 'lab' : 'play',
+  audio: () => ({ muted: MUTE, master: master ? master.gain.value : null }), clock,
+  setManual(v) { manual = v; }, start() { usePerf = true; startRun(); return G; },
+  press(t) { if (G) G._t = t; const r = tap(t); return r ? { type: r.type, kind: r.kind, side: r.side } : null; },
+  advance(t) { if (G) G._t = t; advanceTo(t); return phase; },
+  rules: Rules,
+};
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
