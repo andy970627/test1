@@ -53,6 +53,8 @@ function bot(L, s, P, route, maxSteps = 4000) {
   const t = ((d.giant.x - line[0]) * (line[2] - line[0]) + (d.giant.y - line[1]) * (line[3] - line[1])) / ((line[2] - line[0]) ** 2 + (line[3] - line[1]) ** 2);
   const px = line[0] + t * (line[2] - line[0]), py = line[1] + t * (line[3] - line[1]);
   check('關卡：起點直線到出口會經過巨人醒來圈', Math.hypot(px - d.giant.x, py - d.giant.y) < P.wake);
+  const html = fs.readFileSync(path.join(ROOT, 'blind-cave-web', 'index.html'), 'utf8');
+  check('旁白：不使用合成語音', !/speechSynthesis|SpeechSynthesisUtterance/.test(html));
 }
 
 // ---------- 二、瀏覽器 ----------

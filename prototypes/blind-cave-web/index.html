@@ -210,7 +210,7 @@
     A.master.gain.setTargetAtTime(target, now, S.phase === 'fail' ? 1.2 : 0.1);
   }
 
-  // 旁白：字幕＋（不靜音時）系統語音
+  // 旁白：只用字幕，不用合成語音（主線也沒有配音，引導靠文字）
   var sayTimer = 0;
   function say(text, sub, keep) {
     var el = $('say'); el.hidden = false; el.classList.remove('dim');
@@ -218,9 +218,6 @@
     if (sub) { var s = document.createElement('small'); s.textContent = sub; el.appendChild(s); }
     clearTimeout(sayTimer);
     if (!keep) sayTimer = setTimeout(function () { el.classList.add('dim'); }, 6000);
-    if (!MUTE && window.speechSynthesis && window.SpeechSynthesisUtterance) {
-      try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; u.rate = 1; speechSynthesis.speak(u); } catch (e) {}
-    }
   }
 
   // ---------------- 流程 ----------------
