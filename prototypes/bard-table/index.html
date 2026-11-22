@@ -19,16 +19,22 @@ html, body { height: 100%; overflow: hidden; }
 #line .bad { color: var(--torch); }
 #hud { display: flex; justify-content: center; gap: 18px; margin-top: 2px; font-size: var(--fs-14); color: var(--muted); }
 #hud b { color: var(--beat); font-weight: 500; }
+#hud { flex-wrap: wrap; gap: 2px 14px; }
+#rage { display: inline-block; width: clamp(64px, 15vw, 130px); height: 8px; margin-left: 4px; background: var(--stone-2); border: 1px solid var(--rule); vertical-align: 1px; }
+#rage u { display: block; width: 0; height: 100%; background: var(--torch); }
+#rage.hot u { background: var(--blood); }
+#line .nm { color: var(--bronze); }
 #hint { position: absolute; left: var(--gutter-l); right: var(--gutter-r); bottom: max(12px, env(safe-area-inset-bottom)); text-align: center; pointer-events: none; font-size: var(--fs-16); }
 #hint span { background: rgba(14, 19, 34, .78); padding: 4px 12px; border-radius: var(--r-panel); display: inline-block; }
 .over { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(14, 19, 34, .72); }
 .card { width: min(520px, 100%); background: var(--stone); border-radius: var(--r-panel); padding: 22px; text-align: center; }
 .card p { margin: 10px 0 0; }
-.rules { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 14px; }
+.rules { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 14px; }
 .rules div { font-size: var(--fs-14); color: var(--muted); }
 .rules canvas { display: block; width: 100%; max-width: 76px; height: 64px; margin: 0 auto 2px; }
 .rules .yes { color: var(--beat); }
 .rules .no { color: var(--torch); }
+.rules .dare { color: var(--bronze); }
 .go { margin-top: 16px; font-size: var(--fs-20); }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; font-size: var(--fs-14); color: var(--muted); }
 .stats b { display: block; font-size: var(--fs-20); color: var(--parchment); font-weight: 500; }
@@ -52,7 +58,7 @@ html, body { height: 100%; overflow: hidden; }
   <div id="top" hidden>
     <div id="say" aria-live="polite"></div>
     <div id="line" aria-hidden="true"></div>
-    <div id="hud"><span>連擊 <b id="combo">0</b></span><span id="layer">只有鼓</span><span id="prog"></span></div>
+    <div id="hud"><span>連擊 <b id="combo">0</b></span><span>怒氣<i id="rage"><u></u></i></span><span id="layer">只有鼓</span><span id="prog"></span></div>
   </div>
   <div id="hint" hidden><span></span></div>
   <div class="over" id="title">
@@ -60,10 +66,11 @@ html, body { height: 100%; overflow: hidden; }
       <h1 class="ui-title md">吟遊詩人敲桌</h1>
       <p>求婚者占了伊薩卡的大廳。吟遊詩人被逼著唱歌，只能敲桌上的空位打拍子。</p>
       <div class="rules">
-        <div><canvas data-item="word"></canvas><span class="yes">字：敲</span></div>
-        <div><canvas data-item="hand"></canvas><span class="no">手：別敲</span></div>
-        <div><canvas data-item="food"></canvas><span class="no">食物：別敲</span></div>
-        <div><canvas data-item="cup"></canvas><span class="no">酒杯：別敲</span></div>
+        <div><canvas data-item="word"></canvas><span class="yes">敲</span></div>
+        <div><canvas data-item="hand"></canvas><span class="no">別敲</span></div>
+        <div><canvas data-item="food"></canvas><span class="no">別敲</span></div>
+        <div><canvas data-item="cup"></canvas><span class="no">別敲</span></div>
+        <div><canvas data-item="name"></canvas><span class="dare">敢就敲</span></div>
       </div>
       <p class="go"><kbd class="keyname">空白鍵</kbd> 開始</p>
       <a href="../showcase.html">回作品集</a>
@@ -79,7 +86,8 @@ html, body { height: 100%; overflow: hidden; }
     </div>
   </div>
   <div id="lab" hidden>
-    <h2>試驗場：固定兩行循環</h2>
+    <h2>試驗場：固定場景循環</h2>
+    <label>機制 <select id="scene"></select></label>
     <div id="live"></div>
     <div id="knobs"></div>
     <div id="labStrip"></div>
@@ -92,6 +100,7 @@ html, body { height: 100%; overflow: hidden; }
 'use strict';
 const Q = new URLSearchParams(location.search), LAB = Q.has('lab'), MUTE = Q.has('mute');
 const Rules = window.BardRules, $ = (id) => document.getElementById(id);
+let labScene = Rules.LAB_SCENES[Q.get('lab')] ? Q.get('lab') : 'basic';
 const COARSE = matchMedia('(pointer: coarse)').matches, KEY = COARSE ? '點畫面' : '空白鍵';
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 document.querySelectorAll('.keyname').forEach((k) => { k.textContent = KEY; });
@@ -102,7 +111,7 @@ const FONT = '"Noto Serif TC","Songti TC",serif';
 let params = Rules.sanitize({});
 let offsetMs = 0;
 let G = null, phase = 'title', manual = false, endedAt = 0;
-const fx = { strike: 0, shake: 0, word: '', wordCol: COL.parch, wordAt: -9, parts: [], anger: 0 };
+const fx = { strike: 0, shake: 0, word: '', wordCol: COL.parch, wordAt: -9, parts: [], anger: 0, flash: 0 };
 const sfxLog = [];
 
 // ---------- 聲音 ----------
@@ -141,20 +150,29 @@ const SFX = {
   miss(a) { tone(a, 110, .22, .16, 'sine', 62); },
   off(a) { noise(a, .05, .28, 240, 1.5); tone(a, 233, .1, .1, 'square', 220); },
   dodge(a) { tone(a, 1174, .16, .035, 'sine'); },
+  sung(a) { tone(a, 293.66, .42, .2, 'sawtooth'); tone(a, 440, .42, .13, 'triangle'); noise(a, .08, .4, 800, 2); },
+  held(a) { tone(a, 98, .12, .05, 'sine'); },
+  hoof(a) { noise(a, .12, .6, 260, 1); tone(a, 120, .2, .4, 'sine', 48); },
+  warn(a) { tone(a, 880, .07, .08, 'square'); tone(a + .1, 880, .07, .06, 'square'); },
+  change(a) { noise(a, .06, .25, 1500, 2); },
+  thrown(a) { tone(a, 330, .7, .3, 'sawtooth', 55); noise(a, .4, .4, 500, .6); },
+  arrow(a) { tone(a, 300, .18, .25, 'sawtooth', 2400); noise(a + .18, .12, .7, 900, 1.2); tone(a + .18, 110, .4, .5, 'sine', 45); },
 };
-function playSfx(name, cell) { sfxLog.push(name); if (sfxLog.length > 200) sfxLog.shift(); if (AC && AC.state === 'running' && SFX[name]) SFX[name](AC.currentTime + 0.002, cell); }
-function pump(t) {     // 排程伴奏：鼓一直在，連擊夠了才加琴與和聲
+function playSfx(name, cell) { sfxLog.push(name); if (sfxLog.length > 2000) sfxLog.shift(); if (AC && AC.state === 'running' && SFX[name]) SFX[name](AC.currentTime + 0.002, cell); }
+function pump(t) {     // 排程伴奏：鼓一直在，連擊夠了才加琴與和聲；終章跟著格子時間變快
   if (!AC || usePerf || !G) return;
   const P = G.P, total = P.lead + G.cells.length;
-  while (schedK < total && schedK * P.beat < t + 0.22) {
-    const at = clockBase + schedK * P.beat;
+  while (schedK < total) {
+    const rel = schedK < P.lead ? schedK * P.beat : G.cells[schedK - P.lead].t;
+    if (rel >= t + 0.22) break;
+    const at = clockBase + rel;
     if (at > AC.currentTime) {
       if (schedK < P.lead) tone(at, schedK === 0 ? 1320 : 990, .06, .2, 'square');
       else {
-        const pos = (schedK - P.lead) % 8;
+        const pos = (schedK - P.lead) % 8, nx = G.cells[schedK - P.lead + 1], gap = nx ? nx.t - rel : P.beat;
         tone(at, pos % 4 === 0 ? 74 : 62, .2, pos % 4 === 0 ? .42 : .24, 'sine', 42);
-        if (G.combo >= P.comboLyre) tone(at + P.beat / 2, SCALE[(pos * 3 + 2) % 8], .42, .1, 'triangle');
-        if (G.combo >= P.comboChorus && pos % 4 === 0) [146.83, 220, 293.66].forEach((f) => tone(at, f, P.beat * 3.4, .05, 'sawtooth'));
+        if (G.combo >= P.comboLyre) tone(at + gap / 2, SCALE[(pos * 3 + 2) % 8], .42, .1, 'triangle');
+        if (G.combo >= P.comboChorus && pos % 4 === 0) [146.83, 220, 293.66].forEach((f) => tone(at, f, gap * 3.4, .05, 'sawtooth'));
       }
     }
     schedK++;
@@ -176,8 +194,9 @@ async function begin() {
   startRun();
 }
 function startRun() {
-  G = Rules.createGame(LAB ? Rules.LAB_CHART : Rules.CHART, params);
-  phase = 'play'; schedK = 0; fx.parts.length = 0; fx.word = ''; fx.anger = 0;
+  const sc = LAB ? Rules.LAB_SCENES[labScene] : null;
+  G = Rules.createGame(sc ? sc.lines : Rules.CHART, sc ? Object.assign({}, params, { ramp: sc.ramp }) : params);
+  phase = 'play'; schedK = 0; fx.parts.length = 0; fx.word = ''; fx.anger = 0; fx.flash = 0;
   clockBase = (usePerf || !AC) ? performance.now() / 1000 : AC.currentTime + 0.12;
   $('title').hidden = true; $('end').hidden = true; $('top').hidden = false;
   renderLine(0); setSay('');
@@ -185,9 +204,12 @@ function startRun() {
 function toEnd() {
   if (LAB) { startRun(); return; }
   phase = 'end'; endedAt = performance.now(); fx.parts.length = 0;
-  const a = Rules.accuracy(G), v = Rules.verdict(a), s = G.counts, struck = s.struck.hand + s.struck.food + s.struck.cup;
+  if (G.thrown) playSfx('thrown');
+  const a = Rules.accuracy(G), v = Rules.verdict(G), s = G.counts, struck = Rules.struckCount(G), pts = Rules.score(G);
+  let best = pts;
+  try { best = Math.max(pts, +localStorage.getItem('bard-table-best') || 0); localStorage.setItem('bard-table-best', best); } catch (e) {}
   $('endTitle').textContent = v.title; $('endText').textContent = v.text;
-  $('stats').innerHTML = [['正確率', Math.round(a * 100) + '%'], ['敲準', s.perfect + s.good], ['忍住', s.dodge], ['敲到東西', struck], ['漏拍', s.miss], ['錯拍', s.off]]
+  $('stats').innerHTML = [['分數', pts], ['最高分', best], ['正確率', Math.round(a * 100) + '%'], ['唱出名字', s.sung + '／' + G.names], ['敲到東西', struck], ['漏拍＋錯拍', s.miss + s.off]]
     .map(([k, n]) => `<div><b>${n}</b>${k}</div>`).join('');
   $('end').hidden = false; $('top').hidden = true; setHint('');
 }
@@ -199,17 +221,19 @@ let shownLine = -1;
 function renderLine(line) {
   shownLine = line;
   const row = G.cells.filter((c) => c.line === line);
-  $('line').innerHTML = row.map((c) => `<span data-i="${c.i}">${c.ch || '・'}</span>`).join('');
+  $('line').innerHTML = row.map((c) => `<span data-i="${c.i}">・</span>`).join('');
 }
 function paintLine(idx) {
   document.querySelectorAll('#line span').forEach((s) => {
-    const i = +s.dataset.i, c = G.cells[i];
-    s.className = c.res === 'perfect' || c.res === 'good' || c.res === 'dodge' ? 'ok' : c.res ? 'bad' : i === idx ? 'now' : '';
+    const i = +s.dataset.i, c = G.cells[i], shown = c.kind === 'word' || c.kind === 'name' ? c.ch : '・';
+    if (s.textContent !== shown) s.textContent = shown;
+    s.className = c.res === 'perfect' || c.res === 'good' || c.res === 'dodge' || c.res === 'sung' ? 'ok' : c.res === 'held' ? '' : c.res ? 'bad' : i === idx ? 'now' : c.kind === 'name' ? 'nm' : '';
   });
 }
 const FEEDBACK = {
   perfect: ['準', 'beat'], good: ['差一點', 'beat'], miss: ['漏拍', 'torch'], dodge: ['忍住', 'beat'],
-  hand: ['敲到手了', 'blood'], food: ['敲進食物', 'blood'], cup: ['打翻酒杯', 'blood'],
+  hand: ['敲到手了', 'blood'], food: ['敲進食物', 'blood'], cup: ['打翻酒杯', 'blood'], hoof: ['敲到牛蹄', 'blood'],
+  sung: ['唱出來了', 'bronze'], held: ['忍住不唱', 'parch'],
 };
 function feedback(text, col, t) { fx.word = text; fx.wordCol = COL[col]; fx.wordAt = t; }
 function burst(n, col, s) {
@@ -219,14 +243,20 @@ function burst(n, col, s) {
 function onEvent(e, t) {
   if (e.type === 'dodge') { feedback(...FEEDBACK.dodge, t); playSfx('dodge', e.cell); }
   else if (e.type === 'miss') { feedback(...FEEDBACK.miss, t); playSfx('miss', e.cell); }
+  else if (e.type === 'held') { if (e.cell.pos === 0 || G.cells[e.cell.i - 1].from !== 'name') feedback(...FEEDBACK.held, t); playSfx('held', e.cell); }
+  else if (e.type === 'warn') playSfx('warn', e.cell);
+  else if (e.type === 'change') playSfx('change', e.cell);
 }
 function onResult(r, t) {
   if (r.type === 'idle') { fx.strike = 1; return; }
   fx.strike = 1;
-  if (r.type === 'perfect' || r.type === 'good') { feedback(...FEEDBACK[r.type], t); playSfx(r.type, r.cell); burst(r.type === 'perfect' ? 8 : 4, COL.beat, 260); }
+  if (r.type === 'perfect' || r.type === 'good') {
+    feedback(...FEEDBACK[r.type], t); playSfx(r.type, r.cell); burst(r.type === 'perfect' ? 8 : 4, COL.beat, 260);
+    if (G.P.ramp && r.cell.i === G.cells.length - 1) { playSfx('arrow'); fx.flash = 1; }
+  } else if (r.type === 'sung') { feedback(...FEEDBACK.sung, t); playSfx('sung', r.cell); burst(12, COL.bronze, 340); fx.anger = Math.max(fx.anger, .5); }
   else if (r.type === 'struck') {
     feedback(...FEEDBACK[r.kind], t); playSfx(r.kind, r.cell); fx.shake = 1; fx.anger = 1;
-    burst(16, r.kind === 'cup' ? COL.blood : r.kind === 'food' ? COL.bronze : COL.parch, 420);
+    burst(16, r.kind === 'cup' ? COL.blood : r.kind === 'hand' ? COL.parch : COL.bronze, 420);
   } else if (r.type === 'off') { feedback(r.side === 'early' ? '太早' : '太晚', 'torch', t); playSfx('off', r.cell); }
   G.lastDt = r.dt; G.lastType = r.type === 'struck' ? r.kind : r.type;
 }
@@ -236,6 +266,7 @@ function tap(atT) {
   const { events, result } = Rules.press(G, t);
   events.forEach((e) => onEvent(e, t));
   onResult(result, t);
+  if (G.phase === 'end') toEnd();
   return result;
 }
 function advanceTo(t) {
@@ -250,7 +281,7 @@ function act() {
 }
 addEventListener('keydown', (e) => {
   if (e.code !== 'Space') return;
-  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
   e.preventDefault();
   if (!e.repeat) act();
 });
@@ -291,6 +322,14 @@ function drawItem(g, kind, x, y, s, topY) {
   if (kind === 'hand') drawHand(g, x, y, s * .95, 1, COL.parch, COL.torch, topY != null ? topY : y - s * .5);
   else if (kind === 'food') drawFood(g, x, y, s);
   else if (kind === 'cup') drawCup(g, x, y, s);
+  else if (kind === 'hoof') drawHoof(g, x, y, s);
+}
+function drawHoof(g, x, y, s) {   // 牛蹄：蹄身加中間的裂縫
+  g.fillStyle = COL.bronze; g.strokeStyle = COL.night; g.lineWidth = Math.max(2, s * .05);
+  g.beginPath(); g.moveTo(x - s * .12, y - s * .4); g.lineTo(x + s * .14, y - s * .4); g.lineTo(x + s * .34, y + s * .26);
+  g.quadraticCurveTo(x, y + s * .42, x - s * .34, y + s * .26); g.closePath(); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(x, y + s * .34); g.lineTo(x + s * .02, y - s * .02); g.stroke();
+  g.fillStyle = COL.parch; g.fillRect(x - s * .13, y - s * .44, s * .28, s * .1);
 }
 function drawHall(W, tableTop, scroll, t) {
   const g = c.createLinearGradient(0, 0, 0, tableTop);
@@ -305,12 +344,12 @@ function drawHall(W, tableTop, scroll, t) {
     c.fillStyle = COL.night; c.fillRect(x - 2, ty + 6, 4, 24);
     c.fillStyle = COL.torch; c.globalAlpha = .9; c.beginPath(); c.ellipse(x, ty, 4, 7 + fl * 3, 0, 0, 7); c.fill(); c.globalAlpha = 1;
   }
-  const beatPhase = G ? Math.cos((t / G.P.beat) * Math.PI * 2) : 0, sway = G ? Math.min(1, G.combo / 12) : .2;
+  const beatPhase = G ? Math.cos(scroll * Math.PI * 2) : 0, sway = G ? Math.min(1, G.combo / 12) : .2;
   const sgap = 78, soff = -((scroll * 34) % sgap), H = tableTop;
   c.fillStyle = COL.night;
   for (let i = -1, x = soff - sgap; x < W + sgap; x += sgap, i++) {     // 求婚者剪影：連擊高跟著晃，敲錯時跳起來
     const n = Math.abs(Math.round(x - soff) / sgap + Math.floor(scroll * 34 / sgap)) % 3;
-    const bob = beatPhase * 3 * sway - fx.anger * (8 + n * 4);
+    const rageNow = Math.max(fx.anger, G ? G.anger / 130 : 0), bob = beatPhase * 3 * sway - rageNow * (8 + n * 4);
     const hx = x + (n - 1) * 8, hy = H - 40 - n * 6 + bob;
     c.beginPath(); c.arc(hx, hy, 12, 0, 7); c.fill();
     c.beginPath(); c.moveTo(hx - 26, H + 2); c.quadraticCurveTo(hx - 24, hy + 13, hx, hy + 12); c.quadraticCurveTo(hx + 24, hy + 13, hx + 26, H + 2); c.fill();
@@ -332,8 +371,7 @@ function draw() {
   const L = layout(), { W, H, tableTop, tableH, ppb, tapX, midY } = L;
   const live = phase === 'play' && G;
   const t = live ? (manual ? (G._t || 0) : clock()) : nowMs / 1000;
-  const beatLen = live ? G.P.beat : params.beat;
-  const pos = live ? t / beatLen - G.P.lead : (t / (beatLen * 1.7)) % IDLE.length;
+  const pos = live ? Rules.posAt(G, t) : (t / (params.beat * 1.7)) % IDLE.length;
   const cells = live ? G.cells : IDLE;
 
   c.save();
@@ -363,19 +401,50 @@ function draw() {
     if (x < -ppb || x > W + ppb) continue;
     if (cell.pos === 0) { c.strokeStyle = 'rgba(242,236,221,.2)'; c.beginPath(); c.moveTo(x - ppb / 2, tableTop + 4); c.lineTo(x - ppb / 2, tableTop + tableH - 4); c.stroke(); }
     c.fillStyle = 'rgba(14,19,34,.26)'; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.fill();
-    if (cell.kind === 'word') {
+    const moving = live && cell.to && cell.warned && !cell.changed && !res;
+    const k = moving ? Math.max(0, Math.min(1, (t - cell.warnAt) / (cell.changeAt - cell.warnAt))) : 0;
+    if (cell.kind === 'word' || cell.kind === 'name') {
+      const nm = cell.kind === 'name';
+      if (nm) {
+        c.fillStyle = res === 'sung' ? COL.torch : res === 'held' ? 'rgba(201,165,92,.25)' : COL.bronze;
+        rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.fill();
+      }
       c.font = `900 ${Math.round(cellS * .56)}px ${FONT}`;
-      c.fillStyle = res === 'perfect' || res === 'good' ? COL.beat : res === 'miss' ? COL.torch : COL.parch;
-      c.globalAlpha = res === 'miss' ? .6 : 1; c.fillText(cell.ch, x, midY + 2); c.globalAlpha = 1;
+      c.fillStyle = nm ? (res === 'held' ? COL.parch : COL.night) : res === 'perfect' || res === 'good' ? COL.beat : res === 'miss' ? COL.torch : COL.parch;
+      c.globalAlpha = res === 'miss' || res === 'held' ? .6 : 1; c.fillText(cell.ch, x, midY + 2); c.globalAlpha = 1;
       if (res === 'miss') { c.strokeStyle = COL.torch; c.lineWidth = 3; c.beginPath(); c.moveTo(x - cellS * .27, midY - cellS * .27); c.lineTo(x + cellS * .27, midY + cellS * .27); c.stroke(); }
+      if (moving && cell.to === 'hoof') {     // 牛蹄飛來：落點橘圈收縮，蹄子沿弧線飛向這格
+        c.strokeStyle = COL.torch; c.lineWidth = 4; c.beginPath(); c.arc(x, midY, cellS * (.72 - .26 * k), 0, 7); c.stroke();
+        const px = x + (1 - k) * ppb * 1.6, py = midY + (tableTop - 70 - midY) * (1 - k) - Math.sin(k * Math.PI) * 44;
+        c.save(); c.translate(px, py); c.rotate(k * 5); c.translate(-px, -py); drawHoof(c, px, py, cellS * .62); c.restore();
+      }
+      if (live && cell.from !== 'word' && cell.from !== 'name' && !res && t - cell.changeAt < .5) { c.strokeStyle = COL.beat; c.lineWidth = 4; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.stroke(); }
     } else {
       c.save();
       if (res === 'struck') { c.translate(x, midY); c.rotate(.42); c.translate(-x, -midY); }
-      c.globalAlpha = res === 'dodge' ? .55 : 1;
-      drawItem(c, cell.kind, x, midY, cellS * .92, tableTop - 2);
+      c.globalAlpha = res === 'dodge' ? .55 : 1 - k * .35;
+      drawItem(c, cell.kind, x, midY - k * cellS * .24, cellS * .92, tableTop - 2);
       c.restore();
+      if (moving) {                           // 手或杯子要移開：海青箭頭往上
+        c.strokeStyle = COL.beat; c.fillStyle = COL.beat; c.lineWidth = 4; const ay = midY + cellS * .36, h = cellS * .3;
+        c.beginPath(); c.moveTo(x + cellS * .34, ay); c.lineTo(x + cellS * .34, ay - h); c.stroke();
+        c.beginPath(); c.moveTo(x + cellS * .34, ay - h - 9); c.lineTo(x + cellS * .34 - 8, ay - h + 2); c.lineTo(x + cellS * .34 + 8, ay - h + 2); c.fill();
+      }
       if (res === 'dodge') { c.strokeStyle = COL.beat; c.lineWidth = 3; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.stroke(); }
       if (res === 'struck') { c.strokeStyle = COL.blood; c.lineWidth = 4; rr(c, x - cellS * .42, midY - cellS * .42, cellS * .84, cellS * .84, 5); c.stroke(); }
+    }
+  }
+
+  // 終章：門檻上的乞丐拉弓，越接近最後一拍拉得越滿
+  if (live && G.P.ramp) {
+    const rs = G.cells.length - G.P.ramp * 8, prog = Math.max(0, Math.min(1, (pos - rs) / (G.P.ramp * 8)));
+    if (pos >= rs) {
+      c.fillStyle = 'rgba(176,42,30,' + (.05 + prog * .13) + ')'; c.fillRect(-20, -20, W + 40, tableTop + 20);
+      const bx = W - Math.max(46, W * .08), by = tableTop - 62, r = 42, pull = 6 + prog * 26;
+      c.strokeStyle = COL.bronze; c.lineWidth = 4; c.beginPath(); c.arc(bx + 20, by, r, Math.PI * .68, Math.PI * 1.32); c.stroke();
+      const tx = bx + 20 + r * Math.cos(Math.PI * .68), ty1 = by + r * Math.sin(Math.PI * .68), ty2 = by - r * Math.sin(Math.PI * .68);
+      c.strokeStyle = COL.parch; c.lineWidth = 2; c.beginPath(); c.moveTo(tx, ty1); c.lineTo(tx + pull, by); c.lineTo(tx, ty2); c.stroke();
+      c.beginPath(); c.moveTo(tx + pull, by); c.lineTo(tx - 44, by); c.stroke();
     }
   }
 
@@ -399,27 +468,33 @@ function draw() {
       c.globalAlpha = 1; c.textAlign = 'center';
     }
     if (pos < 0) {
-      const n = Math.ceil(-pos);
+      const n = Math.min(G.P.lead, Math.ceil(-pos));
       c.font = `900 ${Math.round(ppb * .6)}px ${FONT}`; c.fillStyle = COL.parch; c.fillText(String(n), tapX, midY + 2);
     }
   }
+  if (fx.flash > 0) { c.fillStyle = 'rgba(242,236,221,' + fx.flash * .7 + ')'; c.fillRect(-20, -20, W + 40, H + 40); fx.flash = Math.max(0, fx.flash - dtF * 2.2); }
   c.restore();
 
   fx.strike = Math.max(0, fx.strike - dtF * 8); fx.shake = Math.max(0, fx.shake - dtF * 4.5); fx.anger = Math.max(0, fx.anger - dtF * 2.2);
   if (live) updateDom(pos);
 }
-const SAY = { 2: '求婚者的手伸過來了。吟遊詩人只敲空位。', 6: '杯盤越疊越滿。', 10: '酒過三巡，桌上幾乎沒有空位。', 12: '門邊的老乞丐，靜靜聽著。' };
+const SAY = { 2: '求婚者的手伸過來了。吟遊詩人只敲空位。', 6: '杯盤越疊越滿。', 7: '吟遊詩人唱出那個不准提的名字。', 8: '桌上的東西開始動了。', 10: '有人抓起牛蹄，朝大廳丟過來。', 11: '求婚者放下酒杯，盯著吟遊詩人。', 13: '門檻上的老乞丐，拿起了弓。' };
 function updateDom(pos) {
   const idx = Math.max(0, Math.min(G.cells.length - 1, Math.round(pos))), cur = G.cells[idx];
   if (cur.line !== shownLine) renderLine(cur.line);
   paintLine(idx);
   $('combo').textContent = G.combo;
+  $('rage').firstElementChild.style.width = G.anger + '%';
+  $('rage').classList.toggle('hot', G.anger >= 70);
   $('layer').textContent = G.combo >= G.P.comboChorus ? '鼓＋琴＋和聲' : G.combo >= G.P.comboLyre ? '鼓＋琴' : '只有鼓';
   $('prog').textContent = `第 ${cur.line + 1}／${G.cells[G.cells.length - 1].line + 1} 行`;
   if (!LAB) {
     if (SAY[cur.line]) setSay(SAY[cur.line]); else if (cur.line < 2) setSay('吟遊詩人敲起桌子，開口唱歌。');
     if (cur.line < 2) setHint(`<kbd>${KEY}</kbd> 字滑進框裡就敲`);
     else if (cur.line < 6) setHint(`<kbd>${KEY}</kbd> 只敲字，手、食物、酒杯都不敲`);
+    else if (cur.line === 6 || cur.line === 7) setHint(`<kbd>${KEY}</kbd> 金色名字：敲了高分，怒氣也升`);
+    else if (cur.line < 11) setHint(`<kbd>${KEY}</kbd> 綠箭頭要敲，橘圈別敲`);
+    else if (cur.line >= 14) setHint(`<kbd>${KEY}</kbd> 越來越快，最後一拍放箭`);
     else setHint('');
   } else setHint(`<kbd>${KEY}</kbd> 敲字，不敲東西`);
   if (LAB) updateLab();
@@ -436,24 +511,28 @@ document.querySelectorAll('.rules canvas').forEach((el) => {
   el.width = w * dpr; el.height = h * dpr;
   const g = el.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.fillStyle = '#5B4628'; rr(g, 2, 2, w - 4, h - 4, 4); g.fill();
-  if (el.dataset.item === 'word') { g.font = `900 34px ${FONT}`; g.fillStyle = COL.parch; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('歌', w / 2, h / 2 + 2); }
+  if (el.dataset.item === 'name') { g.fillStyle = COL.bronze; rr(g, 8, 6, w - 16, h - 12, 4); g.fill(); }
+  if (el.dataset.item === 'word' || el.dataset.item === 'name') { const nm = el.dataset.item === 'name'; g.font = `900 34px ${FONT}`; g.fillStyle = nm ? COL.night : COL.parch; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(nm ? '奧' : '歌', w / 2, h / 2 + 2); }
   else drawItem(g, el.dataset.item, w / 2, h / 2 + 2, 50, 3);
 });
 
 // ---------- 試驗場 ----------
 const KNOBS = [
   ['beat', '一拍（秒）', .4, 1, .005, 1], ['perfect', '準的寬度（毫秒）', 30, 120, 5, 1000],
-  ['good', '差一點的寬度（毫秒）', 60, 220, 5, 1000], ['offset', '輸入校正（毫秒）', -150, 150, 5, 1],
+  ['good', '差一點的寬度（毫秒）', 60, 220, 5, 1000], ['finale', '終章最快倍率（拍長）', .4, 1, .05, 1],
+  ['angerName', '唱名字加怒氣', 0, 30, 1, 1], ['offset', '輸入校正（毫秒）', -150, 150, 5, 1],
 ];
 function updateLab() {
-  const s = G.counts, st = s.struck.hand + s.struck.food + s.struck.cup;
+  const s = G.counts, x = s.struck;
   $('live').textContent = `上一下：${G.lastType || '—'}　偏差 ${G.lastDt != null ? Math.round(G.lastDt * 1000) + ' ms' : '—'}\n`
-    + `準 ${s.perfect}｜差一點 ${s.good}｜忍住 ${s.dodge}\n敲到 ${st}（手 ${s.struck.hand}／食 ${s.struck.food}／杯 ${s.struck.cup}）｜漏 ${s.miss}｜錯拍 ${s.off}\n`
-    + `判定：準 ±${Math.round(G.P.perfect * 1000)}、差一點 ±${Math.round(G.P.good * 1000)} ms｜連擊 ${G.combo}`;
+    + `準 ${s.perfect}｜差一點 ${s.good}｜忍住 ${s.dodge}｜唱名 ${s.sung}／不唱 ${s.held}\n敲到 ${Rules.struckCount(G)}（手 ${x.hand}／食 ${x.food}／杯 ${x.cup}／蹄 ${x.hoof}）｜漏 ${s.miss}｜錯拍 ${s.off}\n`
+    + `判定：準 ±${Math.round(G.P.perfect * 1000)}、差一點 ±${Math.round(G.P.good * 1000)} ms｜連擊 ${G.combo}｜怒氣 ${Math.round(G.anger)}`;
 }
 if (LAB) {
   document.body.classList.add('lab');
   $('lab').hidden = false;
+  $('scene').innerHTML = Object.entries(Rules.LAB_SCENES).map(([k, v]) => `<option value="${k}"${k === labScene ? ' selected' : ''}>${v.name}</option>`).join('');
+  $('scene').addEventListener('change', (e) => { labScene = e.target.value; e.target.blur(); if (phase === 'play') startRun(); });
   $('knobs').innerHTML = KNOBS.map(([k, name, lo, hi, step, m]) => {
     const v = k === 'offset' ? offsetMs : params[k] * (m === 1000 ? 1000 : 1);
     return `<label>${name}：<span id="v-${k}">${+v.toFixed(3)}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${step}" value="${v}"></label>`;
@@ -463,14 +542,14 @@ if (LAB) {
     $('v-' + k).textContent = v;
     if (k === 'offset') { offsetMs = v; return; }
     params = Rules.sanitize(Object.assign({}, params, { [k]: K[5] === 1000 ? v / 1000 : v }));
-    if (k === 'beat') { if (phase === 'play') startRun(); }
-    else if (G) { G.P.perfect = params.perfect; G.P.good = params.good; }
+    if (k === 'beat' || k === 'finale') { if (phase === 'play') startRun(); }
+    else if (G) { G.P.perfect = params.perfect; G.P.good = params.good; G.P.angerName = params.angerName; }
   });
   if (window.OdysseyBeat) OdysseyBeat.mount($('labStrip'), {
     label: '拍帶：海青大點要敲，淡小點是障礙不敲',
     source: () => {
       if (!G || phase !== 'play') return { now: 0, beats: [] };
-      return { now: clock(), beats: G.cells.map((x) => ({ t: x.t, strong: x.kind === 'word', hit: false })) };
+      return { now: clock(), beats: G.cells.map((x) => ({ t: x.t, strong: x.kind === 'word' || x.kind === 'name', hit: false })) };
     },
   });
 }
@@ -481,6 +560,7 @@ window.__bard = {
   audio: () => ({ muted: MUTE, master: master ? master.gain.value : null }), clock,
   setManual(v) { manual = v; }, start() { usePerf = true; startRun(); return G; },
   press(t) { if (G) G._t = t; const r = tap(t); return r ? { type: r.type, kind: r.kind, side: r.side } : null; },
+  setScene(k) { labScene = k; startRun(); return G; },
   advance(t) { if (G) G._t = t; advanceTo(t); return phase; },
   rules: Rules,
 };
