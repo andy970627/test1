@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作品集</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<link rel="stylesheet" href="ui-tokens.css">
+<style>
+/* 作品集入口：各作品仍是獨立網頁，這裡只放連結。要用 tools/showcase-serve.py 開，/ext/ 的作品才讀得到。 */
+body { margin: 0; background: var(--night); color: var(--parchment); font-family: var(--font-body); }
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 16px 48px; box-sizing: border-box; }
+.hero { padding: clamp(36px, 8vh, 80px) 0 20px; }
+.hero p { margin: 14px 0 0; color: var(--muted); max-width: var(--measure); }
+.list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
+.work { display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; align-items: center; padding: 20px;
+  background: var(--stone); border-radius: var(--r-panel); }
+.work h2 { margin: 0; font: 900 var(--fs-28)/1.3 var(--font-title); letter-spacing: .04em; color: var(--bronze); }
+.work .what { margin: 6px 0 0; }
+.work .how { margin: 6px 0 0; font-size: var(--fs-14); color: var(--muted); }
+.work .meta { margin: 8px 0 0; font-size: var(--fs-12); color: var(--muted); }
+.acts { display: flex; flex-direction: column; gap: 8px; min-width: 8.5em; }
+.acts a { display: block; box-sizing: border-box; padding: 9px 14px; text-align: center; text-decoration: none;
+  border: 1px solid var(--rule); border-radius: var(--r-btn); color: var(--parchment); font-size: var(--fs-14); }
+.acts a:first-child { background: var(--bronze); border-color: var(--bronze); color: var(--night); font-weight: 500; font-size: var(--fs-16); }
+.acts a:hover, .acts a:focus-visible { border-color: var(--parchment); outline: none; }
+.work.off { opacity: .55; }
+.work.off .acts a { pointer-events: none; }
+.notice { display: none; margin: 8px 0 0; color: var(--torch); font-size: var(--fs-14); }
+.work.off .notice { display: block; }
+@media (max-width: 640px) {
+  .work { grid-template-columns: 1fr; }
+  .acts { flex-direction: row; flex-wrap: wrap; }
+  .acts a { flex: 1 1 8em; }
+}
+</style>
+<div class="wrap">
+  <header class="hero">
+    <h1 class="ui-title xl">作品集</h1>
+    <p>四個可以直接玩的網頁作品。挑一個開始，玩完按瀏覽器的上一頁回來。</p>
+  </header>
+  <ul class="list" id="list"></ul>
+</div>
+<script>
+const WORKS = [
+  { title: '木馬之夜', what: '特洛伊城的夜晚，跟著鼓聲潛行。鼓聲最響時才能移動或出手。',
+    how: 'WASD 移動，空白鍵翻字卡，Esc 跳過字卡。', meta: '約 8～10 分鐘｜建議戴耳機',
+    links: [['開始玩', 'troy-prologue/index.html?map=final']] },
+  { title: '雙盲洞穴', what: '畫面全黑，只靠耳機裡的聲音，在獨眼巨人的洞穴找出口。',
+    how: 'W 前進，Q／E 轉身。跟著海風走，別靠近鼾聲。', meta: '約 3 分鐘｜一定要戴耳機',
+    links: [['開始玩', 'blind-cave-web/index.html'], ['觀眾地圖', 'blind-cave-web/index.html?spectator=1']] },
+  { title: '音樂花園', what: '上傳一首歌，花園跟著前奏、主歌、副歌和間奏變化。',
+    how: '上傳音檔後選專心、輕鬆或放空。自動展示不用操作。', meta: '約 3～5 分鐘｜喇叭或耳機',
+    links: [['開始玩', 'ext/music-garden/index.html'], ['自動展示', 'ext/music-garden/index.html?demo=1']] },
+  { title: '作息模擬', what: '決定今晚怎麼過，隔天的你會演給你看。',
+    how: 'Q／W 調起床時間，A／S 調睡眠時數，1／2／3 做選擇，R 重來。', meta: '約 3 分鐘｜不需要聲音',
+    links: [['開始玩', 'ext/routine-sim/index.html']] },
+];
+const list = document.getElementById('list');
+WORKS.forEach(w => {
+  const li = document.createElement('li');
+  li.className = 'work';
+  const body = document.createElement('div');
+  [['h2', '', w.title], ['p', 'what', w.what], ['p', 'how', w.how], ['p', 'meta', w.meta],
+   ['p', 'notice', '這項要用 tools/showcase-serve.py 開啟才讀得到。']].forEach(([tag, cls, text]) => {
+    const el = document.createElement(tag);
+    el.className = cls;
+    el.textContent = text;
+    body.appendChild(el);
+  });
+  const acts = document.createElement('div');
+  acts.className = 'acts';
+  w.links.forEach(([text, href]) => {
+    const a = document.createElement('a');
+    a.href = href;
+    a.textContent = text;
+    acts.appendChild(a);
+  });
+  li.append(body, acts);
+  list.appendChild(li);
+  fetch(w.links[0][1].split('?')[0], { method: 'HEAD' })
+    .then(r => { if (!r.ok) throw new Error('missing'); })
+    .catch(() => {
+      li.classList.add('off');
+      acts.querySelectorAll('a').forEach(a => a.setAttribute('tabindex', '-1'));
+    });
+});
+</script>
+</html>
