@@ -44,6 +44,11 @@ for d in "$SRC"/*/; do
   copy_tree "$SRC/$p" "$OUT/$p"
 done
 
+# 地圖資料由 index.html 依網址動態載入：缺了就停，免得 ?map=demo、?map=final 打包後才發現開不了
+for f in level-troy.js level-troy-final.js level-troy-demo.js; do
+  [ -s "$OUT/troy-prologue/$f" ] || { echo "錯誤：打包缺少 troy-prologue/$f" >&2; exit 1; }
+done
+
 # 2. three.js r128 本地一份（快取後可離線重跑）
 if [ ! -s "$THREE_CACHED" ]; then
   echo "下載 three@$THREE_VER …"

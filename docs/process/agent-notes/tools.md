@@ -292,3 +292,15 @@
 - **CI**：在 `web-tests` 工作裡加了三步：裝 Playwright（chromium）、冒煙測打包出的 dist、把冒煙表寫進執行摘要。路徑過濾也加上 `tools/smoke-full.mjs`。預估每次多 1～2 分鐘。還沒在 GitHub 上實際跑過，第一次推上去後要看結果。
 - **嚴格檢查**：`bash tools/cleancheck.sh tools/smoke-full.mjs tools/build-itch.sh .github/workflows/ci.yml tools/playtest-recorder/hit-align.mjs tools/playtest-recorder/profiles/troy-prologue.mjs` 全過，377 項。
 - 注意：在 PowerShell 打 `bash` 會叫到 WSL 而失敗，打包和嚴格檢查要用 Git Bash 跑。
+
+## 11/23 短展示版 `?map=demo` 驗收（`tools/playtest-recorder/demo-walk.mjs`，新）
+
+- 指令：`node tools/playtest-recorder/demo-walk.mjs [--root dist/odyssey-series] [--rounds 3] [--max 480] [--json 結果.json]`。程式玩家（makeBot，走地圖的 botRoute）的輸出只轉成鍵盤事件與滑鼠拖曳，只讀遊戲狀態、不寫座標或視角。事件是腳本送出的（isTrusted=false），和硬體按鍵不完全相同。
+- 打包：`build-itch.sh` 加了三份地圖檔的必要檢查；`smoke-full.mjs` 加 `?map=demo`。
+- 實走：原始、打包各連續 3 輪通關，字卡→木馬下→神殿廣場→城門→結局→空白鍵再玩，主控台 0 錯誤。每輪 39～65 秒是完美玩家，不代表真人時間。
+- 聲音（不出聲）：每輪開局字卡停 1.5 秒時仍在播的音源 0→24→24（原始）、0→24→28（打包）；遊玩段 RMS（訊號平均大小）−16.9／−16.8／−16.8 與 −17.2／−17.0／−17.1 dB，峰值都 −0.9 dB，沒有逐輪變大。每輪累計建立約 18～19 萬個節點（每秒約 3～4 千）。
+- 量不到：瀏覽器實際還活著的節點數（垃圾回收看不到；connect 減 disconnect 一直增加不代表洩漏）；`performance.memory` 在無頭下數值固定，不能當記憶體證據；3 輪太短，看不出長時間展示會不會累積；喇叭音量與聽感。
+- **編輯器競態（未修，屬畫面角色）**：`level-editor.html` 等 `level-troy.js` 最多 1.5 秒，逾時後 `start()` 走 `R.buildLevel()`，但 risset.js 先載入時沒有資料，會丟「resolveLevel：沒有關卡資料」。機器忙時冒煙兩次都抓到。
+- 編輯器重現數字：不加延遲 5／5 正常（`level-troy.js` 0.3～0.65 秒載完）；人為讓這個檔晚 1 秒回應 3／4 出錯、晚 2 秒 4／4 出錯。最後兩次冒煙（原始、打包）各 20 過 1 敗，敗的都是編輯器，當時機器忙。**所以 11/23 冒煙驗收還沒全綠**。建議修法（畫面角色）：`level-editor.html` 改成在 risset.js 之前同步載入 `level-troy.js`，和遊戲頁相同。
+- 流程失誤：第一次實走開瀏覽器時可用記憶體 1.09 GB，低於 1.5 GB 門檻，是指令把檢查和執行串在一起、沒有擋下。之後的執行都先過門檻。
+- 測試當下另有別的程式 `t6.js` 開著無頭瀏覽器，不是這個角色開的，沒有動。

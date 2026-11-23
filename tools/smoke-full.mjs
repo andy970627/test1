@@ -5,7 +5,7 @@
  *   node tools/smoke-full.mjs --root dist/odyssey-series   # 測打包出的站台
  *   node tools/smoke-full.mjs --wait 3 --json 結果.json --md 結果.md
  *
- * 開的頁：遊戲預設版、?map=final&story=1、level-editor.html、switch.html 上的每個連結（只取 .html 頁）。
+ * 開的頁：遊戲預設版、?map=final&story=1、?map=demo、level-editor.html、switch.html 上的每個連結（只取 .html 頁）。
  * 每頁網址都加 mute=1&nolock=1；瀏覽器帶 --mute-audio，不會外放。伺服器是腳本自己開的隨機埠，結束就關（不碰 8765）。
  * ?map=final 需要 troy-prologue/level-troy-final.js；檔案還不存在時那幾頁標「待交卷」，不算失敗。
  * 需要 playwright（本機：NODE_PATH 指到 %LOCALAPPDATA%\test1-node-tools\node_modules；CI：npx playwright install chromium）。
@@ -48,6 +48,7 @@ function pages() {
   const list = [
     { name: '遊戲預設版', url: 'troy-prologue/index.html' },
     { name: '最終地圖＋字卡', url: 'troy-prologue/index.html?map=final&story=1', needs: 'troy-prologue/level-troy-final.js' },
+    { name: '短展示版', url: 'troy-prologue/index.html?map=demo', needs: 'troy-prologue/level-troy-demo.js' },
     { name: '關卡編輯器', url: 'level-editor.html' }
   ];
   const sw = path.join(ROOT, 'switch.html');
