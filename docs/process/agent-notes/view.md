@@ -136,6 +136,8 @@
 
 - （11/17）**?map=final 與故事字卡**：index.html 只在 ?map=final 時用 document.write 載 level-troy-final.js（window.TroyLevelFinal），經 Rules.resolveLevel 交 createLevel；?level=local 優先。暗區（區資料 dark: true）讓 flashOn() 為真，借 REVEAL 的環境光乘暗＋最響一擊照亮；**離開暗區時 flashFrame 會把半球光、月光還原成 rvBase、腳邊燈歸零**（以前只有整局開關，不會中途關）。字卡 STORY_CARDS（序 3、終 1），STORY_ON＝?story=1 或 ?map=final（?story=0 關）；顯示時 **game.story = 'intro'｜'outro'**（聲音角色讀它做悶鼓），收起後 null；序的時候遊戲照跑但 game.step 收到零輸入；鍵盤用 capture 監聽先接走。終在 showOver 的勝利分支先放字卡，翻完再呼叫 showOver 走原本的勝利畫面。**插圖規格：16:9**（字卡插圖框，給電繪同學；框寬最大 960 px，建議交 1920 × 1080）。
 
+- （11/23）**短展示關卡 `?map=demo`**：只在帶參數時用 document.write 載 level-troy-demo.js（window.TroyLevelDemo），經 Rules.resolveLevel 交 createLevel；載入失敗時回到長開場頁，開場最上面顯示一行訊息、用原本地圖。DEMO_ON 時：CLEAN_Q 也算開（不讀存檔，別人留下的除錯開關帶不進展示）、不問問卷、body.demoMode 藏開發用按鈕。開場字卡是 STORY_CARDS.demo（storyShow('demo', startFromTop)），開始前 game 還是 null。結局、失敗的「再玩一次」呼叫 backToIntro（停聲音、清狀態、回字卡）；空白鍵與 Enter 先擋一下（失敗 1.2 秒、結局 2.6 秒），免得還按著屏息就跳走。
+
 ## 4. 驗證方式
 - **本機開原型（有外殼）**：
   - 打包：`bash tools/build-itch.sh` → 輸出 `dist/odyssey-series/`（結構同 `prototypes/`，片段自動包外殼、three.js 改本地）。在該資料夾起靜態伺服器（例如 `python -m http.server -d dist/odyssey-series 8000`），開 `http://localhost:8000/troy-prologue/index.html`。這條路徑 `../telemetry.js`、`../nav.js` 都載得到。
@@ -232,5 +234,7 @@
 - 11/17（畫面）遊戲頁區號改讀資料、編輯器加區刪區（未提交；乾淨狀態 373 項通過，其中編輯器 9 項；截圖在共享筆記 `level-zones-1117/`）：index.html 的 12 處寫死區號照規則角色清單改成讀資料；編輯器加「區」面板（名字、教什麼、難度階、DRIVE 段、出口通往哪一區、畫出口、刪除這一區）、工具列「出口（6）」與「目前的區」、「加一區」（插入空地後自動帶入範圍）。實測：插入空地＋加「慶宴的街」→ 在遊戲裡試，從第 1 區經暗門、各區出口走到第 5 區城門，HUD 區名與進區訊息依序是 窄巷／慶宴的街／城門；上一頁回編輯器 6 區、匯入匯出相同；不帶 ?level=local 時第 1、4 區的區名與提示照舊。
 - 11/17（畫面）編輯器「區」面板加配樂 music（自動＝不寫欄位、intro／belly／temple／alley／gate；資料裡是編號時顯示「第 n 組」照留）與風 wind（跟配樂那一組＝不寫、沒有風＝null、從地圖上一點吹來＝點一下設 {x, y: 0, z, g}，g 預設 1、可改 0～1.5；資料裡是編號時照留）；地圖畫各區的風（目前這一區青銅）；說明與圖例補上（聲音角色 51656c6，audio.md 最後一段）。實測：改了再全部復原和現有關卡相同、匯入匯出相同；bash tools/cleancheck.sh 375 項通過。截圖 level-zones-1117/70-music-wind.png。未提交。
 - 11/17 晚（畫面）?map=final 與序、終字卡（使用者在總控選「今晚就做」；未提交；cleancheck 375 項通過；截圖在共享筆記 `story-final-1117/`）：index.html 讀期末地圖、檔案沒到時顯示一行訊息並用原本地圖（字卡翻完再說一次）；暗區調暗＋最響一擊照亮，離開暗區還原；序 3 張（木馬進城／全城慶祝／夜深）、終 1 張（城門開了），黑底、題字、插圖框 16:9 寫「插圖待放」，點擊／空白鍵／Enter／→ 翻頁，Esc 或「略過」跳過；game.story 旗標；switch.html 加「期末七段版」。旁白初稿等總控跑 humanizer-zh-tw。實測：沒帶參數無字卡、flashFx 不出現；?map=final 用規則角色的正式地圖（90 × 30、8 區）從序翻完 → 腹中 → 木馬下 → 神殿廣場 → 慶宴的街 → 窄巷 → 沒有火的後街（暗、照亮開）→ 城門 → 推開 → 終字卡 → 原本的勝利畫面。
+- 11/23（畫面）木馬之夜短展示關卡接進遊戲頁（只改 troy-prologue/index.html，未提交；全套與 cleancheck 379 項通過；截圖在共享筆記 `demo-1123/`）：`?map=demo` 開一張故事兩句＋四組按鍵的字卡，空白鍵或點一下開始；結局與失敗畫面有主按鈕「再玩一次（空白鍵）」，回到乾淨字卡。無頭實測（--mute-audio、?mute=1&nolock=1）：桌機 1440 × 900、手機 390 × 844 各連跑 3 輪「開局 → 木馬下 → 神殿廣場 → 城門 → 再玩一次」，另各測一次失敗後再玩一次，主控台 0 錯誤；換區是程式移到出口、城門進度是程式設定，不是真人走完。檔案擋掉時有一行訊息；不帶參數與 ?map=final 開局正常（只做開局比對，沒做逐像素比對）。
+  - 還沒解決：手機沒有觸控操作，手機寬度只驗證版面與流程，真的手機玩不了；展示請用電腦、鍵盤滑鼠。開局鏡頭面向火盆和牆，新觀眾知不知道往哪走要真人看。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。

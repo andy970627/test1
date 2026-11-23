@@ -146,6 +146,14 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
 #storyTitle { font-family: var(--display); font-weight: 900; font-size: clamp(28px, 4vw, 44px); line-height: 1.15; letter-spacing: .04em; margin: 0; color: var(--parchment); }
 #storyText p { margin: 0; font-size: 20px; line-height: 1.7; max-width: 36em; }
 .storyFoot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#story.demoCard { background: rgba(14, 19, 34, .92); }   /* 短展示關卡的開場：看得到後面的場景 */
+#story.demoCard .storyArt, #story.demoCard #storyPage { display: none; }
+#story.demoCard .storyCard { width: min(620px, 100%); }
+#storyKeys { font-size: 16px; gap: 8px 16px; }
+/* 短展示關卡：結束畫面只留再玩一次，不放試玩數據、切換台等開發用按鈕 */
+body.demoMode #opts, body.demoMode #survey, body.demoMode .btnExport, body.demoMode .btnHub, body.demoMode .btnSwitch, body.demoMode #pause p.dim, body.demoMode #fail > .card > p.dim { display: none !important; }
+body.demoMode #fail .btnIntro, body.demoMode #win .btnIntro { display: none !important; }
+body.demoMode #win .card { transition: opacity .8s; }
 #storyPage { color: var(--dim); font-size: 14px; margin-right: auto; }
 #win { background: transparent; transition: background 3s; }
 #win.dark { background: #000; }
@@ -294,6 +302,7 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
     <div class="storyArt" aria-hidden="true"><span>插圖待放（16:9）</span></div>
     <h2 id="storyTitle"></h2>
     <div id="storyText"></div>
+    <dl class="keys" id="storyKeys" hidden></dl>
     <div class="storyFoot"><span id="storyPage"></span><button class="primary" id="storyNext" type="button">下一張</button><button id="storySkip" type="button">略過</button></div>
   </div>
 </div>
@@ -396,6 +405,7 @@ document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(loc
 <script src="level-troy.js"></script>
 <script>   // ?map=final：期末七段版地圖（規則角色的 level-troy-final.js，window.TroyLevelFinal）；沒帶參數完全不載
 if (new URLSearchParams(location.search).get('map') === 'final') document.write('<script src="level-troy-final.js"><\/script>');
+if (new URLSearchParams(location.search).get('map') === 'demo') document.write('<script src="level-troy-demo.js"><\/script>');   // 12/24 短展示關卡
 </script>
 <script src="risset.js"></script>
 <script>
@@ -760,8 +770,14 @@ const LEVEL_FINAL = (() => {
   if (!MAP_FINAL_Q || !window.TroyLevelFinal) return null;
   try { return typeof Rules.resolveLevel === 'function' ? Rules.resolveLevel(window.TroyLevelFinal) : null; } catch (e) { return null; }
 })();
-// 序與終的翻頁字卡：?story=1 開；?map=final 時預設開（?story=0 關）
-const STORY_ON = URLQ.get('story') === '1' || (MAP_FINAL_Q && URLQ.get('story') !== '0');
+// ?map=demo：12/24 短展示關卡（開場→木馬下→神殿廣場→城門）。讀不到檔案就顯示一行訊息、用原本的地圖
+const MAP_DEMO_Q = URLQ.get('map') === 'demo';
+const LEVEL_DEMO = (() => {
+  if (!MAP_DEMO_Q || !window.TroyLevelDemo || typeof Rules.resolveLevel !== 'function') return null;
+  try { return Rules.resolveLevel(window.TroyLevelDemo); } catch (e) { return null; }
+})();
+// 序與終的翻頁字卡：?story=1 開；?map=final 時預設開（?story=0 關）。短展示關卡不走腹中，有自己的開場字卡
+const STORY_ON = !MAP_DEMO_Q && (URLQ.get('story') === '1' || (MAP_FINAL_Q && URLQ.get('story') !== '0'));
 const LEVEL_LOCAL = (() => {
   if (!LEVEL_LOCAL_Q) return null;
   let d = null; try { d = JSON.parse(localStorage.getItem('troy-level-local') || 'null'); } catch (e) { d = null; }
@@ -773,7 +789,7 @@ const LEVEL_LOCAL = (() => {
 })();
 // 錄影模式 ?clean=1：不讀也不寫首頁存檔（每次都是 HTML 預設），相位條、試玩數據摘要強制關，不掛說明欄、不放「回試玩切換台」。
 // 給報告錄影用：使用者自己電腦上存過的除錯開關不會出現在畫面上
-const CLEAN_Q = URLQ.get('clean') === '1';
+const CLEAN_Q = URLQ.get('clean') === '1' || MAP_DEMO_Q;   // 短展示關卡也不讀存檔：別人留下的除錯開關不會帶進展示
 const MOVES_SUPPORTED = !!(Rules.T && 'MOVES_MODE' in Rules.T);
 const movesOn = () => !!K().MOVES_MODE;
 const horseOn = () => !!K().HORSE_MODE;
@@ -1479,6 +1495,7 @@ function telExport() {
 /** 一局結束的三題快問：when = 'fail'｜'win'｜'intro'。一局只問一次（答了或略過都算）。 */
 function telSurveyShow(when) {
   const box = $('survey');
+  if (MAP_DEMO_Q) { box.hidden = true; return; }   // 展示不問問卷
   if (!TEL || TEL.surveyed() || (!TEL.active() && !TEL.last())) { box.hidden = true; return; }
   const slot = document.querySelector('#' + when + ' .surveySlot'); if (!slot) return;
   box.querySelectorAll('input').forEach(i => { i.checked = false; }); $('sqNote').value = '';
@@ -1796,7 +1813,7 @@ function newGame() {
   // 規則：opts.T 是常數覆寫；從開場字卡（區 0）進入區 1，讓第一個提示照規則出現
   const aidMode = $('oAid').value;
   const qz = +new URLSearchParams(location.search).get('startZone');     // 實驗：?startZone=1..4 直接從某一區開始
-  const nZ = ((LEVEL_LOCAL || LEVEL_FINAL || window.TroyLevelData || {}).zones || [0, 0, 0, 0, 0]).length;   // ?startZone 上限＝區數減 1
+  const nZ = ((LEVEL_LOCAL || LEVEL_FINAL || LEVEL_DEMO || window.TroyLevelData || {}).zones || [0, 0, 0, 0, 0]).length;   // ?startZone 上限＝區數減 1
   const opts = { t0, startZone: qz >= 1 && qz <= nZ - 1 ? qz | 0 : 0, T: { CYCLE: curT } };
   if (COVER_SUPPORTED) opts.T.COVER_MODE = $('oCover').value === 'cover';   // 鼓聲：不中斷／留空檔
   opts.visualAid = aidMode;                                            // 'auto'|'on'|'off'：自動＝交給規則依區域決定
@@ -1809,6 +1826,7 @@ function newGame() {
   if (LAB === 'horse') { opts.T.HORSE_MODE = true; opts.startZone = 2; }   // 規則的 lab: 'horse' 也會這樣設；先寫上，規則還沒支援時一樣能看共鳴
   if (LEVEL_LOCAL) opts.level = LEVEL_LOCAL;                          // ?level=local：關卡編輯器的關卡
   else if (LEVEL_FINAL) opts.level = LEVEL_FINAL;                     // ?map=final：期末七段版
+  else if (LEVEL_DEMO) opts.level = LEVEL_DEMO;                       // ?map=demo：短展示關卡
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
   game = g; overShown = false; winT = 0;
@@ -1817,6 +1835,7 @@ function newGame() {
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
   for (const G of S.guards.values()) { G.px = null; }
   $('msgs').innerHTML = ''; clearHints(); lastHintAt = -1e9;
+  if (MAP_DEMO_Q && !LEVEL_DEMO && !LEVEL_LOCAL) showMsg('短展示關卡載入失敗，先用原本的地圖。');
   if (MAP_FINAL_Q && !LEVEL_LOCAL) showMsg(LEVEL_FINAL ? '期末七段版地圖。' : '期末七段版的地圖檔還沒到，先用原本的地圖。');
   if (LEVEL_LOCAL_Q) showMsg(LEVEL_LOCAL ? '這是關卡編輯器的關卡（存在這台電腦）。按瀏覽器的上一頁回編輯器。' : '找不到關卡編輯器存的關卡，先用原本的關卡。');
   HW.nowN = 0; HW.nowCycle = null; HW.gaspAt = -1e9; HW.gate = null; HW.hushKick = 0; LABS.steps.length = 0; bellyLpI = 0; resetMovesFx(); HW.susp = {}; HW.growlAt = {}; HW.lastLadder = null; HW.hand = HW.handKick = HW.back = HW.blade = 0;
@@ -1840,6 +1859,10 @@ function startFromTop() {
 //   點擊、空白鍵、Enter、→ 翻頁；Esc 或「略過」跳過全部。字卡顯示時 game.story = 'intro'｜'outro'（聲音角色用它放隔著木板的悶鼓），收起後 null；
 //   序的時候遊戲照跑（聲音的時鐘要走），但不收任何輸入，玩家停在腹中。
 const STORY_CARDS = {
+  demo: [   // 短展示關卡的開場：故事兩句＋最少按鍵，新觀眾 15 秒內看完；按一下就開始
+    { title: '木馬之夜', lines: ['特洛伊人把木馬拖進城，喝到深夜。', '藏在木馬裡的人溜了出來，要趁著鼓聲打開城門。'],
+      keys: [['W A S D', '走。踩在鼓點上，衛兵聽不見'], ['滑鼠', '轉頭看'], ['空白鍵 按住', '屏息，不出聲'], ['E 按住', '到城門推開門閂']] },
+  ],
   intro: [
     { title: '木馬進城', lines: ['黃昏。特洛伊人拉著粗繩，把木馬拖進城門。', '他們以為，十年的戰爭結束了。'] },
     { title: '全城慶祝', lines: ['城裡點滿火把，酒一桶接一桶打開。', '歌聲和鼓聲，從神殿一路傳到城牆。'] },
@@ -1850,12 +1873,19 @@ const STORY_CARDS = {
   ],
 };
 const STORY = { kind: null, i: 0, done: null, outroDone: false };
+const DEMO_ON = !!LEVEL_DEMO && !LEVEL_LOCAL && !LAB, DEMO = { overAt: 0 };   // 短展示關卡的開場與再玩一次
+function demoCard() { storyShow('demo', startFromTop); }
+function demoFocus(id) { try { $(id).focus({ preventScroll: true }); } catch (e) {} }
 function storyRender() {
   const c = STORY_CARDS[STORY.kind][STORY.i], n = STORY_CARDS[STORY.kind].length;
   $('storyTitle').textContent = c.title;
   $('storyText').replaceChildren(...c.lines.map(t => { const p = document.createElement('p'); p.textContent = t; return p; }));
-  $('storyPage').textContent = (STORY.i + 1) + ' / ' + n;
-  $('storyNext').textContent = STORY.i + 1 < n ? '下一張（空白鍵）' : (STORY.kind === 'intro' ? '進木馬（空白鍵）' : '繼續（空白鍵）');
+  const demo = STORY.kind === 'demo';
+  $('story').classList.toggle('demoCard', demo);    // 展示字卡沒有插圖框
+  $('storyKeys').hidden = !c.keys;
+  $('storyKeys').replaceChildren(...(c.keys || []).flatMap(([k, t]) => { const dt = document.createElement('dt'), dd = document.createElement('dd'); const m = /^(.*?)( 按住)$/.exec(k), b = document.createElement('kbd'); b.textContent = m ? m[1] : k; dt.appendChild(b); if (m) dt.appendChild(document.createTextNode(m[2])); dd.textContent = t; return [dt, dd]; }));
+  $('storyPage').textContent = demo ? '' : (STORY.i + 1) + ' / ' + n;
+  $('storyNext').textContent = demo ? '開始（空白鍵）' : STORY.i + 1 < n ? '下一張（空白鍵）' : (STORY.kind === 'intro' ? '進木馬（空白鍵）' : '繼續（空白鍵）');
   $('storySkip').hidden = STORY.i + 1 >= n;
 }
 function storyShow(kind, done) {
@@ -4010,7 +4040,7 @@ function cinFrame(dt) {
   if (now > last + CIN_FALL + CIN_HOLD) cinFinish();
 }
 function showOver() {
-  overShown = true; unlockPointer();
+  overShown = true; unlockPointer(); DEMO.overAt = performance.now();
   if (game.phase === 'fail') {
     const why = game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';   // 規則給的完整句子直接顯示
     $('failWhy').textContent = why;
@@ -4019,7 +4049,7 @@ function showOver() {
     fh.innerHTML = ''; fh.hidden = !(L && performance.now() - L.at < 8000);
     if (!fh.hidden) keyText(fh, L.a);
     telSurveyShow('fail');
-    setTimeout(() => { if (game && game.phase === 'fail') $('fail').hidden = false; }, 500);
+    setTimeout(() => { if (game && game.phase === 'fail') { $('fail').hidden = false; if (DEMO_ON) demoFocus('btnFromTop2'); } }, 500);
   } else {
     const lab = !!game.lab;   // 試驗場過關：不是城門，是爬下暗門
     if (STORY_ON && !lab && !STORY.outroDone) { STORY.outroDone = true; storyShow('outro', () => { if (game && game.phase === 'win') showOver(); }); return; }   // 終：城門打開的字卡
@@ -4030,6 +4060,7 @@ function showOver() {
     // 先看城門打開、火把湧入，再轉黑畫面
     // 木馬開關開著：先演回頭看木馬，演完（或任意鍵跳過）才轉黑；保險 20 秒一定轉黑。開關關著照舊 5.5 秒
     if (cinWanted()) { cinPlan(); setTimeout(cinFinish, 60000); }
+    else if (DEMO_ON) setTimeout(() => { if (game && game.phase === 'win') { $('win').classList.add('dark'); demoFocus('btnAgain'); } }, 2500);   // 短展示：看一眼城門打開就出現再玩一次
     else setTimeout(() => { if (game && game.phase === 'win') $('win').classList.add('dark'); }, 5500);
   }
 }
@@ -4156,6 +4187,7 @@ function backToIntro() {
   $('pause').hidden = true; $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
   document.body.classList.remove('playing');
   $('optSlotIntro').appendChild($('opts'));
+  if (DEMO_ON) { demoCard(); return; }             // 短展示：回到乾淨的開場字卡，下一位觀眾不必重新整理
   $('intro').hidden = false; $('intro').scrollTop = 0;
   telSurveyShow('intro'); telCount();               // 回開場＝一局結束：還沒問過就在開場畫面問
 }
@@ -4179,12 +4211,29 @@ if (LAB && !CLEAN_Q && NAV && typeof NAV.mount === 'function' && LAB_HELP[LAB]) 
 // 開場前先建好場景當背景（看得到木馬腹中）
 try {
   t0 = 0; curT = +$('oT').value || 10;
-  const g0 = Rules.createLevel({ t0: 0, startZone: 0 });
+  const g0 = Rules.createLevel(LEVEL_DEMO ? { t0: 0, startZone: 0, level: LEVEL_DEMO } : { t0: 0, startZone: 0 });
   build(g0.level);
   const P = g0.player; camera.position.set(P.x, num(P.y, 2.5) + 1, P.z); camera.rotation.set(-.35, num(P.yaw, Math.PI), 0);
   renderer.render(scene, camera);
 } catch (e) { console.warn('預覽場景失敗', e); }
 
+// 短展示關卡（?map=demo）：開場字卡取代長的開場頁；結局、失敗後空白鍵或 Enter 回到字卡（先擋一下，免得還按著屏息就跳走）
+if (MAP_DEMO_Q && !LEVEL_DEMO) { const el = $('labBrief'); el.hidden = false; el.textContent = '短展示關卡載入失敗，先用原本的地圖。'; }
+if (DEMO_ON) {
+  document.body.classList.add('demoMode');
+  $('btnAgain').textContent = '再玩一次（空白鍵）'; $('btnAgain').classList.add('primary'); $('btnAgain').onclick = backToIntro;
+  const again = $('btnFromTop2'); again.textContent = '再玩一次（空白鍵）'; again.classList.add('primary'); again.onclick = backToIntro;
+  const retry = $('btnRetry'); retry.classList.remove('primary'); retry.parentNode.insertBefore(again, retry);
+  $('btnFromTop').onclick = () => { $('pause').hidden = true; backToIntro(); };
+  window.addEventListener('keydown', e => {
+    if (!game || !overShown || STORY.kind || (game.phase !== 'fail' && game.phase !== 'win')) return;
+    if (!['Space', 'Enter', 'NumpadEnter'].includes(e.code)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.repeat || performance.now() - DEMO.overAt < (game.phase === 'win' ? 2600 : 1200)) return;
+    backToIntro();
+  }, true);
+  $('intro').hidden = true; demoCard();
+}
 window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN };   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
