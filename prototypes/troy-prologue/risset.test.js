@@ -4609,3 +4609,55 @@ test('11/17 期末版七段地圖：出口矩形比衝刺距離深（畫面回�
     }
   }
 });
+
+// ---------- 11/23 12/24 短展示關卡（level-troy-demo.js） ----------
+test('11/23 短展示關卡：純資料、demo: true；木馬下 → 神殿廣場 → 城門，不走腹中；各區欄位齊全、起點在影子裡、出口比衝刺深；DRIVE 段一路往上', () => {
+  const data = require('./level-troy-demo.js');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(data)), data, '只能有 JSON 表達得了的值');
+  assert.equal(data.demo, true);
+  const lv = R.resolveLevel(data);
+  assert.equal(lv.demo, true);
+  assert.deepEqual(lv.zones.map((z) => z.name), ['開場', '木馬下', '神殿廣場', '城門']);
+  assert.ok(lv.zones.every((z) => !z.belly), '不走腹中');
+  assert.deepEqual(lv.zones.map((z) => z.driveSeg), [0, 2, 5, 7]);
+  assert.equal(lv.zones[1].teach, 'blind');
+  assert.ok(R.isGateZone(lv, lv.zones.length - 1), '城門在最後一區');
+  lv.zones.forEach((z, i) => {
+    assert.equal(z.id, i);
+    assert.ok(Number.isFinite(z.tier) && z.music, '區 ' + i + ' tier、music');
+    if (i === 0) return;
+    assert.ok(lv.shadows.some((s) => R.inRect(z.start.x, z.start.z, s)), '區 ' + i + ' 起點在影子裡');
+    assert.ok(z.botRoute && z.botRoute.length, '區 ' + i + ' botRoute');
+    assert.ok(lv.guards.some((q) => q.zone === i) && lv.guards.filter((q) => q.zone === i).length <= 3, '區 ' + i + ' 衛兵 1～3 名');
+    if (z.exit.kind === 'rect') {
+      assert.equal(z.exit.to, i + 1);
+      assert.ok(z.exit.rect.x1 - z.exit.rect.x0 >= K.DASH + 1, '區 ' + i + ' 出口比衝刺深');
+    }
+  });
+  for (const g of lv.guards) for (const p of g.route) assert.ok(!lv.walls.some((w) => !w.low && R.inRect(p.x, p.z, w)), g.id + ' 路線點不在牆裡');
+});
+
+test('11/23 短展示關卡：程式玩家（σ0.12，40 局）通關率 ≥ 60%、時間中位 30～50 秒；DRIVE 不超界、換區不跳，走到城門時 ≥ 0.90；預設與七段地圖的資料沒被帶到', () => {
+  const Bots = require('../../tools/telemetry/troy-bots.js');
+  const lv = R.resolveLevel(require('./level-troy-demo.js'));
+  const wins = [];
+  for (let s = 1; s <= 40; s++) {
+    const g = R.createLevel({ level: lv, seed: s, t0: (s * 1.37) % 10, T: { COVER_MODE: true } });
+    const bot = Bots.makeBot(Object.assign({ cover: true, sigma: 0.12, seed: s }, Bots.forBotLevel(lv)));
+    let t = 2, prev = null, peak = 0;
+    g.step(t, {}); g.step(t, { start: true });
+    while (g.phase === 'play' && t < 200) {
+      t += DT; g.step(t, bot(g)); g.drain();
+      assert.ok(g.drive >= K.DRIVE_MIN - 1e-9 && g.drive <= K.DRIVE_MAX + 1e-9);
+      if (prev != null) assert.ok(Math.abs(g.drive - prev) <= (K.DRIVE_MAX - K.DRIVE_MIN) / K.DRIVE_HUNT_RISE * DT + 1e-9, '換區不跳');
+      prev = g.drive; peak = Math.max(peak, g.drive);
+    }
+    if (g.phase === 'win') { wins.push(t - 2); assert.ok(peak >= 0.9, 'seed ' + s + ' 高潮 ' + peak); }
+  }
+  assert.ok(wins.length / 40 >= 0.6, '通關率 ' + wins.length + '/40');
+  wins.sort((a, b) => a - b);
+  const med = wins[wins.length >> 1];
+  assert.ok(med >= 30 && med <= 50, '時間中位 ' + med);
+  assert.equal(R.buildLevel().zones.length, 5);
+  assert.equal(require('./level-troy-final.js').zones.length, 8);
+});

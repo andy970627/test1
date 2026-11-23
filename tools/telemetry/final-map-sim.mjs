@@ -19,13 +19,14 @@ function runOne(level, seed, bot, maxT) {
   const t0 = (seed * 1.37) % 10, jitter = seed % 2 === 1;
   const g = R.createLevel({ t0, seed, level, T: { COVER_MODE: true } });
   const jr = R.mulberry32(seed * 7 + 3);
-  let t = 2, zone = -1, zt0 = 0;
+  let t = 2, zone = -1, zt0 = 0, hunts = 0, checks = 0;
   const zones = [];   // {zone, t（停留秒數）, passed}
   g.step(t, {}); g.step(t, { start: true });
   while (g.phase === 'play' || g.phase === 'intro') {
     if (t > maxT) break;
     t += jitter ? 1 / 144 + jr() * (1 / 30 - 1 / 144) : 1 / 60;
-    g.step(t, bot(g)); g.drain();
+    g.step(t, bot(g));
+    for (const e of g.drain()) if (e.type === 'sfx') { if (e.a === 'hunt') hunts++; else if (e.a === 'check_start') checks++; }
     if (g.zone !== zone) {
       if (zone >= 1) zones.push({ zone, t: t - zt0, passed: true });
       zone = g.zone; zt0 = t;
@@ -34,7 +35,7 @@ function runOne(level, seed, bot, maxT) {
   const win = g.phase === 'win';
   zones.push({ zone, t: t - zt0, passed: win });
   const cause = win ? null : g.phase === 'fail' ? (g.failCode || 'unknown') : 'timeout';
-  return { win, t: t - 2, zones, cause, at: win ? null : { zone: g.zone, x: Math.floor(g.player.x), z: Math.floor(g.player.z) } };
+  return { win, t: t - 2, zones, hunts, checks, cause, at: win ? null : { zone: g.zone, x: Math.floor(g.player.x), z: Math.floor(g.player.z) } };
 }
 
 const med = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -65,7 +66,8 @@ function report(level, botKey, rs) {
     const k = `區 ${r.at.zone}（${r.at.x}, ${r.at.z}）`; spots[k] = (spots[k] || 0) + 1;
   }
   const top = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k} ${v}`).join('、') || '—';
-  L.push('', `死因：${top(causes)}`, `死在哪（前 6 名）：${top(spots)}`, '');
+  const sum = (k) => rs.reduce((a, r) => a + r[k], 0);
+  L.push('', `衛兵查看 ${(sum('checks') / n).toFixed(2)} 次／局；被追殺 ${(sum('hunts') / n).toFixed(2)} 次／局（${rs.filter((r) => r.hunts > 0).length} 局被追過）`, `死因：${top(causes)}`, `死在哪（前 6 名）：${top(spots)}`, '');
   return L.join('\n');
 }
 
