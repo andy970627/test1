@@ -10,7 +10,7 @@ namespace Odyssey.Core.Tests
             var f = new DesignFlags();
             Assert.AreEqual(PassiveLight.Off, f.Passive);
             Assert.IsTrue(f.EssentialGuide);
-            Assert.AreEqual("passive=Off;guide=On;zeus=On;style=Verse;terror=Layered", f.Summary);
+            Assert.AreEqual("passive=Off;guide=On;zeus=On;style=Verse;terror=Layered;cues=Off", f.Summary);
             Assert.IsTrue(f.ZeusLaw);
             Assert.AreEqual(GuideStyle.Verse, f.Guide);
             Assert.AreEqual(TerrorMode.Layered, f.Terror);
@@ -20,7 +20,7 @@ namespace Odyssey.Core.Tests
         public void NewFlags_SummaryAndNames()
         {
             var f = new DesignFlags { ZeusLaw = false, Guide = GuideStyle.Plain, Terror = TerrorMode.Legacy };
-            Assert.AreEqual("passive=Off;guide=On;zeus=Off;style=Plain;terror=Legacy", f.Summary);
+            Assert.AreEqual("passive=Off;guide=On;zeus=Off;style=Plain;terror=Legacy;cues=Off", f.Summary);
             Assert.AreEqual("開", DesignFlags.Name(true));
             Assert.AreEqual("關", DesignFlags.Name(false));
             Assert.AreEqual("詩句", DesignFlags.Name(GuideStyle.Verse));

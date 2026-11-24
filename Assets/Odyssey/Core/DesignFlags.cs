@@ -32,6 +32,9 @@ namespace Odyssey.Core
         /// <summary>恐懼半徑模式；舊版沿用 Heartbeat。</summary>
         public TerrorMode Terror { get; set; } = TerrorMode.Layered;
 
+        /// <summary>聲音提示：畫面標出海風與巨人方向、對準音，不戴耳機也能玩；預設關。</summary>
+        public bool CueAssist { get; set; }
+
         public static bool IsPassive(SoundKind kind) =>
             kind is SoundKind.Cyclops or SoundKind.Bleat or SoundKind.Whimper or SoundKind.Step or SoundKind.Run;
 
@@ -69,6 +72,6 @@ namespace Odyssey.Core
         };
 
         /// <summary>寫進 CSV 的開關摘要。</summary>
-        public string Summary => $"passive={Passive};guide={(EssentialGuide ? "On" : "Off")};zeus={(ZeusLaw ? "On" : "Off")};style={Guide};terror={Terror}";
+        public string Summary => $"passive={Passive};guide={(EssentialGuide ? "On" : "Off")};zeus={(ZeusLaw ? "On" : "Off")};style={Guide};terror={Terror};cues={(CueAssist ? "On" : "Off")}";
     }
 }

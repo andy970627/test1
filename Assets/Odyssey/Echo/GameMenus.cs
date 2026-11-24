@@ -15,7 +15,7 @@ public class GameMenus : MonoBehaviour
     const string Start = "開始", Continue = "繼續", Restart = "重新開始", DifficultyItem = "難度",
         Chronicle = "紀事", Lab = "實驗", ToMenu = "回主選單", Quit = "離開", Back = "返回",
         Yes = "確定", No = "取消", PassiveItem = "被動聲音照亮", GuideItem = "必要引導",
-        ZeusItem = "宙斯法則", StyleItem = "引導風格", TerrorItem = "恐懼半徑";
+        ZeusItem = "宙斯法則", StyleItem = "引導風格", TerrorItem = "恐懼半徑", CueItem = "聲音提示";
 
     static readonly Color Text = OdysseyPalette.Parchment;
     static readonly Color Dim = OdysseyPalette.ParchmentDim;
@@ -26,7 +26,7 @@ public class GameMenus : MonoBehaviour
     static readonly string[] MainItems = { Start, DifficultyItem, Chronicle, Lab, Quit };
     static readonly string[] PauseItems = { Continue, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
     static readonly string[] EndItems = { Restart, DifficultyItem, Chronicle, Lab, ToMenu, Quit };
-    static readonly string[] LabItems = { PassiveItem, GuideItem, ZeusItem, StyleItem, TerrorItem, Back };
+    static readonly string[] LabItems = { CueItem, PassiveItem, GuideItem, ZeusItem, StyleItem, TerrorItem, Back };
     static readonly string[] ConfirmItems = { Yes, No };
 
     BlindGameLoop loop;
@@ -174,6 +174,9 @@ public class GameMenus : MonoBehaviour
                 if (view == View.Pause)
                     loop.SetDifficulty(difficulty);
                 break;
+            case CueItem:
+                loop.Flags.CueAssist = !loop.Flags.CueAssist;
+                break;
             case PassiveItem:
                 loop.Flags.Passive = (PassiveLight)Mathf.Clamp((int)loop.Flags.Passive + dir, (int)PassiveLight.Off, (int)PassiveLight.Full);
                 break;
@@ -272,6 +275,7 @@ public class GameMenus : MonoBehaviour
     string ItemLabel(string item) => item switch
     {
         DifficultyItem => $"難度：{Difficulty.Name(difficulty)}（A／D）",
+        CueItem => $"聲音提示：{DesignFlags.Name(loop.Flags.CueAssist)}（A／D）",
         PassiveItem => $"被動聲音照亮：{DesignFlags.Name(loop.Flags.Passive)}（A／D）",
         GuideItem => $"必要引導：{(loop.Flags.EssentialGuide ? "開" : "關")}（A／D）",
         ZeusItem => $"宙斯法則：{DesignFlags.Name(loop.Flags.ZeusLaw)}（A／D）",
@@ -284,6 +288,7 @@ public class GameMenus : MonoBehaviour
     string ItemNote(string item) => item switch
     {
         DifficultyItem => Difficulty.Blurb(difficulty) + (view == View.Pause ? "（立刻套用）" : ""),
+        CueItem => "不戴耳機也能玩：畫面邊緣標出海風與巨人的方向，面向洞口時有對準音",
         PassiveItem => "巨人腳步、羊叫、同伴嗚咽、腳步聲要不要照亮四周",
         GuideItem => "製造聲音 → 推 → 塞楔子 → 鑽出去 的一步一步提示",
         ZeusItem => "打中沒聽見你的巨人算偷襲，招來宙斯的雷鳴；關掉時一律算正面出手",
@@ -396,7 +401,7 @@ public class GameMenus : MonoBehaviour
                 continue;
             cursor = i;
             e.Use();
-            if (items[i] is DifficultyItem or PassiveItem or GuideItem or ZeusItem or StyleItem or TerrorItem)
+            if (items[i] is DifficultyItem or CueItem or PassiveItem or GuideItem or ZeusItem or StyleItem or TerrorItem)
                 Adjust(items[i], 1);
             else
                 Choose(items[i]);

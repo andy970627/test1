@@ -208,6 +208,7 @@ public partial class BlindGameLoop : MonoBehaviour
         Arrow.IgnoreAlways.Clear();
         Arrow.IgnoreAlways.Add(Layout.Boulder.GapBlocker);
         sounds = gameObject.AddComponent<SoundPlayer>();
+        gameObject.AddComponent<SoundCueOverlay>().Init(this, body, Cyclops, () => menus.Open);
         sounds.Init(Cyclops, () => Slide.Opening / BoulderSlide.FullOpen);
         InitZeus();
         gameObject.AddComponent<CaveAtmosphere>().Init(Layout, Cyclops, body, () => Slide.Opening / BoulderSlide.FullOpen, seed);

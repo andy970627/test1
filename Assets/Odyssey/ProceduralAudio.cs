@@ -5,6 +5,20 @@ public static partial class ProceduralAudio
 {
     const int SampleRate = 44100;
 
+    /// <summary>聲音提示的對準音：70 毫秒的短促高音，落在筆電喇叭聽得到的頻段。</summary>
+    public static AudioClip CueTick()
+    {
+        int length = (int)(SampleRate * 0.07f);
+        var data = new float[length];
+        for (int i = 0; i < length; i++)
+        {
+            float t = (float)i / SampleRate;
+            float envelope = Mathf.Clamp01(t / 0.004f) * Mathf.Exp(-55f * t);
+            data[i] = envelope * (0.7f * Mathf.Sin(2f * Mathf.PI * 1320f * t) + 0.3f * Mathf.Sin(2f * Mathf.PI * 2640f * t));
+        }
+        return Make("CueTick", data);
+    }
+
     /// <summary>獨眼巨人的怒吼：低頻 + 濾波噪音。</summary>
     public static AudioClip Roar()
     {
