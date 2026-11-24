@@ -499,3 +499,34 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - `bash tools/cleancheck.sh prototypes/troy-prologue/audio.js prototypes/troy-prologue/audio.test.js`：375 過、嚴格檢查通過。
   - 改成讀 `game.story` 後重跑：序 −39.0、翻完後 −19.4、終 −43.2、風聲 −33.7 dB，沒有錯誤；嚴格檢查 375 過。
   - 待：畫面角色實作 `game.story`；序 −18.6 dB 會不會太小聲、要不要留一點鼓聲的輪廓，明天試玩時聽。
+
+## 2026-11-24 校準節拍音
+
+開場 10 秒跟拍校準（`docs/design/2026-11-23-competitor-design-review.md` 3.1「裝置延遲沒校準」）的聲音部分。改 `prototypes/troy-prologue/audio.js`、`audio.test.js`、`audio-test.html`（試驗場）；規則的 `calibration.js`、主遊戲頁 `index.html` 沒動。
+
+- **介面**：
+  - `api.calibClicks(n = 8, opts)` → n 個跟拍拍點的時間陣列（陣列另帶 `.countIn`、`.interval`、`.bpm`、`.src`、`.end`）。`api.calibStop()` 取消；`api.calibInfo()` 看排程狀態。
+  - 全域入口 `RissetAudio.calibClicks(n, opts)`：交給最近建立、還沒 dispose 的聲音層，沒有就回 null。畫面也可以用 `audio.raw.calibClicks`。
+  - 純函式 `RissetAudio.calibPlan(n, at, opts)`、`RissetAudio.calibTempo(opts)`（Node 測試用）。
+  - `opts`：`at`（第一下預備的時間，預設現在 + `CALIB_LEAD` 0.3 秒）、`bpm`／`interval`（試驗場覆寫）、`countIn`、`rules`、`calib`。
+- **聲音**：先 `CALIB_COUNT_IN` 4 下預備（純金屬，`CALIB_COUNT_X` 0.875、`CALIB_COUNT_GAIN` 0.15），再 n 下跟拍（純框鼓，`CALIB_X` 0.375、`CALIB_GAIN` 0.1），都是 `playHit` 原本的音色。100 BPM 時 12 下共 7.2 秒，加上開頭 0.3 秒，10 秒內放完。
+- **拍距從規則讀**（`calibTempo`），順序：`RissetCalib.BPM`（也認 `.T.BPM`、`.CONST.BPM`）→ 規則 `T.CALIB_BPM` → 規則 `T.BASS_PERIOD ÷ CALIB_SUBDIV(4)` → 本檔備援。目前 `calibration.js` 沒有 BPM、規則也沒有 `CALIB_BPM`，所以實際是 2.4 ÷ 4＝0.6 秒（100 BPM，和低音同一網格）。規則要改速度就加 `T.CALIB_BPM` 或 `RissetCalib.BPM`，聲音層不用改。
+- **排程與匯流排**：拍先放進 `calibQ`，由既有的 `scheduleTo`（Worker tick、`LOOKAHEAD`）照 ctx 絕對時間排；呼叫當下先補排一次。走 **`cueBus`**，不走 `rhythmBus`：後者有盲區 gate、警戒壓低、腹中低通，遊戲同時在跑時校準拍會被吃掉或變悶。排程落後（分頁休眠）時過了的拍不補（log 記 `calibSkip`），免得響的時間和回傳的不一樣。
+- **時鐘約定（畫面收敲擊時照這個）**：
+  - 回傳的拍點＝**排程時間**（AudioContext 時間），和規則 `beatsBetween` 的 `b.t` 同一把尺。
+  - 判定用的輸入時間是「聽到的時間」：`actx.currentTime − (actx.outputLatency || actx.baseLatency || 0)`（`index.html` 的 `pend.actAt`、`knockTap`、`telNow` 都是這個式子）。畫面收敲擊也要用同一個式子，再把敲擊與拍點一起丟給 `RissetCalib.estimate(tapTimesSec, beatTimesSec)`。
+  - 所以 estimate 算出來的是瀏覽器沒回報到的那一段（藍牙、喇叭、人的反應偏差）；規則用 `actAt − inputOffsetMs ÷ 1000` 修正，兩邊扣的不會重複。
+  - `audio.test.js` 有一條測試盯 `index.html` 的 `pend.actAt` 式子：式子一改測試就失敗，提醒回來改這裡的說明。
+- **陷阱**：
+  - 序字卡（`game.story === 'intro'`）時 master 整條低通 450 Hz，框鼓的 900 Hz「啪」會不見，畫面要在字卡翻完後才呼叫。
+  - 遊戲迴圈同時在跑時，Risset 鼓會和校準拍混在一起，畫面最好在開局前或暫停節奏時放。
+  - `createAudio` 開頭的第一次 `tick()` 比後面的 `var` 先跑：新加的狀態變數如果在 `scheduleTo` 裡用到，要防 undefined（11/24 `calibQ` 就踩到，整個聲音層建不起來；試驗場無頭檢查才抓到）。
+- **順手修的舊 bug（影響全部音效）**：`tone()`、`noise()` 的 GainNode 起音前是預設值 1。起音時間不在整數樣本上時，音源會先出一個樣本、增益事件晚一個樣本才生效，漏出**單一樣本尖峰**（金屬的 5200 Hz 高通雜訊最明顯，離線渲染量到 −3 dB，比金屬本身響 25 dB 以上）。改成建立時 `g.gain.value = 0`。腳步、鼓聲的峰值統計也因此變乾淨。**比箭、大廳復仇、layer-ride 的 `env` 是複製的，可能有同樣問題，還沒查**。
+- **數字**（離線渲染，無頭 Chromium `--mute-audio`、OfflineAudioContext 48 kHz，遊戲各層靜音，5 次合計：跟拍 40 下、step 60 下；腳本在工作階段暫存區 `calib/render.mjs`，沒進 repo）：
+  - 起音誤差（10% 門檻）0.4～1.5 毫秒，主要是起音包絡的偵測偏差；相鄰間隔誤差最大 0.75 毫秒（含預備換框鼓那一下的音色差）。判定窗 ±80 毫秒，可以忽略。
+  - 峰值：跟拍中位 −25.9 dB、最大 −24.7 dB；預備中位 −30.4 dB；同一條 `cueBus` 的 `step` 中位 −24.6 dB、最大 −17.9 dB（`stepLoud` 約 −4.7 dB）。喇叭模擬（兩級 200 Hz 高通）：跟拍 −25.8／最大 −24.6、預備 −30.3、step −23.9。**跟拍最響的一下也不超過 step 的中位數**。
+  - 拍與拍之間的底噪 −58～−66 dB。
+  - 試驗場無頭檢查（`?trial=calib&mute=1`）：12 下全排上、沒跳拍、沒錯誤；假敲擊 +20 毫秒，`RissetCalib.estimate` 回 `offsetMs 20, ok true, used 8`。
+  - `node --test prototypes/*/*.test.js`：381 過（新增 4 條校準測試）；稍後 `bash tools/cleancheck.sh` 383 過、嚴格檢查通過（規則角色同時加了測試）。
+- **試驗場**：`prototypes/troy-prologue/audio-test.html?trial=calib`（測試時加 `&mute=1`）。自己開一個 AudioContext 和一份聲音層（遊戲各層全部靜音），不碰上面試聽用的 ctx。按「播放校準節拍」，畫面列出回傳的拍點時間、瀏覽器回報的輸出延遲；空白鍵或「敲」收敲擊，顯示離最近一拍幾毫秒、中位數，有 `RissetCalib` 時直接呼叫 `estimate` 顯示結果。
+- **待真耳朵**：跟拍鼓點音量跟腳步一樣小，展示場地吵的時候聽不聽得到；預備的金屬和框鼓分不分得出「預備」和「開始敲」；換藍牙耳機後量到的偏差合不合理（預期 +100～+250 毫秒，超過 150 毫秒會被規則夾住）。

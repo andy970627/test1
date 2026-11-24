@@ -293,6 +293,15 @@
     KNOCK_REPLY_R: 20,         // 離木馬幾公尺以外聽不到回應（和試驗場「20 公尺外同伴聽不到」同一個數）
     KNOCK_REPLY_LP: 1000,      // 回應隔著木板：只留這以下（沒有「噓」的氣音）。520 時幾乎都是低頻，HRTF 分不出左右（左右只差 0.8 dB），放到 1000 並加 800 Hz 木板聲
     KNOCK_REPLY_GAP: 0.2,      // 回應敲幾下時，每下間隔（秒）
+    // 開場跟拍校準（2026-11-24；競品審查 3.1「裝置延遲沒校準」）：calibClicks(n) 先 4 下預備、再 n 下跟拍鼓點，走音效匯流排（不經盲區 gate）。
+    //   拍距從規則讀（RissetCalib.BPM → 規則 T.CALIB_BPM → 規則 T.BASS_PERIOD ÷ CALIB_SUBDIV），這裡的 BASS_PERIOD 只是規則沒載入時的備援
+    CALIB_COUNT_IN: 4,         // 預備拍數（音色較輕，不收敲擊）
+    CALIB_SUBDIV: 4,           // 規則沒給 BPM 時：一個低音週期分幾下（2.4 ÷ 4 = 0.6 秒＝100 BPM，和低音同一網格）
+    CALIB_LEAD: 0.3,           // 呼叫後多久響第一下預備（秒）：留給排程，第一下不會被吃掉
+    CALIB_X: 0.375,            // 跟拍鼓點的音色＝playHit 的速度位置：0.375 剛好是純框鼓（205 Hz＋900 Hz「啪」，筆電喇叭聽得到）
+    CALIB_GAIN: 0.1,           // 跟拍鼓點音量（離線渲染量過：峰值不超過一般 step 腳步，見 agent-notes/audio.md 11/24）
+    CALIB_COUNT_X: 0.875,      // 預備拍音色：0.875＝純金屬（青銅指鈸，輕、亮）
+    CALIB_COUNT_GAIN: 0.15,    // 預備拍音量（金屬本身就小，實際峰值比鼓點低，見筆記）
     ILL_ROLL_FROM: 0.75,       // U4：最快那條從循環這個位置起不淡出，漸強到和最大聲那條一樣大，最響的一擊落下時拿掉
     // 木馬（規則 T.HORSE_MODE 開時才用；docs/design/2026-11-11-trojan-horse-directions.md 方向 A、C2）
     BELLY_LOWPASS_HZ: 1200,    // 腹中隔著木板聽鼓：節奏線只留這以下（框鼓、木框敲擊都還在，筆電喇叭聽得到）【假設】
@@ -471,6 +480,41 @@
     return out;
   }
 
+  // ---------- 開場跟拍校準（2026-11-24）：純函式，Node 測試與 createAudio 的 calibClicks 共用 ----------
+  // 拍距從規則讀，不抄常數。順序：opts.interval／opts.bpm（試驗場覆寫）→ RissetCalib.BPM（規則新檔 calibration.js，
+  //   也認 .T.BPM、.CONST.BPM）→ 規則 T.CALIB_BPM → 規則 T.BASS_PERIOD ÷ CALIB_SUBDIV → 本檔備援 C.BASS_PERIOD ÷ CALIB_SUBDIV。
+  // 回傳 {interval（秒）, bpm, src（從哪裡讀到的）}。opts.calib／opts.rules 可傳入（試驗場刪掉了全域 RissetRules，Node 沒有全域）。
+  function calibTempo(o) {
+    o = o || {};
+    var pos = function (v) { return typeof v === 'number' && isFinite(v) && v > 0; };
+    var out = function (sec, src) { return { interval: sec, bpm: 60 / sec, src: src }; };
+    if (pos(o.interval)) return out(+o.interval, 'opts.interval');
+    if (pos(o.bpm)) return out(60 / o.bpm, 'opts.bpm');
+    var g = typeof globalThis !== 'undefined' ? globalThis : (typeof self !== 'undefined' ? self : {});
+    var Cal = o.calib !== undefined ? o.calib : g.RissetCalib;
+    var Ru = o.rules !== undefined ? o.rules : g.RissetRules;
+    var RT = o.T || (Ru && Ru.T) || null;
+    var cands = [[Cal && Cal.BPM, 'RissetCalib.BPM'], [Cal && Cal.T && Cal.T.BPM, 'RissetCalib.T.BPM'],
+                 [Cal && Cal.CONST && Cal.CONST.BPM, 'RissetCalib.CONST.BPM'], [RT && RT.CALIB_BPM, 'T.CALIB_BPM']];
+    for (var i = 0; i < cands.length; i++) if (pos(cands[i][0])) return out(60 / cands[i][0], cands[i][1]);
+    if (RT && pos(RT.BASS_PERIOD)) return out(RT.BASS_PERIOD / C.CALIB_SUBDIV, 'T.BASS_PERIOD/' + C.CALIB_SUBDIV);
+    return out(C.BASS_PERIOD / C.CALIB_SUBDIV, 'fallback');
+  }
+  // 排程表：從 at 起每 interval 一下，前 countIn 下是預備（count: true），之後 n 下是跟拍鼓點。
+  // 回傳 {interval, bpm, src, countIn: [時間], beats: [n 個跟拍時間], end（最後一下之後一拍）}；時間單位＝AudioContext 時間（秒）。
+  function calibPlan(n, at, o) {
+    o = o || {};
+    n = Math.max(1, Math.min(64, (n == null ? 8 : n) | 0));
+    var tp = calibTempo(o), iv = tp.interval;
+    var ci = o.countIn != null ? Math.max(0, Math.min(16, o.countIn | 0)) : C.CALIB_COUNT_IN;
+    var ts = [], cs = [];
+    for (var i = 0; i < ci; i++) cs.push(at + i * iv);
+    for (var j = 0; j < n; j++) ts.push(at + (ci + j) * iv);
+    return { interval: iv, bpm: tp.bpm, src: tp.src, countIn: cs, beats: ts, end: at + (ci + n) * iv };
+  }
+
+  var liveApi = null;                    // 最近建立、還沒 dispose 的聲音層：給全域 RissetAudio.calibClicks 用
+
   function createAudio(ctx, opts) {
     opts = opts || {};
     var T = opts.T || C.T, t0 = (opts.t0 != null) ? opts.t0 : ctx.currentTime;
@@ -610,6 +654,7 @@
     }
     function tone(dest, t, type, f1, f2, glide, peak, att, dec) {
       var o = ctx.createOscillator(), g = ctx.createGain();
+      g.gain.value = 0;                  // 11/24：起音前是 0（預設 1）。起音時間不在整數樣本上時，音源會先出一個樣本、增益事件晚一個樣本才生效，漏出單一樣本尖峰（離線渲染量到 −3 dB）
       o.type = type; o.frequency.setValueAtTime(f1 * jit, t);
       if (f2 && f2 !== f1) o.frequency.exponentialRampToValueAtTime(f2 * jit, t + glide);
       env(g.gain, t, peak, att, dec);
@@ -620,6 +665,7 @@
     function noise(dest, t, ftype, freq, q, peak, att, dec, rate) {
       var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
       s.buffer = noiseBuf; s.loop = true; if (rate) s.playbackRate.value = rate;
+      g.gain.value = 0;                  // 同 tone：起音前是 0，不漏單一樣本尖峰（金屬的 5200 Hz 高通雜訊最明顯）
       f.type = ftype; f.frequency.setValueAtTime(freq * jit, t); f.Q.value = q;
       env(g.gain, t, peak, att, dec);
       s.connect(f); f.connect(g); g.connect(dest);
@@ -2013,6 +2059,7 @@
 
     function scheduleTo(end, now) {
       if (dead) return;
+      drainCalib(end, now);             // 開場校準的拍（和遊戲狀態無關，先排）
       var ws = windowsBetween(now - 1, end + C.BASS_TAIL + 0.2);
       // 殘響掩護：靜音用的時段傳空（節奏、音樂、衛兵、暗示、失控層、低音都照常），殘響 gate 改用這份時段在窗內推高
       var cov = coverMode(), wq = cov ? [] : ws;
@@ -2738,6 +2785,57 @@
 
     if (opts.autoStart !== false) { tick(); startTimer(); }
 
+    // ---------- 開場跟拍校準（2026-11-24）----------
+    // calibClicks(n = 8, opts)：先 CALIB_COUNT_IN 下預備（純金屬、較輕），再 n 下跟拍鼓點（純框鼓，playHit 同一套音色）。
+    //   - 拍距：calibTempo，先讀規則（state.T → 全域 RissetRules.T；RissetCalib.BPM 優先），不抄常數。
+    //   - 排程：拍放進 calibQ，由既有的 scheduleTo（Worker tick、LOOKAHEAD）排到 ctx 絕對時間；呼叫當下先補排一次。
+    //   - 匯流排：cueBus（音效匯流排，直接到 master）。不走 rhythmBus：那條有盲區 gate、警戒壓低與腹中低通，校準拍會被吃掉或變悶。
+    //     注意 master 在序字卡（game.story === 'intro'）時整條低通 STORY_LP，畫面要在字卡翻完後才呼叫。
+    //   - 回傳：n 個跟拍拍點的時間陣列（AudioContext 時間＝排程時間，和規則 beatsBetween 的 b.t 同一把尺）；
+    //     陣列另帶 .countIn、.interval、.bpm、.src、.end。
+    //   時鐘約定：判定用的敲擊時間是「聽到的時間」＝ ctx.currentTime − (outputLatency || baseLatency || 0)
+    //     （index.html pend.actAt、knockTap、telNow 同一算法）。畫面收敲擊也要用這個式子，
+    //     RissetCalib.estimate(tapTimesSec, beatTimesSec) 算出來的就是瀏覽器沒回報到的那段延遲（藍牙、喇叭、人的反應偏差）。
+    var calibQ = [], calibSrc = [], calibLast = null;
+    function calibClicks(n, o) {
+      o = o || {};
+      if (dead) return null;
+      var at = isFinite(o.at) ? Math.max(ctx.currentTime, +o.at) : ctx.currentTime + C.CALIB_LEAD;
+      var src = { T: RK(), rules: o.rules, calib: o.calib, interval: o.interval, bpm: o.bpm, countIn: o.countIn };
+      if (src.rules === undefined) delete src.rules;
+      if (src.calib === undefined) delete src.calib;
+      var P = calibPlan(n, at, src);
+      calibStop();                      // 再按一次＝重來，舊的拍全部取消
+      P.countIn.forEach(function (t, i) { calibQ.push({ t: t, count: true, i: i }); });
+      P.beats.forEach(function (t, i) { calibQ.push({ t: t, count: false, i: i }); });
+      var ret = P.beats.slice();
+      ret.countIn = P.countIn; ret.interval = P.interval; ret.bpm = P.bpm; ret.src = P.src; ret.end = P.end;
+      calibLast = ret;
+      if (log) log.push({ type: 'calibPlan', t: at, n: P.beats.length, interval: P.interval, src: P.src });
+      drainCalib(ctx.currentTime + C.LOOKAHEAD, ctx.currentTime);
+      return ret;
+    }
+    function drainCalib(end, now) {
+      if (!calibQ || !calibQ.length) return;   // createAudio 開頭的第一次 tick 比 calibQ 的 var 先跑（此時還是 undefined）
+      if (now == null) now = ctx.currentTime;
+      while (calibQ.length && calibQ[0].t < end) {
+        var e = calibQ.shift();
+        if (e.t < now - 0.002) { if (log) log.push({ type: 'calibSkip', t: e.t, count: e.count, i: e.i }); continue; }   // 排程落後（分頁休眠）：過了的拍不補，免得時間錯
+        var keep = collect; collect = calibSrc;
+        if (e.count) playHit(cueBus, C.CALIB_COUNT_X, e.t, C.CALIB_COUNT_GAIN);
+        else playHit(cueBus, C.CALIB_X, e.t, C.CALIB_GAIN);
+        collect = keep;
+        if (log) log.push({ type: 'calib', t: e.t, count: e.count, i: e.i });
+      }
+      if (calibSrc.length > 200) calibSrc = calibSrc.slice(-120);
+    }
+    function calibStop() {
+      calibQ = [];
+      var now = ctx.currentTime;
+      calibSrc.forEach(function (s) { try { s.stop(now); } catch (e) {} });
+      calibSrc = [];
+    }
+
     // ---------- 對外 ----------
     // ---------- 敲暗號：指節敲木頭、木馬裡同伴的回應（畫面角色 ?lab=horse 試驗場用）----------
     function knock(t) {                 // 玩家敲一下：指節敲木頭，短而乾（每下音高、亮度略抖，不會像機器）
@@ -3064,6 +3162,10 @@
                  'huntStep', 'huntSlip', 'bellyHush', 'bellyReady', 'trapdoorOpen', 'horseSignal', 'runStart', 'runStep', 'runStop', 'crouchOn', 'crouchOff',
                  'checkStart', 'checkArrive', 'checkOver', 'huntCall', 'searchStart', 'searchDone', 'huntHeard', 'pantStart', 'pantEnd', 'checkRetarget',
                  'gravel', 'companionGasp', 'whisperNow', 'growl', 'latchClick'],
+      // 開場跟拍校準：calibClicks(n = 8, opts) → n 個拍點時間（ctx 時間）；opts {at, bpm, interval, countIn, rules, calib} 試驗場覆寫用
+      calibClicks: function (n, o) { return calibClicks(n, o); },
+      calibStop: function () { calibStop(); },
+      calibInfo: function () { return { pending: calibQ.length, last: calibLast, tempo: calibTempo({ T: RK() }) }; },
       setMaster: function (v) { master.gain.setTargetAtTime(clamp(+v || 0, 0, 1.5), ctx.currentTime, 0.03); },
       suspend: function () { return ctx.suspend ? ctx.suspend() : Promise.resolve(); },
       resume: function () { return (ctx.resume ? ctx.resume() : Promise.resolve()).then(function () { tick(); }); },
@@ -3124,15 +3226,19 @@
                 chant: chantBus, chorus: chorusBus, shepard: shepBus, theme: themeBus },
       log: log,
       dispose: function () {
-        dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack();
+        dead = true; if (timer) clearInterval(timer); stopWorker(); stopTrack(); calibStop(); if (liveApi === api) liveApi = null;
         stopAlertedDrone(ctx.currentTime);
         persist.forEach(function (n) { try { n.stop(); } catch (e) {} });
         routeLive.forEach(function (n) { try { n.stop(); } catch (e) {} });
         try { master.disconnect(); } catch (e) {}
       }
     };
+    liveApi = api;
     return api;
   }
+
+  // 全域入口（畫面可直接 RissetAudio.calibClicks(8)）：交給最近建立、還沒 dispose 的聲音層；沒有就回 null
+  function calibClicksLive(n, o) { return liveApi ? liveApi.calibClicks(n, o) : null; }
 
   // decodeAudioData：新版回傳 Promise，舊版（Safari）只有回呼，兩種都接
   function decode(ctx, ab) {
@@ -3143,5 +3249,5 @@
     });
   }
 
-  return { createAudio: createAudio, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, zoneSound: zoneSound, ZONE_MIX_NAMES: ZONE_MIX_NAMES, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
+  return { createAudio: createAudio, calibClicks: calibClicksLive, calibPlan: calibPlan, calibTempo: calibTempo, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, zoneSound: zoneSound, ZONE_MIX_NAMES: ZONE_MIX_NAMES, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
 });

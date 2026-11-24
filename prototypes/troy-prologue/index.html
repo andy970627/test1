@@ -155,6 +155,15 @@ body.demoMode #opts, body.demoMode #survey, body.demoMode .btnExport, body.demoM
 body.demoMode #fail .btnIntro, body.demoMode #win .btnIntro { display: none !important; }
 body.demoMode #win .card { transition: opacity .8s; }
 #storyPage { color: var(--dim); font-size: 14px; margin-right: auto; }
+/* 短展示關卡的開場校準（競品分析 3.1）：字卡同款，看得到後面的場景；8 個圓點跟著敲擊亮起 */
+#calib { background: rgba(14, 19, 34, .92); z-index: 8; }
+#calib .storyCard { width: min(620px, 100%); }
+#calibTitle { font-family: var(--display); font-weight: 900; font-size: clamp(28px, 4vw, 44px); line-height: 1.15; letter-spacing: .04em; margin: 0; color: var(--parchment); }
+#calibText p { margin: 0; font-size: 20px; line-height: 1.7; max-width: 36em; }
+#calibDots { display: flex; gap: 10px; }
+#calibDots i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--muted); transition: background .08s, border-color .08s; }
+#calibDots i.on { background: var(--torch); border-color: var(--torch); }
+#calibMsg { margin: 0; min-height: 1.7em; font-size: 18px; color: var(--ash); }
 #win { background: transparent; transition: background 3s; }
 #win.dark { background: #000; }
 #win .card { opacity: 0; transition: opacity 2.5s; }
@@ -307,6 +316,17 @@ body.demoMode #win .card { transition: opacity .8s; }
   </div>
 </div>
 
+<!-- 短展示關卡的開場校準（?map=demo；聲音層或規則還沒提供校準函式時整個略過） -->
+<div class="screen" id="calib" hidden role="dialog" aria-label="耳機校準">
+  <div class="storyCard">
+    <h2 id="calibTitle">對準拍子</h2>
+    <div id="calibText"><p>戴上耳機聽得最準。鼓會敲 8 下。</p><p><kbd>空白鍵</kbd> 跟著鼓點敲 8 下，判定會對準這副耳機的延遲。</p></div>
+    <div id="calibDots" aria-hidden="true"></div>
+    <p id="calibMsg" aria-live="polite"></p>
+    <div class="storyFoot"><button class="primary" id="calibGo" type="button">開始（空白鍵）</button><button id="calibSkip" type="button">跳過（Esc）</button></div>
+  </div>
+</div>
+
 <!-- 暫停 -->
 <div class="screen" id="pause" hidden>
   <div class="card">
@@ -402,6 +422,7 @@ document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(loc
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="audio.js"></script>
+<script src="calibration.js"></script>   <!-- 開場跟拍校準 window.RissetCalib（規則角色）；沒載到時短展示直接開局 -->
 <script src="level-troy.js"></script>
 <script>   // ?map=final：期末七段版地圖（規則角色的 level-troy-final.js，window.TroyLevelFinal）；沒帶參數完全不載
 if (new URLSearchParams(location.search).get('map') === 'final') document.write('<script src="level-troy-final.js"><\/script>');
@@ -1827,9 +1848,11 @@ function newGame() {
   if (LEVEL_LOCAL) opts.level = LEVEL_LOCAL;                          // ?level=local：關卡編輯器的關卡
   else if (LEVEL_FINAL) opts.level = LEVEL_FINAL;                     // ?map=final：期末七段版
   else if (LEVEL_DEMO) opts.level = LEVEL_DEMO;                       // ?map=demo：短展示關卡
+  if (CAL.offsetMs != null) opts.inputOffsetMs = CAL.offsetMs;         // 短展示的開場校準：只存這一局（本頁），不寫存檔
   const g = Rules.createLevel(opts);
   if (g.phase === 'intro' && typeof g.start === 'function') g.start();
-  game = g; overShown = false; winT = 0;
+  if (CAL.offsetMs != null) g.inputOffsetMs = CAL.offsetMs;            // 規則讀 state.inputOffsetMs；createLevel 沒接 opts 也照樣帶上
+  game = g; overShown = false; winT = 0; DEMO.ringT = 0; DEMO.lastGT = null;
   VIS.prevT = VIS.prevP = VIS.prevI = null; VIS.beats = []; VIS.aid = aidTarget(); VIS.shock = 0; VIS.wasBlind = false;
   if (game.level !== builtFor) build(game.level);
   V.yaw = num(game.player.yaw, Math.PI); V.pitch = -.1;
@@ -1873,8 +1896,117 @@ const STORY_CARDS = {
   ],
 };
 const STORY = { kind: null, i: 0, done: null, outroDone: false };
-const DEMO_ON = !!LEVEL_DEMO && !LEVEL_LOCAL && !LAB, DEMO = { overAt: 0 };   // 短展示關卡的開場與再玩一次
-function demoCard() { storyShow('demo', startFromTop); }
+const DEMO_ON = !!LEVEL_DEMO && !LEVEL_LOCAL && !LAB, DEMO = { overAt: 0, ringT: 0, lastGT: null };   // 短展示關卡的開場與再玩一次；ringT＝這局玩了幾秒（步伐提示用）
+function demoCard() { storyShow('demo', demoStart); }
+// ------------------------------------------------------------
+// 短展示關卡的開場校準（競品分析 docs/design/2026-11-23-competitor-design-review.md 3.1）
+//   字卡之後、開局之前：聲音層 calibClicks() 敲 CAL_N 下鼓，玩家用空白鍵跟著敲；規則 RissetCalib.estimate(敲擊, 拍點) 算偏差。
+//   ok → offsetMs 寫進 state.inputOffsetMs（newGame 帶上），只存這一頁、不寫存檔；不 ok → 可再試或跳過。
+//   一頁只問一次：校準完或跳過後，「再玩一次」直接開局，沿用本局的偏差。
+//   兩個函式還不存在、?calib=0（自動測試用）或 ?mute=1（聽不到鼓）時整段略過，直接開局，不報錯。
+//   聲音：另建一個只出校準拍的聲音層（createAudio 的 mute 關掉節奏、低音、夜風，合成音樂音量 0），免得遊戲鼓聲和校準拍打架；
+//     calibClicks(n) 回傳的拍點是同一個 actx 的排程時間（秒）。關掉校準畫面時丟掉這個聲音層，開局再照常 makeAudio。
+//   敲擊時間和現有判定同一公式（actx.currentTime − outputLatency，同 pend.actAt）。
+// ------------------------------------------------------------
+const CAL_N = 8, CAL_TAIL = .6, CAL_AUTO_MS = 1600;   // 鼓聲數；最後一拍後再等多久收尾（秒）；校準成功後自動開局（毫秒）
+const CAL = { open: false, phase: 'idle', done: false, offsetMs: null, spreadMs: null, beats: null, taps: [], endAt: 0, poll: 0, auto: 0, inst: null };
+const CAL_OFF = URLQ.get('calib') === '0';
+function calibEstimator() { const C = window.RissetCalib || (Rules && Rules.RissetCalib); return C && typeof C.estimate === 'function' ? C : null; }
+function calibClickFn() { return AudioMod && typeof AudioMod.calibClicks === 'function' ? AudioMod.calibClicks : null; }
+function demoStart() {
+  if (CAL.done || CAL_OFF || MUTE || !calibEstimator() || !calibClickFn()) { startFromTop(); return; }
+  calibShow();
+}
+function calibDots(n) {
+  const box = $('calibDots');
+  if (box.children.length !== CAL_N) box.replaceChildren(...Array.from({ length: CAL_N }, () => document.createElement('i')));
+  [...box.children].forEach((el, i) => el.classList.toggle('on', i < n));
+}
+function calibUi(msg, go, skip) {
+  $('calibMsg').textContent = msg || '';
+  $('calibGo').hidden = !go; if (go) $('calibGo').textContent = go;
+  $('calibSkip').hidden = !skip;
+  if (go) { try { $('calibGo').focus({ preventScroll: true }); } catch (e) {} }
+}
+function calibShow() {
+  unlockPointer();
+  CAL.open = true; CAL.phase = 'ready'; CAL.taps = [];
+  calibDots(0); calibUi('', '開始（空白鍵）', true);
+  $('calib').hidden = false;
+}
+function calibHalt() { clearInterval(CAL.poll); clearTimeout(CAL.auto); CAL.poll = CAL.auto = 0; }
+function calibClose(start) {
+  calibHalt(); CAL.open = false; CAL.phase = 'idle'; $('calib').hidden = true;
+  const a = CAL.inst; CAL.inst = null;                 // 校準專用的聲音層用完就丟（還在敲的拍一起停）
+  if (a) { try { if (typeof a.calibStop === 'function') a.calibStop(); if (typeof a.dispose === 'function') a.dispose(); else if (typeof a.stop === 'function') a.stop(); } catch (e) {} }
+  if (start) startFromTop();
+}
+function calibGiveUp(why) { console.warn('校準略過：', why); CAL.done = true; calibClose(true); }   // 函式在、但叫不起來：不擋開局
+function calibBeats(v) {
+  const a = Array.isArray(v) ? v : v && (v.beats || v.beatTimesSec || v.times || v.clicks);
+  return Array.isArray(a) ? a.map(Number).filter(Number.isFinite) : [];
+}
+function calibBegin() {
+  try {
+    if (!actx) { const AC = window.AudioContext || window.webkitAudioContext; actx = new AC(); }
+    if (actx.state === 'suspended') actx.resume();
+  } catch (e) { calibGiveUp(e); return; }
+  let r;
+  try {
+    if (!CAL.inst && typeof AudioMod.createAudio === 'function') {
+      const blind = typeof Rules.blindLen === 'function' ? Rules.blindLen() : undefined;
+      CAL.inst = AudioMod.createAudio(actx, { T: +$('oT').value || 10, t0: actx.currentTime + .1, blind,
+        mute: { rhythm: true, bass: true, ambient: true }, musicLayers: { chant: false, chorus: false, shepard: false, theme: false } });
+      if (CAL.inst && typeof CAL.inst.setSynthVolume === 'function') CAL.inst.setSynthVolume(0);
+    }
+    r = CAL.inst && typeof CAL.inst.calibClicks === 'function' ? CAL.inst.calibClicks(CAL_N) : calibClickFn()(CAL_N);
+  } catch (e) { calibGiveUp(e); return; }
+  CAL.phase = 'wait'; calibUi('', null, true);
+  Promise.resolve(r).then((v) => {
+    if (!CAL.open || CAL.phase !== 'wait') return;
+    const beats = calibBeats(v);
+    if (!beats.length) { calibGiveUp('calibClicks 沒有回傳拍點'); return; }
+    CAL.beats = beats; CAL.taps = []; CAL.endAt = Math.max(...beats) + CAL_TAIL; CAL.phase = 'listen';
+    calibDots(0); calibUi('先是 ' + (Array.isArray(v.countIn) && v.countIn.length ? v.countIn.length + ' 下輕的預備拍，接著 ' : '') + CAL_N + ' 下鼓點。', null, true);
+    CAL.poll = setInterval(() => { if (actx && actx.currentTime >= CAL.endAt) calibFinish(); }, 50);
+  }).catch(calibGiveUp);
+}
+function calibTap() {
+  if (!actx) return;
+  CAL.taps.push(actx.currentTime - (actx.outputLatency || actx.baseLatency || 0));   // 和 pend.actAt 同一個算法
+  calibDots(Math.min(CAL_N, CAL.taps.length));
+}
+function calibFinish() {
+  clearInterval(CAL.poll); CAL.poll = 0;
+  let est = null;
+  try { est = calibEstimator().estimate(CAL.taps.slice(), CAL.beats.slice()); } catch (e) { console.warn('校準估計失敗', e); }
+  if (est && est.ok && Number.isFinite(+est.offsetMs)) {
+    const o = Math.round(+est.offsetMs);
+    CAL.offsetMs = o; CAL.spreadMs = Number.isFinite(+est.spreadMs) ? Math.round(+est.spreadMs) : null; CAL.done = true; CAL.phase = 'done';
+    calibUi('已校準 ' + (o >= 0 ? '+' : '−') + Math.abs(o) + ' 毫秒', '開始（空白鍵）', false);
+    CAL.auto = setTimeout(() => { if (CAL.open && CAL.phase === 'done') calibClose(true); }, CAL_AUTO_MS);
+  } else {
+    CAL.phase = 'retry';
+    const n = CAL.taps.length;
+    calibUi(n < CAL_N / 2 ? '只收到 ' + n + ' 下，判定維持原樣。' : '這幾下和鼓點差得太多，判定維持原樣。', '再試一次（空白鍵）', true);
+  }
+}
+function calibPrimary() {
+  if (CAL.phase === 'ready' || CAL.phase === 'retry') calibBegin();
+  else if (CAL.phase === 'done') calibClose(true);
+}
+function calibSkip() { CAL.done = true; calibClose(true); }   // 跳過也算問過：再玩一次不再出現
+$('calibGo').addEventListener('click', e => { e.stopPropagation(); calibPrimary(); });
+$('calibSkip').addEventListener('click', e => { e.stopPropagation(); calibSkip(); });
+['mousedown', 'pointerdown', 'click'].forEach(t => $('calib').addEventListener(t, e => e.stopPropagation()));
+window.addEventListener('keydown', e => {                // 校準開著：先接走按鍵，遊戲收不到
+  if (!CAL.open) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.repeat) return;
+  if (e.code === 'Escape') { calibSkip(); return; }
+  if (CAL.phase === 'listen') { if (e.code === 'Space') calibTap(); return; }
+  if (['Space', 'Enter', 'NumpadEnter'].includes(e.code)) calibPrimary();
+}, true);
 function demoFocus(id) { try { $(id).focus({ preventScroll: true }); } catch (e) {} }
 function storyRender() {
   const c = STORY_CARDS[STORY.kind][STORY.i], n = STORY_CARDS[STORY.kind].length;
@@ -3400,12 +3532,24 @@ function walkFrame(dt, on) {
     o.m.visible = true;
   }
   for (const [k, o] of WK.rings) if (!used.has(k)) o.m.visible = false;
-  stepRingFrame(on && mode !== 'glide' && P);
+  const demoA = demoRingAlpha(dt, on);
+  stepRingFrame(on && P && (mode !== 'glide' || demoA > 0), demoA);
+}
+// 短展示關卡（?map=demo）：開局前 DEMO_RING_ON 秒顯示步伐提示，之後 DEMO_RING_FADE 秒淡出（競品分析 3.1）；其他地圖回 null＝照舊
+const DEMO_RING_ON = 20, DEMO_RING_FADE = 3;
+function demoRingAlpha(dt, on) {
+  if (!DEMO_ON) return null;
+  // 用規則時間累計（低幀率或第一幀編譯著色器時，loop 的 dt 被壓在 0.1 秒會少算）；暫停、字卡時斷開，恢復後不把暫停那段算進去
+  const gt = game ? num(game.time, NaN) : NaN, counting = on && !paused && !STORY.kind && Number.isFinite(gt);
+  if (counting && DEMO.lastGT != null) DEMO.ringT += clamp(gt - DEMO.lastGT, 0, 2);
+  DEMO.lastGT = counting ? gt : null;
+  return clamp(1 - (DEMO.ringT - DEMO_RING_ON) / DEMO_RING_FADE, 0, 1);
 }
 // 準星下方的小圈
-function stepRingFrame(show) {
+function stepRingFrame(show, alpha) {
   const box = $('stepRing'); if (!box) return;
   box.hidden = !show; if (!show) return;
+  box.style.opacity = alpha == null ? '' : String(alpha);
   const g = game, P = g.player, T = K(), t = num(g.time, audio ? audio.now() : 0);
   const cv = box.firstChild, c2 = cv.getContext('2d'), lab = box.lastChild;
   c2.clearRect(0, 0, 64, 64);
@@ -3419,6 +3563,15 @@ function stepRingFrame(show) {
     hit = !!near;
     if (nx) { const span = Math.max(.15, Math.min(1.2, nx.t - t + .25)); u = clamp(1 - (nx.t - t) / span, 0, 1); }
     text = hit ? '現在按一下' : '圈內：一步按一下';
+  } else if (stepMode() === 'glide') {
+    // 短展示（P0 按住滑著走）：隨下一個聽得到的鼓點收縮；縮到底就是起步不出聲的時候（起步判定 ±STEP_WIN，蹲著 ±CROUCH_STEP_WIN）
+    const win = P.crouching ? num(T.CROUCH_STEP_WIN, .16) : num(T.STEP_WIN, .08);
+    let bs = [];
+    try { bs = Rules.beatsBetween(t - win, t + 1.6, g, { minGain: num(T.MASK_GAIN, 0) }); } catch (e) { bs = []; }
+    const near = bs.find(b => Math.abs(b.t - t) <= win), nx = bs.find(b => b.t > t);
+    hit = !!near;
+    if (nx) { const span = Math.max(.15, Math.min(1.2, nx.t - t + .25)); u = clamp(1 - (nx.t - t) / span, 0, 1); }
+    text = hit ? '鼓點：起步不出聲' : nx ? '圈縮到底＝鼓點' : '鼓停了：腳步聽得到';   // 盲區或空檔：附近沒有聽得到的鼓點，圈停在外面
   } else if (P.dirHeld || P.slide) {
     // 圈外按住：倒數到下一步（P1 步子跟著鼓）
     const a = num(P.lastStrideT, t), b = num(P.nextStrideT, t);
@@ -4183,7 +4336,7 @@ function backToIntro() {
   audio = null; game = null;
   for (const k in keys) keys[k] = false;
   pend = {}; drag = null;
-  clearHints(); $('msgs').innerHTML = '';
+  clearHints(); $('msgs').innerHTML = ''; $('stepRing').hidden = true; if (CAL.open) calibClose(false);   // 步伐提示、校準畫面：沒有遊戲就不畫，免得停在字卡上
   $('pause').hidden = true; $('fail').hidden = true; $('win').hidden = true; $('win').classList.remove('dark');
   document.body.classList.remove('playing');
   $('optSlotIntro').appendChild($('opts'));
@@ -4234,7 +4387,7 @@ if (DEMO_ON) {
   }, true);
   $('intro').hidden = true; demoCard();
 }
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN };   // collectBeats 給自動驗證用
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL };   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>

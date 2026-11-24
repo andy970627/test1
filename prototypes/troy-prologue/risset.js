@@ -495,6 +495,15 @@
     out.sort((x, y) => x.t - y.t || x.k - y.k);
     return out;
   }
+  /**
+   * 本局校準偏差換成秒（11/24 開場跟拍校準）：game.inputOffsetMs ÷ 1000，夾在 ±0.15 秒；沒設、不是有限數字就是 0。
+   * 判定按鍵時間＝actAt − inputOffsetSec(game)。畫面若自己判定（例如敲暗號），也用這個扣，和規則一致。
+   */
+  function inputOffsetSec(game) {
+    const v = game && game.inputOffsetMs;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v === 0) return 0;
+    return Math.max(-150, Math.min(150, v)) / 1000;
+  }
   /** 時間 t 的腳步是否被鼓聲蓋過：±STEP_WIN 秒內有音量 ≥ MASK_GAIN 的拍點。 */
   function stepMasked(t, game, win) {
     const K = (game && game.T) || T;
@@ -831,6 +840,9 @@
       player: null,
       guards: [],
       panic: { active: false, start: 0, count: 0, lastPress: null },
+      // 本局的輸入偏差（毫秒，11/24 開場跟拍校準，calibration.js 的 RissetCalib.estimate 量出來、畫面寫進來）：
+      //   > 0 = 玩家聽到的比音訊時鐘晚；判定按鍵時用 actAt／calmAt − inputOffsetMs ÷ 1000，夾在 ±150。只存這一局，不寫存檔。
+      inputOffsetMs: 0,
       gate: { progress: 0, need: K.GATE_NEED, pushing: false, open: false },
       alarm: 0,
       fire: fireBrightness({ T: K, cycle: { T: K.CYCLE, blind: false } }),
@@ -1355,7 +1367,9 @@
       }
       if (inp.yaw != null) pl.yaw = inp.yaw;
       // 按鍵的判定時間：按鍵當下的音訊時間（畫面層給 actAt），沒有才用幀時間；不會晚於本幀
-      const actT = inp.actAt != null ? Math.min(inp.actAt, t) : t;
+      // 再扣本局校準偏差（inputOffsetMs，11/24）；偏差為 0 時 x − 0 === x，結果和改前逐位元相同。沒有 actAt（幀時間）不扣。
+      const offS = inputOffsetSec(g);
+      const actT = inp.actAt != null ? Math.min(inp.actAt - offS, t) : t;
       /** 時間 tt 是否算盲區：真盲區本身，或真盲區開始前 BLIND_LEAD_GRACE 秒內（假驟降前 blindFrom 在再下一輪，自然沒有寬限）。 */
       const blindLike = (tt) => {
         if (c.alertBlind) return alertBlindAt(tt, g.bass.anchor, K.BASS_PERIOD, K).blind;
@@ -1627,7 +1641,7 @@
 
       // 安撫（機制 B）
       // 判定時間：按鍵當下的音訊時間（calmAt，沒有就 actAt），再沒有才用幀時間；比起疑還早的按鍵不算
-      const calmT = inp.calmAt != null ? Math.min(inp.calmAt, t) : actT;
+      const calmT = inp.calmAt != null ? Math.min(inp.calmAt - offS, t) : actT;   // 同樣扣本局校準偏差
       if (inp.calm && g.panic.active && calmT >= g.panic.start) {
         const P = g.panic;
         const b = bassBeatNear(calmT, g.bass.anchor, K.BASS_PERIOD, K.BASS_WIN, K.LATENCY_GRACE);
@@ -2110,7 +2124,7 @@
     createLevel, buildLevel, resolveLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, zoneTier, isGateZone, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
-    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor,
+    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor, inputOffsetSec,
     forward, yawTo, angDiff, inRect, mulberry32
   };
 });

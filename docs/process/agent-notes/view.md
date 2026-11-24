@@ -238,3 +238,20 @@
   - 還沒解決：手機沒有觸控操作，手機寬度只驗證版面與流程，真的手機玩不了；展示請用電腦、鍵盤滑鼠。開局鏡頭面向火盆和牆，新觀眾知不知道往哪走要真人看。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
+
+## 2026-11-24 短版步伐提示與校準畫面
+（畫面，代理總控；只改 `troy-prologue/index.html`，未提交；依據競品分析 `docs/design/2026-11-23-competitor-design-review.md` 3.1）
+- **步伐提示**：`?map=demo`（`DEMO_ON`）開局前 20 秒顯示 `#stepRing`，之後 3 秒淡出（`DEMO_RING_ON`／`DEMO_RING_FADE`、`demoRingAlpha()`）。計時用規則時間 `game.time` 的差累計，暫停、字卡時斷開（恢復後不把暫停那段算進去）；`newGame()` 歸零，所以「再玩一次」重新給 20 秒；區域重來（R）不歸零。短版是 P0（`STEP_MODE` glide），原本 `stepRingFrame` 在 glide 不畫，所以加一個 glide 分支：小圈隨下一個聽得到的鼓點收縮（`Rules.beatsBetween`，`minGain` = `MASK_GAIN`，判定寬度 `STEP_WIN`／蹲著 `CROUCH_STEP_WIN`），字「圈縮到底＝鼓點」、落在判定窗內「鼓點：起步不出聲」、附近沒有可聽鼓點（盲區、空檔）時圈停在外面寫「鼓停了：腳步聽得到」。其他地圖、試驗場的 `stepRing` 行為不變（`demoRingAlpha` 回 null）。`backToIntro()` 會把小圈藏起來。
+- **開場校準**：字卡 → `demoStart()` → 校準畫面 `#calib` → `startFromTop()`。畫面上 8 個圓點跟著空白鍵亮；按「開始（空白鍵）」才敲鼓（先 4 下輕的預備拍，聲音層決定），Esc 或「跳過」隨時跳過。
+  - 聲音：另建一個只出校準拍的聲音層 `CAL.inst`（`AudioMod.createAudio`，`mute:{rhythm, bass, ambient}` 全關、四個音樂層關、`setSynthVolume(0)`），呼叫 `CAL.inst.calibClicks(8)`；不這樣做的話，`createAudio` 一建好遊戲鼓聲就自己排程，會和校準拍打架。關掉校準畫面時 `calibStop()`＋`dispose()`，開局再照常 `makeAudio`。
+  - 敲擊時間 `actx.currentTime − (outputLatency || baseLatency || 0)`，和 `pend.actAt` 同一公式；拍點是 `calibClicks` 回傳的同一個 actx 排程時間。收到最後一拍＋0.6 秒（`CAL_TAIL`）才算，交給 `RissetCalib.estimate`。
+  - ok：`CAL.offsetMs` 四捨五入成整數，顯示「已校準 +NN 毫秒」，1.6 秒後自動開局（或按空白鍵）；`newGame()` 把它寫進 `opts.inputOffsetMs` 和 `game.inputOffsetMs`（規則 `inputOffsetSec(game)` 讀後者）。不 ok：「只收到 N 下」或「這幾下和鼓點差得太多」，判定維持原樣，按鈕「再試一次（空白鍵）」「跳過（Esc）」。
+  - 一頁只問一次（`CAL.done`）：校準成功或跳過後，「再玩一次」不再出現校準畫面，沿用本局的偏差；重新整理頁面才重量。不寫存檔。
+  - 自動略過（不報錯，直接開局）：`window.RissetCalib.estimate` 或 `RissetAudio.calibClicks` 不存在、`?calib=0`、`?mute=1`（聽不到鼓沒意義；也讓 `demo-walk.mjs`、`demo-stepring-check.mjs` 這些帶 `mute=1` 的自動測試不必改）。`calibClicks` 丟例外或沒回拍點時同樣略過並 `console.warn`。
+  - 頁面新增載入 `<script src="calibration.js">`（規則角色的新檔）。**claude.ai 試玩頁重新發布時 `files` 要多帶 `calibration.js`**；打包工具若是逐檔列出也要加（沒帶就自動略過校準，照玩）。
+  - `TroyDebug.calib` 給自動驗證讀狀態（`phase`、`done`、`offsetMs`、`taps`、`beats`）。
+- **驗證**（無頭、`--mute-audio`）：
+  - `node tools/playtest-recorder/demo-stepring-check.mjs`：pass（1～19 秒 100% 顯示，最後一次 23.0 秒，23～26 秒全部隱藏）。第一版用 loop 的 dt 累計，第一幀卡頓少算 0.6 秒、23.5 秒才消失，改成規則時間後通過。
+  - 自寫探針（照拍點時間派送空白鍵）：晚 50 毫秒 → 「已校準 +69 毫秒」（setTimeout 誤差），自動開局 `game.inputOffsetMs = 69`；回字卡再按空白鍵直接開局、偏差仍 69；晚 300 毫秒 → 不 ok、顯示再試一次；Esc 跳過 → 開局、偏差 0。截圖看過校準畫面與小圈版面。
+  - 中途聲音角色工作區的 `audio.js` 曾在開局丟例外（`createAudio` 先 `tick()`，`calibQ` 的 var 還沒賦值），當時用暫存複本驗證；聲音角色已加上 `!calibQ ||` 防呆，最後在工作區原檔重跑：小圈檢查 pass、校準晚 50 毫秒 →「已校準 +59 毫秒」、再玩一次沿用 59，主控台 0 例外。
+- 沒做：觸控敲擊（展示用鍵盤）；校準結果沒進遙測（`telStart` 在校準之後，要的話可在 `collectEnv` 加 `inputOffsetMs`）；預備拍與鼓點的音量、間距是聲音層的事。

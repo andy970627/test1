@@ -461,3 +461,39 @@
   - 驗收：全套與嚴格檢查 379 項全過；整夜 500 局 `--moves 1` 和 HEAD 逐字相同，`--moves 0` 和 c1d4aa3 逐字相同，`?map=final` 的地圖 500 局和 HEAD 逐字相同。`risset.js`、`troy-bots.js`、`level-troy.js`、`level-troy-final.js` 都沒改。
   - `tools/telemetry/final-map-sim.mjs` 多印「衛兵查看、被追殺次數」。
   - 還沒接：`index.html` 沒有載入入口，所以**還沒在瀏覽器實際跑過**。畫面要加 `?map=demo`（載 `level-troy-demo.js`，`resolveLevel(TroyLevelDemo)` 傳給 `createLevel`），打包也要帶上這個檔。聲音讀既有的 `music` 與 `game.drive`，不用加欄位。
+
+## 2026-11-24 開場校準邏輯
+
+- 派工：總控（依 `docs/design/2026-11-23-competitor-design-review.md` 3.1「裝置延遲沒校準」）。判定原本只扣 `outputLatency`，判定窗 ±80 毫秒（`STEP_WIN`），換喇叭或藍牙耳機可能整局踩不準。
+- 新檔 `prototypes/troy-prologue/calibration.js`：瀏覽器掛 `window.RissetCalib`，Node 可 `require`。
+  - `estimate(tapTimesSec, beatTimesSec)` → `{ offsetMs, spreadMs, ok, used, medianMs, total }`（前四個是約定欄位，後兩個是附加的）。
+    - 每下對最近的拍點取差（毫秒，晚為正）；|差| > 200 剔除；有效 ≥ 5 下才 `ok`。
+    - `offsetMs`＝有效差的中位數，夾在 ±150；**`ok` 為 false 時 `offsetMs` 一律 0**（畫面沒檢查 ok 直接寫進去也不會亂偏），沒夾的值放 `medianMs`。
+    - `spreadMs`＝和中位數的中位絕對偏差（一半的敲擊離中位數不超過這麼多），沒有有效敲擊時是 null。
+    - 數字四捨五入到 0.1 毫秒；拍點不必排序；非有限數字略過、不算進 `total`。
+  - `apply(tSec, offsetMs)`：回傳 tSec − offsetMs ÷ 1000（夾 ±150），給畫面自己判定的地方用。
+  - 常數 `OUTLIER_MS` 200、`MAX_MS` 150、`MIN_TAPS` 5。
+- `risset.js`：
+  - 狀態加 `inputOffsetMs: 0`（只在這一局；規則沒有存檔，新局一律 0）。
+  - 新函式 `inputOffsetSec(game)`（有匯出）：毫秒換秒、夾 ±0.15，非數字當 0。
+  - 判定時間：`actT = min(actAt − 偏差, t)`、`calmT = min(calmAt − 偏差, t)`。衝刺、暗殺、門閂、安撫、P2 圈內起步都吃 `actT`，所以一起校正。偏差為 0 時 `x − 0 === x`，逐位元不變。
+  - 沒有 `actAt` 時用幀時間，不扣（幀時間不是玩家按鍵的時刻）。
+- 新測試 `prototypes/troy-prologue/calibration.test.js`，10 條：
+  - estimate 四組：正常（晚 40 → 40；早 60 → −60；拍點打亂結果一樣）、有離群值（+230／−210 剔除，剛好 200 還算）、敲擊太少（4 下、5 下含 1 下離群、空陣列、沒拍點）、超出上限（180 → 150、−190 → −150）。
+  - `apply`／`inputOffsetSec` 夾限與非數字。
+  - 新局 `inputOffsetMs` 是 0。
+  - 安撫：晚 0.30 本來偏，+120 判成晚 0.18 算對；早 0.25 本來偏，−120 算對；偏差設錯（+150）也會害到。
+  - 只有 actAt 也扣，幀時間不扣。
+  - 暗殺：幀 10.7、按鍵 10.65 本來失手，+100 判成 10.55（盲區內）成功；+900 等同 +150；−100 仍失手。
+  - 偏差 0、三張地圖（預設、`?map=final`、`?map=demo`）各 20 局 σ0.12，帶 `actAt＝幀時間` 和不帶逐局相同（事件序列、終點座標）。
+- 500 局逐字比對（改動前先跑基準，改動後再跑，用 `cmp` 比）：
+  - `overnight-sim.mjs --n 500 --moves 1`、`--moves 0`：表格逐字相同；只有進度列的執行秒數（例如「（16 秒）」）不同，那是機器跑多久，不是結果。
+  - `final-map-sim.mjs --n 500 --map level-troy-final.js`、`--map level-troy-demo.js`：輸出整份逐字相同。
+  - 注意：程式玩家本來就不送 `actAt`，這組比對只證明「沒有退步」，偏差真正的作用靠上面的單元測試。
+- 全套 `node --test prototypes/*/*.test.js`：381 條全過（約 70 秒）。
+- 沒做完、留給別人的：
+  - 畫面已經接上（`index.html` 載 `calibration.js`、開局前的校準畫面、寫 `state.inputOffsetMs`；敲擊時間和 `pend.actAt` 同公式）。這是畫面角色的工作，我只讀過，沒改。
+  - `?lab=horse` 的敲暗號是畫面自己判定（`index.html` 的 `knockTap`），**沒扣偏差**。要一致的話，畫面把 `t` 換成 `RissetCalib.apply(t, game.inputOffsetMs)` 或 `t − Rules.inputOffsetSec(game)`。
+  - 走路的腳步判定（`stepMasked(t)`，用幀時間）沒有校正：方向鍵沒有按鍵時間戳，只有 P2 圈內起步吃 `actAt`。要校正就得讓畫面也送移動鍵的按下時間，先不動。
+  - 打包（`dist/`）要帶上 `calibration.js`，交給量測與驗收。
+  - 偏差上限 ±150、離群 200、至少 5 下都是假設，要真人換藍牙耳機實測校正。

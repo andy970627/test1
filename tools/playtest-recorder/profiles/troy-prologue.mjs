@@ -55,7 +55,10 @@ export default {
       await page.evaluate(({ src, human, flSrc }) => {
         window.__recPlayMake = () => {
           const opts = Object.assign({ cover: window.TroyDebug.game.T.COVER_MODE === true }, human.sigma ? human : {});
-          const lv = new URLSearchParams(location.search).get('map') === 'final' && window.TroyLevelFinal && window.RissetRules.resolveLevel ? window.RissetRules.resolveLevel(window.TroyLevelFinal) : null;
+          // 11/24：短展示版（?map=demo）同理，用 TroyLevelDemo 的 botRoute
+          const mq = new URLSearchParams(location.search).get('map'), RR = window.RissetRules;
+          const src0 = mq === 'final' ? window.TroyLevelFinal : mq === 'demo' ? window.TroyLevelDemo : null;
+          const lv = src0 && RR.resolveLevel ? RR.resolveLevel(src0) : null;
           if (lv) Object.assign(opts, new Function('return (' + flSrc + ')')()(lv));
           return new Function('R', 'return (' + src + ')')(window.RissetRules)(opts);
         };
@@ -174,7 +177,9 @@ export default {
       if (ph && phaseBar) { ph.checked = true; ph.dispatchEvent(new Event('change', { bubbles: true })); }
     }, { cycle, phaseBar: o.phaseBar !== false, cover, aid: ['on', 'off', 'auto'].includes(o.aid) ? o.aid : null, tel: !!o.tel, stepTest: !!o.stepTest,
       labBot: o.labBot || null, listenT: o.listenTest ? { period: +(o.listenPeriod || 2.5) } : null, horse: o.horseTest ? { half: (+o.duration || 80) / 2, near: { x: 8.5, z: 17.5 }, far: { x: 38.5, z: 26.5 } } : null });
-    await page.click('#btnStart');
+    // 11/24：短展示版（?map=demo）沒有開始按鈕，開場是字卡（#story），按空白鍵開始
+    if (await page.evaluate(() => { const b = document.getElementById('btnStart'); return !!b && b.offsetParent !== null; })) await page.click('#btnStart');
+    else await page.keyboard.press('Space');
     await page.waitForFunction(() => window.TroyDebug.game && window.TroyDebug.audio && window.TroyDebug.game.time != null, null, { timeout: 15000 });
     return page.evaluate(() => {
       const C = window.RissetAudio.CONST || {};
@@ -289,6 +294,13 @@ export default {
         window.__recPlay = null;
         api.press('KeyR'); api.log('retry');
       }
+      return;
+    }
+    // 11/24：短展示版開場與「再玩一次」是字卡（#story），程式玩家按空白鍵進入遊玩（每 0.8 秒最多一次）
+    const storyEl = document.getElementById('story');
+    if (window.__recPlayMake && storyEl && !storyEl.hidden) {
+      api.releaseAll();
+      if (!st.storyTap || s.wall - st.storyTap > 800) { st.storyTap = s.wall; api.press('Space'); api.log('story_space'); }
       return;
     }
     if (g.phase !== 'play') { api.releaseAll(); return; }

@@ -47,6 +47,12 @@ input[type=range] { flex:1; }
 <main>
   <h1>特洛伊的迴響・聲音試聽</h1>
   <div id="strip"></div>
+  <section id="calibTrial" hidden>
+    <b>試驗場・開場跟拍校準</b>（<code>?trial=calib</code>；聲音層 <code>calibClicks(8)</code>：先 4 下輕的預備，再 8 下框鼓，跟著鼓點敲）
+    <div style="margin:6px 0"><button id="calPlay">播放校準節拍</button> <button id="calTap">敲（或按空白鍵）</button> <button id="calStopB">停止</button></div>
+    <div class="note" id="calInfo">按「播放校準節拍」。預備 4 下不用敲，從第 5 下（框鼓）開始每下敲一次。</div>
+    <pre id="calOut" style="white-space:pre-wrap;font-size:var(--fs-12);margin:6px 0 0"></pre>
+  </section>
   <p class="note">Risset 節奏（好幾條鼓各自一直加速、太快的淡出、新的慢鼓淡入，所以聽起來一直在加速卻不會真的變快）。一圈的長度看下面的「循環」；低音每 2.4 秒一拍。右邊「說明」有這頁在試什麼和試聽題目。</p>
   <section>
     <button id="start">開始</button>
@@ -111,6 +117,7 @@ input[type=range] { flex:1; }
 </main>
 <script src="level-troy.js"></script>
 <script src="risset.js"></script>
+<script src="calibration.js"></script><!-- 規則角色的 RissetCalib.estimate；還沒有這個檔時 404，試驗場照常能放、只顯示中位數 -->
 <script>var GAME_RULES = window.RissetRules; try { delete window.RissetRules; } catch (e) { window.RissetRules = undefined; }</script>
 <script src="audio.js"></script>
 <script src="../nav.js"></script>
@@ -471,6 +478,67 @@ if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'), { ru
     $('rhLoud').innerHTML = ii ? '最大聲那條 <b>第 ' + (loud + 1) + ' 條</b>・每分鐘 ' + bpmL + ' 拍' : '';
     $('rhVer').textContent = '版本：' + verName() + '・一圈 ' + (ii ? ii.T : s.cycle.T) + ' 秒';
   }
+})();
+</script>
+<script>
+// ---------- 試驗場 ?trial=calib：開場跟拍校準（2026-11-24，agent-notes/audio.md 同名一節）----------
+// 自己開一個 AudioContext 和一份聲音層（遊戲各層全部靜音），只放校準拍；不碰上面試聽用的 ctx。?mute=1 時主音量鎖 0。
+// 敲擊時間用和遊戲判定同一個式子：ctx.currentTime −（outputLatency || baseLatency || 0）（index.html pend.actAt）。
+(function () {
+  var q = new URLSearchParams(location.search);
+  if (q.get('trial') !== 'calib') return;
+  var $ = function (id) { return document.getElementById(id); };
+  $('calibTrial').hidden = false;
+  var MUTE = q.get('mute') === '1', cctx = null, ca = null, beats = null, taps = [], doneTimer = null;
+  var heard = function () { return cctx.currentTime - (cctx.outputLatency || cctx.baseLatency || 0); };
+  var ms = function (v) { return (v >= 0 ? '+' : '−') + Math.abs(Math.round(v * 1000)) + ' 毫秒'; };
+  function ensure() {
+    if (!cctx) cctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (cctx.state === 'suspended') cctx.resume();
+    if (!ca) {
+      ca = RissetAudio.createAudio(cctx, { T: 10, t0: cctx.currentTime, log: true, mute: { rhythm: true, bass: true, ambient: true, music: true } });
+      ca.setMaster(MUTE ? 0 : +($('vol') ? $('vol').value : 0.8));
+    }
+  }
+  function nearest(t) { var b = null; (beats || []).forEach(function (x) { if (b == null || Math.abs(x - t) < Math.abs(b - t)) b = x; }); return b; }
+  function show() {
+    if (!beats) return;
+    var t0 = beats[0], L = [];
+    L.push('拍距 ' + beats.interval.toFixed(3) + ' 秒（' + beats.bpm.toFixed(1) + ' BPM，來源：' + beats.src + '）・預備 ' + beats.countIn.length + ' 下・跟拍 ' + beats.length + ' 下');
+    L.push('輸出延遲（瀏覽器回報）：outputLatency ' + (cctx.outputLatency != null ? Math.round(cctx.outputLatency * 1000) + ' 毫秒' : '—') + '・baseLatency ' + (cctx.baseLatency != null ? Math.round(cctx.baseLatency * 1000) + ' 毫秒' : '—'));
+    L.push('回傳的拍點時間（AudioContext 秒）：');
+    L.push('  ' + Array.prototype.map.call(beats, function (t, i) { return (i + 1) + '. ' + t.toFixed(4) + '（+' + Math.round((t - t0) * 1000) + '）'; }).join('　'));
+    if (taps.length) {
+      L.push('敲擊（聽到的時間，離最近一拍）：' + taps.map(function (t, i) { return (i + 1) + '. ' + ms(t - nearest(t)); }).join('　'));
+      var offs = taps.map(function (t) { return t - nearest(t); }).sort(function (a, b) { return a - b; });
+      L.push('中位數 ' + ms(offs[offs.length >> 1]) + '（正＝晚；試驗場自己算的參考值）');
+      var Cal = window.RissetCalib;
+      if (Cal && typeof Cal.estimate === 'function') {
+        try { L.push('RissetCalib.estimate：' + JSON.stringify(Cal.estimate(taps.slice(), Array.prototype.slice.call(beats)))); }
+        catch (e) { L.push('RissetCalib.estimate 丟錯：' + e.message); }
+      } else L.push('（規則的 calibration.js 還沒載到，沒有 RissetCalib.estimate）');
+    }
+    $('calOut').textContent = L.join(String.fromCharCode(10));
+  }
+  function tap() {
+    if (!cctx || !beats) { $('calInfo').textContent = '先按「播放校準節拍」'; return; }
+    var t = heard();
+    if (t < beats[0] - beats.interval / 2 || t > beats.end + 1) return;   // 預備拍上的敲擊不收
+    taps.push(t); show();
+  }
+  $('calPlay').onclick = function () {
+    ensure(); taps = [];
+    beats = ca.calibClicks(8, { rules: window.GAME_RULES || null });   // 這頁把全域 RissetRules 收進 GAME_RULES 了，拍距要的規則從這裡給
+    $('calInfo').textContent = '播放中：預備 4 下（輕），接著 8 下框鼓，每下敲一次。';
+    show();
+    clearTimeout(doneTimer);
+    doneTimer = setTimeout(function () { $('calInfo').textContent = '播完了（敲了 ' + taps.length + ' 下）。可以再按一次重來。'; show(); }, (beats.end - cctx.currentTime + 1) * 1000);
+  };
+  $('calStopB').onclick = function () { if (ca) ca.calibStop(); clearTimeout(doneTimer); $('calInfo').textContent = '已停止。'; };
+  $('calTap').addEventListener('pointerdown', function (e) { e.preventDefault(); tap(); });
+  window.addEventListener('keydown', function (e) { if (e.code === 'Space' && !e.repeat && beats) { e.preventDefault(); tap(); } });
+  if ($('vol')) $('vol').addEventListener('input', function () { if (ca) ca.setMaster(MUTE ? 0 : +this.value); });
+  window.__calibTrial = { state: function () { return { beats: beats ? Array.prototype.slice.call(beats) : null, interval: beats && beats.interval, src: beats && beats.src, taps: taps.slice(), log: ca && ca.log ? ca.log.filter(function (e) { return /^calib/.test(e.type); }) : [] }; }, tapAt: function (t) { taps.push(t); show(); } };
 })();
 </script>
 <script>

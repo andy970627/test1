@@ -219,3 +219,39 @@ test('區的聲音：插第 6 區（城門變第 5 區）不出錯，混音照 t
   zs[4] = Object.assign({}, zs[4], { wind: { x: 30, z: 10 } }); assert.deepStrictEqual(A.zoneSound(Object.assign({}, L, { zones: zs }), 4).wind, { x: 30, y: 1, z: 10, g: 0.7 });
   assert.ok(A.ZONE_MIX_NAMES.length === 5);
 });
+
+// 開場跟拍校準（2026-11-24；競品審查 3.1）：calibPlan／calibTempo 是純函式，createAudio 的 calibClicks 用同一份
+test('校準：拍距從規則讀（RissetCalib.BPM > T.CALIB_BPM > T.BASS_PERIOD ÷ CALIB_SUBDIV），不是本檔常數', () => {
+  assert.strictEqual(A.calibTempo({ calib: { BPM: 120 }, rules: { T: { CALIB_BPM: 90, BASS_PERIOD: 2.4 } } }).interval, 0.5);
+  assert.strictEqual(A.calibTempo({ calib: null, rules: { T: { CALIB_BPM: 90, BASS_PERIOD: 2.4 } } }).src, 'T.CALIB_BPM');
+  const t = A.calibTempo({ calib: null, rules: { T: { BASS_PERIOD: 3.2 } } });
+  assert.ok(Math.abs(t.interval - 3.2 / C.CALIB_SUBDIV) < 1e-12);
+  assert.strictEqual(A.calibTempo({ calib: null, rules: { T: { BASS_PERIOD: 2.4 } }, bpm: 60 }).interval, 1, '試驗場可覆寫');
+  const R = require('./risset.js');   // 真的規則檔：讀得到就不能落到備援
+  assert.notStrictEqual(A.calibTempo({ calib: null, rules: R }).src, 'fallback');
+});
+
+test('校準：calibPlan(8) 先 4 下預備、再 8 下跟拍；間隔誤差 < 1 微秒、整段在 10 秒內', () => {
+  const R = require('./risset.js');
+  const at = 12.345, P = A.calibPlan(undefined, at, { calib: null, rules: R });
+  assert.strictEqual(P.beats.length, 8);
+  assert.strictEqual(P.countIn.length, C.CALIB_COUNT_IN);
+  const all = P.countIn.concat(P.beats);
+  assert.strictEqual(all[0], at);
+  for (let i = 1; i < all.length; i++) assert.ok(Math.abs(all[i] - all[i - 1] - P.interval) < 1e-6, `第 ${i} 拍間隔 ${all[i] - all[i - 1]}`);
+  assert.ok(C.CALIB_LEAD + (P.end - at) <= 10, `整段 ${P.end - at} 秒`);
+  assert.strictEqual(A.calibPlan(3, 0, { calib: null, rules: R }).beats.length, 3);
+});
+
+test('校準：音色是純框鼓（跟拍）與純金屬（預備），不是兩種混在一起', () => {
+  for (const x of [C.CALIB_X, C.CALIB_COUNT_X]) { const pos = x * 4 - 0.5; assert.ok(Math.abs(pos - Math.round(pos)) < 1e-9, `x = ${x}`); }
+  assert.strictEqual(C.CALIB_X * 4 - 0.5, 1, '框鼓');
+  assert.strictEqual(C.CALIB_COUNT_X * 4 - 0.5, 3, '金屬');
+});
+
+test('校準時鐘約定：判定的輸入時間＝ currentTime −（outputLatency || baseLatency || 0），回傳的拍點是排程時間（同一把尺）', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  assert.match(html, /pend\.actAt\s*=\s*actx\.currentTime\s*-\s*\(actx\.outputLatency\s*\|\|\s*actx\.baseLatency\s*\|\|\s*0\)/,
+    'index.html 判定的輸入時間算法變了：calibClicks 的時鐘說明（audio.js、agent-notes/audio.md）要跟著改');
+});
