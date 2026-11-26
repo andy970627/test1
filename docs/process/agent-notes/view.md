@@ -138,6 +138,8 @@
 
 - （11/23）**短展示關卡 `?map=demo`**：只在帶參數時用 document.write 載 level-troy-demo.js（window.TroyLevelDemo），經 Rules.resolveLevel 交 createLevel；載入失敗時回到長開場頁，開場最上面顯示一行訊息、用原本地圖。DEMO_ON 時：CLEAN_Q 也算開（不讀存檔，別人留下的除錯開關帶不進展示）、不問問卷、body.demoMode 藏開發用按鈕。開場字卡是 STORY_CARDS.demo（storyShow('demo', startFromTop)），開始前 game 還是 null。結局、失敗的「再玩一次」呼叫 backToIntro（停聲音、清狀態、回字卡）；空白鍵與 Enter 先擋一下（失敗 1.2 秒、結局 2.6 秒），免得還按著屏息就跳走。
 
+- （11/26）**3D 場景加強 `?art=2`（美術 A 試做）**：index.html 的 ART 物件，`?fx=mat,fire,fog,shadow,key` 個別開（不寫＝五項全開；mat2 另外點名）。掛勾四處：build 結尾 artApply、buildHorse 記 S.horseGroup、新衛兵 artGuard、火光迴圈後 artFrame；ART.on 為假時全部不執行。材質是程式畫的灰階紋理（不用外部圖檔）乘原色，方塊 UV 改成每 2 公尺一張；**mat2（Phong＋凹凸）與 shadow（點光源投影）在軟體算圖只剩 1～5 幀**，mat 用 Lambert＋紋理。陰影只讓離鏡頭最近的 2 盞火投影、每秒換一次（點光源投影一盞要畫 6 次）。關口界石貼在出口矩形長邊兩端的牆邊。量幀數要用 `--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` 才會用到顯示卡（RTX 3060），預設無頭是軟體算圖；凍結畫面用 `TroyDebug.game.step = () => g`，前後比較要固定 Math.random 種子（addScriptToEvaluateOnNewDocument）。
+
 ## 4. 驗證方式
 - **本機開原型（有外殼）**：
   - 打包：`bash tools/build-itch.sh` → 輸出 `dist/odyssey-series/`（結構同 `prototypes/`，片段自動包外殼、three.js 改本地）。在該資料夾起靜態伺服器（例如 `python -m http.server -d dist/odyssey-series 8000`），開 `http://localhost:8000/troy-prologue/index.html`。這條路徑 `../telemetry.js`、`../nav.js` 都載得到。
@@ -236,6 +238,8 @@
 - 11/17 晚（畫面）?map=final 與序、終字卡（使用者在總控選「今晚就做」；未提交；cleancheck 375 項通過；截圖在共享筆記 `story-final-1117/`）：index.html 讀期末地圖、檔案沒到時顯示一行訊息並用原本地圖（字卡翻完再說一次）；暗區調暗＋最響一擊照亮，離開暗區還原；序 3 張（木馬進城／全城慶祝／夜深）、終 1 張（城門開了），黑底、題字、插圖框 16:9 寫「插圖待放」，點擊／空白鍵／Enter／→ 翻頁，Esc 或「略過」跳過；game.story 旗標；switch.html 加「期末七段版」。旁白初稿等總控跑 humanizer-zh-tw。實測：沒帶參數無字卡、flashFx 不出現；?map=final 用規則角色的正式地圖（90 × 30、8 區）從序翻完 → 腹中 → 木馬下 → 神殿廣場 → 慶宴的街 → 窄巷 → 沒有火的後街（暗、照亮開）→ 城門 → 推開 → 終字卡 → 原本的勝利畫面。
 - 11/23（畫面）木馬之夜短展示關卡接進遊戲頁（只改 troy-prologue/index.html，未提交；全套與 cleancheck 379 項通過；截圖在共享筆記 `demo-1123/`）：`?map=demo` 開一張故事兩句＋四組按鍵的字卡，空白鍵或點一下開始；結局與失敗畫面有主按鈕「再玩一次（空白鍵）」，回到乾淨字卡。無頭實測（--mute-audio、?mute=1&nolock=1）：桌機 1440 × 900、手機 390 × 844 各連跑 3 輪「開局 → 木馬下 → 神殿廣場 → 城門 → 再玩一次」，另各測一次失敗後再玩一次，主控台 0 錯誤；換區是程式移到出口、城門進度是程式設定，不是真人走完。檔案擋掉時有一行訊息；不帶參數與 ?map=final 開局正常（只做開局比對，沒做逐像素比對）。
   - 還沒解決：手機沒有觸控操作，手機寬度只驗證版面與流程，真的手機玩不了；展示請用電腦、鍵盤滑鼠。開局鏡頭面向火盆和牆，新觀眾知不知道往哪走要真人看。
+- 11/26（畫面）木馬之夜 3D 場景加強試做（只改 troy-prologue/index.html，未提交；全套 400 項與 cleancheck 通過；截圖、幀數表在 `docs/process/art-trial-2026-11-26/`）：?art=2 開，五項 mat 材質、fire 火光、fog 霧、shadow 陰影、key 關鍵物件可個別開關，另有 mat2 高品質材質。關鍵物件：衛兵披風與盔甲微微自發光＋警告紅外輪廓、木馬與城門火橘描邊、各區關口兩側發光界石與地上光帶。建議 12/24 用 mat,fire,fog,key（RTX 3060 上 182～274 幀、軟體算圖 10～16 幀），shadow 與 mat2 不用。
+  - 沒做：介面（美術 C）；火盆位置仍是預設地圖寫死的座標，七段地圖新區沒有火盆（原本就這樣，非這次改動）。真人要看：在展示用電腦實跑幀數、暗色寫實的程度是否太亮、界石會不會太搶眼。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
 

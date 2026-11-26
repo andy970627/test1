@@ -847,6 +847,19 @@ const scene = new THREE.Scene();
 const FOG = 0x080a12;
 scene.background = new THREE.Color(FOG);
 scene.fog = new THREE.FogExp2(FOG, .045);
+// 3D 場景加強試做（期末企劃第 7 節美術 A，11/26）：?art=2 才開；?fx=mat,fire,fog,shadow,key 選要哪幾項（不寫＝全開）。
+//   mat 材質（石牆、石板、木頭的紋理；mat2＝再加凹凸與逐像素打光，較貴）｜fire 火光（閃爍、暖色隨亮度偏紅、火焰光暈）｜fog 霧（帶藍的夜霧＋貼地薄霧）
+//   shadow 陰影（離鏡頭最近的 ART_SHADOW_N 盞火投影）｜key 關鍵物件好認（衛兵、木馬、城門、各區關口）
+//   色票照企劃只用夜藍、火橘、警告紅；光源仍只有火盆與火把。開關全關時下面每一段都不執行，畫面與以前相同。
+const ART = (() => {
+  const on = URLQ.get('art') === '2', all = ['mat', 'fire', 'fog', 'shadow', 'key'];   // 不寫 ?fx＝這五項全開；mat2（高品質材質）要另外點名
+  const list = URLQ.has('fx') ? String(URLQ.get('fx')).split(',').map(x => x.trim()) : all;
+  const fx = {}; for (const k of all.concat('mat2')) fx[k] = on && list.includes(k);
+  return { on, fx, tex: {}, mist: null, shadowAt: 0 };
+})();
+const ART_SHADOW_N = 2, ART_FOG = 0x0a1022;
+if (ART.fx.fog) { scene.fog = new THREE.FogExp2(ART_FOG, .055); scene.background = new THREE.Color(ART_FOG); }
+if (ART.fx.shadow) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
 const camera = new THREE.PerspectiveCamera(72, 1, .05, 220);
 camera.rotation.order = 'YXZ';
 function resize() {
@@ -1055,6 +1068,7 @@ function build(L) {
   if (L.horse) { buildHorse(L.horse, L); if (horseOn()) { buildBellyPractice(); buildHorseDust(); } }
   if (gate) buildGate(L.gate, gate);
   buildRouteHints(L, gate, walls);
+  if (ART.on) artApply(L, gate);                  // ?art=2：3D 場景加強（開關關著不執行）
 }
 
 // ============================================================
@@ -1154,7 +1168,7 @@ function buildHouses(w) {
 }
 
 function buildHorse(H, L) {
-  const g = new THREE.Group(); world.add(g);
+  const g = new THREE.Group(); world.add(g); S.horseGroup = g;
   const r = R(H), fy = num(H.bellyY, H.floor, H.y, 2.5);
   const bz = lvZones(L) && L.zones[bellyZoneOf(L)];
   const zb = bz && bz.belly ? R(bz.belly) : { x0: r.x0 + .8, x1: r.x1 - 1, z0: (r.z0 + r.z1) / 2 - .5, z1: (r.z0 + r.z1) / 2 + .5 };
@@ -1292,6 +1306,136 @@ function buildGate(G, gr) {
   const pool = new THREE.Mesh(new THREE.CircleGeometry(1.3, 24), lm(.22)); pool.rotation.x = -Math.PI / 2; pool.position.set(-1.2, .04, 1.5); root.add(pool);
   const ml = new THREE.PointLight(0xa8bce8, .8, 6, 2); ml.position.set(-1, 3.2, 1.4); root.add(ml);
   S.gate = { doors, bar, gw, open: 0, beam, beamOp: beam.material.opacity };
+}
+
+// ============================================================
+// 3D 場景加強（?art=2）：材質、火光、霧、陰影、關鍵物件。只在 ART.on 時被呼叫
+// ============================================================
+function artNoiseTex(kind) {                      // 程式畫的灰階紋理（不用外部圖檔）：石塊、石板、木板；顏色由材質原色乘上
+  if (ART.tex[kind]) return ART.tex[kind];
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+  const rnd = (() => { let a = kind === 'wood' ? 7 : kind === 'floor' ? 3 : 11; return () => { a = (a * 16807) % 2147483647; return a / 2147483647; }; })();
+  if (kind === 'mist') {                          // 薄霧：黑底上幾團柔邊白霧（加法混色時黑＝透明）
+    x.fillStyle = '#000'; x.fillRect(0, 0, N, N);
+    for (let i = 0; i < 14; i++) { const px = rnd() * N, pz = rnd() * N, r = 30 + rnd() * 60, gr = x.createRadialGradient(px, pz, 0, px, pz, r); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = gr; x.fillRect(px - r, pz - r, r * 2, r * 2); }
+    const tm = new THREE.CanvasTexture(c); tm.wrapS = tm.wrapT = THREE.RepeatWrapping; return (ART.tex[kind] = tm);
+  }
+  x.fillStyle = '#9a9a9a'; x.fillRect(0, 0, N, N);   // 底色偏暗：Phong 逐像素打光比 Lambert 亮，紋理壓暗一點維持暗色寫實
+  for (let i = 0; i < 2600; i++) { const v = 110 + rnd() * 80 | 0; x.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',.35)'; x.fillRect(rnd() * N, rnd() * N, 1 + rnd() * 4, 1 + rnd() * 4); }
+  x.strokeStyle = 'rgba(40,40,40,.85)'; x.lineWidth = 3;
+  if (kind === 'wood') {                          // 木板：直條縫＋木紋
+    for (let i = 0; i <= 4; i++) { x.beginPath(); x.moveTo(i * N / 4, 0); x.lineTo(i * N / 4, N); x.stroke(); }
+    x.strokeStyle = 'rgba(70,70,70,.35)'; x.lineWidth = 1;
+    for (let i = 0; i < 40; i++) { const px = rnd() * N; x.beginPath(); x.moveTo(px, 0); x.bezierCurveTo(px + 6, N / 3, px - 6, N * 2 / 3, px + 3, N); x.stroke(); }
+  } else {                                        // 石牆：錯縫砌石；石板：方格
+    const rows = kind === 'floor' ? 2 : 4, cols = kind === 'floor' ? 2 : 3;
+    for (let r = 0; r <= rows; r++) { x.beginPath(); x.moveTo(0, r * N / rows); x.lineTo(N, r * N / rows); x.stroke(); }
+    for (let r = 0; r < rows; r++) for (let k = 0; k <= cols; k++) { const px = (k + (kind === 'floor' ? 0 : (r % 2) * .5)) * N / cols; x.beginPath(); x.moveTo(px, r * N / rows); x.lineTo(px, (r + 1) * N / rows); x.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  return (ART.tex[kind] = t);
+}
+const ART_MAT = {};
+function artMatFor(color) {                       // 原本的 Lambert 色 → 加紋理與凹凸的 Phong；低彩度＝石頭、偏橘褐＝木頭
+  const k = color.getHex();
+  if (ART_MAT[k]) return ART_MAT[k];
+  const hsl = {}; color.getHSL(hsl);
+  const kind = hsl.s < .18 ? 'stone' : (hsl.h > .03 && hsl.h < .14 ? 'wood' : null);
+  if (!kind) return (ART_MAT[k] = null);
+  const t = artNoiseTex(kind);
+  // mat：Lambert＋紋理（逐頂點打光，便宜）；mat2：Phong＋凹凸（逐像素打光，好看但軟體算圖時 1 幀以下，見 view.md 幀數表）
+  return (ART_MAT[k] = ART.fx.mat2 ? new THREE.MeshPhongMaterial({ color, map: t, bumpMap: t, bumpScale: kind === 'wood' ? .03 : .05, shininess: 6, specular: 0x111111 }) : new THREE.MeshLambertMaterial({ color, map: t }));
+}
+function artBoxUV(m) {                            // 方塊的貼圖改成照世界尺寸重複（每 2 公尺一張），大牆不會被拉長
+  const p = m.geometry && m.geometry.parameters, uv = m.geometry && m.geometry.attributes.uv;
+  if (!p || !uv || m.geometry.type !== 'BoxGeometry' || m.userData.artUV) return;
+  m.userData.artUV = true;
+  const dims = [[p.depth, p.height], [p.depth, p.height], [p.width, p.depth], [p.width, p.depth], [p.width, p.height], [p.width, p.height]];
+  for (let face = 0; face < 6; face++) for (let v = 0; v < 4; v++) { const i = face * 4 + v; uv.setXY(i, uv.getX(i) * dims[face][0] / 2, uv.getY(i) * dims[face][1] / 2); }
+  uv.needsUpdate = true;
+}
+function artEdges(obj, color, opacity) {          // 關鍵物件的描邊：細線，霧裡也看得到輪廓
+  const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+  obj.traverse(o => {
+    if (!o.isMesh || !o.geometry || o.userData.artEdge || (o.material && o.material.transparent)) return;
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), mat); e.userData.artEdge = true; o.userData.artEdge = true; o.add(e);
+  });
+}
+function artApply(L, gate) {
+  // 材質
+  if (ART.fx.mat || ART.fx.mat2) world.traverse(o => {
+    if (!o.isMesh || !o.material || !o.material.isMeshLambertMaterial || o.material.transparent) return;
+    const m = artMatFor(o.material.color); if (!m) return;
+    if (o.position.y < .02 && o.geometry.type === 'BoxGeometry' && o.geometry.parameters.height <= .11) { const fm = artMatFor(o.material.color); o.material = fm.userData.floor || (fm.userData.floor = Object.assign(fm.clone(), ART.fx.mat2 ? { map: artNoiseTex('floor'), bumpMap: artNoiseTex('floor') } : { map: artNoiseTex('floor') })); }
+    else o.material = m;
+    artBoxUV(o);
+  });
+  // 陰影：牆、方塊投影，地面接收；投影的火源每秒挑一次離鏡頭最近的幾盞
+  if (ART.fx.shadow) {
+    world.traverse(o => { if (o.isMesh && o.material && !o.material.transparent && !o.material.isMeshBasicMaterial) { o.castShadow = true; o.receiveShadow = true; } });
+    for (const F of S.fires) { F.light.shadow.mapSize.set(512, 512); F.light.shadow.bias = -.004; F.light.shadow.camera.near = .2; }
+    ART.shadowAt = 0;
+  }
+  // 火光：火焰外加一團暖色光暈（加法混色，不加燈）
+  if (ART.fx.fire) for (const F of S.fires) {
+    if (F.halo) continue;
+    const h = new THREE.Mesh(new THREE.SphereGeometry(.55, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff7a2a, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false }));
+    h.position.y = .35; F.f.add(h); F.halo = h; F.seed = Math.random() * 100;
+  }
+  // 霧：貼地的薄霧（一大片加法混色的雜訊平面，慢慢飄）
+  if (ART.fx.fog) {
+    const sz = L.size || { w: 60, h: 30 }, t = artNoiseTex('mist') ;
+    const mist = new THREE.Mesh(new THREE.PlaneGeometry(sz.w + 40, sz.h + 40), new THREE.MeshBasicMaterial({ color: 0x2a3a66, map: t, transparent: true, opacity: .16, blending: THREE.AdditiveBlending, depthWrite: false }));
+    mist.rotation.x = -Math.PI / 2; mist.position.set(sz.w / 2, .45, sz.h / 2); t.repeat.set(6, 3); world.add(mist); ART.mist = mist;
+  }
+  // 關鍵物件：木馬、城門描邊（火橘），各區關口立一對發亮的界石（不加燈，只是自己發光）
+  if (ART.fx.key) {
+    if (S.horseGroup) artEdges(S.horseGroup, 0xd8843a, .45);
+    if (S.gate && S.gate.bar && S.gate.bar.parent) artEdges(S.gate.bar.parent, 0xffa040, .6);
+    const post = new THREE.MeshBasicMaterial({ color: 0x3a2a1c }), cap = new THREE.MeshBasicMaterial({ color: 0xff9a40 });
+    const glow = new THREE.MeshBasicMaterial({ color: 0xff8030, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (const z of arr(L.zones)) {
+      const r = z && z.exit && z.exit.kind === 'rect' && R(z.exit.rect); if (!r) continue;
+      const cx = (r.x0 + r.x1) / 2, along = (r.x1 - r.x0) < (r.z1 - r.z0);   // 出口是一條窄矩形：界石放在長邊兩端
+      const ends = along ? [[cx, r.z0 - .15], [cx, r.z1 + .15]] : [[r.x0 - .15, (r.z0 + r.z1) / 2], [r.x1 + .15, (r.z0 + r.z1) / 2]];   // 界石貼在關口兩側的牆邊，不擋路
+      for (const [px, pz] of ends) {
+        box(.22, 1.3, .22, 0, px, .65, pz, world, post);
+        box(.3, .14, .3, 0, px, 1.36, pz, world, cap);
+        const g = new THREE.Mesh(new THREE.SphereGeometry(.26, 10, 8), glow); g.position.set(px, 1.38, pz); world.add(g);
+      }
+      const band = new THREE.Mesh(new THREE.PlaneGeometry(along ? .25 : r.x1 - r.x0, along ? r.z1 - r.z0 : .25), glow);   // 地上一條淡淡的光帶，標出要穿過的那條線
+      band.rotation.x = -Math.PI / 2; band.position.set(cx, .05, (r.z0 + r.z1) / 2); world.add(band);
+    }
+  }
+}
+function artGuard(F) {                            // 衛兵好認：披風帶一點自己的紅、盔甲帶一點銅光、外面一圈警告紅的輪廓
+  if (!ART.fx.key) return;
+  F.up.traverse(o => {
+    if (!o.isMesh || !o.material || !o.material.isMeshLambertMaterial) return;
+    const c = o.material.color.getHex();
+    if (c === 0x6a2420 || c === 0xa02a20) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0x3a0a06); }
+    else if (c === 0x9a7a3a) { o.material = o.material.clone(); o.material.emissive = new THREE.Color(0x2a1c08); }
+  });
+  const hull = new THREE.MeshBasicMaterial({ color: 0xb0301e, side: THREE.BackSide, transparent: true, opacity: .4, depthWrite: false });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.33, .4, 1.75, 10), hull); body.position.y = .95; F.up.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.24, 10, 8), hull); F.head.add(head);
+}
+function artFrame(now, fireMul) {
+  const tsec = now;
+  if (ART.fx.fire) for (const F of S.fires) {   // 火光：兩個頻率疊起來的閃爍；暗的時候偏紅、亮的時候偏黃（暖色衰減）
+    const sd = F.seed || 0, k = 1 + .14 * Math.sin(tsec * 7.3 + sd) + .08 * Math.sin(tsec * 17.1 + sd * 2.3);
+    F.light.intensity *= k;
+    const w = clamp((k - .86) / .36, 0, 1);
+    F.light.color.setRGB(1, .42 + .2 * w, .16 + .1 * w);
+    F.light.distance = (F.light.userData.d0 || (F.light.userData.d0 = F.light.distance)) * (1.15 + .1 * w);
+    if (F.halo) { F.halo.material.opacity = (.14 + .14 * w) * fireMul; F.halo.scale.setScalar(.9 + .25 * w); }
+  }
+  if (ART.mist && ART.mist.material.map) { ART.mist.material.map.offset.x = tsec * .004; ART.mist.material.map.offset.y = tsec * .002; }
+  if (ART.fx.shadow && performance.now() - ART.shadowAt > 1000) {   // 陰影：只讓離鏡頭最近的幾盞火投影（點光源投影很貴）
+    ART.shadowAt = performance.now();
+    const cp = camera.position, list = S.fires.slice().sort((a, b) => a.light.position.distanceToSquared(cp) - b.light.position.distanceToSquared(cp));
+    list.forEach((F, i) => { F.light.castShadow = i < ART_SHADOW_N; });
+  }
 }
 
 // ---------- 衛兵 ----------
@@ -2403,6 +2547,7 @@ function sync(dt, now) {
   // 火光閃動
   const fl = () => 1 + (Math.sin(now * 11 + Math.random()) * .06 + Math.random() * .08) * jitter;
   for (const F of S.fires) { F.f.rotation.z = tilt; F.f.scale.set(bw, fl() * (1 + bp), bw); F.light.intensity = F.base * (1 + (Math.random() * .2 - .12) * jitter) * (1 + VIS.pulse * .25) * fireMul; }
+  if (ART.on) artFrame(now, fireMul);            // ?art=2：火光閃爍、貼地薄霧、陰影跟著鏡頭換火源
   if (S.horseLight) S.horseLight.intensity = (.35 + Math.random() * .2 * motion + VIS.pulse * .15) * fireMul;
 
   // 衛兵
@@ -2410,7 +2555,7 @@ function sync(dt, now) {
   const KK = K(), rp = num(KK.R_BASE, 2) + num(KK.R_GAIN, 8) * p * p;
   arr(g.guards).forEach((G, i) => {
     const key = G.id != null ? G.id : i; seen.add(key);
-    let F = S.guards.get(key); if (!F) { F = makeGuard(); S.guards.set(key, F); }
+    let F = S.guards.get(key); if (!F) { F = makeGuard(); if (ART.on) artGuard(F); S.guards.set(key, F); }
     const down = G.state === 'down', hunted = G.state === 'hunted', susp = G.state === 'suspicious';
     const sp = F.px == null ? 0 : Math.hypot(G.x - F.px, G.z - F.pz) / Math.max(dt, 1e-3);
     F.px = G.x; F.pz = G.z;
