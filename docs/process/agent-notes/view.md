@@ -138,7 +138,7 @@
 
 - （11/23）**短展示關卡 `?map=demo`**：只在帶參數時用 document.write 載 level-troy-demo.js（window.TroyLevelDemo），經 Rules.resolveLevel 交 createLevel；載入失敗時回到長開場頁，開場最上面顯示一行訊息、用原本地圖。DEMO_ON 時：CLEAN_Q 也算開（不讀存檔，別人留下的除錯開關帶不進展示）、不問問卷、body.demoMode 藏開發用按鈕。開場字卡是 STORY_CARDS.demo（storyShow('demo', startFromTop)），開始前 game 還是 null。結局、失敗的「再玩一次」呼叫 backToIntro（停聲音、清狀態、回字卡）；空白鍵與 Enter 先擋一下（失敗 1.2 秒、結局 2.6 秒），免得還按著屏息就跳走。
 
-- （11/26）**3D 場景加強 `?art=2`（美術 A 試做）**：index.html 的 ART 物件，`?fx=mat,fire,fog,shadow,key` 個別開（不寫＝五項全開；mat2 另外點名）。掛勾四處：build 結尾 artApply、buildHorse 記 S.horseGroup、新衛兵 artGuard、火光迴圈後 artFrame；ART.on 為假時全部不執行。材質是程式畫的灰階紋理（不用外部圖檔）乘原色，方塊 UV 改成每 2 公尺一張；**mat2（Phong＋凹凸）與 shadow（點光源投影）在軟體算圖只剩 1～5 幀**，mat 用 Lambert＋紋理。陰影只讓離鏡頭最近的 2 盞火投影、每秒換一次（點光源投影一盞要畫 6 次）。關口界石貼在出口矩形長邊兩端的牆邊。量幀數要用 `--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` 才會用到顯示卡（RTX 3060），預設無頭是軟體算圖；凍結畫面用 `TroyDebug.game.step = () => g`，前後比較要固定 Math.random 種子（addScriptToEvaluateOnNewDocument）。
+- （11/26）**3D 場景加強 `?art=2`（美術 A 試做）**：index.html 的 ART 物件，`?fx=mat,fire,fog,shadow,key` 個別開（不寫＝建議組合 mat,fire,fog,key；shadow 與 mat2 要點名，11/26 使用者選）。掛勾四處：build 結尾 artApply、buildHorse 記 S.horseGroup、新衛兵 artGuard、火光迴圈後 artFrame；ART.on 為假時全部不執行。材質是程式畫的灰階紋理（不用外部圖檔）乘原色，方塊 UV 改成每 2 公尺一張；**mat2（Phong＋凹凸）與 shadow（點光源投影）在軟體算圖只剩 1～5 幀**，mat 用 Lambert＋紋理。陰影只讓離鏡頭最近的 2 盞火投影、每秒換一次（點光源投影一盞要畫 6 次）。關口界石貼在出口矩形長邊兩端的牆邊，到膝蓋高（.42＋頂蓋）、只微微發光；離任一區出生點 2.5 公尺內的不放（出口線常常就是下一區的出生點，站在線上往前看會正對牆邊那根）。量幀數要用 `--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` 才會用到顯示卡（RTX 3060），預設無頭是軟體算圖；凍結畫面用 `TroyDebug.game.step = () => g`，前後比較要固定 Math.random 種子（addScriptToEvaluateOnNewDocument）。
 
 ## 4. 驗證方式
 - **本機開原型（有外殼）**：
@@ -240,6 +240,7 @@
   - 還沒解決：手機沒有觸控操作，手機寬度只驗證版面與流程，真的手機玩不了；展示請用電腦、鍵盤滑鼠。開局鏡頭面向火盆和牆，新觀眾知不知道往哪走要真人看。
 - 11/26（畫面）木馬之夜 3D 場景加強試做（只改 troy-prologue/index.html，未提交；全套 400 項與 cleancheck 通過；截圖、幀數表在 `docs/process/art-trial-2026-11-26/`）：?art=2 開，五項 mat 材質、fire 火光、fog 霧、shadow 陰影、key 關鍵物件可個別開關，另有 mat2 高品質材質。關鍵物件：衛兵披風與盔甲微微自發光＋警告紅外輪廓、木馬與城門火橘描邊、各區關口兩側發光界石與地上光帶。建議 12/24 用 mat,fire,fog,key（RTX 3060 上 182～274 幀、軟體算圖 10～16 幀），shadow 與 mat2 不用。
   - 沒做：介面（美術 C）；火盆位置仍是預設地圖寫死的座標，七段地圖新區沒有火盆（原本就這樣，非這次改動）。真人要看：在展示用電腦實跑幀數、暗色寫實的程度是否太亮、界石會不會太搶眼。
+  - 11/26 晚（審過提交 32761e7 後追加）：不寫 fx 預設改建議組合四項；界石改矮、改暗、出生點 2.5 公尺內不放，地上光帶保留；重截 plaza-1、gate-1。400 項與 cleancheck 通過，未提交。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
 

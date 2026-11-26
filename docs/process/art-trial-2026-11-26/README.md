@@ -1,10 +1,10 @@
 # 木馬之夜 3D 場景加強試做（美術 A，2026-11-26，畫面角色）
 
-開法：`troy-prologue/index.html?map=final&art=2`；只開某幾項加 `&fx=mat,fire,fog,shadow,key`（不寫 `fx`＝五項全開；`mat2`＝高品質材質，要另外點名）。不帶 `art=2` 時畫面不變。
+開法：`troy-prologue/index.html?map=final&art=2`；只開某幾項加 `&fx=mat,fire,fog,shadow,key`（不寫 `fx`＝建議組合 mat、fire、fog、key 四項（使用者 11/26 選）；`shadow` 陰影與 `mat2` 高品質材質要在 `fx` 裡點名才開，例如 `&fx=mat,fire,fog,key,shadow`）。不帶 `art=2` 時畫面不變。
 
 截圖：同一位置、同一個亂數種子，開效果前後各一張。
 - `*-0-前-原本.png`：沒開效果
-- `*-1-後-建議組合.png`：`fx=mat,fire,fog,key`（建議 12/24 用這組）
+- `*-1-後-建議組合.png`：`fx=mat,fire,fog,key`（建議 12/24 用這組；也是現在不寫 fx 的預設）。plaza、gate 兩張 11/26 晚上照新界石重截：界石改成到膝蓋的矮石、只微微發光，地上光帶保留；離任一區出生點 2.5 公尺內的界石不放（原本廣場出生點正前方那根會擋視線）
 - `*-2-後-全開含陰影.png`：五項全開
 - 位置：`plaza` 神殿廣場、`alley` 窄巷、`back` 沒有火的後街、`gate` 城門
 

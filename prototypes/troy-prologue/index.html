@@ -852,8 +852,8 @@ scene.fog = new THREE.FogExp2(FOG, .045);
 //   shadow 陰影（離鏡頭最近的 ART_SHADOW_N 盞火投影）｜key 關鍵物件好認（衛兵、木馬、城門、各區關口）
 //   色票照企劃只用夜藍、火橘、警告紅；光源仍只有火盆與火把。開關全關時下面每一段都不執行，畫面與以前相同。
 const ART = (() => {
-  const on = URLQ.get('art') === '2', all = ['mat', 'fire', 'fog', 'shadow', 'key'];   // 不寫 ?fx＝這五項全開；mat2（高品質材質）要另外點名
-  const list = URLQ.has('fx') ? String(URLQ.get('fx')).split(',').map(x => x.trim()) : all;
+  const on = URLQ.get('art') === '2', all = ['mat', 'fire', 'fog', 'shadow', 'key'], rec = ['mat', 'fire', 'fog', 'key'];   // 不寫 ?fx＝建議組合四項（使用者 11/26 選）；shadow、mat2 要在 fx 點名才開
+  const list = URLQ.has('fx') ? String(URLQ.get('fx')).split(',').map(x => x.trim()) : rec;
   const fx = {}; for (const k of all.concat('mat2')) fx[k] = on && list.includes(k);
   return { on, fx, tex: {}, mist: null, shadowAt: 0 };
 })();
@@ -1388,20 +1388,22 @@ function artApply(L, gate) {
     const mist = new THREE.Mesh(new THREE.PlaneGeometry(sz.w + 40, sz.h + 40), new THREE.MeshBasicMaterial({ color: 0x2a3a66, map: t, transparent: true, opacity: .16, blending: THREE.AdditiveBlending, depthWrite: false }));
     mist.rotation.x = -Math.PI / 2; mist.position.set(sz.w / 2, .45, sz.h / 2); t.repeat.set(6, 3); world.add(mist); ART.mist = mist;
   }
-  // 關鍵物件：木馬、城門描邊（火橘），各區關口立一對發亮的界石（不加燈，只是自己發光）
+  // 關鍵物件：木馬、城門描邊（火橘），各區關口立一對到膝蓋高的矮界石，只微微發光（不加燈；11/26 使用者選矮、暗，不擋視線）
   if (ART.fx.key) {
     if (S.horseGroup) artEdges(S.horseGroup, 0xd8843a, .45);
     if (S.gate && S.gate.bar && S.gate.bar.parent) artEdges(S.gate.bar.parent, 0xffa040, .6);
-    const post = new THREE.MeshBasicMaterial({ color: 0x3a2a1c }), cap = new THREE.MeshBasicMaterial({ color: 0xff9a40 });
-    const glow = new THREE.MeshBasicMaterial({ color: 0xff8030, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false });
+    const post = new THREE.MeshBasicMaterial({ color: 0x2e241a }), cap = new THREE.MeshBasicMaterial({ color: 0x8a5228 });
+    const glow = new THREE.MeshBasicMaterial({ color: 0xff8030, transparent: true, opacity: .25, blending: THREE.AdditiveBlending, depthWrite: false });   // 地上光帶
+    const halo = new THREE.MeshBasicMaterial({ color: 0xff8030, transparent: true, opacity: .1, blending: THREE.AdditiveBlending, depthWrite: false });   // 石頭頂上很淡的一圈
     for (const z of arr(L.zones)) {
       const r = z && z.exit && z.exit.kind === 'rect' && R(z.exit.rect); if (!r) continue;
       const cx = (r.x0 + r.x1) / 2, along = (r.x1 - r.x0) < (r.z1 - r.z0);   // 出口是一條窄矩形：界石放在長邊兩端
       const ends = along ? [[cx, r.z0 - .15], [cx, r.z1 + .15]] : [[r.x0 - .15, (r.z0 + r.z1) / 2], [r.x1 + .15, (r.z0 + r.z1) / 2]];   // 界石貼在關口兩側的牆邊，不擋路
       for (const [px, pz] of ends) {
-        box(.22, 1.3, .22, 0, px, .65, pz, world, post);
-        box(.3, .14, .3, 0, px, 1.36, pz, world, cap);
-        const g = new THREE.Mesh(new THREE.SphereGeometry(.26, 10, 8), glow); g.position.set(px, 1.38, pz); world.add(g);
+        if (arr(L.zones).some(q => q && q.start && Math.hypot(q.start.x - px, q.start.z - pz) < 2.5)) continue;   // 出生點旁邊那根不放，免得一進區就擋在眼前
+        box(.28, .42, .28, 0, px, .21, pz, world, post);
+        box(.3, .06, .3, 0, px, .45, pz, world, cap);
+        const g = new THREE.Mesh(new THREE.SphereGeometry(.16, 10, 8), halo); g.position.set(px, .48, pz); world.add(g);
       }
       const band = new THREE.Mesh(new THREE.PlaneGeometry(along ? .25 : r.x1 - r.x0, along ? r.z1 - r.z0 : .25), glow);   // 地上一條淡淡的光帶，標出要穿過的那條線
       band.rotation.x = -Math.PI / 2; band.position.set(cx, .05, (r.z0 + r.z1) / 2); world.add(band);
