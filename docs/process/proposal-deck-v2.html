@@ -133,6 +133,45 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
 #s4 .card ul.pts li{font-size:28px;line-height:1.38}
 #s4 .card{padding:22px 28px;gap:8px}
 #s4 .bar span{font-size:30px}
+#s3 .grid > .card:nth-child(3){grid-column:span 2}
+.sched td,.sched th{font-size:26px}
+/* 11/25 文字稿套回：預期成果兩欄清單、時程圖表 */
+.two-col{columns:2;column-gap:56px;display:block!important}
+.two-col li{break-inside:avoid;margin-bottom:6px}
+.route9{display:grid;grid-template-columns:repeat(9,1fr);position:relative;margin-top:110px}
+.route9::before{content:"";position:absolute;left:5.5%;right:5.5%;top:44px;height:8px;background:#D9C9A5;border-radius:4px}
+.rn{text-align:center;position:relative;padding:0 4px}
+.rn i{display:flex;align-items:center;justify-content:center;width:96px;height:96px;margin:0 auto 22px;border-radius:50%;background:var(--stone);border:6px solid var(--bronze);font-style:normal;font-size:40px;font-weight:700;color:var(--bronze)}
+.rn.end i{background:#2B1A12;border-color:#2B1A12;color:#F5E9D2}
+.rn b{display:flex;align-items:flex-start;justify-content:center;min-height:80px;font-size:30px;line-height:1.3;margin-bottom:8px}
+.rn span{display:block;font-size:26px;line-height:1.35;color:var(--mute)}
+#s4 .s4bar{margin-top:110px}
+.gantt{display:grid;grid-template-columns:180px repeat(4,1fr);gap:14px 16px;margin-top:6px;align-items:stretch}
+.gl{font-size:26px;font-weight:700;display:flex;align-items:center;padding-left:14px;border-left:8px solid}
+.gc{display:flex;align-items:stretch}
+.chip{display:block;width:100%;border-radius:10px;padding:12px 16px;font-size:24px;line-height:1.4;color:#2B1A12;border:2px solid}
+.l-rule{border-color:var(--bronze)} .chip.l-rule{background:#F3E1C8}
+.l-sound{border-color:var(--beat)} .chip.l-sound{background:#DCEBEA}
+.l-view{border-color:var(--torch)} .chip.l-view{background:#F6DFCB}
+.l-test{border-color:var(--blood)} .chip.l-test{background:#F2D6D0}
+#s3 .card{padding:40px 44px;gap:14px}
+#s3 .card h3{font-size:46px}
+#s3 .card ul.pts li{font-size:38px;line-height:1.5}
+#s4 .card{padding:40px 48px}
+#s4 .card h3{font-size:46px}
+#s4 .card ul.pts li{font-size:40px;line-height:1.6}
+/* 11/26 結構調整：發想一條線、大字目標、之後規劃的虛線標記 */
+.pillars{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}
+#s3 .pillars .card h3{font-size:40px;line-height:1.35}
+#s3 .pillars .card p.mute{font-size:30px;line-height:1.5}
+#s3 .pillars .card{min-height:360px}
+.chain{display:flex;flex-direction:column;gap:6px;width:1150px;margin-top:6px}
+.ck{padding:20px 30px;gap:6px}
+.arr{font-size:34px;line-height:1;color:var(--bronze);padding-left:40px}
+.goal{font-family:"Noto Serif TC",serif;font-weight:900;font-size:76px;color:var(--bronze);margin:30px 0 40px;padding:26px 44px;border-left:12px solid var(--bronze);background:rgba(255,250,238,.7);border-radius:6px}
+.later{display:inline-block;font-style:normal;font-size:24px;line-height:1.3;color:var(--mute);border:3px dashed #B8A684;border-radius:8px;padding:4px 12px;margin-top:10px}
+.gl.l-later{border-left-style:dashed;border-color:#B8A684;color:var(--mute)}
+.chip.later-chip{background:transparent;border:3px dashed #B8A684;color:var(--mute)}
 @media print{#editbar{display:none}}
 @media print{body{background:none}.slide{margin:0}}
 </style>
@@ -144,8 +183,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
   <h1>木馬之夜</h1>
   <div class="beatband" aria-hidden="true"><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i></div>
   <p class="lead" style="max-width:1400px">特洛伊城慶祝勝利的那一夜，你從木馬肚子裡爬出來。全城的鼓聲是唯一的掩護，踩著鼓點走到城門，把門打開。</p>
-  <p class="mute">用耳朵玩的潛行遊戲　電腦版（鍵盤與滑鼠、橫向畫面）<br>開網址就能玩，請戴耳機</p>
-  <p class="mute">期末專題提案（第 12 週）　個人專題<br>姓名：<span class="blank"></span>　學號：<span class="blank"></span></p>
+  <p class="mute">期末專題提案</p>
   <div class="cover-credit">背景：Adobe Stock（木馬）</div>
   <div class="foot"><span>期末提案</span><span>1 / 8</span></div>
 </section>
@@ -155,9 +193,8 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
   <span class="eyebrow">提案項目 1／6　作品名稱與發想</span>
   <h2>用耳朵玩的潛行遊戲：木馬之夜</h2>
   <div class="grid" style="grid-template-columns:1fr;gap:18px;width:1150px">
-    <div class="card bronze"><h3>創作動機</h3><ul class="pts"><li>靈感來自影視作品的原聲帶（OST）</li><li>想做以音樂切入玩法的遊戲</li><li>用耳朵玩的潛行：安不安全，是聽出來的</li></ul></div>
-    <div class="card bronze"><h3>怎麼選到它</h3><ul class="pts"><li>11/01 先盤點出 11 個概念，再做過比箭、乞丐大廳等原型</li><li>比下來，聲音最有戲的是木馬之夜</li></ul></div>
-    <div class="card bronze"><h3>來源</h3><ul class="pts"><li>故事來自《奧德賽》的木馬屠城</li><li>聲音用 Risset 節奏（聽起來一直在加速的節奏錯覺）</li><li>Nolan 2026 年的電影只參考氛圍與演法</li></ul></div>
+    <div class="card bronze"><h3>創作動機</h3><ul class="pts"><li>靈感來自電影《特洛伊》（Troy）的原聲帶</li><li>想把「無限加速」的感覺做成遊戲機制</li></ul></div>
+    <div class="card bronze"><h3>來源</h3><ul class="pts"><li>故事來自《奧德賽》的木馬屠城</li><li>聲音用 Risset 節奏（聽起來一直在加速的節奏錯覺）</li><li>參考 Nolan 2026 年電影的氛圍與演法</li></ul></div>
   </div>
   <div class="side-img"><img src="proposal-assets/eckersberg-ulysses-cave-1812.jpg" alt="埃克貝格畫作：奧德修斯一行人在獨眼巨人洞穴裡"></div>
   <div class="side-credit">圖：埃克貝格〈尤利西斯逃離波呂斐摩斯洞穴〉1812（公共領域）</div>
@@ -167,14 +204,11 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
 <!-- 3 項目 2：目標與目的 -->
 <section class="slide" id="s3">
   <span class="eyebrow">提案項目 2／6　目標與目的</span>
-  <h2>只靠聲音，讓人判斷安不安全</h2>
+  <h2>靠聲音判斷</h2>
   <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
-    <div class="card beat"><h3>問題一：加速感不夠</h3><ul class="pts"><li>只用節奏錯覺，聽起來還不夠急</li><li>所以再疊上真的越來越快的鼓，叫「催促」</li></ul></div>
-    <div class="card torch"><h3>問題二：新玩家怎麼學會聽</h3><ul class="pts"><li>每段只教一件新事</li><li>畫面提示越往後越淡，第 1 到 4 段完整，第 5 段變淡，第 6、7 段沒有</li></ul></div>
-    <div class="card bronze"><h3>玩完的感覺</h3><ul class="pts"><li>靠耳朵判斷，鼓越來越急，最後一擊落下才鬆口氣</li><li>給戴得上耳機的同學，不用讀過荷馬也懂</li></ul></div>
-    <div class="card bronze"><h3>為什麼選電腦版</h3><ul class="pts"><li>有走、跑、蹲、屏息、放倒五種動作，要用鍵盤的多個按鍵</li><li>畫面固定橫向，不做旋轉</li></ul></div>
+    <div class="card beat"><h3>想做到的事</h3><ul class="pts"><li>設計新的潛行遊戲機制</li><li>讓人體驗「無限加速」：鼓聲聽起來一直在加速</li><li>靠聲音判斷情形並操作</li></ul></div>
+    <div class="card bronze"><h3>玩完的感覺</h3><ul class="pts"><li>鼓越來越急，最後一擊落下才鬆口氣</li><li>不用讀過荷馬也懂</li></ul></div>
   </div>
-  <div class="bar"><b>一句話</b><span>目標是 8 到 10 分鐘、七段的潛行關卡：踩著鼓點，從木馬走到城門。</span></div>
   <div class="foot"><span>期末提案</span><span>3 / 8</span></div>
 </section>
 
@@ -182,13 +216,8 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
 <section class="slide" id="s4">
   <span class="eyebrow">提案項目 3／6　預期成果</span>
   <h2>12/24 做到什麼程度</h2>
-  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:22px">
-    <div class="card beat"><h3>會做完</h3><ul class="pts"><li>七段關卡，加開場與結尾</li><li>鼓聲越來越急</li><li>每段一個關口</li><li>開場與結尾用黑底故事字卡</li><li>標題畫面一張、海報一張</li></ul></div>
-    <div class="card torch"><h3>時間不夠，由上往下砍</h3><ul class="pts"><li>敲暗號（腹中只留踩 4 步）</li><li>照亮場景（後街改成一般暗區）</li><li>後街（追殺教學移到窄巷）</li><li>慶宴的街（蹲與跑併入廣場）</li></ul></div>
-    <div class="card blood"><h3>不做</h3><ul class="pts"><li>角色立繪等加分美術</li><li>弓弦聲等第二批想法</li><li>手機版、畫面旋轉</li></ul></div>
-  </div>
-  <div class="bar"><b>時間</b><span>完整版目標 8 到 10 分鐘；砍到最少約 5 分鐘；展示用短版 2 到 3 分鐘</span></div>
-  <div class="bar"><b>現場帶什麼</b><span>短版現場操作、示範影片（12/17 錄）、海報一張</span></div>
+  <div class="route9"><div class="rn end"><i>序</i><b>木馬進城</b><span>黑底故事字卡</span><em class="later">開場動畫<br>與教學</em></div><div class="rn "><i>1</i><b>木馬腹中</b><span>踩拍、敲暗號</span></div><div class="rn "><i>2</i><b>木馬下</b><span>等最響的一擊</span></div><div class="rn "><i>3</i><b>神殿廣場</b><span>影子與查看</span></div><div class="rn "><i>4</i><b>慶宴的街</b><span>蹲與跑</span></div><div class="rn "><i>5</i><b>城牆下的<br>窄巷</b><span>放倒、屏息</span></div><div class="rn "><i>6</i><b>沒有火的<br>後街</b><span>追殺與甩掉</span></div><div class="rn "><i>7</i><b>城門</b><span>推門閂</span></div><div class="rn end"><i>終</i><b>城門開了</b><span>黑底故事字卡</span></div></div>
+  <div class="bar s4bar"><b>全程</b><span>鼓聲越來越急；照亮場景；標題畫面一張</span></div>
   <div class="foot"><span>期末提案</span><span>4 / 8</span></div>
 </section>
 
@@ -202,7 +231,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
     <div class="card bronze"><span class="tag">3　等那一擊</span><h3>最響的一擊落下後 0.6 秒</h3><ul class="pts"><li>所有鼓一起落下，衛兵察覺不到你</li><li>這時衝過火光，或從背後放倒衛兵</li><li>（0.6 秒是設計值）</li></ul></div>
     <div class="card blood"><span class="tag">4　越來越急</span><h3>越深入城裡，鼓越密越快</h3><ul class="pts"><li>要在更吵、更急的聲音裡，找到同一條低鼓</li><li>被發現（火把變紅）就要跑、要躲</li></ul></div>
   </div>
-  <p class="mute">按鍵：<kbd>W A S D</kbd> 走　<kbd>Shift</kbd> 跑　<kbd>Alt</kbd> 蹲　<kbd>空白鍵</kbd> 屏息　<kbd>E</kbd> 放倒衛兵、推門閂</p>
+  <p class="mute">按鍵：<kbd>W A S D</kbd> 走　<kbd>Shift</kbd> 跑　<kbd>Alt</kbd> 蹲　<kbd>空白鍵</kbd> 屏息　<kbd>E</kbd> 放倒衛兵、推門閂　<em class="later">開場動畫與教學</em></p>
   <div class="foot"><span>期末提案</span><span>5 / 8</span></div>
 </section>
 
@@ -211,7 +240,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
   <span class="eyebrow">提案項目 5／6　工具與工作分配</span>
   <h2>我決定方向，AI 負責動手</h2>
   <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:24px">
-    <div class="card bronze"><h3>我負責</h3><p class="mute">定方向、選方案、真人試玩，決定採不採用 AI 的建議。</p></div>
+    <div class="card bronze"><h3>我負責</h3><p class="mute">定方向、選方案、自己試玩，決定採不採用 AI 的建議。</p></div>
     <div class="card beat"><h3>AI 負責</h3><ul class="pts"><li>Claude Code 拆工作、整合、跑測試</li><li>子代理各改指定的檔案</li><li>外部 AI（Gemini、Copilot）只提審查意見</li></ul></div>
     <div class="card blood"><h3>AI 的界線</h3><ul class="pts"><li>開發代理不提交、不碰別人的檔案</li><li>檢查代理只回報、不改檔</li><li>要不要採用，由我決定</li></ul></div>
   </div>
@@ -223,29 +252,21 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
     <div><i></i>檢查代理試玩</div>
     <div class="end"><i></i>我試玩、給回饋</div>
   </div>
-  <div class="bar"><b>工具</b><span>網頁版，用瀏覽器直接玩。聲音用 Web Audio，畫面是 3D；開發用 Claude Code。</span></div>
+  <div class="bar"><b>工具</b><span>瀏覽器直接玩；聲音用 Web Audio（瀏覽器內建的聲音功能）；畫面 3D；開發用 Claude Code</span></div>
   <div class="foot"><span>期末提案</span><span>6 / 8</span></div>
 </section>
 
 <!-- 8 項目 6：開發時程 -->
 <section class="slide" id="s8">
   <span class="eyebrow">提案項目 6／6　開發時程</span>
-  <h2>11/26 提案，12/24 現場展示</h2>
-  <div class="tl">
-    <div class="now"><i></i>11/26<small>第 12 週　提案</small></div>
+  <h2>12/3 到 12/24：每週實作哪些功能</h2>
+  <div class="tl" style="grid-template-columns:repeat(4,1fr);margin-left:196px">
     <div><i></i>12/3<small>第 13 週</small></div>
     <div><i></i>12/10<small>第 14 週</small></div>
     <div><i></i>12/17<small>第 15 週</small></div>
     <div class="end"><i></i>12/24<small>第 16 週　展示</small></div>
   </div>
-  <table class="tight">
-    <tr><th style="width:20%">週</th><th>這週要完成</th><th style="width:20%">狀態</th></tr>
-    <tr><td>12　11/26 提案</td><td>概念、程式流程圖、操作影片</td><td>提案</td></tr>
-    <tr><td>13　12/3</td><td>自己整關試聽，量每段花多久，定各段鼓聲快慢；圖可先用 AI 假圖</td><td><span class="blank" style="min-width:120px"></span></td></tr>
-    <tr><td>14　12/10</td><td>基礎功能補齊；找 3 到 5 位同學試玩，記每段時間</td><td><span class="blank" style="min-width:120px"></span></td></tr>
-    <tr><td>15　12/17</td><td>整合測試，只修錯，錄示範影片</td><td><span class="blank" style="min-width:120px"></span></td></tr>
-    <tr><td>16　12/24</td><td>成果展示，用短版現場示範</td><td><span class="blank" style="min-width:120px"></span></td></tr>
-  </table>
+  <div class="gantt"><div class="gl l-rule">規則與關卡</div><div class="gc"><span class="chip l-rule">決定照亮場景、敲暗號去留</span></div><div class="gc"><span class="chip l-rule">照試玩結果調難度</span></div><div class="gc"><span class="chip l-rule">只修錯、不加功能</span></div><div class="gc"></div><div class="gl l-sound">聲音</div><div class="gc"><span class="chip l-sound">整關聽一次，定「越來越急」各段速度值</span></div><div class="gc"></div><div class="gc"><span class="chip l-sound">只修錯</span></div><div class="gc"></div><div class="gl l-view">畫面</div><div class="gc"></div><div class="gc"><span class="chip l-view">調畫面提示；做標題畫面</span></div><div class="gc"></div><div class="gc"></div><div class="gl l-test">測試與交付</div><div class="gc"><span class="chip l-test">自己整關試玩七段版，量每段時間、記卡關處</span></div><div class="gc"></div><div class="gc"><span class="chip l-test">錄示範影片</span></div><div class="gc"><span class="chip l-test">現場示範短版，七段版備用</span></div><div class="gl l-later">開場與教學</div><div class="gc" style="grid-column:span 4"><span class="chip later-chip">開場動畫與教學</span></div></div>
   <div class="foot"><span>期末提案</span><span>7 / 8</span></div>
 </section>
 
@@ -264,11 +285,23 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
   <h2>網頁電腦版先做完，規則留好搬家的路</h2>
   <div class="grid" style="grid-template-columns:1fr 1fr;gap:22px">
     <div class="card beat"><span class="tag">平台</span><h3>網頁電腦版</h3><ul class="pts"><li>網頁版，開網址就能玩</li><li>鍵盤滑鼠、橫向畫面</li><li>五種動作要多個按鍵，也要戴耳機聽低鼓</li><li>不做畫面旋轉（老師不建議），手機版寒假再評估</li></ul></div>
-    <div class="card torch"><span class="tag">技術</span><h3>網頁，期末前不轉 Unity</h3><ul class="pts"><li>Web Audio 排鼓聲，畫面是 3D</li><li>規則是純計算，可用 Node 測試</li><li>老師指南不限工具，網頁版可交</li><li>到 12/24 只剩四週，轉平台留到寒假再評估</li></ul></div>
+    <div class="card torch"><span class="tag">技術</span><h3>網頁，期末前不轉 Unity</h3><ul class="pts"><li>鼓聲用 Web Audio（瀏覽器內建的聲音功能）</li><li>畫面是 3D</li><li>規則是純計算，可用 Node 測試</li><li>老師指南不限工具，網頁版可交</li><li>到 12/24 只剩四週，轉平台留到寒假再評估</li></ul></div>
     <div class="card bronze"><span class="tag">可移植性</span><h3>規則可以搬家</h3><ul class="pts"><li>程式分成規則、聲音、畫面三個模組</li><li>規則不知道聲音和畫面，換平台不用重寫規則</li><li>快要綁死某個平台時，先停下來再決定</li></ul></div>
     <div class="card blood"><span class="tag">展示</span><h3>短版現場示範，影片備援</h3><ul class="pts"><li>12/24 用 2 到 3 分鐘短版現場操作</li><li>12/17 錄好示範影片</li><li>現場設備或網路出狀況，就改播影片</li></ul></div>
   </div>
-  <div class="foot"><span>期末提案</span><span>備用 1 / 5</span></div>
+  <div class="foot"><span>期末提案</span><span>備用 1 / 6</span></div>
+</section>
+
+<!-- 備用：和基本設計課作品連動 -->
+<section class="slide" id="ring">
+  <span class="eyebrow">備用｜加分項：和基本設計課作品連動</span>
+  <h2>擠住弦環＝屏息：12/10 之後的加分項</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:22px">
+    <div class="card beat"><h3>怎麼接</h3><ul class="pts"><li>麥克風聽弦環的聲音，不用接線</li><li>擠住不放＝屏息，放開換氣</li><li>只接這一個訊號，代替空白鍵</li></ul></div>
+    <div class="card torch"><h3>什麼時候做</h3><ul class="pts"><li>排在 12/10 之後</li><li>兩門課的老師都同意才做</li><li>老師沒同意就不做</li></ul></div>
+    <div class="card bronze"><h3>不依賴它</h3><ul class="pts"><li>弦環是基本設計「拆了再裝」的作品，12/22 評圖</li><li>遊戲沒有弦環照樣能玩</li></ul></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>備用 2 / 6</span></div>
 </section>
 
 <!-- 6 項目 4：操作流程與機制（七段） -->
@@ -288,7 +321,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
     <tr><td>終</td><td>城門開了</td><td>不能操作，一張字卡</td></tr>
   </table>
   <p class="mute">各段時長是目標，不是量到的數字；熟手不重來約 5 分鐘是推測。</p>
-  <div class="foot"><span>期末提案</span><span>備用 2 / 5</span></div>
+  <div class="foot"><span>期末提案</span><span>備用 3 / 6</span></div>
 </section>
 
 <!-- 7b 項目 5：AI 協作怎麼驗證、修正、判斷 -->
@@ -301,7 +334,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
     <div class="card blood"><span class="tag">自主判斷</span><h3>試玩後由我決定</h3><p class="mute">AI 提出的方案，由我試玩後決定保留、修改或推翻。</p></div>
     <div class="card bronze"><span class="tag">AI 建議怎麼用</span><h3>查證後才採用</h3><p class="mute">AI 的建議先對照資料查證，不符合就不採用，並記下原因。</p></div>
   </div>
-  <div class="foot"><span>期末提案</span><span>備用 3 / 5</span></div>
+  <div class="foot"><span>期末提案</span><span>備用 4 / 6</span></div>
 </section>
 
 <!-- 9 每週進度頁（固定四項，12/3 起填） -->
@@ -314,7 +347,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
     <div class="card blood"><h3>遇到的問題與處理</h3><p class="mute">　</p><p class="mute">　</p></div>
     <div class="card bronze"><h3>下週任務與規劃</h3><p class="mute">　</p><p class="mute">　</p></div>
   </div>
-  <div class="foot"><span>期末提案</span><span>備用 4 / 5</span></div>
+  <div class="foot"><span>期末提案</span><span>備用 5 / 6</span></div>
 </section>
 
 <!-- 備用：衛兵狀態 -->
@@ -340,7 +373,7 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
     <div class="card"><p>追殺時被抓到，從這一段重來。</p></div>
     <div class="card"><p>最響的一擊時從背後放倒衛兵，衛兵倒下。</p></div>
   </div>
-  <div class="foot"><span>期末提案</span><span>備用 5 / 5</span></div>
+  <div class="foot"><span>期末提案</span><span>備用 6 / 6</span></div>
 </section>
 
 
