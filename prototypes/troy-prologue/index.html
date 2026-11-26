@@ -956,6 +956,19 @@ const tmpTorchCol = new THREE.Color();
 let ghostMesh = null, ghostTimer = 0;
 let slipRing = null, slipTimer = 0, slipScreenTimer = 0;
 const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
+// 期末七段地圖的火盆（畫面角色排；規則不讀）。torch＝牆上火把，dim＝亮度倍率（0～1）。原則：每區照主題、關口附近有火光、離影子 1.5 公尺以上
+// 之後要移進 level-troy-final.js 的 fires 欄位（關卡資料歸規則角色），build 會優先讀那裡
+const FIRES_FINAL = [
+  { x: 8.5, z: 19.8 }, { x: 9.5, z: 9.2 },                                            // 2 木馬下：木馬旁的慶功火盆
+  { x: 22.85, z: 6.5, torch: true }, { x: 22.5, z: 12.2 }, { x: 29.5, z: 12.2 },        // 3 神殿廣場：神殿西牆火把（照到入口）、神殿前兩盆
+  { x: 33.75, z: 19, torch: true },                                                   //   往慶宴街的關口北側
+  { x: 39.5, z: 7.5 }, { x: 44, z: 8.5 }, { x: 47.5, z: 3 }, { x: 42, z: 16.5 },       // 4 慶宴的街：亮、熱鬧，火盆多
+  { x: 41, z: 17.75, torch: true }, { x: 44, z: 17.75, torch: true },                  //   酒館牆上
+  { x: 48.75, z: 22, torch: true },                                                   //   往窄巷的關口南側
+  { x: 56.5, z: 17.25, torch: true }, { x: 61.5, z: 27.85, torch: true },              // 5 窄巷：屋舍牆上、往後街的關口前
+                                                                                      // 6 沒有火的後街：照名字一個都不放
+  { x: 89.75, z: 9.6, torch: true }, { x: 89.75, z: 20.4, torch: true }, { x: 85.5, z: 21.5 },   // 7 城門：門兩側火把、門前火盆
+];
 function build(L) {
   scene.remove(world); world = new THREE.Group(); scene.add(world);
   disposeFxMeshes();                             // 舊場景的殘影、白環：釋放幾何與材質（新場景用到時再建）
@@ -1027,7 +1040,9 @@ function build(L) {
     }
   }
   // 火（純裝飾，規則裡沒有光照）：木馬兩側的火盆、祭壇火盆、牆上的火把
-  const fires = [
+  // 位置來源（11/26）：關卡資料有 fires 欄位就照它；?map=final 用下面 FIRES_FINAL；都沒有才用原本寫死的預設地圖座標（預設地圖畫面不變）
+  const fireSrc = Array.isArray(L.fires) ? L.fires.filter(b => b && Number.isFinite(+b.x) && Number.isFinite(+b.z)) : (!LEVEL_LOCAL && LEVEL_FINAL ? FIRES_FINAL : null);
+  const fires = fireSrc ? fireSrc.map(b => Object.assign({}, b)) : [
     { x: 8.5, z: 19.8 }, { x: 8.5, z: 10.4 },               // 木馬旁的慶功火盆：木板縫透進來的火光
     { x: 18.6, z: 11.2 }, { x: 27.4, z: 11.2 },             // 神殿前
     { x: 21.4, z: 12.9, y: 1.45, small: true }, { x: 22.6, z: 12.9, y: 1.45, small: true },   // 祭壇（雕像台座）上的火盆
@@ -1038,7 +1053,7 @@ function build(L) {
   ];
   // 木馬開關開著（C1 補充裁決）：木馬東側新增了能躲的影子，路線暗示第一個火盆（整排最亮）離它太近，
   // 會讓那塊影子看起來是亮的；往東移到 (17.3, 18.3)。影子位置不動，其餘火盆不動；開關關著一個都不動（報告版畫面不變）
-  if (horseOn()) { const f0 = fires.find(b => b.x === 15.5 && b.z === 18.3 && b.dim === 1); if (f0) f0.x = 17.3; }
+  if (!fireSrc && horseOn()) { const f0 = fires.find(b => b.x === 15.5 && b.z === 18.3 && b.dim === 1); if (f0) f0.x = 17.3; }
   for (const b of fires) {
     let y;
     if (b.torch) { y = 2.9; cyl(.05, .05, .9, 0x3a2a1a, b.x, 2.5, b.z, world, 5); }
