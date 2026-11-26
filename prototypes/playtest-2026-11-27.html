@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 13 週試玩清單</title>
+<link rel="stylesheet" href="ui-tokens.css">
+<style>
+  /* 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：頁首題字＋拍帶；完成用海青；可按的用青銅 */
+  main { max-width:980px; margin:0 auto; padding:28px var(--gutter-r) 96px var(--gutter-l); }
+  header .ui-title { margin:0 0 14px; }
+  .lead { color:var(--muted); margin:14px 0 20px; max-width:var(--measure); }
+  .card { background:var(--stone); border:1px solid transparent; border-left:3px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
+  .card.done { border-left-color:var(--beat); }
+  .card h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .card h2 .n { color:var(--muted); }
+  .card h2 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .card.done h2 .st { color:var(--beat); }
+  .how { color:var(--parchment); margin:4px 0 10px; max-width:var(--measure); }
+  .links { display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .links a { display:inline-block; padding:5px 12px; border:1px solid var(--bronze); border-radius:var(--r-btn); color:var(--bronze); text-decoration:none; font-weight:500; font-size:var(--fs-14); }
+  .links a:hover { background:var(--bronze-wash); }
+  fieldset { border:0; border-top:1px solid var(--rule); padding:10px 0 0; margin:14px 0 0; }
+  legend { font-weight:500; padding:0; float:left; width:100%; margin-bottom:2px; }
+  .qh { clear:both; color:var(--muted); font-size:var(--fs-14); margin:0 0 6px; max-width:var(--measure); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); }
+  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; }
+  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  table.times { border-collapse:collapse; width:100%; margin-top:12px; font-size:var(--fs-14); }
+  table.times th, table.times td { border-bottom:1px solid var(--rule); padding:4px 6px; text-align:left; }
+  table.times input { width:100%; padding:4px 6px; }
+  #msg { color:var(--beat); font-size:var(--fs-14); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 class="ui-title lg">第 13 週試玩清單</h1>
+    <div id="strip"></div>
+  </header>
+  <p class="lead">2026-11-27 到 12/3（第 13 週）。結果會放進 12/3 的進度報告「試玩紀錄」頁。一項一項試：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <div id="list"></div>
+  <div class="bar">
+    <button class="ui-btn primary" id="copy">複製結果</button>
+    <button class="ui-btn" id="reset">清除答案</button>
+    <span id="msg"></span>
+  </div>
+</main>
+<script src="troy-prologue/risset.js"></script>
+<script src="beatstrip.js"></script>
+<script>
+if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'));
+const SEGS = ['序 木馬進城（字卡）','1 木馬腹中','2 木馬下','3 神殿廣場','4 慶宴的街','5 城牆下的窄巷','6 沒有火的後街','7 城門','終 城門開了（字卡）'];
+const ITEMS = [
+  { id:'final', times:true, title:'七段版整關，量每段時間、記卡關處（約 10 分鐘）',
+    how:'從序玩到終。手機開碼表，每換一段記一下經過幾秒（記不準寫大概）；卡住、迷路、被抓的地方寫在「卡關處」。這張表會直接放進 12/3 簡報的「試玩紀錄」頁。<kbd>W A S D</kbd> 走、滑鼠轉頭、按住 <kbd>空白鍵</kbd> 屏息、到城門按住 <kbd>E</kbd>。',
+    links:[['七段版（畫面加強）','troy-prologue/index.html?map=final&art=2'],['七段版（原本畫面，對照）','troy-prologue/index.html?map=final']],
+    qs:[
+      ['整體長度如何？', '這題在看 12/24 要用七段版還是短版當主展示。',['剛好','太長','太短']],
+      ['最卡的是哪一段？', '這題在看第 14 週先調哪一段的難度或提示。',['序～2','3～4','5～6','7 城門','都還好']],
+      ['畫面加強版和原本比？', '這題在看材質、火光、霧、關鍵物件發光這四項值不值得留。',['加強版好','差不多','原本好','加強版會卡']],
+    ]},
+  { id:'drive', title:'整關聽一次「鼓越來越急」，定各段速度（約 5 分鐘）',
+    how:'鼓聲會越打越快：同一區待越久越快、每進一區更快、被追殺直接到最快，甩掉追兵會慢慢降回。最後用「關閉」版比較一次。',
+    links:[['七段版（越來越急）','troy-prologue/index.html?map=final'],['七段版（關閉，對照）','troy-prologue/index.html?map=final&drive=0']],
+    qs:[
+      ['玩到後段，有沒有越來越急的感覺？', '這題在看「無限加速」的體驗有沒有出來。',['有，很明顯','有一點','沒有差別']],
+      ['各段的速度要怎麼改？', '這題在看要不要調各段的速度值。哪一段要改，寫在備註。',['都剛好','前段太慢','後段太快','某一段要改']],
+      ['最快的時候，要踩的低鼓還聽得清嗎？', '這題在看速度上限要不要降。',['聽得清','有點吃力','聽不清']],
+    ]},
+  { id:'reveal', title:'照亮場景：留不留（約 3 分鐘）',
+    how:'平常比較暗；最響一擊落下時，衛兵輪廓（含牆後）亮半秒。按 <kbd>[</kbd> <kbd>]</kbd> 可調暗度。',
+    links:[['整關（照亮版）','troy-prologue/index.html?reveal=1']],
+    qs:[
+      ['0.5 秒夠不夠看清楚？隔牆看到輪廓像不像作弊？', '這題在看照亮的時間長短和隔牆描邊要不要改。',['夠，不像作弊','太短','隔牆太像作弊']],
+      ['照亮場景要留嗎？', '這題就是第 13 週要定的「照亮場景去留」。',['留，現在這樣','留，但要改','拿掉']],
+    ]},
+  { id:'knock', title:'敲暗號：留不留（約 3 分鐘）',
+    how:'跟著畫面上的四步教學卡。看下方拍點條或準星倒數圈，在拍上按 <kbd>T</kbd>；按 <kbd>Y</kbd> 聽同伴示範。三下＝引開、兩下＝現在，停 1 秒結束一組。',
+    links:[['敲暗號試驗場','troy-prologue/index.html?lab=horse']],
+    qs:[
+      ['學不學得會、敲不敲得準？', '這題在看教學夠不夠。',['學得會、敲得準','學得會，但敲不準','還是不知道怎麼敲']],
+      ['敲暗號要留嗎？', '這題就是第 13 週要定的「敲暗號去留」。',['留，現在這樣','留，但要改','拿掉']],
+    ]},
+];
+const KEY = 'playtest-2026-11-27';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+const list = document.getElementById('list');
+ITEMS.forEach((it, i) => {
+  const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
+  let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
+  it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
+  h += '</div>';
+  it.qs.forEach(([q, hint, opts, def], k) => {
+    const name = it.id + '-' + k;
+    if (saved[name] === undefined && def) saved[name] = def;
+    h += `<fieldset><legend>${q}</legend><div class="qh">${hint}</div>`;
+    opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
+    h += '</fieldset>';
+  });
+  if (it.times) { h += '<table class="times"><tr><th>段</th><th style="width:110px">經過幾秒</th><th>卡關處</th></tr>'; SEGS.forEach((g, k) => { h += `<tr><td>${g}</td><td><input data-t="${it.id}-t${k}" value="${saved[it.id + '-t' + k] || ''}"></td><td><input data-t="${it.id}-s${k}" value="${saved[it.id + '-s' + k] || ''}"></td></tr>`; }); h += '</table>'; }
+  h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
+  c.innerHTML = h; list.appendChild(c);
+});
+save();
+function refresh() {
+  ITEMS.forEach(it => {
+    const n = it.qs.filter((_, k) => saved[it.id + '-' + k]).length;
+    const c = document.getElementById('c-' + it.id);
+    c.classList.toggle('done', n === it.qs.length);
+    c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
+  });
+}
+list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.target.name] = e.target.value; save(); refresh(); } });
+list.addEventListener('input', e => { if (e.target.dataset.t) { saved[e.target.dataset.t] = e.target.value; save(); } if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
+refresh();
+document.getElementById('copy').onclick = async () => {
+  let out = '第 13 週試玩結果（2026-11-27 清單）\n';
+  ITEMS.forEach((it, i) => {
+    out += `\n${i + 1}. ${it.title}\n`;
+    it.qs.forEach(([q], k) => { out += `- ${q}：${saved[it.id + '-' + k] || '（未答）'}\n`; });
+    if (it.times) SEGS.forEach((g, k) => { const a = saved[it.id + '-t' + k], b = saved[it.id + '-s' + k]; if (a || b) out += `- ${g}：${a || '?'} 秒｜${b || ''}
+`; });
+    if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
+  });
+  const msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(out); msg.textContent = '已複製，貼回對話即可。'; }
+  catch (e) { prompt('複製下面文字：', out); }
+};
+document.getElementById('reset').onclick = () => { if (confirm('清除所有答案？')) { saved = {}; save(); location.reload(); } };
+</script>
+</body>
+</html>

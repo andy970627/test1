@@ -177,6 +177,24 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
 #s1 .lead,#end .lead{font-family:'LXGW WenKai TC','Noto Serif TC',serif;font-weight:400}
 @media print{#editbar{display:none}}
 @media print{body{background:none}.slide{margin:0}}
+/* 第 13 週進度頁（11/26 晚加） */
+.w13shots{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.w13shots figure{display:flex;flex-direction:column;gap:12px}
+.w13shots img{width:100%;border-radius:6px;display:block;box-shadow:0 2px 8px rgba(90,50,20,.18)}
+.w13shots figcaption b{font-size:34px;display:block}
+.w13shots figcaption span{font-size:28px;color:var(--mute)}
+.w13row{display:flex;gap:44px;align-items:flex-start}
+.anno{position:relative;width:1056px;flex:none}
+.anno img{width:100%;display:block;border-radius:6px;box-shadow:0 2px 8px rgba(90,50,20,.18)}
+.pin{position:absolute;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:var(--torch);color:#FFF6E3;border:3px solid #FFF6E3;font:900 30px/46px 'Noto Serif TC',serif;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.legend{list-style:none;display:flex;flex-direction:column;gap:16px}
+.legend li{font-size:30px;line-height:1.4;display:flex;gap:14px}
+.legend li i{flex:none;width:44px;height:44px;border-radius:50%;background:var(--torch);color:#FFF6E3;font:900 26px/44px 'Noto Serif TC',serif;font-style:normal;text-align:center}
+.fill{display:inline-block;font-size:26px;color:var(--mute);border:3px dashed #B8A684;border-radius:8px;padding:6px 16px}
+.w13tbl th{font-size:28px} .w13tbl td{font-size:28px}
+.w13tbl td.wfill{border-bottom:2px dashed #B8A684}
+#w13e td{padding:9px 18px}
+.src{font-size:24px;color:var(--mute)}
 </style>
 </head>
 <body>
@@ -271,6 +289,73 @@ body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px 
   </div>
   <div class="gantt"><div class="gl l-rule">規則與關卡</div><div class="gc"><span class="chip l-rule">決定照亮場景、敲暗號去留</span></div><div class="gc"><span class="chip l-rule">照試玩結果調難度</span></div><div class="gc"><span class="chip l-rule">只修錯、不加功能</span></div><div class="gc"></div><div class="gl l-sound">聲音</div><div class="gc"><span class="chip l-sound">整關聽一次，定「越來越急」各段速度值</span></div><div class="gc"></div><div class="gc"><span class="chip l-sound">只修錯</span></div><div class="gc"></div><div class="gl l-view">畫面</div><div class="gc"></div><div class="gc"><span class="chip l-view">調畫面提示；做標題畫面</span></div><div class="gc"></div><div class="gc"></div><div class="gl l-test">測試與交付</div><div class="gc"><span class="chip l-test">自己整關試玩七段版，量每段時間、記卡關處</span></div><div class="gc"></div><div class="gc"><span class="chip l-test">錄示範影片</span></div><div class="gc"><span class="chip l-test">現場示範短版，七段版備用</span></div><div class="gl l-later">開場與教學</div><div class="gc" style="grid-column:span 4"><span class="chip later-chip">開場動畫與教學</span></div></div>
   <div class="foot"><span>期末提案</span><span>7 / 8</span></div>
+</section>
+
+<!-- ===== 第 13 週進度（12/3 報告；11/26 晚先做骨架） ===== -->
+<section class="slide" id="w13a">
+  <span class="eyebrow">第 13 週進度｜原型說明 1：場景</span>
+  <h2>能實際操作的原型：七段地圖，從木馬走到城門</h2>
+  <div class="w13shots">
+    <figure><img src="proposal-assets/w13-art2-alley.png" alt="城牆下的窄巷"><figcaption><b>第 5 段　城牆下的窄巷</b><span>從背後放倒衛兵、屏息躲過</span></figcaption></figure>
+    <figure><img src="proposal-assets/w13-art2-back.png" alt="沒有火的後街"><figcaption><b>第 6 段　沒有火的後街</b><span>最暗的一段，靠耳朵找衛兵</span></figcaption></figure>
+    <figure><img src="proposal-assets/w13-art2-gate.png" alt="城門"><figcaption><b>第 7 段　城門</b><span>按住 E 推開門閂，城門就開</span></figcaption></figure>
+  </div>
+  <div class="bar"><b>畫面</b><span>3D 場景加強：材質、火光、霧、關鍵物件發光（11/26 選定）</span></div>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>1 / 5</span></div>
+</section>
+
+<section class="slide" id="w13b">
+  <span class="eyebrow">第 13 週進度｜原型說明 2：角色與介面</span>
+  <h2>畫面上要看的六樣東西</h2>
+  <div class="w13row">
+    <div class="anno"><img src="proposal-assets/w13-ui-plaza.png" alt="神殿廣場遊戲畫面"><span class="pin" style="left:152px;top:46px">1</span><span class="pin" style="left:600px;top:187px">2</span><span class="pin" style="left:528px;top:484px">3</span><span class="pin" style="left:46px;top:468px">4</span><span class="pin" style="left:116px;top:562px">5</span><span class="pin" style="left:758px;top:42px">6</span></div>
+    <ol class="legend">
+      <li><i>1</i><span>區名：現在在第幾區</span></li>
+      <li><i>2</i><span>衛兵：頭上燈色是狀態，橘＝走過來查看、紅＝追殺</span></li>
+      <li><i>3</i><span>提示句：發生什麼事、該按哪個鍵</span></li>
+      <li><i>4</i><span>屏息條：按住空白鍵或右鍵</span></li>
+      <li><i>5</i><span>身在暗處：站進影子裡會亮</span></li>
+      <li><i>6</i><span>右上橫條：鼓聲循環到哪，除錯用</span></li>
+    </ol>
+  </div>
+  <p class="src">玩家是第一人稱，畫面就是自己的眼睛。截圖：11/24 版本神殿廣場，畫面加強前。</p>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>2 / 5</span></div>
+</section>
+
+<section class="slide" id="w13c">
+  <span class="eyebrow">第 13 週進度｜本週四項</span>
+  <h2>第 13 週：自己整關試玩，定鼓聲速度</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><h3>本週目標與進度</h3><ul class="pts"><li>自己整關試玩七段版，量每段時間、記卡關處</li><li>整關聽一次，定「越來越急」各段速度</li><li>決定照亮場景、敲暗號留不留</li></ul><span class="fill">進度：12/3 前填</span></div>
+    <div class="card torch"><h3>AI 協作與應用</h3><ul class="pts"><li>AI 提建議、跑測試，我用試玩決定採不採用</li><li>實例見下一頁</li></ul></div>
+    <div class="card blood"><h3>遇到的問題與處理</h3><span class="fill">試玩後填</span></div>
+    <div class="card bronze"><h3>下週任務（第 14 週）</h3><ul class="pts"><li>照試玩結果調難度</li><li>調畫面提示</li><li>做標題畫面</li></ul></div>
+  </div>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>3 / 5</span></div>
+</section>
+
+<section class="slide" id="w13d">
+  <span class="eyebrow">第 13 週進度｜AI 協作與自主判斷</span>
+  <h2>AI 給建議，我用試玩決定採不採用</h2>
+  <table class="w13tbl">
+    <tr><th style="width:110px">日期</th><th>AI 的建議或結果</th><th style="width:300px">我的決定</th><th>為什麼</th></tr>
+    <tr><td>11/07</td><td>錄音分析全部通過，聲音訊號沒問題</td><td>不照單全收，自己用喇叭試</td><td>真耳朵聽不出驟降，關鍵聲音改搬到喇叭聽得到的音域</td></tr>
+    <tr><td>11/11</td><td>程式玩家測出「連續 4 步」不管踩得準不準</td><td>採用，改規則</td><td>測試抓到真漏洞；改成只算起步、踩歪扣 1 格</td></tr>
+    <tr><td>11/14</td><td>加速錯覺的第二步修改方案</td><td>退回，改做「鼓真的越打越快」</td><td>我試聽的感覺是「速度不夠快」，問題不在錯覺</td></tr>
+    <tr><td>11/24</td><td>程式玩家只有 9.8% 被追殺，先不加難度</td><td>採用，等真人試玩</td><td>程式玩家躲法固定，不代表真人</td></tr>
+  </table>
+  <p class="src">來源：production-log.md、status-board.md</p>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>4 / 5</span></div>
+</section>
+
+<section class="slide" id="w13e">
+  <span class="eyebrow">第 13 週進度｜試玩紀錄（12/3 前填）</span>
+  <h2>七段各花多久、卡在哪</h2>
+  <table class="w13tbl">
+    <tr><th style="width:110px">段</th><th style="width:420px">名稱</th><th style="width:260px">花了幾秒</th><th>卡關處</th></tr>
+    <tr><td>序</td><td>木馬進城（字卡）</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>1</td><td>木馬腹中</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>2</td><td>木馬下</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>3</td><td>神殿廣場</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>4</td><td>慶宴的街</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>5</td><td>城牆下的窄巷</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>6</td><td>沒有火的後街</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>7</td><td>城門</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>終</td><td>城門開了（字卡）</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr>
+  </table>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>5 / 5</span></div>
 </section>
 
 <!-- 收尾頁 -->
