@@ -80,7 +80,7 @@
     };
     const P = (p) => { if (p && Number.isFinite(p.x) && p.x >= at) p.x += dx; };
     d.walls.forEach(R); d.shadows.forEach(R);
-    for (const z of d.zones) { P(z.start); R(z.belly); if (z.exit) { R(z.exit.rect); if (Number.isFinite(z.exit.x)) P(z.exit); } }
+    for (const z of d.zones) { P(z.start); R(z.belly); (Array.isArray(z.fires) ? z.fires : []).forEach(P); if (z.exit) { R(z.exit.rect); if (Number.isFinite(z.exit.x)) P(z.exit); } }
     for (const q of d.guards) (q.route || []).forEach(P);
     if (d.horse) { R(d.horse); P(d.horse.trapdoor); P(d.horse.drop); }
     if (d.gate) { R(d.gate); P(d.gate.latch); }

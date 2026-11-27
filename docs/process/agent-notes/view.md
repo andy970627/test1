@@ -243,6 +243,10 @@
   - 11/26 晚（審過提交 32761e7 後追加）：不寫 fx 預設改建議組合四項；界石改矮、改暗、出生點 2.5 公尺內不放，地上光帶保留；重截 plaza-1、gate-1。400 項與 cleancheck 通過，未提交。
 - 11/26 晚（畫面）七段地圖補火盆（只改 troy-prologue/index.html，未提交；400 項與 cleancheck 通過）：先查過火盆純畫面（規則的「火光圈」是衛兵火把的感知範圍、影子是關卡資料的 shadows，都不讀火盆位置）。build 的火盆來源改成：關卡資料有 fires 欄位就照它 → ?map=final 用 index.html 的 FIRES_FINAL → 都沒有才用原本寫死的預設座標（預設地圖完全不變，木馬開關的位移也只對預設座標做）。七段配置：慶宴的街 4 盆加 3 支火把、沒有火的後街 0 個、其餘每個關口附近一支火把，全部離影子 1.5 公尺以上；art=2 的火光效果自動套用。截圖 fires-feast-art2、fires-feast-不開art、fires-back-art2。
   - 待辦：FIRES_FINAL 之後該搬進 level-troy-final.js 的 fires 欄位（關卡資料歸規則角色，畫面不能改）；搬過去後 index 的表可刪。
+- 11/27（畫面）火盆表搬家＋介面風格 ui=2 試做（未提交；全套 401 項與 cleancheck 通過）：
+  - 火盆：FIRES_FINAL 搬進 level-troy-final.js 各區 fires（總控派工、使用者 11/27 選定，這次准畫面改關卡檔；後街是空清單）；index 讀 L.fires → 各區 zones[].fires 依區序接起來（任一區有寫就照區的）→ 預設座標。createLevel 會保留這兩種欄位。編輯器 insertWidth 讓 fires 跟著往東移，core.test.js 加一項。驗收：map=final&art=2 火盆光源座標和 512ad94 逐一相同、map=demo 相同（只差衛兵火把晃動）。
+  - ui=2：<html class="ui2">＋index.html 第一個 style 結尾的 .ui2 區塊（純 CSS，不改文字）；head 的小腳本只在 ui=2 時加 class 並載文楷與思源黑 700。截圖在 art-trial-2026-11-26/ui/。關口提示用城門門閂那句（startZone=7、站到 87.4,15 會出現）；七段地圖其他關口沒有專屬提示文字。
+  - 截圖腳本陷阱：用 head | sed 組腳本時 sed 失敗，主體沒寫進去，腳本開完瀏覽器就掛著不結束；組好後先 grep 確認主體在。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
 

@@ -122,3 +122,11 @@ test('刪區：開場、城門區不能刪；刪中間一區後出口與衛兵�
   const add = C.addZone(C.insertWidth(d, 47.5, 30), 47.5, 77.5, { name: 'x' }).data;
   assert.deepStrictEqual(C.removeZone(add, 4).zones.map((z) => z.name), d.zones.map((z) => z.name));   // 加了再刪，區回到原本
 });
+
+test('11/27 區的火盆 fires：插寬時跟著往東移、匯出再讀回不掉欄位', () => {
+  const d = base(); d.zones[3].fires = [{ x: 50, z: 5, torch: true }, { x: 10, z: 5 }];
+  const w = C.insertWidth(d, 47, 30);
+  assert.deepStrictEqual(w.zones[3].fires.map((f) => f.x), [80, 10]);
+  assert.strictEqual(w.zones[3].fires[0].torch, true);
+  assert.deepStrictEqual(C.importText(C.exportText(w)).zones[3].fires, w.zones[3].fires);
+});

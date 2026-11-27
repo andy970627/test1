@@ -2,6 +2,9 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
 <link rel="stylesheet" href="../ui-tokens.css">
+<script>   // ?ui=2：介面風格統一試做（美術 C）；只有帶參數才加 class 並載霞鶩文楷（載不到退回系統楷書）
+if (new URLSearchParams(location.search).get('ui') === '2') { document.documentElement.classList.add('ui2'); document.write('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@500;700&display=swap">'); }
+</script>
 <style>
 /* 畫面層：規則全在 risset.js（RissetRules），聲音全在 audio.js（RissetAudio）。
    這裡只負責畫、讀輸入、把事件轉給聲音。介面極少：音樂是主角。單一深色主題（夜、火光） */
@@ -215,6 +218,62 @@ body.demoMode #win .card { transition: opacity .8s; }
 #labPanel .lpTitle small { display: block; font: 400 12px/1.5 var(--text); letter-spacing: 0; color: var(--dim); }
 #labPanel .lpRule { display: block; height: 1px; background: var(--line); margin: 4px 0; }
 #telHud { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 230px; font: 11px/1.5 var(--text); color: var(--dim); background: var(--panel); border-radius: var(--r-panel); padding: 6px 8px; white-space: pre; }
+/* ---------- ?ui=2：介面與標題風格統一試做（美術 C，11/27）----------
+   只有網址帶 ui=2（<html class="ui2">）才生效；不帶時下面一行都不套用，畫面和以前一樣。只改樣式，不改任何文字、提示內容與判定。
+   方向：暗色寫實、火光暖色當重點色（火把橘 --torch）；字體照提案簡報：內文思源黑（Noto Sans TC）500，故事句（序、終、敘事）霞鶩文楷。
+   字體離線：文楷從 Google Fonts 載，載不到退回系統楷書（標楷體 DFKai-SB／BiauKai）；思源黑沒網路時用本機安裝的 Noto Sans TC，再退回微軟正黑體。 */
+.ui2 {
+  --text: "Noto Sans TC", "Source Han Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
+  --font-story: "LXGW WenKai TC", "LXGW WenKai", "霞鶩文楷 TC", "霞鶩文楷", "Kaiti TC", "BiauKai", "DFKai-SB", "標楷體", serif;
+  --ember: rgba(232, 137, 59, .28);        /* 火光暈（火把橘加透明，不是新顏色） */
+  --ember-line: rgba(232, 137, 59, .32);   /* 暖色細線 */
+  --ui2-panel: rgba(12, 14, 22, .78);      /* 疊在 3D 上的深色底 */
+}
+.ui2 body { font-weight: 500; }
+/* 全螢幕畫面（開場、暫停、失敗、成功）：深色底，下緣一層像火光照上來的暖光 */
+.ui2 .screen { background: radial-gradient(120% 70% at 50% 118%, rgba(232, 137, 59, .17), transparent 60%), rgba(10, 12, 20, .95); }
+.ui2 #story { background: radial-gradient(90% 60% at 50% 120%, rgba(232, 137, 59, .12), transparent 60%), #000; }
+.ui2 #story.demoCard, .ui2 #calib { background: radial-gradient(110% 70% at 50% 118%, rgba(232, 137, 59, .16), transparent 60%), rgba(10, 12, 20, .9); }
+.ui2 #win { background: transparent; } .ui2 #win.dark { background: radial-gradient(90% 60% at 50% 120%, rgba(232, 137, 59, .12), transparent 60%), #000; }
+/* 標題：題字照舊襯線粗體，加一點火光暈與一條短火線 */
+.ui2 .card h1 { text-shadow: 0 0 28px var(--ember), 0 2px 0 #000; }
+.ui2 .card h1::after { content: ""; display: block; width: 2.2em; height: 3px; margin-top: .28em; background: linear-gradient(90deg, var(--torch), rgba(232, 137, 59, 0)); }
+.ui2 .card h2, .ui2 #storyTitle, .ui2 #calibTitle { text-shadow: 0 0 18px rgba(232, 137, 59, .22); }
+.ui2 .card h3.sect { color: var(--torch); border-bottom-color: var(--ember-line); letter-spacing: .12em; }
+.ui2 legend { color: var(--torch); }
+.ui2 fieldset, .ui2 #telBox, .ui2 #survey { border-color: var(--ember-line); background: rgba(35, 40, 56, .35); }
+/* 故事句：霞鶩文楷（開場三段敘事、序與終字卡、成功與失敗的那一句） */
+.ui2 #intro .col > p.lead, .ui2 #intro .col > p.lead ~ p:not(.dim):not(.modeCover):not(.modeGap),
+.ui2 #storyText p, .ui2 #storyTitle, .ui2 #win h2, .ui2 #win .later, .ui2 #fail h2 { font-family: var(--font-story); font-weight: 700; letter-spacing: .02em; }
+.ui2 #intro .col > p.lead ~ p:not(.dim):not(.modeCover):not(.modeGap) { font-weight: 400; font-size: 17px; }
+.ui2 #storyText p { font-weight: 400; font-size: 22px; line-height: 1.75; }
+.ui2 #storyTitle, .ui2 #win h2 { font-size: clamp(30px, 4.2vw, 46px); }
+.ui2 .storyArt { border: 1px solid var(--ember-line); background: radial-gradient(80% 80% at 50% 100%, rgba(232, 137, 59, .07), transparent 70%); }
+.ui2 #storyPage { color: var(--torch); letter-spacing: .08em; }
+.ui2 #intro .col > p b { color: var(--torch); font-weight: 700; }   /* 敘事裡的重點句（今晚，由你打開城門）改用火光色標出 */
+/* 按鍵：鍵帽加深、底邊火把橘，像被火光照到的石塊 */
+.ui2 kbd, .ui2 #hint .k, .ui2 #failHint .k { background: linear-gradient(#2c3142, #1b1f2b); border-color: rgba(201, 165, 92, .7); border-bottom: 2px solid var(--torch); font-weight: 700; box-shadow: 0 0 8px rgba(232, 137, 59, .18); }
+.ui2 .keys dt { font-weight: 700; }
+.ui2 .keys dd { color: var(--parchment); }
+/* 按鈕：主要按鈕改火把橘 */
+.ui2 button.primary { background: var(--torch); border-color: var(--torch); color: var(--night); font-weight: 700; box-shadow: 0 0 16px rgba(232, 137, 59, .3); }
+.ui2 button.primary:hover { background: var(--parchment); border-color: var(--parchment); }
+.ui2 button:not(.primary) { color: var(--parchment); border-color: rgba(242, 236, 221, .35); }
+.ui2 button:not(.primary):hover { border-color: var(--torch); background: rgba(232, 137, 59, .12); }
+/* 抬頭顯示：區名、提示、訊息、屏息條都墊一層深色底、火光色細節，3D 再亮也讀得到 */
+.ui2 #zone { font-weight: 500; }
+.ui2 #zoneNo { color: var(--torch); letter-spacing: .12em; }
+.ui2 #zone b { text-shadow: 0 0 14px rgba(232, 137, 59, .25), 0 1px 3px #000; }
+.ui2 #hint { font-weight: 500; font-size: 18px; background: var(--ui2-panel); border-top: 1px solid var(--ember-line); border-radius: var(--r-panel); padding: 8px 16px; text-shadow: 0 1px 2px #000; }
+.ui2 #hint:empty { background: none; border: 0; padding: 0; }
+.ui2 #msgs div { background: var(--ui2-panel); border-left: 3px solid var(--torch); font-weight: 500; }
+.ui2 #whisper { font-family: var(--font-story); font-weight: 700; font-size: 18px; letter-spacing: .03em; }
+.ui2 #breath { font-weight: 500; color: var(--parchment); }
+.ui2 #breath i { height: 6px; background: rgba(242, 236, 221, .16); border-radius: 3px; }
+.ui2 #phase { color: var(--parchment); font-weight: 500; }
+.ui2 #fail h2 { border-left-color: var(--blood); }
+.ui2 #failHint { border-left-color: var(--torch); background: rgba(232, 137, 59, .07); }
+@media (max-width: 640px) { .ui2 #hint { font-size: 15px; } .ui2 #storyText p { font-size: 19px; } }
 </style>
 
 <div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
@@ -956,19 +1015,6 @@ const tmpTorchCol = new THREE.Color();
 let ghostMesh = null, ghostTimer = 0;
 let slipRing = null, slipTimer = 0, slipScreenTimer = 0;
 const has = (r, word) => r && typeof r.name === 'string' && r.name.includes(word);
-// 期末七段地圖的火盆（畫面角色排；規則不讀）。torch＝牆上火把，dim＝亮度倍率（0～1）。原則：每區照主題、關口附近有火光、離影子 1.5 公尺以上
-// 之後要移進 level-troy-final.js 的 fires 欄位（關卡資料歸規則角色），build 會優先讀那裡
-const FIRES_FINAL = [
-  { x: 8.5, z: 19.8 }, { x: 9.5, z: 9.2 },                                            // 2 木馬下：木馬旁的慶功火盆
-  { x: 22.85, z: 6.5, torch: true }, { x: 22.5, z: 12.2 }, { x: 29.5, z: 12.2 },        // 3 神殿廣場：神殿西牆火把（照到入口）、神殿前兩盆
-  { x: 33.75, z: 19, torch: true },                                                   //   往慶宴街的關口北側
-  { x: 39.5, z: 7.5 }, { x: 44, z: 8.5 }, { x: 47.5, z: 3 }, { x: 42, z: 16.5 },       // 4 慶宴的街：亮、熱鬧，火盆多
-  { x: 41, z: 17.75, torch: true }, { x: 44, z: 17.75, torch: true },                  //   酒館牆上
-  { x: 48.75, z: 22, torch: true },                                                   //   往窄巷的關口南側
-  { x: 56.5, z: 17.25, torch: true }, { x: 61.5, z: 27.85, torch: true },              // 5 窄巷：屋舍牆上、往後街的關口前
-                                                                                      // 6 沒有火的後街：照名字一個都不放
-  { x: 89.75, z: 9.6, torch: true }, { x: 89.75, z: 20.4, torch: true }, { x: 85.5, z: 21.5 },   // 7 城門：門兩側火把、門前火盆
-];
 function build(L) {
   scene.remove(world); world = new THREE.Group(); scene.add(world);
   disposeFxMeshes();                             // 舊場景的殘影、白環：釋放幾何與材質（新場景用到時再建）
@@ -1040,8 +1086,9 @@ function build(L) {
     }
   }
   // 火（純裝飾，規則裡沒有光照）：木馬兩側的火盆、祭壇火盆、牆上的火把
-  // 位置來源（11/26）：關卡資料有 fires 欄位就照它；?map=final 用下面 FIRES_FINAL；都沒有才用原本寫死的預設地圖座標（預設地圖畫面不變）
-  const fireSrc = Array.isArray(L.fires) ? L.fires.filter(b => b && Number.isFinite(+b.x) && Number.isFinite(+b.z)) : (!LEVEL_LOCAL && LEVEL_FINAL ? FIRES_FINAL : null);
+  // 位置來源（11/27）：關卡資料的 fires（整關一份 L.fires，或各區 zones[].fires 依區序接起來；有任何一區寫了就照區的，空清單＝那區不放）→ 都沒有才用原本寫死的預設地圖座標（預設地圖畫面不變）
+  const fireOk = b => b && Number.isFinite(+b.x) && Number.isFinite(+b.z);
+  const fireSrc = Array.isArray(L.fires) ? L.fires.filter(fireOk) : arr(L.zones).some(z => z && Array.isArray(z.fires)) ? arr(L.zones).flatMap(z => (z && Array.isArray(z.fires) ? z.fires : []).filter(fireOk)) : null;
   const fires = fireSrc ? fireSrc.map(b => Object.assign({}, b)) : [
     { x: 8.5, z: 19.8 }, { x: 8.5, z: 10.4 },               // 木馬旁的慶功火盆：木板縫透進來的火光
     { x: 18.6, z: 11.2 }, { x: 27.4, z: 11.2 },             // 神殿前
