@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>週末成果試玩清單</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<link rel="stylesheet" href="ui-tokens.css">
+<style>
+  /* 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：頁首題字＋拍帶；完成用海青；可按的用青銅 */
+  main { max-width:980px; margin:0 auto; padding:28px var(--gutter-r) 96px var(--gutter-l); }
+  header .ui-title { margin:0 0 14px; }
+  .lead { color:var(--muted); margin:14px 0 20px; max-width:var(--measure); }
+  .card { background:var(--stone); border:1px solid transparent; border-left:3px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
+  .card.done { border-left-color:var(--beat); }
+  .card h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .card h2 .n { color:var(--muted); }
+  .card h2 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .card.done h2 .st { color:var(--beat); }
+  .how { color:var(--parchment); margin:4px 0 10px; max-width:var(--measure); }
+  .links { display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .links a { display:inline-block; padding:5px 12px; border:1px solid var(--bronze); border-radius:var(--r-btn); color:var(--bronze); text-decoration:none; font-weight:500; font-size:var(--fs-14); }
+  .links a:hover { background:var(--bronze-wash); }
+  fieldset { border:0; border-top:1px solid var(--rule); padding:10px 0 0; margin:14px 0 0; }
+  legend { font-weight:500; padding:0; float:left; width:100%; margin-bottom:2px; }
+  .qh { clear:both; color:var(--muted); font-size:var(--fs-14); margin:0 0 6px; max-width:var(--measure); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); }
+  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; }
+  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  #msg { color:var(--beat); font-size:var(--fs-14); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 class="ui-title lg">週末成果試玩清單</h1>
+    <div id="strip"></div>
+  </header>
+  <p class="lead">2026-11-28 週末做好的六項。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則第 2 項的「重看鏡頭動畫」鈕會清不到）。一項一項試：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <div id="list"></div>
+  <div class="bar">
+    <button class="ui-btn primary" id="copy">複製結果</button>
+    <button class="ui-btn" id="reset">清除答案</button>
+    <span id="msg"></span>
+  </div>
+</main>
+<script src="troy-prologue/risset.js"></script>
+<script src="beatstrip.js"></script>
+<script>
+if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'));
+const ITEMS = [
+  { id:'opening', title:'新開場：序、腹中四步、標題提示（約 2 分鐘）',
+    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。<kbd>Esc</kbd> 可以整段跳過。想比較舊流程，開「舊開場」那個連結。',
+    links:[['新開場','http://localhost:8770/troy-prologue/index.html?map=final'],['舊開場（對照）','http://localhost:8770/troy-prologue/index.html?map=final&intro=old']],
+    qs:[
+      ['腹中四步看得懂嗎？', '這題在看不用人解釋，玩家能不能自己學會踩拍和敲木板。',['一看就懂','有一步卡住','看不懂']],
+      ['從按開始到走出木馬，長度如何？', '這題在看開場會不會拖。程式玩家量到約 36～48 秒。',['剛好','有點長','太長','太短']],
+      ['序的聲音音量如何？', '這題在看序的四段聲音和之後的鼓聲比，會不會太小聲或太大聲。',['剛好','太小聲','太大聲','某一段不對']],
+      ['標題的耳機提示有沒有注意到？', '這題在看提示放在開始鍵上方，玩家會不會讀到。',['有注意到','沒注意到']],
+    ]},
+  { id:'cam', reset:true, title:'鏡頭動畫：俯看木馬進城（約 30 秒）',
+    how:'序之後會從城門外高處飛過門頂、俯看街道和衛兵，天黑時降到木馬前，約 26 秒。<kbd>Esc</kbd> 或 <kbd>空白鍵</kbd> 跳過。<b>只會出現一次</b>：要再看，先按下面「重看鏡頭動畫」清掉紀錄，再點連結。',
+    links:[['鏡頭動畫版','http://localhost:8770/troy-prologue/index.html?map=final&intro=cam']],
+    qs:[
+      ['好不好看？', '這題在看這段值不值得當開場。',['好看','普通','不好看']],
+      ['看完對地圖方向有沒有幫助？', '這題在看俯看一遍後，玩家知不知道城門在哪、要往哪走。',['有幫助','一點點','沒幫助']],
+      ['會不會太長？', '這題在看 26 秒會不會讓人想跳過。',['剛好','太長','太短']],
+    ]},
+  { id:'storysound', title:'序的聲音試聽（約 2 分鐘）',
+    how:'打開試聽頁，捲到「序的聲音」區塊，一段一段播：木輪拖過石板、城門關上、歡呼、祭典的鼓隔著木板傳進來。',
+    links:[['試聽頁','http://localhost:8770/troy-prologue/audio-test.html']],
+    qs:[
+      ['四段的音量平不平均？', '這題在看有沒有哪一段突然太大或太小。',['平均','有一段太大','有一段太小']],
+      ['聽起來像不像它要表現的東西？', '這題在看不看字，光聽能不能猜到是木輪、城門、歡呼、隔牆的鼓。哪一段不像寫在備註。',['都像','有一兩段不像','大多不像']],
+    ]},
+  { id:'ui2', title:'介面風格：要不要改成預設（約 2 分鐘）',
+    how:'兩個連結各開一次，比較標題畫面、字卡和遊戲中的提示。新風格是暗色底配火光橘、文字改思源黑和霞鶩文楷，只改樣式、不改內容。',
+    links:[['新風格（ui=2）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=2'],['原本風格（對照）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
+    qs:[
+      ['新風格要改成預設嗎？', '這題就是要決定 12/24 用哪一種介面。',['改成預設','維持原本','都可以']],
+      ['新風格的字好不好讀？', '這題在看暗底上的字在投影或遠看時清不清楚。',['好讀','有些太小或太淡','不好讀']],
+    ]},
+  { id:'fail', title:'被抓時只講一句原因（約 3 分鐘）',
+    how:'故意被衛兵抓幾次，例如在火光下走、跑步、踩歪。每次失敗畫面只會顯示一句原因，例如「奧德修斯在火光照得到的地方移動，被衛兵察覺了」。再試一次：在同一區連續被抓 2 次，看畫面提示有沒有變回完整。',
+    links:[['七段版','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['那一句原因看得懂嗎？', '這題在看玩家知不知道自己為什麼被抓、下次要怎麼改。',['看得懂','有時看不懂','看不懂']],
+      ['同區連續被抓 2 次後，提示有沒有回來？', '這題在看卡關的人會不會重新得到完整提示。',['有回來','沒注意到','沒有回來']],
+    ]},
+  { id:'offline', title:'離線也能玩（約 2 分鐘）',
+    how:'伺服器保持開著，拔掉網路線或關掉 Wi-Fi，再重新整理遊戲頁。3D 畫面和中文字都要正常。這一頁本身離線時字體可能變成系統字，不影響作答。',
+    links:[['七段版（離線試）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
+    qs:[
+      ['離線時 3D 和字正常嗎？', '這題在看 12/24 現場沒有網路時能不能照常展示。',['都正常','3D 出不來','字變了或缺字']],
+    ]},
+];
+const KEY = 'playtest-2026-11-28';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+const list = document.getElementById('list');
+ITEMS.forEach((it, i) => {
+  const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
+  let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
+  it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
+  h += '</div>';
+  it.qs.forEach(([q, hint, opts, def], k) => {
+    const name = it.id + '-' + k;
+    if (saved[name] === undefined && def) saved[name] = def;
+    h += `<fieldset><legend>${q}</legend><div class="qh">${hint}</div>`;
+    opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
+    h += '</fieldset>';
+  });
+  if (it.reset) h += `<p><button type="button" class="ui-btn" data-reset="1">重看鏡頭動畫（清掉「看過」紀錄）</button> <span class="qh" data-reset-msg></span></p>`;
+  h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
+  c.innerHTML = h; list.appendChild(c);
+});
+save();
+function refresh() {
+  ITEMS.forEach(it => {
+    const n = it.qs.filter((_, k) => saved[it.id + '-' + k]).length;
+    const c = document.getElementById('c-' + it.id);
+    c.classList.toggle('done', n === it.qs.length);
+    c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
+  });
+}
+list.addEventListener('click', e => { if (e.target.dataset.reset) { let ok = true; try { localStorage.removeItem('troy-intro-cam-seen'); } catch (err) { ok = false; } e.target.parentNode.querySelector('[data-reset-msg]').textContent = ok ? '已清掉，現在點連結就會再播一次。' : '清不掉：這個瀏覽器擋住了本機儲存。'; } });
+list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.target.name] = e.target.value; save(); refresh(); } });
+list.addEventListener('input', e => { if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
+refresh();
+document.getElementById('copy').onclick = async () => {
+  let out = '週末成果試玩結果（2026-11-28 清單）\n';
+  ITEMS.forEach((it, i) => {
+    out += `\n${i + 1}. ${it.title}\n`;
+    it.qs.forEach(([q], k) => { out += `- ${q}：${saved[it.id + '-' + k] || '（未答）'}\n`; });
+    if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
+  });
+  const msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(out); msg.textContent = '已複製，貼回對話即可。'; }
+  catch (e) { prompt('複製下面文字：', out); }
+};
+document.getElementById('reset').onclick = () => { if (confirm('清除所有答案？')) { saved = {}; save(); location.reload(); } };
+</script>
+</body>
+</html>
