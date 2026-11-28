@@ -171,6 +171,7 @@ body.demoMode #win .card { transition: opacity .8s; }
 #calib.inBelly #calibGo { display: none; }
 #calib.inBelly #calibText p { font-size: 17px; }
 body.camIntro .hud, body.camIntro #msgs, body.camIntro #hint, body.camIntro .odnav-tab { display: none !important; }   /* 11/28 鏡頭動畫（?intro=cam）：只留畫面 */
+#lockHint { position: fixed; left: 50%; top: 58%; transform: translate(-50%, -50%); z-index: 6; pointer-events: none; padding: 10px 18px; border-radius: 6px; background: rgba(0, 0, 0, .55); color: var(--ash); font-size: 18px; letter-spacing: .06em; }   /* 11/28 滑鼠沒鎖住：點一下畫面就鎖回來 */
 #camSkip { position: fixed; right: calc(20px + var(--sr)); bottom: calc(20px + var(--sb)); z-index: 7; background: rgba(0, 0, 0, .35); border-color: var(--rule); color: var(--ash); }
 #intro .row.start .preflight { max-width: none; width: 100%; background: rgb(14, 19, 34); box-shadow: 0 -14px 14px rgb(14, 19, 34); }   /* 開場說明段落有寬度上限，這行要獨佔一列、按鈕排在下面 */
 .preflight { flex-basis: 100%; margin: 0 0 6px; font-size: 15px; line-height: 1.6; color: var(--parchment); }
@@ -380,6 +381,7 @@ body.camIntro .hud, body.camIntro #msgs, body.camIntro #hint, body.camIntro .odn
   </div>
 </div>
 
+<div id="lockHint" hidden>點一下畫面，滑鼠轉頭看</div>   <!-- 11/28 滑鼠鎖定解除時的提示 -->
 <button type="button" id="camSkip" hidden>略過（Esc／空白鍵）</button>   <!-- 11/28 鏡頭動畫（?intro=cam） -->
 <!-- 序與終的翻頁字卡（?story=1；?map=final 預設開） -->
 <div class="screen" id="story" hidden role="dialog" aria-label="故事字卡">
@@ -2835,6 +2837,7 @@ function sync(dt, now) {
   }
   if (g.phase === 'win') cinFrame(dt);            // 木馬第 3 批：回頭看木馬（開關關著不執行）
   camIntroFrame();                                // 11/28 鏡頭動畫（?intro=cam；沒在演時直接回來）
+  lockHintSync();                                 // 11/28 沒鎖住滑鼠時的提示
   movesFrame(dt);                                 // 搭配動作：波紋、矮掩體標示（開關關著不執行）
   knockFrame();                                   // ?lab=horse：敲暗號，一組敲完才判
   knockDraw();                                    // ?lab=horse：拍點條、準星倒數圈、教學步驟
@@ -4669,21 +4672,44 @@ function showOver() {
 // 輸入
 // ============================================================
 // ?nolock=1：自動檢查用，不鎖滑鼠（當作鎖定失敗，滑鼠拖曳轉視角照常）
-let locked = false, lockFailed = NOLOCK, drag = null;
+// 11/28 使用者回報「按 Esc 回來後，滑鼠不會跟著動」：以前鎖定失敗一次就當作永遠鎖不了（lockFailed），之後只剩拖曳。
+//   按 Esc 解除鎖定後，瀏覽器會擋掉沒有點擊的鎖定要求（用 Esc 繼續、Esc 跳過序／鏡頭動畫／校準之後叫的 lockPointer），也會擋掉解除後一秒多內的要求。
+//   現在：只有「點擊當下」叫的鎖定、又不是剛解除時失敗，才當作這個頁面鎖不了（例如 claude.ai 試玩頁不給鎖），改用拖曳；
+//   其他失敗只是這次沒鎖到，畫面中間出現「點一下畫面」的提示，點一下（點擊算數）就鎖回來。
+//   pointerlockchange：自己放開（字卡、校準、鏡頭動畫、失敗畫面）不算玩家按 Esc，不暫停；鎖定晚到、字卡已經蓋上就放開。
+let locked = false, lockFailed = NOLOCK, drag = null, lockSelfExit = false, lockLostAt = -1e9, lockReqClick = false, clickAt = -1e9, pausedAt = -1e9;
+const LOCK_COOLDOWN_MS = 1500, LOCK = { req: 0, err: 0, lost: 0, self: 0, hintShown: 0 };   // LOCK：自動檢查讀的計數
+['mousedown', 'pointerdown', 'click'].forEach(t => window.addEventListener(t, () => { clickAt = performance.now(); }, true));
+function lockBlocked() { return !!(STORY.kind || CAL.open || CAMI.active); }   // 這些畫面要滑鼠點按鈕，不鎖
 function lockPointer() {
-  if (lockFailed) return;
+  if (lockFailed || locked || lockBlocked()) return;
+  lockReqClick = performance.now() - clickAt < 80; LOCK.req++;
   try {
     if (!canvas.requestPointerLock) { lockFailed = true; return; }
     const r = canvas.requestPointerLock();
-    if (r && r.catch) r.catch(() => { lockFailed = true; });
-  } catch (e) { lockFailed = true; }
+    if (r && r.catch) r.catch(() => lockErr());
+  } catch (e) { lockErr(); }
 }
-function unlockPointer() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {} }
-document.addEventListener('pointerlockerror', () => { lockFailed = true; });
+function lockErr() {
+  LOCK.err++;
+  if (lockReqClick && performance.now() - lockLostAt > LOCK_COOLDOWN_MS) lockFailed = true;   // 點擊也鎖不了：這個頁面不給鎖，改拖曳
+  lockHintSync();
+}
+function unlockPointer() { try { if (document.pointerLockElement) { lockSelfExit = true; document.exitPointerLock(); } } catch (e) {} }
+document.addEventListener('pointerlockerror', () => lockErr());
 document.addEventListener('pointerlockchange', () => {
-  locked = document.pointerLockElement === canvas;
-  if (!locked && active()) pause();
+  const was = locked; locked = document.pointerLockElement === canvas;
+  if (!locked && !was) { lockSelfExit = false; lockHintSync(); return; }   // 本來就沒鎖（鎖定還沒到就放開，兩個事件前後到）：不算解除
+  if (!locked) {
+    if (lockSelfExit) { lockSelfExit = false; LOCK.self++; }
+    else { lockLostAt = performance.now(); LOCK.lost++; if (active() && !lockBlocked()) pause(); }   // 玩家按 Esc（或切走視窗）：暫停
+  } else { lockSelfExit = false; if (lockBlocked()) unlockPointer(); }
+  lockHintSync();
 });
+function lockHintSync() {   // 可以操作、卻沒鎖住：畫面中間提示點一下
+  const show = !!game && active() && !locked && !lockFailed && !lockBlocked() && !overShown && $('pause').hidden;
+  if ($('lockHint').hidden === show) { $('lockHint').hidden = !show; if (show) LOCK.hintShown++; }
+}
 const active = () => game && !paused && (game.phase === 'play' || game.phase === 'intro');
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 let mouseBreath = false;   // 按住滑鼠右鍵＝屏息
@@ -4731,7 +4757,7 @@ window.addEventListener('keydown', e => {
   if (!game) return;
   if (game.phase === 'win' && CIN.pending && !CIN.done) { cinFinish(true); return; }   // 回頭看木馬：任意鍵跳過
   if (game.phase === 'fail' || game.phase === 'win') { if (e.code === 'KeyR' && game.phase === 'fail') retryZone(); return; }
-  if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) resume(); else if (!paused) pause(); return; }
+  if (e.code === 'Escape') { if (paused && startedOnce && !$('pause').hidden) { if (performance.now() - pausedAt > 400) resume(); } else if (!paused) pause(); return; }   // 解除鎖定的同一下 Esc 也送進來時，不要暫停又馬上繼續
   if (paused || e.repeat || was) return;
   telInput(e.code, true);                         // 試玩數據：按下（時間、相對拍點的差、當下狀態）
   // 按鍵當下的音訊時間（扣掉輸出延遲＝玩家聽到的時間）：衝刺、暗殺、門閂、安撫的時間判定都用它，不用幀時間
@@ -4749,10 +4775,10 @@ window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; }
 
 function pause() {
   if (!game || paused) return;
-  paused = true; unlockPointer();
+  paused = true; pausedAt = performance.now(); unlockPointer();
   if (TEL && TEL.active()) { try { TEL.event('pause', {}); } catch (e) {} }
   $('optSlotPause').appendChild($('opts'));
-  $('pause').hidden = false;
+  $('pause').hidden = false; lockHintSync();
   try { if (actx && actx.state === 'running') actx.suspend(); } catch (e) {}   // 暫停＝音訊時鐘也停，規則的時間不會跳
 }
 function resume() {
@@ -4760,7 +4786,7 @@ function resume() {
   paused = false;
   $('intro').hidden = true; $('pause').hidden = true;
   try { if (actx && actx.state === 'suspended') actx.resume(); } catch (e) {}
-  lockPointer();
+  lockPointer(); lockHintSync();
 }
 $('optSlotIntro').appendChild($('opts'));
 $('btnStart').onclick = startFromTop;
@@ -4834,7 +4860,7 @@ if (DEMO_ON) {
   }, true);
   $('intro').hidden = true; demoCard();
 }
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL, intro: INTRO, story: STORY, cam: CAMI };   // intro／story：11/28 新開場的步驟、時間點與序的聲音事件（自動驗證讀）   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL, intro: INTRO, story: STORY, cam: CAMI, lock: LOCK, lockState: () => ({ locked, lockFailed, hint: !$('lockHint').hidden, paused }) };   // intro／story：11/28 新開場的步驟、時間點與序的聲音事件（自動驗證讀）   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>

@@ -1,0 +1,652 @@
+{
+ "1暫停後繼續": {
+  "steps": [
+   [
+    "開始（點擊）",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "瀏覽器 Esc 解除",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": true,
+     "pauseShown": true,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "同一下 Esc 也送進頁面（若瀏覽器有送）",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": true,
+     "pauseShown": true,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "再按 Esc 繼續",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "Esc 解除後 0.3 秒內點「繼續」",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "過 1 秒後點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ]
+  ],
+  "reqLog": [
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    false,
+    false
+   ],
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    false,
+    true
+   ],
+   [
+    "req",
+    true,
+    true
+   ]
+  ],
+  "errors": []
+ },
+ "2序按Esc": {
+  "steps": [
+   [
+    "開始（點擊）＝序",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": "prologue",
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "Esc 跳過序＝聽",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 1,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "聽完（mute 略過校準）＝第 3 步",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ]
+  ],
+  "reqLog": [
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    false,
+    false
+   ],
+   [
+    "req",
+    true,
+    true
+   ]
+  ],
+  "errors": []
+ },
+ "3聽按Esc": {
+  "steps": [
+   [
+    "序跳過＝聽",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 1,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "Esc 整段跳過＝第 3 步",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ]
+  ],
+  "reqLog": [
+   [
+    "req",
+    true,
+    true
+   ]
+  ],
+  "errors": []
+ },
+ "4校準跳過": {
+  "steps": [
+   [
+    "開始＝序",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": "prologue",
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "Esc 跳過序＝聽",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 1,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "聽完＝校準",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 2,
+     "cam": false,
+     "calib": true,
+     "phase": "play"
+    }
+   ],
+   [
+    "點「跳過」",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "（第二次）校準",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 2,
+     "cam": false,
+     "calib": true,
+     "phase": "play"
+    }
+   ],
+   [
+    "按 Esc 跳過校準",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ]
+  ],
+  "reqLog": [
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    false,
+    false
+   ],
+   [
+    "req",
+    true,
+    true
+   ]
+  ],
+  "errors": []
+ },
+ "5鏡頭動畫Esc": {
+  "steps": [
+   [
+    "點略過序＝鏡頭動畫",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": true,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "（鏡頭動畫中瀏覽器 Esc）",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": true,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "Esc 跳過鏡頭＝聽",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 1,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "聽完＝第 3 步",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 3,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ]
+  ],
+  "reqLog": [
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    false,
+    false
+   ],
+   [
+    "req",
+    true,
+    true
+   ]
+  ],
+  "errors": []
+ },
+ "6失敗重來": {
+  "steps": [
+   [
+    "開始（點擊）",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "被抓＝失敗畫面",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": true,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "fail"
+    }
+   ],
+   [
+    "點「重來」",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "再被抓",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": true,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "fail"
+    }
+   ],
+   [
+    "按 R 重來",
+    {
+     "locked": false,
+     "failed": false,
+     "hint": true,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ],
+   [
+    "點畫面",
+    {
+     "locked": true,
+     "failed": false,
+     "hint": false,
+     "paused": false,
+     "pauseShown": false,
+     "failShown": false,
+     "story": null,
+     "step": 0,
+     "cam": false,
+     "calib": false,
+     "phase": "play"
+    }
+   ]
+  ],
+  "reqLog": [
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    true,
+    true
+   ],
+   [
+    "req",
+    false,
+    false
+   ],
+   [
+    "req",
+    true,
+    true
+   ]
+  ],
+  "errors": []
+ },
+ "ps": []
+}
