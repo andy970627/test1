@@ -139,6 +139,7 @@
 - （11/23）**短展示關卡 `?map=demo`**：只在帶參數時用 document.write 載 level-troy-demo.js（window.TroyLevelDemo），經 Rules.resolveLevel 交 createLevel；載入失敗時回到長開場頁，開場最上面顯示一行訊息、用原本地圖。DEMO_ON 時：CLEAN_Q 也算開（不讀存檔，別人留下的除錯開關帶不進展示）、不問問卷、body.demoMode 藏開發用按鈕。開場字卡是 STORY_CARDS.demo（storyShow('demo', startFromTop)），開始前 game 還是 null。結局、失敗的「再玩一次」呼叫 backToIntro（停聲音、清狀態、回字卡）；空白鍵與 Enter 先擋一下（失敗 1.2 秒、結局 2.6 秒），免得還按著屏息就跳走。
 
 - （11/26）**3D 場景加強 `?art=2`（美術 A 試做）**：index.html 的 ART 物件，`?fx=mat,fire,fog,shadow,key` 個別開（不寫＝建議組合 mat,fire,fog,key；shadow 與 mat2 要點名，11/26 使用者選）。掛勾四處：build 結尾 artApply、buildHorse 記 S.horseGroup、新衛兵 artGuard、火光迴圈後 artFrame；ART.on 為假時全部不執行。材質是程式畫的灰階紋理（不用外部圖檔）乘原色，方塊 UV 改成每 2 公尺一張；**mat2（Phong＋凹凸）與 shadow（點光源投影）在軟體算圖只剩 1～5 幀**，mat 用 Lambert＋紋理。陰影只讓離鏡頭最近的 2 盞火投影、每秒換一次（點光源投影一盞要畫 6 次）。關口界石貼在出口矩形長邊兩端的牆邊，到膝蓋高（.42＋頂蓋）、只微微發光；離任一區出生點 2.5 公尺內的不放（出口線常常就是下一區的出生點，站在線上往前看會正對牆邊那根）。量幀數要用 `--use-angle=d3d11 --enable-gpu --ignore-gpu-blocklist` 才會用到顯示卡（RTX 3060），預設無頭是軟體算圖；凍結畫面用 `TroyDebug.game.step = () => g`，前後比較要固定 Math.random 種子（addScriptToEvaluateOnNewDocument）。
+- （11/27）**木馬之夜離線**：Three.js r128 與字體放在 `troy-prologue/vendor/`（來源授權 `vendor/LICENSES.md`）。字體是**子集**，只含遊戲頁用到的 1,395 字；新增中文字後要跑 `python -I prototypes/troy-prologue/vendor/make-fonts.py` 重切，否則新字會退回微軟正黑或標楷體，同一行字形不一致。`fonts-ui2.css` 只在 ?ui=2 載入：Noto Sans TC 700 不能放進一般的 fonts.css，否則 ui=0 的粗體會從「500 合成粗體」變成真 700，畫面就變了。ui-tokens.css 不再 @import Google Fonts，改由其他頁面各自 <link>（bard-table、blind-cave-web、level-editor、兩個試玩清單、switch、audio-test 已補）。Google 的 text= 參數太長（約 1 萬字元網址）會被忽略、改回 108 片完整分片，所以一次只送 450 字。
 
 ## 4. 驗證方式
 - **本機開原型（有外殼）**：
@@ -247,6 +248,8 @@
   - 火盆：FIRES_FINAL 搬進 level-troy-final.js 各區 fires（總控派工、使用者 11/27 選定，這次准畫面改關卡檔；後街是空清單）；index 讀 L.fires → 各區 zones[].fires 依區序接起來（任一區有寫就照區的）→ 預設座標。createLevel 會保留這兩種欄位。編輯器 insertWidth 讓 fires 跟著往東移，core.test.js 加一項。驗收：map=final&art=2 火盆光源座標和 512ad94 逐一相同、map=demo 相同（只差衛兵火把晃動）。
   - ui=2：<html class="ui2">＋index.html 第一個 style 結尾的 .ui2 區塊（純 CSS，不改文字）；head 的小腳本只在 ui=2 時加 class 並載文楷與思源黑 700。截圖在 art-trial-2026-11-26/ui/。關口提示用城門門閂那句（startZone=7、站到 87.4,15 會出現）；七段地圖其他關口沒有專屬提示文字。
   - 截圖腳本陷阱：用 head | sed 組腳本時 sed 失敗，主體沒寫進去，腳本開完瀏覽器就掛著不結束；組好後先 grep 確認主體在。
+- 11/27（畫面）木馬之夜離線：引擎與字體放進專案（未提交；全套 401 項與 cleancheck 通過）。vendor/three.min.js（r128、603 KB）＋ vendor/fonts/ 28 個 woff2 子集（2.07 MB），合計約 2.8 MB。index.html 三處外部網址改讀本機；ui-tokens.css 拿掉 @import，七個其他頁面補回 Google Fonts <link>（那些頁面照舊需要網路字體，畫面不變）。
+  - 驗收（CDP 無頭、Fetch 攔掉所有非 127.0.0.1 請求）：?map=final&art=2 與 &ui=2 兩種，對外請求 0 個、THREE.REVISION=128、該載的字體都 loaded。和 HEAD 版（連網）同場景比：標題畫面差異只在拍帶動畫與幾個字的反鋸齒邊緣，放大看字形相同；3D 畫面差異只在火焰閃動與飄浮火星，HUD 文字無差異。沒用 Playwright（沒安裝，要另外下載），改用 Chrome CDP 的 Fetch 攔截，效果相同。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
 

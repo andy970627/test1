@@ -8,7 +8,7 @@
  *   次要字（--muted，羊皮紙 68%）／城牆石約 6.6。血紅當字只有 2.8，所以血紅只當底色、色條、框線，上面的字用羊皮紙（5.6）。
  * 遊戲頁（troy-prologue/index.html）在 claude.ai 試玩頁裡載不到這個檔，所以那頁的 :root 另抄一份同值的變數當備援；改色時兩邊一起改。
  */
-@import url("https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap");
+/* 字體不在這裡載入（11/27 起）：要網路字體的頁面自己用 <link> 載 Google Fonts；木馬之夜遊戲頁改用本機字體 troy-prologue/vendor/fonts/，才能離線跑。 */
 
 :root {
   /* 顏色：只有這七個 */

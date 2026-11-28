@@ -1,9 +1,9 @@
 <title>木馬之夜</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<link rel="stylesheet" href="vendor/fonts/fonts.css">   <!-- 11/27 離線：字體放在專案裡（只含本頁用到的字），來源與授權見 vendor/LICENSES.md -->
 <link rel="stylesheet" href="../ui-tokens.css">
 <script>   // ?ui=2：介面風格統一試做（美術 C）；只有帶參數才加 class 並載霞鶩文楷（載不到退回系統楷書）
-if (new URLSearchParams(location.search).get('ui') === '2') { document.documentElement.classList.add('ui2'); document.write('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@500;700&display=swap">'); }
+if (new URLSearchParams(location.search).get('ui') === '2') { document.documentElement.classList.add('ui2'); document.write('<link rel="stylesheet" href="vendor/fonts/fonts-ui2.css">'); }
 </script>
 <style>
 /* 畫面層：規則全在 risset.js（RissetRules），聲音全在 audio.js（RissetAudio）。
@@ -479,7 +479,7 @@ body.demoMode #win .card { transition: opacity .8s; }
 // 試玩數據模組：一般從上一層載入；在 claude.ai 試玩頁（沙盒裡沒有上一層）改載同目錄的 telemetry.js
 document.write('<script src="' + (/claude\.ai$|claudeusercontent\.com$/.test(location.hostname) ? '' : '../') + 'telemetry.js"><\/script>');
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="vendor/three.min.js"></script>   <!-- Three.js r128（MIT），11/27 起放在專案裡，離線也能跑；不要升版 -->
 <script src="audio.js"></script>
 <script src="calibration.js"></script>   <!-- 開場跟拍校準 window.RissetCalib（規則角色）；沒載到時短展示直接開局 -->
 <script src="level-troy.js"></script>
