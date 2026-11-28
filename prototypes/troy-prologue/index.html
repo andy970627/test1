@@ -122,7 +122,7 @@ button.primary:hover { background: var(--parchment); border-color: var(--parchme
 /* 開場字卡：寬螢幕分兩欄（故事｜操作與開關）壓低高度；開始按鈕黏在畫面底部，任何尺寸都不必捲動就看得到 */
 #intro .card .col { display: grid; gap: 14px; align-content: start; min-width: 0; }
 #intro .row.start { position: sticky; bottom: calc(-24px - var(--sb)); margin: 0 -16px calc(-24px - var(--sb)); padding: 18px 16px calc(20px + var(--sb));
-  background: linear-gradient(to bottom, rgba(14, 19, 34, 0), rgba(14, 19, 34, .97) 38%); z-index: 1; }
+  background: linear-gradient(to bottom, rgba(14, 19, 34, 0), rgba(14, 19, 34, .97) 16%); z-index: 1; }   /* 11/28：上面多了耳機與滑鼠那行，漸層提早變不透明，免得疊到後面的字 */
 /* 開場題字＋拍帶：寬螢幕跨兩欄（設計系統：只有開場題字與拍帶可以滿版） */
 #intro .introHead { display: grid; gap: 14px; min-width: 0; }
 #introStrip:empty, #introStrip:empty + .stripNote { display: none; }
@@ -158,6 +158,22 @@ body.demoMode #opts, body.demoMode #survey, body.demoMode .btnExport, body.demoM
 body.demoMode #fail .btnIntro, body.demoMode #win .btnIntro { display: none !important; }
 body.demoMode #win .card { transition: opacity .8s; }
 #storyPage { color: var(--dim); font-size: 14px; margin-right: auto; }
+/* 11/28 開場第一批（docs/design/2026-11-27-opening-and-tutorial.md）：序改黑底一次一句（做法甲）；腹中「跟著同伴敲」的校準面板；標題畫面的耳機與滑鼠提示 */
+#story.seqCard .storyArt, #story.seqCard #storyTitle, #story.seqCard #storyPage, #story.seqCard #storyNext, #story.seqCard #storyKeys { display: none; }
+#story.seqCard .storyCard { width: min(760px, 100%); justify-items: center; text-align: center; }
+#story.seqCard #storyText { min-height: 4.4em; display: grid; place-items: center; }
+#story.seqCard #storyText p { font-size: clamp(20px, 2.6vw, 28px); line-height: 1.7; opacity: 0; transition: opacity .9s; }
+#story.seqCard #storyText p.on { opacity: 1; }
+#story.seqCard .storyFoot { position: fixed; right: calc(20px + var(--sr)); bottom: calc(20px + var(--sb)); }
+#story.seqCard #storySkip { background: transparent; border-color: var(--rule); color: var(--dim); }
+#calib.inBelly { background: transparent; align-items: end; pointer-events: none; }
+#calib.inBelly .storyCard { width: min(560px, 100%); pointer-events: auto; background: rgba(10, 12, 20, .74); border-radius: var(--r-panel); padding: 14px 18px; margin-bottom: 9vh; justify-items: center; text-align: center; }
+#calib.inBelly #calibGo { display: none; }
+#calib.inBelly #calibText p { font-size: 17px; }
+body.camIntro .hud, body.camIntro #msgs, body.camIntro #hint, body.camIntro .odnav-tab { display: none !important; }   /* 11/28 鏡頭動畫（?intro=cam）：只留畫面 */
+#camSkip { position: fixed; right: calc(20px + var(--sr)); bottom: calc(20px + var(--sb)); z-index: 7; background: rgba(0, 0, 0, .35); border-color: var(--rule); color: var(--ash); }
+#intro .row.start .preflight { max-width: none; width: 100%; background: rgb(14, 19, 34); box-shadow: 0 -14px 14px rgb(14, 19, 34); }   /* 開場說明段落有寬度上限，這行要獨佔一列、按鈕排在下面 */
+.preflight { flex-basis: 100%; margin: 0 0 6px; font-size: 15px; line-height: 1.6; color: var(--parchment); }
 /* 短展示關卡的開場校準（競品分析 3.1）：字卡同款，看得到後面的場景；8 個圓點跟著敲擊亮起 */
 #calib { background: rgba(14, 19, 34, .92); z-index: 8; }
 #calib .storyCard { width: min(620px, 100%); }
@@ -329,12 +345,12 @@ body.demoMode #win .card { transition: opacity .8s; }
     <p>木馬是空的。你和幾名同伴就藏在它的肚子裡；城外，希臘大軍正趁著夜色折返。<b>今晚，由你打開城門。</b></p>
     <!-- 兩種鼓聲模式各一段說明，依「鼓聲」選單切換（coverText） -->
     <p class="modeCover">這一夜，聲音比火光更危險：衛兵靠耳朵找人。踩著城裡的鼓點走，腳步聲會被蓋過；所有的鼓同時落下、最響的那一擊，就是你衝出去的時候。</p>
-    <p class="dim modeCover">這座城在你耳裡響著一段永遠在加速、從不停下的節奏。節奏越急，衛兵越敏銳；每一輪最重的那一擊和它的餘韻，蓋得住你的腳步和刀聲。請戴上耳機。需要鍵盤和滑鼠。</p>
+    <p class="dim modeCover">這座城在你耳裡響著一段永遠在加速、從不停下的節奏。節奏越急，衛兵越敏銳；每一輪最重的那一擊和它的餘韻，蓋得住你的腳步和刀聲。需要鍵盤和滑鼠。</p>
     <p class="modeGap" hidden>這一夜，聲音比火光更危險：衛兵靠耳朵找人。聽城裡的鼓聲，鼓點一斷，就是你移動的時候。</p>
-    <p class="dim modeGap" hidden>這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。請戴上耳機。需要鍵盤和滑鼠。</p>
+    <p class="dim modeGap" hidden>這座城在你耳裡響著一段永遠在加速的節奏。節奏越急，衛兵越敏銳；節奏「斷掉、從頭再來」的那一瞬，他們什麼也察覺不到。需要鍵盤和滑鼠。</p>
     <h3 class="sect">操作</h3>
     <dl class="keys">
-      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>・滑鼠</dt><dd>走、看（點畫面鎖定滑鼠；鎖不住時改用拖曳看）</dd>
+      <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>・滑鼠</dt><dd>走、看</dd>
       <dt><kbd>空白鍵</kbd>／滑鼠右鍵 按住</dt><dd>屏息：不出聲，但不能動。太久會喘出聲</dd>
       <dt id="kShiftDt"><kbd>Shift</kbd></dt><dd><span class="modeCover">衝刺，只在最響的那一擊落下時有用</span><span class="modeGap" hidden>衝刺，只在節奏重來的瞬間有用</span></dd>
       <dt class="movesOnly" hidden><kbd>Shift</kbd> 按住</dt><dd class="movesOnly" id="kRun" hidden></dd>
@@ -360,10 +376,11 @@ body.demoMode #win .card { transition: opacity .8s; }
     <div id="optSlotIntro"></div>
    </div>
     <div class="surveySlot" id="surveySlotIntro" style="grid-column:1 / -1"></div>
-    <div class="row start"><button class="primary" id="btnStart">點一下開始</button> <button type="button" class="btnSwitch">回試玩切換台</button></div>
+    <div class="row start"><p class="preflight" id="preflight"><b>戴上耳機</b>：腳步聲和鼓點都要用聽的。開始後<b>點一下畫面</b>鎖住滑鼠，才能轉頭看（鎖不住時改用拖曳）。</p><button class="primary" id="btnStart">點一下開始</button> <button type="button" class="btnSwitch">回試玩切換台</button></div>
   </div>
 </div>
 
+<button type="button" id="camSkip" hidden>略過（Esc／空白鍵）</button>   <!-- 11/28 鏡頭動畫（?intro=cam） -->
 <!-- 序與終的翻頁字卡（?story=1；?map=final 預設開） -->
 <div class="screen" id="story" hidden role="dialog" aria-label="故事字卡">
   <div class="storyCard">
@@ -378,8 +395,8 @@ body.demoMode #win .card { transition: opacity .8s; }
 <!-- 短展示關卡的開場校準（?map=demo；聲音層或規則還沒提供校準函式時整個略過） -->
 <div class="screen" id="calib" hidden role="dialog" aria-label="耳機校準">
   <div class="storyCard">
-    <h2 id="calibTitle">對準拍子</h2>
-    <div id="calibText"><p>戴上耳機聽得最準。鼓會敲 8 下。</p><p><kbd>空白鍵</kbd> 跟著鼓點敲 8 下，判定會對準這副耳機的延遲。</p></div>
+    <h2 id="calibTitle">跟著同伴敲</h2>
+    <div id="calibText"><p>戴上耳機聽得最準。同伴會用指節輕敲木板 8 下。</p><p><kbd>空白鍵</kbd> 跟著他敲，判定會對準這副耳機的延遲。</p></div>
     <div id="calibDots" aria-hidden="true"></div>
     <p id="calibMsg" aria-live="polite"></p>
     <div class="storyFoot"><button class="primary" id="calibGo" type="button">開始（空白鍵）</button><button id="calibSkip" type="button">跳過（Esc）</button></div>
@@ -858,6 +875,13 @@ const LEVEL_DEMO = (() => {
 })();
 // 序與終的翻頁字卡：?story=1 開；?map=final 時預設開（?story=0 關）。短展示關卡不走腹中，有自己的開場字卡
 const STORY_ON = !MAP_DEMO_Q && (URLQ.get('story') === '1' || (MAP_FINAL_Q && URLQ.get('story') !== '0'));
+// 11/28 開場第一批（使用者選「丙＋甲」，docs/design/2026-11-27-opening-and-tutorial.md 第 3、4 節）：有序的時候（?map=final 預設）
+//   序改黑底一次一句 → 腹中「聽。」→「跟著他敲。」（校準搬進腹中）→「踩著它走到暗門。」；腹中練習（HORSE_MODE）預設開。
+//   ?intro=old 切回舊流程（三張字卡、不校準、腹中練習要 ?horse=1 才開）；?horse=0 只關腹中練習。短展示（?map=demo）不走這段。
+const INTRO_Q = String(URLQ.get('intro') || '').split(',');
+const INTRO_OLD = INTRO_Q.includes('old');
+const INTRO_NEW = STORY_ON && !INTRO_OLD;
+const HORSE_DEFAULT = URLQ.get('horse') !== '0' && !INTRO_OLD && !MAP_DEMO_Q && !LAB;   // 腹中練習預設開（11/28）
 const LEVEL_LOCAL = (() => {
   if (!LEVEL_LOCAL_Q) return null;
   let d = null; try { d = JSON.parse(localStorage.getItem('troy-level-local') || 'null'); } catch (e) { d = null; }
@@ -1698,7 +1722,7 @@ function telFrame(dt) {
   try {
     if (game.zone !== tel.zone) { TEL.event('zone', { from: tel.zone, to: game.zone }); tel.zone = game.zone; }
     if (game.phase !== tel.phase) {
-      if (game.phase === 'fail') TEL.event('fail', { code: game.failCode || null, reason: game.failReason || null, zone: game.zone });
+      if (game.phase === 'fail') TEL.event('fail', { code: game.failCode || null, reason: game.failReason || null, zone: game.zone, x: game.player && Number.isFinite(+game.player.x) ? Math.round(game.player.x * 10) / 10 : null, z: game.player && Number.isFinite(+game.player.z) ? Math.round(game.player.z * 10) / 10 : null });   // x、z：玩家被抓的位置（11/28，試玩摘要工具用）
       tel.phase = game.phase;
       if (game.phase === 'win') { TEL.event('win', { retries: game.retries }); TEL.endRun({ outcome: 'win' }); telCount(); return; }
     }
@@ -2050,7 +2074,7 @@ function newGame() {
   if (URLQ.get('drive') === '0') opts.T.DRIVE_MODE = false;             // ?drive=0：關掉 DRIVE（越來越急的層），規則不讀網址，由這裡轉（沒帶參數交給規則預設：開）
   if (URLQ.get('drums') === 'old') opts.T.DRUMS = 'old';               // ?drums=old：開關開著也用舊鼓聲（新鼓聲只在 MOVES_MODE 開且 DRUMS 不是 'old' 時，?moves=0 一定舊鼓聲）
   if (LAB === 'walk' && STEP_Q) opts.T.STEP_MODE = STEP_Q;              // 走法試驗場：P0／P1／P2                         // ?moves=0：報告版（沒帶參數就交給規則的預設：開）
-  if (HORSE_Q) opts.T.HORSE_MODE = true;                               // 木馬第 1 批（沒帶參數就不碰，規則走報告版的路）
+  if (HORSE_Q || HORSE_DEFAULT) opts.T.HORSE_MODE = true;              // 木馬第 1 批：腹中練習 11/28 起預設開（?horse=0 或 ?intro=old 關）
   if (LAB) opts.lab = LAB === 'flash' ? 'run' : LAB;          // ?lab=flash（2026-11-14 發想第 4 節）只動畫面：借規則 run 試驗場的場景（第 2 區、衛兵照常、出口擋住）
   if (LAB === 'horse') { opts.T.HORSE_MODE = true; opts.startZone = 2; }   // 規則的 lab: 'horse' 也會這樣設；先寫上，規則還沒支援時一樣能看共鳴
   if (LEVEL_LOCAL) opts.level = LEVEL_LOCAL;                          // ?level=local：關卡編輯器的關卡
@@ -2082,7 +2106,11 @@ function startFromTop() {
   startedOnce = true;
   resume();
   STORY.outroDone = false;
-  if (STORY_ON && !LAB && game && game.zone <= 1) storyShow('intro');   // 序：翻完才進腹中（從別區開始就不放）
+  if (STORY_ON && !LAB && game && game.zone <= 1) {                    // 序：翻完才進腹中（從別區開始就不放）
+    if (!INTRO_NEW) storyShow('intro');
+    else if (!INTRO.seen) { INTRO.seen = true; storyShow('prologue', () => (camWanted() ? camStart(introAfterPrologue) : introAfterPrologue())); }   // 新開場：序只放第一次，再玩一次直接進腹中；?intro=cam 在序之後放鏡頭動畫
+    else introAfterPrologue();
+  }
 }
 // ============================================================
 // 序與終的翻頁字卡（期末企劃第 2 節「序」「終」；?story=1，?map=final 預設開）
@@ -2099,11 +2127,64 @@ const STORY_CARDS = {
     { title: '全城慶祝', lines: ['城裡點滿火把，酒一桶接一桶打開。', '歌聲和鼓聲，從神殿一路傳到城牆。'] },
     { title: '夜深', lines: ['火把一支支熄了。醉倒的人睡在街上。', '木馬肚子裡，有人屏住了呼吸。'] },
   ],
+  prologue: [   // 11/28 做法甲：黑底、一次一句，主要靠聲音講。cue＝那一句的聲音（聲音角色 audio.storyCue 的名稱：RissetAudio.STORY_CUE_ORDER；null＝不放新聲音）
+    { line: '黃昏。特洛伊人拉著粗繩，把木馬拖進城門。', cue: 'cart' },
+    { line: '城門在木馬身後關上。', cue: 'gate' },
+    { line: '全城點起火把，歌聲和鼓聲一路傳到城牆。', cue: 'cheer' },
+    { line: '夜深了。火把一支支熄滅，醉倒的人睡在街上。', cue: null },
+    { line: '木馬肚子裡，有人屏住了呼吸。', cue: 'feast', ms: 5000 },   // 祭典的鼓隔著木板傳進來：聽的位置換到木馬肚子裡
+  ],
   outro: [
     { title: '城門開了', lines: ['門閂落地，城門慢慢打開。', '城外，希臘人舉著火把連成一片，湧進沉睡的城。'] },
   ],
 };
-const STORY = { kind: null, i: 0, done: null, outroDone: false };
+const STORY = { kind: null, i: 0, done: null, outroDone: false, timer: 0, cues: [] };
+const SEQ_MS = 3400;   // 序一句至少停多久（毫秒）；有聲音的句子停到那段聲音快結束（長度讀 RissetAudio.STORY_CUES）；點擊、空白鍵提早換下一句
+function cueDur(name) { const d = name && AudioMod && AudioMod.STORY_CUES && AudioMod.STORY_CUES[name] ? +AudioMod.STORY_CUES[name].dur : 0; return Number.isFinite(d) ? d : 0; }
+function seqMs(c) { return Math.max(SEQ_MS, num(c.ms, 0), cueDur(c.cue) * 1000 - 600); }
+function storyCue(name, durSec) {   // 聲音掛點：叫聲音模組的 audio.raw.storyCue(name)（聲音角色 11/28 介面）；同時記在 game.storyCue／storyCueN 給自動驗證讀
+  if (!name) return;
+  STORY.cues.push(name);
+  if (game) { game.storyCue = name; game.storyCueN = (game.storyCueN | 0) + 1; }
+  const a = audio && audio.raw;
+  try { if (a && typeof a.storyCue === 'function') a.storyCue(name, undefined, durSec ? { dur: durSec } : undefined); } catch (e) {}
+}
+function storyCueStop() {   // 跳過序：0.3 秒內收掉還在響的序聲音（聲音角色介面）；自然播完不叫，最後一段 feast 照 {dur} 撐到序結束
+  const a = audio && audio.raw;
+  try { if (a && typeof a.storyCueStop === 'function') a.storyCueStop(.3); } catch (e) {}
+}
+// 腹中四步（做法丙）：1 聽（只聽，按鍵不收）→ 2 跟著他敲（校準，玩家只覺得在跟拍）→ 3 踩著它走到暗門（預告圈出現）→ 4 暗門開（規則）。
+//   規則的進區提示 'belly' 在新開場換成第 3 步的字。Esc：第 1 步整段跳過（連校準），第 2 步跳過校準。只在第一次出現。
+const INTRO = { seen: false, step: 0, timer: 0, marks: {} };
+const INTRO_LISTEN_MS = 4000;
+const INTRO_TEXT = { listen: '聽。', tap: '跟著他敲。', walk: '踩著它走到暗門。' };
+function introMark(k) { INTRO.marks[k] = performance.now(); }
+function introAfterPrologue() {
+  clearTimeout(INTRO.timer);
+  if (!game || game.phase !== 'play' || game.zone !== bellyZoneOf(game.level)) { INTRO.step = 0; return; }
+  introMark('belly');
+  if (CAL.done) return introWalk();
+  INTRO.step = 1; introMark('listen'); clearHints(); showHint(INTRO_TEXT.listen);
+  INTRO.timer = setTimeout(introTap, INTRO_LISTEN_MS);
+}
+function introTap() {
+  clearTimeout(INTRO.timer);
+  if (!game || INTRO.step !== 1) return;
+  if (CAL.done || CAL_OFF || MUTE || !calibEstimator() || !calibClickFn()) { CAL.done = true; return introWalk(); }
+  INTRO.step = 2; introMark('tap'); clearHints();
+  calibShowBelly();
+}
+function introWalk() {
+  clearTimeout(INTRO.timer);
+  INTRO.step = 3; introMark('walk');
+  clearHints(); queueHint(INTRO_TEXT.walk);
+  lockPointer();
+}
+window.addEventListener('keydown', e => {                // 第 1 步「聽」：只聽，按鍵不收；Esc 整段跳過
+  if (INTRO.step !== 1 || STORY.kind || CAL.open) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.code === 'Escape' && !e.repeat) { CAL.done = true; introWalk(); }
+}, true);
 const DEMO_ON = !!LEVEL_DEMO && !LEVEL_LOCAL && !LAB, DEMO = { overAt: 0, ringT: 0, lastGT: null };   // 短展示關卡的開場與再玩一次；ringT＝這局玩了幾秒（步伐提示用）
 function demoCard() { storyShow('demo', demoStart); }
 // ------------------------------------------------------------
@@ -2136,6 +2217,22 @@ function calibUi(msg, go, skip) {
   $('calibSkip').hidden = !skip;
   if (go) { try { $('calibGo').focus({ preventScroll: true }); } catch (e) {} }
 }
+const CAL_TEXT0 = { title: $('calibTitle').textContent, html: $('calibText').innerHTML };
+function calibShowBelly() {   // 11/28 做法丙第二步：校準搬進腹中。看得到腹中，面板在下方；不用按開始，直接敲；遊戲聲音先壓低
+  unlockPointer();
+  CAL.mode = 'belly'; CAL.open = true; CAL.taps = [];
+  $('calib').classList.add('inBelly');
+  $('calibTitle').textContent = INTRO_TEXT.tap;
+  $('calibText').innerHTML = '<p>身邊的同伴用指節輕敲木板數拍。</p><p><kbd>空白鍵</kbd> 敲</p>';
+  calibDots(0); calibUi('', null, true);
+  $('calib').hidden = false;
+  calibDuck(true);
+  calibBegin();
+}
+function calibDuck(on) {   // 腹中校準時把遊戲的聲音壓到很小，只聽同伴敲；結束回到原音量
+  const a = audio && audio.raw;
+  if (a && typeof a.setMaster === 'function') { try { a.setMaster(on ? MASTER0 * .06 : MASTER0 * failDuckV); } catch (e) {} }
+}
 function calibShow() {
   unlockPointer();
   CAL.open = true; CAL.phase = 'ready'; CAL.taps = [];
@@ -2147,6 +2244,12 @@ function calibClose(start) {
   calibHalt(); CAL.open = false; CAL.phase = 'idle'; $('calib').hidden = true;
   const a = CAL.inst; CAL.inst = null;                 // 校準專用的聲音層用完就丟（還在敲的拍一起停）
   if (a) { try { if (typeof a.calibStop === 'function') a.calibStop(); if (typeof a.dispose === 'function') a.dispose(); else if (typeof a.stop === 'function') a.stop(); } catch (e) {} }
+  if (CAL.mode === 'belly') {   // 腹中校準：不重開局，偏差直接帶進這一局，接第 3 步
+    CAL.mode = null; $('calib').classList.remove('inBelly'); $('calibTitle').textContent = CAL_TEXT0.title; $('calibText').innerHTML = CAL_TEXT0.html;
+    calibDuck(false);
+    if (game && CAL.offsetMs != null) game.inputOffsetMs = CAL.offsetMs;
+    introWalk(); return;
+  }
   if (start) startFromTop();
 }
 function calibGiveUp(why) { console.warn('校準略過：', why); CAL.done = true; calibClose(true); }   // 函式在、但叫不起來：不擋開局
@@ -2175,7 +2278,7 @@ function calibBegin() {
     const beats = calibBeats(v);
     if (!beats.length) { calibGiveUp('calibClicks 沒有回傳拍點'); return; }
     CAL.beats = beats; CAL.taps = []; CAL.endAt = Math.max(...beats) + CAL_TAIL; CAL.phase = 'listen';
-    calibDots(0); calibUi('先是 ' + (Array.isArray(v.countIn) && v.countIn.length ? v.countIn.length + ' 下輕的預備拍，接著 ' : '') + CAL_N + ' 下鼓點。', null, true);
+    calibDots(0); calibUi(CAL.mode === 'belly' ? '' : '先是 ' + (Array.isArray(v.countIn) && v.countIn.length ? v.countIn.length + ' 下輕的預備拍，接著 ' : '') + CAL_N + ' 下鼓點。', null, true);
     CAL.poll = setInterval(() => { if (actx && actx.currentTime >= CAL.endAt) calibFinish(); }, 50);
   }).catch(calibGiveUp);
 }
@@ -2191,12 +2294,13 @@ function calibFinish() {
   if (est && est.ok && Number.isFinite(+est.offsetMs)) {
     const o = Math.round(+est.offsetMs);
     CAL.offsetMs = o; CAL.spreadMs = Number.isFinite(+est.spreadMs) ? Math.round(+est.spreadMs) : null; CAL.done = true; CAL.phase = 'done';
-    calibUi('已校準 ' + (o >= 0 ? '+' : '−') + Math.abs(o) + ' 毫秒', '開始（空白鍵）', false);
+    calibUi(CAL.mode === 'belly' ? '他點點頭。' : '已校準 ' + (o >= 0 ? '+' : '−') + Math.abs(o) + ' 毫秒', CAL.mode === 'belly' ? null : '開始（空白鍵）', false);
     CAL.auto = setTimeout(() => { if (CAL.open && CAL.phase === 'done') calibClose(true); }, CAL_AUTO_MS);
   } else {
     CAL.phase = 'retry';
     const n = CAL.taps.length;
-    calibUi(n < CAL_N / 2 ? '只收到 ' + n + ' 下，判定維持原樣。' : '這幾下和鼓點差得太多，判定維持原樣。', '再試一次（空白鍵）', true);
+    if (CAL.mode === 'belly') calibUi('沒跟上。空白鍵 再跟他敲一次', null, true);
+    else calibUi(n < CAL_N / 2 ? '只收到 ' + n + ' 下，判定維持原樣。' : '這幾下和鼓點差得太多，判定維持原樣。', '再試一次（空白鍵）', true);
   }
 }
 function calibPrimary() {
@@ -2218,6 +2322,17 @@ window.addEventListener('keydown', e => {                // 校準開著：先�
 function demoFocus(id) { try { $(id).focus({ preventScroll: true }); } catch (e) {} }
 function storyRender() {
   const c = STORY_CARDS[STORY.kind][STORY.i], n = STORY_CARDS[STORY.kind].length;
+  const seq = STORY.kind === 'prologue';
+  $('story').classList.toggle('seqCard', seq);
+  clearTimeout(STORY.timer);
+  $('storySkip').textContent = seq ? '略過（Esc）' : '略過';
+  if (seq) {   // 序：黑底一次一句，淡入；停 SEQ_MS 自動換下一句
+    const p = document.createElement('p'); p.textContent = c.line;
+    $('storyText').replaceChildren(p); setTimeout(() => p.classList.add('on'), 30);
+    $('storySkip').hidden = false; storyCue(c.cue, STORY.i + 1 === n ? Math.max(cueDur(c.cue), seqMs(c) / 1000 + .6) : 0);   // 最後一句的聲音至少撐到序結束
+    STORY.timer = setTimeout(storyNext, seqMs(c));
+    return;
+  }
   $('storyTitle').textContent = c.title;
   $('storyText').replaceChildren(...c.lines.map(t => { const p = document.createElement('p'); p.textContent = t; return p; }));
   const demo = STORY.kind === 'demo';
@@ -2230,26 +2345,29 @@ function storyRender() {
 }
 function storyShow(kind, done) {
   STORY.kind = kind; STORY.i = 0; STORY.done = done || null;
-  if (game) game.story = kind;
+  if (game) game.story = kind === 'prologue' ? 'intro' : kind;   // 聲音角色只認 'intro'／'outro'：新的序也算 'intro'（隔著木板的悶聲）
   unlockPointer();
   $('story').hidden = false; storyRender();
   try { $('storyNext').focus({ preventScroll: true }); } catch (e) {}
 }
 function storyEnd() {
   if (!STORY.kind) return;
-  const done = STORY.done; STORY.kind = null; STORY.done = null;
-  if (game) game.story = null;
+  const done = STORY.done; STORY.kind = null; STORY.done = null; clearTimeout(STORY.timer);
+  if (game) { game.story = null; game.storyCue = null; }
+  if (STORY.cues.length && STORY.skipped) storyCueStop();
+  STORY.skipped = false;
+  $('story').classList.remove('seqCard');
   $('story').hidden = true;
   if (done) done(); else if (game && game.phase === 'play') { lockPointer(); if (MAP_FINAL_Q && !LEVEL_FINAL) showMsg('期末七段版的地圖檔還沒到，先用原本的地圖。'); }   // 字卡蓋住了開局的訊息，翻完再說一次
 }
 function storyNext() { if (!STORY.kind) return; if (STORY.i + 1 < STORY_CARDS[STORY.kind].length) { STORY.i++; storyRender(); } else storyEnd(); }
-$('story').addEventListener('click', e => { e.stopPropagation(); if (e.target.closest('#storySkip')) storyEnd(); else storyNext(); });
+$('story').addEventListener('click', e => { e.stopPropagation(); if (e.target.closest('#storySkip')) { STORY.skipped = true; storyEnd(); } else storyNext(); });
 ['mousedown', 'pointerdown'].forEach(t => $('story').addEventListener(t, e => e.stopPropagation()));
 window.addEventListener('keydown', e => {                // 字卡開著：先接走按鍵，遊戲收不到
   if (!STORY.kind) return;
   e.preventDefault(); e.stopImmediatePropagation();
   if (e.repeat) return;
-  if (e.code === 'Escape') storyEnd(); else if (['Space', 'Enter', 'ArrowRight', 'NumpadEnter'].includes(e.code)) storyNext();
+  if (e.code === 'Escape') { STORY.skipped = true; storyEnd(); } else if (['Space', 'Enter', 'ArrowRight', 'NumpadEnter'].includes(e.code)) storyNext();
 }, true);
 // 失敗畫面降音量（使用者 11/11 要求「死亡後把聲音調低或直接關掉」）：進 fail 後先留 FAIL_DUCK_HOLD 秒讓被抓的那一聲響完，
 // 再於 FAIL_DUCK_FADE 秒內把總音量淡到 FAIL_DUCK_DB；離開 fail（按 R 重來）就回到原音量。過關、木馬結尾不受影響。
@@ -2499,6 +2617,7 @@ function drain() {
       if (e.a === 'takedown') lag(() => triggerWhiteFlash());                           // 暗殺：畫面邊緣短白閃
       else if (e.a === 'down') lag(() => flash(.25));
     }
+    else if (e.type === 'hint' && INTRO_NEW && e.key === 'belly') { /* 11/28 新開場：腹中進區提示換成第 3 步「踩著它走到暗門。」（introWalk） */ }
     else if (e.type === 'hint') { if (e.key && e.level >= 2) HW.lastLadder = { key: e.key, level: e.level, a: e.a, at: performance.now() }; lag(() => queueHint(e.a)); }
     else if (e.type === 'msg') lag(() => showMsg(e.a));
   }
@@ -2715,6 +2834,7 @@ function sync(dt, now) {
     if (won) for (const v of S.invaders.list) { v.f.position.x -= v.sp * dt; if (v.f.position.x < S.invaders.gx - 14) v.f.position.x += 42; v.f.scale.y = fl(); }
   }
   if (g.phase === 'win') cinFrame(dt);            // 木馬第 3 批：回頭看木馬（開關關著不執行）
+  camIntroFrame();                                // 11/28 鏡頭動畫（?intro=cam；沒在演時直接回來）
   movesFrame(dt);                                 // 搭配動作：波紋、矮掩體標示（開關關著不執行）
   knockFrame();                                   // ?lab=horse：敲暗號，一組敲完才判
   knockDraw();                                    // ?lab=horse：拍點條、準星倒數圈、教學步驟
@@ -3747,7 +3867,7 @@ function walkFrame(dt, on) {
 // 短展示關卡（?map=demo）：開局前 DEMO_RING_ON 秒顯示步伐提示，之後 DEMO_RING_FADE 秒淡出（競品分析 3.1）；其他地圖回 null＝照舊
 const DEMO_RING_ON = 20, DEMO_RING_FADE = 3;
 function demoRingAlpha(dt, on) {
-  if (!DEMO_ON) return null;
+  if (!DEMO_ON) return INTRO_NEW && INTRO.step >= 3 && game && game.player && game.player.inBelly ? 1 : null;   // 11/28 腹中第 3 步：預告圈出現
   // 用規則時間累計（低幀率或第一幀編譯著色器時，loop 的 dt 被壓在 0.1 秒會少算）；暫停、字卡時斷開，恢復後不把暫停那段算進去
   const gt = game ? num(game.time, NaN) : NaN, counting = on && !paused && !STORY.kind && Number.isFinite(gt);
   if (counting && DEMO.lastGT != null) DEMO.ringT += clamp(gt - DEMO.lastGT, 0, 2);
@@ -4346,6 +4466,90 @@ function cinBuild() {
   CIN.lookTo.set(td.x + .6, .9, td.z);
   CIN.look0.set(-Math.sin(V.yaw), 0, -Math.cos(V.yaw)).multiplyScalar(10).add(camera.position);
 }
+// ============================================================
+// 11/28 鏡頭動畫（?intro=cam，使用者選定；開場分析 docs/design/2026-11-27-opening-and-tutorial.md 做法乙）
+//   接在序之後、腹中之前：用現有 3D 場景，從城門外沿著街走回木馬前，天色由黃昏轉暗，約 CAM_DUR 秒。
+//   路線全從關卡資料算，改地圖不必重拉：城門外兩點 → 各區 botRoute 倒著走（城門區 → 木馬下）→ 各區起點 → 最後看著木馬（level.horse 的中心）。
+//   Esc 或空白鍵跳過；看過一次就記在這台電腦（localStorage），之後不再出現。演出時遊戲照跑、不收輸入：game.story = 'cam'（聲音角色只認 intro／outro，這個值＝照常）。
+const CAM_Q = INTRO_Q.includes('cam');
+const CAM_DUR = 26, CAM_EYE = 2.4, CAM_STOP = 9, CAM_SEEN_KEY = 'troy-intro-cam-seen';
+const CAM_DUSK = new THREE.Color(0x5a3a30);   // 黃昏的天色，演到最後轉回夜色（場景原本的背景與霧）
+const CAMI = { active: false, t0: 0, curve: null, look: null, done: null, bg0: null, fog0: null, fogD0: 0, light: null, tmpL: new THREE.Vector3(), tmpA: new THREE.Vector3(), frames: 0 };
+function camSeen() { try { return localStorage.getItem(CAM_SEEN_KEY) === '1'; } catch (e) { return false; } }
+function camWanted() { return CAM_Q && INTRO_NEW && !camSeen() && !!(game && game.level && S); }
+function camRoute(L) {   // 回傳路線點（THREE.Vector3）；全部從關卡資料來
+  const pts = [], Z = arr(L.zones), bz = bellyZoneOf(L), ok = p => p && Number.isFinite(+p.x) && Number.isFinite(+p.z);
+  const V3 = (x, z, y) => new THREE.Vector3(+x, y == null ? CAM_EYE : y, +z);
+  if (L.gate && Number.isFinite(+L.gate.x0)) {   // 城門外：門關著，從門外高處越過門頂（門高 8.5 公尺）再降進城裡；城內在門閂那一側
+    const gx0 = Math.min(+L.gate.x0, +L.gate.x1), gx1 = Math.max(+L.gate.x0, +L.gate.x1), gz = (+L.gate.z0 + +L.gate.z1) / 2;
+    const s = L.gate.latch && Number.isFinite(+L.gate.latch.x) && +L.gate.latch.x > gx1 ? -1 : 1;   // 城外在門閂的另一側（final 地圖：門閂在西，城外在東）
+    const gx = s > 0 ? gx1 : gx0;
+    pts.push(V3(gx + s * 14, gz, 11), V3(gx + s * 3, gz, 11.5), V3(gx - s * 5, gz, 7));
+  }
+  for (let k = Z.length - 1; k > bz; k--) {
+    const z = Z[k]; if (!z) continue;
+    const route = arr(z.botRoute).filter(ok);
+    for (let i = route.length - 1; i >= 0; i--) pts.push(V3(route[i].x, route[i].z));
+    if (ok(z.start)) pts.push(V3(z.start.x, z.start.z));
+  }
+  // 停在木馬前：離木馬中心 CAM_STOP 公尺、從路線最後的方向看過去（太靠近木馬的點拿掉，免得鏡頭鑽到木馬肚子下）
+  const H = L.horse;
+  if (H && Number.isFinite(+H.x0)) {
+    const hc = new THREE.Vector3((+H.x0 + +H.x1) / 2, CAM_EYE, (+H.z0 + +H.z1) / 2), flat = p => Math.hypot(p.x - hc.x, p.z - hc.z);
+    while (pts.length > 1 && flat(pts[pts.length - 1]) < CAM_STOP) pts.pop();
+    const from = H.drop && Number.isFinite(+H.drop.x) ? H.drop : pts[pts.length - 1];   // 從玩家爬下來的那一側看（木馬下的落點方向，那邊是空地）
+    const d = from ? Math.max(.001, flat(from)) : 0;
+    if (from) pts.push(V3(hc.x + (from.x - hc.x) / d * CAM_STOP, hc.z + (from.z - hc.z) / d * CAM_STOP, 2.8));
+  }
+  const out = []; for (const p of pts) if (!out.length || out[out.length - 1].distanceTo(p) > .8) out.push(p);
+  return out;
+}
+function camStart(done) {
+  const pts = game && game.level ? camRoute(game.level) : [];
+  if (pts.length < 2) { done(); return; }
+  CAMI.curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  const H = game.level.horse;
+  CAMI.look = H && Number.isFinite(+H.x0) ? new THREE.Vector3((+H.x0 + +H.x1) / 2, 3.2, (+H.z0 + +H.z1) / 2) : CAMI.curve.getPointAt(1).clone();
+  CAMI.bg0 = scene.background && scene.background.isColor ? scene.background.clone() : null;
+  CAMI.fog0 = scene.fog ? scene.fog.color.clone() : null; CAMI.fogD0 = scene.fog ? num(scene.fog.density, 0) : 0;
+  CAMI.light = new THREE.HemisphereLight(0xffb27a, 0x2a1a10, 0); scene.add(CAMI.light);   // 黃昏的天光，越演越暗
+  CAMI.active = true; CAMI.t0 = performance.now(); CAMI.done = done; CAMI.frames = 0;
+  if (game) game.story = 'cam';
+  unlockPointer(); document.body.classList.add('camIntro'); $('camSkip').hidden = false;
+  try { localStorage.setItem(CAM_SEEN_KEY, '1'); } catch (e) {}
+}
+function camEnd() {
+  if (!CAMI.active) return;
+  CAMI.active = false;
+  if (CAMI.bg0 && scene.background && scene.background.isColor) scene.background.copy(CAMI.bg0);
+  if (CAMI.fog0 && scene.fog) { scene.fog.color.copy(CAMI.fog0); scene.fog.density = CAMI.fogD0; }
+  if (CAMI.light) { scene.remove(CAMI.light); CAMI.light = null; }
+  if (game) game.story = null;
+  document.body.classList.remove('camIntro'); $('camSkip').hidden = true;
+  V.snap = true;
+  const d = CAMI.done; CAMI.done = null; if (d) d();
+}
+function camIntroFrame() {   // sync 依玩家擺好鏡頭之後、算圖之前覆寫
+  if (!CAMI.active) return;
+  const k = clamp((performance.now() - CAMI.t0) / 1000 / CAM_DUR, 0, 1), u = smooth(0, 1, k);
+  CAMI.frames++;
+  camera.position.copy(CAMI.curve.getPointAt(u));
+  CAMI.tmpA.copy(CAMI.curve.getPointAt(Math.min(1, u + .05))); CAMI.tmpA.y = Math.max(CAM_EYE - .2, CAMI.tmpA.y - .8);   // 看著前面一點的路（高處時平著看，不往下栽）
+  CAMI.tmpL.copy(CAMI.tmpA).lerp(CAMI.look, smooth(.82, 1, u));                              // 最後一段轉向木馬
+  camera.lookAt(CAMI.tmpL);
+  const night = smooth(.15, .95, k);   // 天色轉暗
+  if (CAMI.bg0 && scene.background && scene.background.isColor) scene.background.copy(CAM_DUSK).lerp(CAMI.bg0, night);
+  if (CAMI.fog0 && scene.fog) { scene.fog.color.copy(CAM_DUSK).lerp(CAMI.fog0, night); scene.fog.density = CAMI.fogD0 * (.35 + .65 * night); }
+  if (CAMI.light) CAMI.light.intensity = 1.1 * (1 - night);
+  if (k >= 1) camEnd();
+}
+$('camSkip').addEventListener('click', e => { e.stopPropagation(); camEnd(); });
+['mousedown', 'pointerdown'].forEach(t => $('camSkip').addEventListener(t, e => e.stopPropagation()));
+window.addEventListener('keydown', e => {                // 鏡頭動畫：Esc 或空白鍵跳過，其他按鍵不收
+  if (!CAMI.active) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (!e.repeat && (e.code === 'Escape' || e.code === 'Space')) camEnd();
+}, true);
 function cinFinish(skip) {
   if (CIN.done) return;
   // 演出結束（跳過或自然演完）：結尾的共鳴、落地聲、主題 0.3 秒收掉（聲音層的 stopHorseSignal 在模組本體 audio.raw 上）
@@ -4404,7 +4608,7 @@ function cinFrame(dt) {
 function showOver() {
   overShown = true; unlockPointer(); DEMO.overAt = performance.now();
   if (game.phase === 'fail') {
-    const why = game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';   // 規則給的完整句子直接顯示
+    const why = game.failLine || game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';   // 11/28 失敗只講一句：規則的 g.failLine（最早的原因）；沒有時退回整串 failReason
     $('failWhy').textContent = why;
     // 暗示階梯第 2、3 階：失敗畫面也寫出來（重來後再提示一次）
     const L = HW.lastLadder, fh = $('failHint');
@@ -4596,7 +4800,7 @@ if (DEMO_ON) {
   }, true);
   $('intro').hidden = true; demoCard();
 }
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL };   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL, intro: INTRO, story: STORY, cam: CAMI };   // intro／story：11/28 新開場的步驟、時間點與序的聲音事件（自動驗證讀）   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>

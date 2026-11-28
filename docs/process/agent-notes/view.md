@@ -49,6 +49,17 @@
 - **提示文字一律來自規則事件或規則常數**（`e.a`、`e.text`、`R.TEXT`）；畫面只負責排隊、框鍵名、淡入淡出。
 - 每個跟拍輸入都要有畫面呈現（總綱第 5、6 節）：盲區凝結、月亮相位鐘、衛兵火焰低音心跳、合拍腳印、出聲時衛兵側頭、盾牌低音反光、攻擊那一側火把閃。強度乘 `visualAid`。
 
+### 畫面給聲音的東西：11/28 新開場的掛點（照聲音角色 a7b5f7d 的介面）
+- 序（黑底一次一句，`STORY_CARDS.prologue`）：每換一句叫 `audio.raw.storyCue(name)`（`audio` 是畫面的包裝，模組本體在 `.raw`）；序結束或跳過叫 `audio.raw.storyCueStop(0.6)`。同時記在 `game.storyCue`／`game.storyCueN`（每換一句加 1）給自動驗證讀。整段序 `game.story` 仍是 `'intro'`（隔木板悶聲照舊；序聲音走自己的匯流排不受影響）。
+  - `cart`「黃昏。特洛伊人拉著粗繩，把木馬拖進城門。」
+  - `gate`「城門在木馬身後關上。」
+  - `cheer`「全城點起火把，歌聲和鼓聲一路傳到城牆。」
+  - （不放新聲音）「夜深了。火把一支支熄滅，醉倒的人睡在街上。」
+  - `feast`「木馬肚子裡，有人屏住了呼吸。」：祭典的鼓隔著木板，聽的位置換到木馬肚子裡
+- 每句停 `max(3.4 秒, 那段聲音長度 − 0.6 秒)`，長度讀 `RissetAudio.STORY_CUES`；最後一句 5 秒。五句約 21 秒，點擊或空白鍵提早換。
+- 腹中四步：`TroyDebug.intro.step` 1 聽／2 跟著他敲（校準，`TroyDebug.calib.mode === 'belly'`，遊戲總音量壓到 6%，校準拍由另一個 `createAudio` 聲音層的 `calibClicks` 出）／3 踩著它走（預告圈）／4 暗門開（規則的 `trapdoor_open`）。第二批的「只剩低鼓」低通可以照 `step` 1、2 開、`trapdoor_open` 收。
+- 鏡頭動畫（`?intro=cam`）：演出時 `game.story === 'cam'`（聲音不認這個值＝照常出聲）；聲音角色要配樂再約名稱。
+
 ### 畫面給 telemetry 的東西（`docs/design/2026-11-08-telemetry.md`）
 - `Telemetry.start({proto, version, device, env, clock})`：`proto` 為 `troy-prologue`／`vengeance`；`version` 取 `<meta name="odyssey-build">` 或 `window.ODYSSEY_BUILD`，沒有就 `dev`（打包工具目前還沒寫入，所以都是 dev）；`device` 取 `input[name="oDevice"]`（speaker/wired/bt/unknown）；`clock()` 回 `{t, ci, p, z}`（規則音訊時間、循環編號、相位、區域；大廳復仇 `z` 為 null）。
 - `env`：`collectEnv({outputLatency, baseLatency, sampleRate, toggles:{phaseBar, visualAid, cycle, music, synthVol, trackVol}, query})`；開局 2 秒後再補一次延遲。
@@ -250,6 +261,12 @@
   - 截圖腳本陷阱：用 head | sed 組腳本時 sed 失敗，主體沒寫進去，腳本開完瀏覽器就掛著不結束；組好後先 grep 確認主體在。
 - 11/27（畫面）木馬之夜離線：引擎與字體放進專案（未提交；全套 401 項與 cleancheck 通過）。vendor/three.min.js（r128、603 KB）＋ vendor/fonts/ 28 個 woff2 子集（2.07 MB），合計約 2.8 MB。index.html 三處外部網址改讀本機；ui-tokens.css 拿掉 @import，七個其他頁面補回 Google Fonts <link>（那些頁面照舊需要網路字體，畫面不變）。
   - 驗收（CDP 無頭、Fetch 攔掉所有非 127.0.0.1 請求）：?map=final&art=2 與 &ui=2 兩種，對外請求 0 個、THREE.REVISION=128、該載的字體都 loaded。和 HEAD 版（連網）同場景比：標題畫面差異只在拍帶動畫與幾個字的反鋸齒邊緣，放大看字形相同；3D 畫面差異只在火焰閃動與飄浮火星，HUD 文字無差異。沒用 Playwright（沒安裝，要另外下載），改用 Chrome CDP 的 Fetch 攔截，效果相同。
+- 11/28（畫面）新開場第一批＋鏡頭動畫（未提交；全套 409 項與 cleancheck 通過，cleancheck 要連 vendor/fonts/ 一起給，否則字體涵蓋測試會失敗）。截圖與量測腳本在 `docs/process/opening-2026-11-28/`。
+  - 有序時（?map=final 預設）新流程：序黑底一次一句（STORY_CARDS.prologue，叫聲音的 storyCue）→ 腹中「聽。」4 秒（按鍵不收，Esc 整段跳過）→「跟著他敲。」（校準搬進腹中：CAL.mode 'belly'，面板在下方、不按開始、遊戲聲音壓到 6%，結果直接寫 game.inputOffsetMs）→「踩著它走到暗門。」（預告圈）。規則的 'belly' 進區提示在新流程不顯示。腹中練習 HORSE_MODE 預設開（?horse=0 關）。
+  - ?intro=old 回舊流程（三張字卡、不校準、腹中練習要 ?horse=1）；?map=demo 只把校準說法換成「跟著同伴敲」。標題畫面開始鍵上方加耳機與鎖滑鼠一行，按鍵說明拿掉那兩句。
+  - 量時間（程式玩家）：按開始到走出木馬 36～48 秒（序約 21 秒、聽 4 秒、敲 9 秒、走 5～12 秒）。
+  - ?intro=cam：序之後放約 26 秒鏡頭（camRoute 全從關卡資料算：城門外越過門頂 → 各區 botRoute 倒著走 → 停在木馬前 9 公尺、從落點那側看），黃昏轉夜；Esc／空白鍵跳過；localStorage 'troy-intro-cam-seen' 記住看過。幀數：演出中 131～209、腹中遊戲 91～111（RTX 3060、1280×720）。
+  - 第二段（規則的 hintLevel、failCause／failLine，規則 b6a8afe 已提交）等總控轉介面約定再接，沒動。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
 
