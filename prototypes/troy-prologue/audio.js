@@ -279,6 +279,15 @@
     // 序：黑底一次一句、每句一段聲音（開場與教學分析 2026-11-27 第 3 節做法甲；只有畫面呼叫 storyCue 才響，不帶序時輸出不變）
     STORY_CUE_GAIN: 0.9,       // 四段聲音的整體音量（走自己的匯流排，直接到輸出，不受序字卡的「隔著木板」低通影響）【假設】
     STORY_FEAST_LP: 520,       // 祭典的鼓隔著木板：只留這以下
+    // 被抓那一刻（使用者 11/28「死亡的時候聲音太大」）：遊戲各層在 FAIL_FAST 秒內退到 FAIL_FAST_DB，再慢慢沉到 FAIL_DB；
+    // 被抓的重擊與警鐘走自己的匯流排（FAIL_CUE_GAIN → 限制器 → 輸出），不疊在還在響的追殺鼓上。都是【假設】，要真耳朵聽過再定
+    FAIL_FAST: 0.06,           // 進失敗後遊戲各層第一段退音的時間（秒；已排進 LOOKAHEAD 的鼓收不回來，只能靠這段壓下去）
+    FAIL_FAST_DB: -18,         // 第一段退到多少（dB）
+    FAIL_DB: -36,              // 之後慢慢沉到多少（dB）
+    FAIL_TC: 0.5,              // 第二段的時間常數（秒）
+    FAIL_BACK: 0.3,            // 離開失敗（按 R 重來）後回到原音量的時間（秒）
+    FAIL_CUE_GAIN: 0.32,       // 被抓那一聲的音量（原本約 1；0.32 ≈ −10 dB）
+    FAIL_LIMIT_DB: -12,        // 被抓那一聲的限制器門檻（dBFS）
     F_SEED: 20261112,          // 時間表的固定亂數種子（同一個網址每次聽到的順序一樣）
     // 弓弦（docs/design/2026-11-14-style-and-input-ideas.md 第 1.1、1.3 節；最小原型，只有呼叫 bowDraw／bowRelease／bowPluck 才響，預設版不呼叫）
     BOW_FULL: 1.2,             // 拉滿要幾秒；張力 = 1 − (1 − 經過 ÷ BOW_FULL)²（一開始升得快、快滿時變慢，像弦越來越緊）【假設】
@@ -567,7 +576,33 @@
     })();
     comp.connect(ctx.destination);
     var master = ctx.createGain(); master.gain.value = (opts.master != null) ? opts.master : 0.8;
-    master.connect(comp);
+    // 失敗退音（game.phase === 'fail' 時）：平時固定 1（乘 1 不改任何樣本），只有被抓才動
+    var failG = ctx.createGain(); failG.gain.value = 1; failG.connect(comp);
+    master.connect(failG);
+    // 被抓那一聲的匯流排：音量 → 限制器（DynamicsCompressor）→ 輸出。限制器只放在這條：放在總輸出會讓所有拍點晚約 6 ms（見上面 comp 的註解）
+    var failCue = null;
+    function failCueBus() {
+      if (failCue) return failCue;
+      var lim = ctx.createDynamicsCompressor();
+      lim.threshold.value = C.FAIL_LIMIT_DB; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.25;
+      failCue = ctx.createGain(); failCue.gain.value = C.FAIL_CUE_GAIN; failCue.connect(lim); lim.connect(comp);
+      return failCue;
+    }
+    var failOn = false;
+    function failUpdate(s, now) {
+      var on = !!(s && s.phase === 'fail');
+      if (on === failOn) return;
+      failOn = on;
+      var g = failG.gain, cur = g.value;
+      g.cancelScheduledValues(now); g.setValueAtTime(cur, now);
+      if (on) {
+        g.linearRampToValueAtTime(Math.pow(10, C.FAIL_FAST_DB / 20), now + C.FAIL_FAST);
+        g.setTargetAtTime(Math.pow(10, C.FAIL_DB / 20), now + C.FAIL_FAST, C.FAIL_TC);
+      } else {
+        g.linearRampToValueAtTime(1, now + C.FAIL_BACK);
+      }
+      if (log) log.push({ type: 'fail', t: now, on: on });
+    }
     // ---------- 序與終的字卡（game.story 是 'intro' 或 'outro' 時；第一次遇到才接上，沒有字卡的遊戲不經過這兩個節點）----------
     // 序（'intro'）：master → 低通 STORY_LP → 退 STORY_DB → 輸出，加木板外的慶祝遠聲；翻完（旗標消失）STORY_OPEN 秒內打開。
     // 終（'outro'）：最後一擊之後 STORY_END_FADE 秒內全靜，風聲（不經過 master，直接到輸出）STORY_WIND_IN 秒淡入。
@@ -576,7 +611,7 @@
       if (story.lp) return;
       story.lp = ctx.createBiquadFilter(); story.lp.type = 'lowpass'; story.lp.frequency.value = 20000; story.lp.Q.value = 0.7;
       story.g = ctx.createGain(); story.g.gain.value = 1;
-      master.disconnect(comp); master.connect(story.lp); story.lp.connect(story.g); story.g.connect(comp);
+      master.disconnect(failG); master.connect(story.lp); story.lp.connect(story.g); story.g.connect(failG);
     }
     function storyLoop(dest, f, q, g, lfoHz, now) {   // 一直響的濾波雜訊（慶祝的遠聲、風）：慢慢起伏
       var src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), amp = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
@@ -2655,11 +2690,12 @@
         tone(cueBus, t + 0.09, 'sine', 820, 0, 0, 0.04, 0.001, 0.25);
         tone(cueBus, t + 0.09, 'sine', 1310, 0, 0, 0.025, 0.001, 0.18);
       },
-      bell: function (t) {                // 警鐘：青銅鐘，敲三下（追殺開始時停掉高度警覺嗡鳴）
+      bell: function (t, d, dest) {       // 警鐘：青銅鐘，敲三下（追殺開始時停掉高度警覺嗡鳴）；dest 給被抓用（走被抓的匯流排）
         stopAlertedDrone(t);
+        var out = dest || cueBus;
         var part = [0.56, 0.92, 1.19, 1.71, 2, 2.74, 3, 3.76], amp = [1, 0.7, 0.6, 0.45, 0.4, 0.25, 0.2, 0.15];
         for (var s = 0; s < 3; s++) for (var i = 0; i < part.length; i++)
-          tone(cueBus, t + s * 0.55, 'sine', 330 * part[i], 0, 0, 0.12 * amp[i], 0.002, 2.6 - i * 0.22);
+          tone(out, t + s * 0.55, 'sine', 330 * part[i], 0, 0, 0.12 * amp[i], 0.002, 2.6 - i * 0.22);
       },
       preBlind: function (t) {            // 盲區快到了（11/08 改）：木魚「叩、叩」兩聲，短促、木質，1～3 kHz 為主，喇叭上也聽得出來
         function tok(tt, g) {             // 木魚：空腔共鳴 1.35 kHz 為主＋兩個不諧和泛音，木槌敲到的「嗒」；0.1 秒內收掉
@@ -2705,11 +2741,12 @@
         tone(cueBus, t + 0.16, 'sine', 660, 0, 0, 0.02, 0.01, 0.2);
         noise(cueBus, t + 0.04, 'bandpass', 700, 1.2, 0.06, 0.04, 0.38);
       },
-      caught: function (t) {              // 被抓：重擊＋警鐘（停掉高度警覺嗡鳴）
+      caught: function (t) {              // 被抓：重擊＋警鐘（停掉高度警覺嗡鳴）；走被抓的匯流排（FAIL_CUE_GAIN＋限制器），遊戲各層由 failUpdate 退下去
         stopAlertedDrone(t);
-        tone(cueBus, t, 'sine', 90, 35, 0.5, 1.0, 0.002, 0.9);
-        noise(cueBus, t, 'lowpass', 600, 0.8, 0.7, 0.002, 0.3);
-        CUES.bell(t + 0.15);
+        var out = failCueBus();
+        tone(out, t, 'sine', 90, 35, 0.5, 1.0, 0.002, 0.9);
+        noise(out, t, 'lowpass', 600, 0.8, 0.7, 0.002, 0.3);
+        CUES.bell(t + 0.15, null, out);
       },
       takedown: function (t) {            // 暗殺成功：保留原本倒地聲，疊加短的低頻悶擊
         CUES.down(t);
@@ -3065,6 +3102,7 @@
         if (!s || dead) return;
         var now = ctx.currentTime, k = 0.08;
         lastState = s;
+        failUpdate(s, now);   // 被抓：遊戲各層退音；重來：回原音量
         if (!tabFromRules && getRules()) refreshTables();
         else if (!(ill && ill.u) && tables[0] && tables[0].length !== ruleM()) refreshTables();   // 每圈拍數變了（第二步 7→6）就重建表
         // 規則常數：盲區長度 BLIND_LEN（舊名 BLIND）；警戒時的盲區長度（有專用常數就用，沒有同 BLIND_LEN）

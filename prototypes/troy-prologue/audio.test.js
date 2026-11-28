@@ -269,3 +269,13 @@ test('序的四段聲音：名稱 cart、gate、cheer、feast 照順序，每段
   assert.ok(total <= 30, '序要在 30 秒內聽完（分析第 3 節做法甲），四段共 ' + total + ' 秒');
   assert.ok(C.STORY_FEAST_LP > 0 && C.STORY_FEAST_LP < 1200, '祭典的鼓要隔著木板（低通）');
 });
+
+// 使用者 11/28「死亡的時候聲音太大」：被抓那一聲壓低、走限制器；遊戲各層先快退再慢慢沉（離線量測見角色筆記）
+test('被抓：遊戲各層先在 0.1 秒內退至少 12 dB、再沉更低，被抓那一聲比原本低至少 6 dB、限制器門檻在 −6 dBFS 以下', () => {
+  assert.ok(C.FAIL_FAST > 0 && C.FAIL_FAST <= 0.1, '第一段退音要快（已排的鼓收不回來）');
+  assert.ok(C.FAIL_FAST_DB <= -12, '第一段至少退 12 dB');
+  assert.ok(C.FAIL_DB < C.FAIL_FAST_DB, '之後要沉得更低，不是又變大');
+  assert.ok(C.FAIL_BACK > 0 && C.FAIL_BACK <= 1, '重來後要回到原音量');
+  assert.ok(C.FAIL_CUE_GAIN > 0 && 20 * Math.log10(C.FAIL_CUE_GAIN) <= -6, '被抓那一聲至少低 6 dB');
+  assert.ok(C.FAIL_LIMIT_DB <= -6, '限制器門檻');
+});

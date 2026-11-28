@@ -549,3 +549,23 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
     - 不帶序時排程和 HEAD 相同：`audio-zone-check.mjs`（拿掉衛兵、DRIVE 關、固定亂數），第 1～4 區各 20 秒，20 秒內全部相同（只差錄音結束那一刻預排的拍，同前）。
     - `bash tools/cleancheck.sh audio.js audio.test.js audio-test.html`：402 過，嚴格檢查通過。
   - 第二批（腹中只剩低鼓、暗門打開時鼓聲湧進來）與終章三層退聲照派工排在之後，這次沒做。
+- **11/28：被抓那一刻太大聲（使用者實際玩時回報「死亡的時候聲音太大」）**（未提交；`audio.js`、`audio.test.js`）：
+  - **原因**：被抓的重擊（90 Hz 正弦，音量 1.0）加上雜訊 0.7 和警鐘，單獨就有 −1.4 dB，疊在 DRIVE 1.00 的追殺鼓上，被抓那 0.25 秒直接頂到輸出保護（−0.9 dB）。鼓會預排 0.5 秒（`LOOKAHEAD`），被抓後還會再響半秒；index.html 的 `failDuckFrame` 要等 0.25 秒後才開始降，被抓那一下壓不到。
+  - **修法**：
+    - `failG`（master 和輸出之間的一個增益，平常固定 1，乘 1 不改任何樣本）：`update` 看到 `phase === 'fail'` 時，`FAIL_FAST` 0.06 秒內退到 `FAIL_FAST_DB` −18 dB，之後以 `FAIL_TC` 0.5 秒沉到 `FAIL_DB` −36 dB；離開 fail（按 R 重來）時 `FAIL_BACK` 0.3 秒內回到 1。log 會記 `{type:'fail', on}`。
+    - 被抓那一聲（`caught`，連同警鐘）改走自己的匯流排：`FAIL_CUE_GAIN` 0.32（約 −10 dB）接限制器（DynamicsCompressor，門檻 `FAIL_LIMIT_DB` −12 dBFS、比例 20、attack 2 ms）再到輸出，不經過 master。`bell` 多一個可選參數 `dest`，其他地方照舊呼叫。
+    - **限制器只放在被抓這條**：放在總輸出會讓所有拍點晚約 6 ms，也就做不到「沒被抓時逐拍相同」。總輸出仍是原本的柔性削峰。
+    - 常數都是【假設】，要真耳朵聽過再定。
+  - **離線量測**（`audio-fail-peak.mjs`，`--mute-audio`；真規則第 2 區，3 秒起追殺、drive 0.3→1.0，8 秒被抓，照 index 的 failDuckFrame 模擬總音量）：
+    | 時段 | 修改前峰值 | 修改後峰值 | 修改前 50 ms 響度 | 修改後 50 ms 響度 |
+    |---|---|---|---|---|
+    | 平常（遊戲最響的一擊） | −3.1 dB | −3.5 dB | −10.9 | −11.2 |
+    | 追殺（drive 升到 1.0） | −0.9 | −0.9 | −3.9 | −4.2 |
+    | 被抓 0～0.25 秒 | **−0.9** | **−9.6** | −6.3 | −15.5 |
+    | 被抓 0.25～1 秒 | −4.4 | −10.5 | −11.4 | −21.2 |
+    | 被抓 1～3.5 秒 | −18.7 | −11.4（警鐘餘音，不受 index 降音影響） | −24.4 | −20.2 |
+    - 單獨量（各層靜音）：caught −1.4 → −8.0 dB；bell −10.5（追殺開始那三下沒改）；huntCall（4 公尺）−11.0；takedownFail −16.6。
+    - 平常與追殺兩列在前後兩版各差約 0.3 dB，是模擬本身每次跑的落差（同一份檔案跑兩次也會這樣），不是這次改動造成的。
+  - 不被抓時和 HEAD 相同：`audio-zone-check.mjs`（拿掉衛兵、DRIVE 關、固定亂數），第 1～4 區各 20 秒，容許浮點誤差比對全部相同，只差錄音結束那一刻預排的拍；同一份 HEAD 自己跑兩次（`SELF=1`）也是一樣的差法。
+  - `bash tools/cleancheck.sh audio.js audio.test.js`：410 過，嚴格檢查通過；Node 測試加 1 條（共 28 條）。試聽頁 `?mute=1` 載入、序的按鈕都正常，沒有錯誤。
+  - **給畫面（不必改也可以）**：index.html 的 `failDuckFrame`（0.25 秒後總音量降 −24 dB）留著也不衝突，遊戲各層會再低 24 dB；被抓那一聲不經過 master，所以不受它影響。之後想讓聲音層全權處理，可以拿掉。
