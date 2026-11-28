@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>木馬之夜　期末提案簡報（初稿）</title>
+<style>
+/* 顏色沿用 docs/design/2026-11-15-ui-design-system.md「夜城訊號」：一種顏色只代表一件事 */
+:root{
+  --night:#0E1322; --stone:#232838; --parchment:#F2ECDD; --bronze:#C9A55C;
+  --beat:#6FB3A6; --torch:#E8893B; --blood:#B02A1E; --mute:#A9A596;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#05070d;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;color:var(--parchment)}
+.slide{width:1920px;height:1080px;background:var(--night);position:relative;overflow:hidden;
+  padding:96px 128px 120px;display:flex;flex-direction:column;gap:32px;margin:0 auto 24px;page-break-after:always}
+h1,h2{font-family:'Noto Serif TC','PMingLiU',serif;font-weight:900;letter-spacing:.04em;line-height:1.15}
+h1{font-size:128px}
+h2{font-size:64px}
+h3{font-size:36px;font-weight:600;line-height:1.3}
+p,li{font-size:32px;line-height:1.55}
+.mute{color:var(--mute)}
+.lead{font-size:40px;line-height:1.5}
+.beatband{height:28px;display:flex;gap:18px;align-items:center}
+.beatband i{display:block;width:14px;height:14px;border-radius:50%;background:var(--stone)}
+.beatband i.on{background:var(--beat)}
+.beatband i.big{width:28px;height:28px;border-radius:4px;background:var(--bronze)}
+.grid{display:grid;gap:24px}
+.card{background:var(--stone);border-radius:4px;padding:28px 32px;display:flex;flex-direction:column;gap:10px}
+.card.beat{border-left:8px solid var(--beat)} .card.torch{border-left:8px solid var(--torch)}
+.card.blood{border-left:8px solid var(--blood)} .card.bronze{border-left:8px solid var(--bronze)}
+.tag{font-size:26px;color:var(--bronze);font-weight:600}
+table{border-collapse:collapse;width:100%}
+th,td{font-size:28px;line-height:1.4;text-align:left;padding:12px 18px;border-bottom:1px solid #3a4054;vertical-align:top}
+th{color:var(--bronze);font-weight:600}
+kbd{background:var(--stone);border:1px solid var(--bronze);border-radius:2px;padding:0 10px;font-size:28px}
+.foot{position:absolute;left:128px;right:128px;bottom:40px;display:flex;justify-content:space-between;font-size:24px;color:var(--mute)}
+.blank{border-bottom:2px solid var(--mute);display:inline-block;min-width:240px}
+.box{background:var(--stone);border:2px solid var(--bronze);border-radius:4px;padding:16px 22px;font-size:26px;line-height:1.4;text-align:center}
+.box.s{border-color:var(--beat)} .box.v{border-color:var(--torch)}
+.arrow{font-size:30px;color:var(--bronze);align-self:center}
+.dash{border:2px dashed var(--mute);border-radius:4px;padding:20px 28px}
+@media print{body{background:none}.slide{margin:0}}
+</style>
+</head>
+<body>
+
+<!-- 1 題目與一句話 -->
+<section class="slide" id="s1" style="justify-content:center">
+  <h1>木馬之夜</h1>
+  <div class="beatband" aria-hidden="true"><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i></div>
+  <p class="lead" style="max-width:1400px">特洛伊城慶祝勝利的那一夜，你從木馬肚子裡爬出來。全城的鼓聲是唯一的掩護，踩著鼓點走到城門，把門打開。</p>
+  <p class="mute">用耳朵玩的潛行遊戲　網頁版，開網址就能玩，請戴耳機</p>
+  <p class="mute">期末專題提案（第 12 週）　組員：<span class="blank"></span>　<span class="blank"></span>　<span class="blank"></span>　學號：<span class="blank"></span></p>
+  <div class="foot"><span>期末提案</span><span>1 / 9</span></div>
+</section>
+
+<!-- 2 怎麼玩 -->
+<section class="slide" id="s2">
+  <h2>怎麼玩：聽、踩、等那一擊</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><span class="tag">1　聽</span><h3>找出踩得上的低鼓</h3><p class="mute">鼓聲裡有一條低而厚的鼓，腳步落在它上面，腳步聲就被蓋住。</p></div>
+    <div class="card torch"><span class="tag">2　踩</span><h3>踩歪一步，衛兵會過來看</h3><p class="mute">火把變橘色。退開，或躲進影子，就沒事。</p></div>
+    <div class="card bronze"><span class="tag">3　等那一擊</span><h3>最響的一擊落下後 0.6 秒</h3><p class="mute">所有鼓一起落下，衛兵察覺不到你。這時衝過火光，或從背後放倒衛兵。</p></div>
+    <div class="card blood"><span class="tag">4　越來越急</span><h3>越深入城裡，鼓越密越快</h3><p class="mute">要在更吵、更急的聲音裡，找到同一條低鼓。被發現（火把變紅）就要跑、要躲。</p></div>
+  </div>
+  <p class="mute">按鍵：<kbd>W A S D</kbd> 走　<kbd>Shift</kbd> 跑　<kbd>Alt</kbd> 蹲　<kbd>空白鍵</kbd> 屏息　<kbd>E</kbd> 放倒衛兵、推門閂</p>
+  <div class="foot"><span>期末提案</span><span>2 / 9</span></div>
+</section>
+
+<!-- 3 期中到期末差在哪 -->
+<section class="slide" id="s3">
+  <h2>期中到期末，差在哪</h2>
+  <table>
+    <tr><th style="width:22%"></th><th style="width:36%">期中版（現在）</th><th>期末版（目標）</th></tr>
+    <tr><td>關卡</td><td>四區，程式玩家跑完約 45 秒</td><td>七段加開場與結尾，首次遊玩 8 到 10 分鐘（目標，還沒量）</td></tr>
+    <tr><td>鼓聲</td><td>節奏固定，聽不出加速</td><td>連續越來越急，整關是一條往上的緊張曲線</td></tr>
+    <tr><td>難度</td><td>窄巷整段都是關口，被追殺後很難甩掉</td><td>每段只有一個關口，其餘是可以喘氣的路</td></tr>
+    <tr><td>故事</td><td>直接開始</td><td>開場三張插圖、結尾一張插圖</td></tr>
+  </table>
+  <div class="dash"><p>「越來越急」已在試聽頁通過，還沒有在遊戲裡聽過。第 11 週先把它做進遊戲，使用者第一時間聽。</p></div>
+  <p class="mute">不能砍的四樣：鼓聲越來越急、窄巷重排、開場與結尾插圖、每段一個關口。</p>
+  <div class="foot"><span>期末提案</span><span>3 / 9</span></div>
+</section>
+
+<!-- 4 七段流程 -->
+<section class="slide" id="s4">
+  <h2>七段流程：每段只教一件新事</h2>
+  <table>
+    <tr><th>段</th><th>名稱</th><th>時長</th><th>教什麼</th></tr>
+    <tr><td>序</td><td>木馬進城</td><td>0:30</td><td>不能操作。三張插圖加旁白</td></tr>
+    <tr><td>1</td><td>木馬腹中</td><td>1:00</td><td>踩拍：踩準 4 步，暗門才開</td></tr>
+    <tr><td>2</td><td>木馬下</td><td>0:40</td><td>最響的一擊：等它落下再走出影子</td></tr>
+    <tr><td>3</td><td>神殿廣場</td><td>1:20</td><td>影子與查看</td></tr>
+    <tr><td>4</td><td>慶宴的街（新）</td><td>1:20</td><td>蹲與跑</td></tr>
+    <tr><td>5</td><td>城牆下的窄巷（重排）</td><td>1:10</td><td>從背後放倒衛兵、屏息</td></tr>
+    <tr><td>6</td><td>沒有火的後街（新）</td><td>1:20</td><td>追殺與甩掉；整關最暗</td></tr>
+    <tr><td>7</td><td>城門</td><td>1:10</td><td>綜合；推門閂要挑時機</td></tr>
+    <tr><td>終</td><td>城門開了</td><td>0:30</td><td>不能操作。一張插圖</td></tr>
+  </table>
+  <p class="mute">時長是目標，不是量到的數字。合計約 9 分鐘；熟手不重來約 5 分鐘（推測）。</p>
+  <div class="foot"><span>期末提案</span><span>4 / 9</span></div>
+</section>
+
+<!-- 5 程式流程圖 -->
+<section class="slide" id="s5">
+  <h2>程式流程：規則不知道聲音和畫面</h2>
+  <div style="display:flex;flex-direction:row;align-items:stretch;gap:20px">
+    <div class="card" style="width:300px"><span class="tag">輸入</span><div class="box">鍵盤與滑鼠<br>每個按鍵記下時間</div></div>
+    <span class="arrow">→</span>
+    <div class="card bronze" style="flex:1"><span class="tag">規則模組（純計算，可用 Node 測試）</span>
+      <div style="display:flex;flex-direction:row;gap:14px;align-items:center">
+        <div class="box">鼓的時鐘<br>一圈走到哪</div><span class="arrow">→</span>
+        <div class="box">判定<br>踩準了嗎<br>衛兵聽到了嗎</div><span class="arrow">→</span>
+        <div class="box">遊戲狀態<br>玩家、衛兵<br>哪一段、急的程度</div>
+      </div>
+    </div>
+    <span class="arrow">→</span>
+    <div style="display:flex;flex-direction:column;gap:20px;width:480px">
+      <div class="card beat"><span class="tag">聲音模組（Web Audio）</span><div class="box s">照時鐘排鼓聲<br>照急的程度疊快鼓<br>躲、逃時切換效果</div></div>
+      <div class="card torch"><span class="tag">畫面模組（3D 與介面）</span><div class="box v">畫場景、火把顏色<br>提示文字、最響一擊的閃光</div></div>
+    </div>
+  </div>
+  <p>時間以聲音為準：鼓聲由瀏覽器精準排程，規則的時鐘跟著它走。按鍵時間先扣掉聲音輸出的延遲再判定，聽到的拍和判定的拍是同一拍。</p>
+  <p class="mute">每個機制有自己的試驗場（網址參數開啟）和自動檢查。換畫面或換平台，規則不用重寫。</p>
+  <div class="foot"><span>期末提案　詳細圖見企劃書第 9 節</span><span>5 / 9</span></div>
+</section>
+
+<!-- 6 衛兵狀態 -->
+<section class="slide" id="s6">
+  <h2>衛兵的狀態：玩家要對付的就是這張圖</h2>
+  <div style="display:flex;flex-direction:row;gap:20px;align-items:center;flex-wrap:wrap">
+    <div class="box" style="border-color:var(--beat)">巡邏</div>
+    <span class="arrow">聽到踩歪、跑步聲 →</span>
+    <div class="box v">查看（橘火把）</div>
+    <span class="arrow">看到玩家超過 1.5 秒 →</span>
+    <div class="box" style="border-color:var(--blood)">追殺（紅火把）</div>
+  </div>
+  <div style="display:flex;flex-direction:row;gap:20px;align-items:center;flex-wrap:wrap">
+    <div class="box" style="border-color:var(--blood)">追殺</div>
+    <span class="arrow">玩家躲進影子 →</span>
+    <div class="box">搜索</div>
+    <span class="arrow">搜完沒找到（甩掉）→</span>
+    <div class="box" style="border-color:var(--beat)">回到巡邏</div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card"><p>查看走到聲音處沒看到人，回到巡邏。</p></div>
+    <div class="card"><p>搜索時玩家在影子裡出聲，再回到追殺。</p></div>
+    <div class="card"><p>追殺時被抓到，從這一段重來。</p></div>
+    <div class="card"><p>最響的一擊時從背後放倒衛兵，衛兵倒下。</p></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>6 / 9</span></div>
+</section>
+
+<!-- 7 分工與週次 -->
+<section class="slide" id="s7">
+  <h2>三人分工與週次</h2>
+  <table>
+    <tr><th style="width:15%">週</th><th>設計、程式、整合：<span class="blank" style="min-width:160px"></span></th><th>電繪：<span class="blank" style="min-width:160px"></span></th><th>建築：<span class="blank" style="min-width:160px"></span></th></tr>
+    <tr><td>11　11/19</td><td>越來越急的鼓聲進遊戲；腹中練習改預設</td><td>分析 2 到 3 款遊戲畫風，風格草圖</td><td>窄巷重排與新兩區平面草圖</td></tr>
+    <tr><td>12　11/26 提案</td><td>概念、程式流程圖、操作影片 1 分鐘</td><td>主視覺、序的插圖草稿</td><td>全城平面圖定稿</td></tr>
+    <tr><td>13　12/3 小組測試</td><td>新兩區做進遊戲、序與終翻頁</td><td>介面圖示、插圖完稿</td><td>主持試玩 3 到 5 人，記每段時間</td></tr>
+    <tr><td>14　12/10</td><td>依測試結果改難度</td><td>角色立繪、標題</td><td>整理一頁測試結果</td></tr>
+    <tr><td>15　12/17</td><td>只修錯，錄示範影片</td><td>發表版面、海報</td><td>問答準備、週報彙整</td></tr>
+    <tr><td>16　12/24 發表</td><td>發表、現場示範</td><td>海報</td><td>示範時操作或解說</td></tr>
+  </table>
+  <p class="mute">每週結束都要看得到東西：第 11 週玩得到越來越急的四區版，第 13 週七段從頭玩到尾。</p>
+  <div class="foot"><span>期末提案　姓名請填入表頭空格</span><span>7 / 9</span></div>
+</section>
+
+<!-- 8 風險與砍範圍 -->
+<section class="slide" id="s8">
+  <h2>風險與砍範圍的順序</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:32px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <h3 style="color:var(--bronze)">主要風險</h3>
+      <div class="card"><p>真人玩不到 8 分鐘：第 13 週量，不夠就把後街加長，不加新機制。</p></div>
+      <div class="card"><p>越來越急進遊戲後還是沒有加速感：第 11 週先做，不行就把起點與各段的值拉開。</p></div>
+      <div class="card"><p>新兩區做不完，或美術來不及：照右邊的順序砍；插圖沒到就用黑底旁白。</p></div>
+      <div class="card"><p>喇叭聽不清低鼓：開場寫「請戴耳機」，畫面提示留著。</p></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <h3 style="color:var(--bronze)">時間不夠，從上往下砍</h3>
+      <ol style="padding-left:44px;display:flex;flex-direction:column;gap:6px">
+        <li>弓弦聲、第二批想法</li>
+        <li>敲暗號（腹中只留踩 4 步）</li>
+        <li>照亮場景（後街改一般暗區）</li>
+        <li>新區之二：沒有火的後街</li>
+        <li>加分美術（立繪等）</li>
+        <li>新區之一：慶宴的街，剩約 5 分鐘版本</li>
+      </ol>
+      <div class="card blood"><p>不能砍：鼓聲越來越急、窄巷重排、序與終插圖、每段一個關口。</p></div>
+    </div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>8 / 9</span></div>
+</section>
+
+<!-- 9 請老師給意見 -->
+<section class="slide" id="s9">
+  <h2>想請老師給意見的地方</h2>
+  <div class="grid" style="gap:20px">
+    <div class="card bronze"><h3>1　範圍夠不夠</h3><p class="mute">七段、8 到 10 分鐘，三個人做到期末發表，會不會太多或太少？</p></div>
+    <div class="card bronze"><h3>2　該砍哪個</h3><p class="mute">時間不夠時，先砍新區、照亮場景還是插圖？</p></div>
+    <div class="card bronze"><h3>3　怎麼驗證「越來越急」</h3><p class="mute">這是看得到、也聽得到的主題，現場發表要怎麼讓同學聽出來？</p></div>
+    <div class="card bronze"><h3>4　人數與題目</h3><p class="mute">三人一組是否可行；兩人版的備案是否可以接受？</p></div>
+  </div>
+  <div class="foot"><span>期末提案　謝謝聆聽</span><span>9 / 9</span></div>
+</section>
+
+</body>
+</html>

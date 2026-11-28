@@ -1,0 +1,115 @@
+/* 網頁介面設計代號（方向 A「夜城訊號」，docs/design/2026-11-15-ui-design-system.md）
+ * 設計代號（token）＝把顏色、字級取名字集中在這裡，各頁都用同一組名字，改一處全站一起變。
+ * 用法：頁面 <link rel="stylesheet" href="ui-tokens.css">（子資料夾用 ../ui-tokens.css），之後只用下面的變數與 .ui-* 類別。
+ * 七個顏色，一色一義：
+ *   --night 頁面底｜--stone 面板、區塊底｜--parchment 內文、標題｜--bronze 只給可以按的東西（連結、按鈕、目前選中）
+ *   --beat 踩得上的拍、準、通過、安全｜--torch 警告、查看、太早／太晚｜--blood 失敗、追殺、不可逆
+ * 對比（WCAG，文字至少 4.5：1）：羊皮紙／城牆石 12.5、青銅／城牆石 6.3、海青／城牆石 6.1、火把橘／城牆石 5.6、
+ *   次要字（--muted，羊皮紙 68%）／城牆石約 6.6。血紅當字只有 2.8，所以血紅只當底色、色條、框線，上面的字用羊皮紙（5.6）。
+ * 遊戲頁（troy-prologue/index.html）在 claude.ai 試玩頁裡載不到這個檔，所以那頁的 :root 另抄一份同值的變數當備援；改色時兩邊一起改。
+ */
+/* 字體不在這裡載入（11/27 起）：要網路字體的頁面自己用 <link> 載 Google Fonts；木馬之夜遊戲頁改用本機字體 troy-prologue/vendor/fonts/，才能離線跑。 */
+
+:root {
+  /* 顏色：只有這七個 */
+  --night: #0E1322;
+  --stone: #232838;
+  --parchment: #F2ECDD;
+  --bronze: #C9A55C;
+  --beat: #6FB3A6;
+  --torch: #E8893B;
+  --blood: #B02A1E;
+  /* 由上面衍生（同色加透明度，不是新顏色） */
+  --muted: rgba(242, 236, 221, .68);      /* 次要字：羊皮紙 68% */
+  --rule: rgba(242, 236, 221, .14);       /* 分隔線、面板邊 */
+  --stone-2: rgba(242, 236, 221, .05);    /* 城牆石上再疊一層（輸入框、清單列） */
+  --bronze-wash: rgba(201, 165, 92, .14); /* 可按的東西被指到、被選中時的底 */
+  /* 字型：題字＋內文兩種 */
+  --font-title: "Noto Serif TC", "Songti TC", serif;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  /* 字級與行高 */
+  --fs-12: 12px; --fs-14: 14px; --fs-16: 16px; --fs-20: 20px; --fs-28: 28px; --fs-44: 44px; --fs-64: 64px;
+  --lh-body: 1.7; --lh-title: 1.15;
+  --measure: 36em;                         /* 內文一行不超過 36 個中文字 */
+  /* 形狀：面板 4px（石塊感）、按鈕 2px，不加陰影 */
+  --r-panel: 4px; --r-btn: 2px;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  color-scheme: dark;
+}
+
+/* ---------- 11/28 配色 A「陶土紅黑」：<html class="palA"> 才套用（作品集入口、切換台、關卡編輯器預設加上，?ui=0 不加）----------
+   色票同 playtest-2026-11-28.html 的 A。其他頁沒有 palA，照舊深色（遊戲頁疊在畫面上的深色面板不受影響）。
+   對比：字 #1E1611／底 #EFDDC3 13.4；次要字 #5B4636 6.7；紅褐 #9A3412 5.5；按鈕字 #EFDDC3／#9A3412 5.5；警告 #8A4510 5.4；海青 #1F5566 6.2 */
+.palA {
+  --night: #EFDDC3; --stone: #FAF1E2; --parchment: #1E1611; --bronze: #9A3412; --beat: #1F5566; --torch: #8A4510; --blood: #B02A1E;
+  --muted: #5B4636; --rule: rgba(30, 22, 17, .2); --stone-2: rgba(30, 22, 17, .04); --bronze-wash: rgba(154, 52, 18, .1);
+  --beat-muted: rgba(30, 22, 17, .4);      /* 拍帶的淡小點 */
+  --band: repeating-linear-gradient(90deg, #1E1611 0 14px, transparent 14px 18px, #9A3412 18px 22px, transparent 22px 26px);   /* 黑紅相間的飾帶 */
+  color-scheme: light;
+}
+.palA body { background: var(--band) top left / 100% 8px no-repeat, var(--night); }
+
+/* ---------- 基本 ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--night); }
+body {
+  margin: 0; background: var(--night); color: var(--parchment);
+  font: 400 var(--fs-16)/var(--lh-body) var(--font-body);
+  font-variant-numeric: tabular-nums;     /* 數字等寬，面板數字不跳動 */
+  overflow-x: hidden;
+}
+[hidden] { display: none !important; }
+a { color: var(--bronze); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--parchment); outline-offset: 2px; }   /* 鍵盤焦點：羊皮紙框，任何底色上都看得到 */
+
+/* ---------- 字 ---------- */
+.ui-title { font-family: var(--font-title); font-weight: 900; letter-spacing: .04em; line-height: var(--lh-title); color: var(--parchment); margin: 0; }
+.ui-title.xl { font-size: clamp(40px, 8vw, var(--fs-64)); }
+.ui-title.lg { font-size: clamp(28px, 5vw, var(--fs-44)); }
+.ui-title.md { font-size: var(--fs-28); }
+.ui-title.sm { font-size: var(--fs-20); }
+.ui-text { max-width: var(--measure); }
+.ui-muted { color: var(--muted); }
+.ui-small { font-size: var(--fs-14); }
+.ui-tiny { font-size: var(--fs-12); }
+
+/* 按鍵：鍵帽樣式，鍵名寫在最前面（例：<kbd>Shift</kbd> 按住 跑） */
+kbd, .ui-kbd {
+  display: inline-block; min-width: 1.9em; padding: 0 .45em; margin: 0 .1em;
+  font: 500 .875em/1.55 var(--font-body); text-align: center; white-space: nowrap;
+  color: var(--parchment); background: var(--stone); border: 1px solid var(--bronze); border-bottom-width: 2px; border-radius: var(--r-btn);
+}
+
+/* ---------- 面板與按鈕 ---------- */
+.ui-panel { background: var(--stone); border-radius: var(--r-panel); padding: 16px 18px; }
+.ui-btn {
+  display: inline-flex; align-items: center; gap: 6px; font: 500 var(--fs-16)/1.4 var(--font-body);
+  color: var(--bronze); background: transparent; border: 1px solid var(--bronze); border-radius: var(--r-btn);
+  padding: 8px 16px; cursor: pointer; text-decoration: none;
+}
+.ui-btn:hover { background: var(--bronze-wash); }
+.ui-btn.primary { background: var(--bronze); color: var(--night); }
+.ui-btn.primary:hover { background: var(--parchment); border-color: var(--parchment); }
+.ui-btn.sm { font-size: var(--fs-14); padding: 4px 10px; }
+input, select, textarea, button { font: inherit; }
+input[type=checkbox], input[type=radio], input[type=range] { accent-color: var(--bronze); }
+select, textarea, input[type=text] {
+  color: var(--parchment); background: var(--night); border: 1px solid var(--rule); border-radius: var(--r-btn); padding: 4px 8px;
+}
+
+/* ---------- 狀態字：一色一義 ---------- */
+.st-beat { color: var(--beat); }     /* 準、通過、安全 */
+.st-torch { color: var(--torch); }   /* 警告、查看、太早／太晚 */
+.st-blood { color: var(--parchment); background: var(--blood); border-radius: var(--r-btn); padding: 0 .4em; }   /* 失敗、追殺：血紅底＋羊皮紙字 */
+
+/* ---------- 拍帶（共用元件 beatstrip.js 畫在這個框裡） ---------- */
+/* 一條從右往左滑的拍點列，碰到左邊 20% 那條線就是一拍；最響一擊時整條亮一下。開了「減少動態效果」就停住。 */
+.beatstrip { position: relative; display: block; width: 100%; height: 36px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.beatstrip canvas { display: block; width: 100%; height: 100%; }
+.beatstrip-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; font-size: var(--fs-12); color: var(--muted); }
+.beatstrip-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.beatstrip-legend .lg-beat { background: var(--beat); }
+.beatstrip-legend .lg-quiet { background: var(--muted); width: 5px; height: 5px; }
+.beatstrip-legend .lg-hit { background: var(--parchment); border-radius: 1px; width: 3px; height: 12px; vertical-align: -2px; }

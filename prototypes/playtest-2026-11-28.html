@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-Hant" data-pal="A">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>週末成果試玩清單</title>
+<link rel="stylesheet" href="ui-tokens.css">
+<script>try { var pv = localStorage.getItem('playtest-palette'); if (pv === 'A' || pv === 'B' || pv === 'C') document.documentElement.dataset.pal = pv; } catch (e) {}</script>
+<style>
+  /* 三組配色（2026-11-28 比較用），蓋過 ui-tokens.css 的同名變數；不用外部字體，字型退回系統的宋體與黑體 */
+  /* A 陶罐紅黑：陶土底、黑釉字、赭紅重點；完成＝黑釉 */
+  :root[data-pal="A"] { --night:#EFDDC3; --stone:#FAF1E2; --parchment:#1E1611; --muted:#5B4636; --bronze:#9A3412; --beat:#1E1611; --head:#9A3412;
+    --rule:rgba(30,22,17,.20); --stone-2:rgba(30,22,17,.04); --bronze-wash:rgba(154,52,18,.10); --band:#1E1611; --band-2:#9A3412; --cat-game:#9A3412; --cat-listen:#1F5566; --cat-env:#4A3F2E; }
+  /* B 大理石與青銅：石白底、青銅綠重點、金色標題與完成 */
+  :root[data-pal="B"] { --night:#EEEBE4; --stone:#FBFAF7; --parchment:#1F2326; --muted:#4E5559; --bronze:#2D6A5C; --beat:#7A5A10; --head:#7A5A10;
+    --rule:rgba(31,35,38,.16); --stone-2:rgba(31,35,38,.04); --bronze-wash:rgba(45,106,92,.10); --band:#2D6A5C; --band-2:#B08A2E; --cat-game:#8C3B1E; --cat-listen:#2D6A5C; --cat-env:#4E5559; }
+  /* C 夜裡的火光：近黑底、亮羊皮紙字、火光橘重點；主要文字對底 18:1 */
+  :root[data-pal="C"] { --night:#0A0907; --stone:#17130E; --parchment:#FFF3DC; --muted:#D9C9AE; --bronze:#FFB04D; --beat:#8FE3C2; --head:#FFC66B;
+    --rule:rgba(255,243,220,.22); --stone-2:rgba(255,243,220,.05); --bronze-wash:rgba(255,176,77,.14); --band:#FFB04D; --band-2:#3A2A14; --cat-game:#FFB04D; --cat-listen:#8FD0E3; --cat-env:#D9C9AE; }
+  html { background:var(--night); }
+  main { max-width:980px; margin:0 auto; padding:0 var(--gutter-r) 96px var(--gutter-l); }
+  /* 頁首：題字＋配色切換＋六格進度（捲動時黏在上方） */
+  .top { background:var(--night); padding:14px 0 10px; border-bottom:1px solid var(--rule); }
+  .top::before { content:""; display:block; height:8px; margin:0 0 12px; border-radius:2px;
+    background:repeating-linear-gradient(90deg, var(--band) 0 14px, transparent 14px 18px, var(--band-2) 18px 22px, transparent 22px 26px); }
+  .toprow { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
+  .toprow .ui-title { color:var(--parchment); font-size:clamp(24px, 5vw, 36px); margin:0; flex:1 1 auto; }
+  .pal { display:flex; gap:4px; align-items:center; font-size:var(--fs-14); color:var(--muted); }
+  .pal button { font:500 var(--fs-14)/1.3 var(--font-body); padding:5px 10px; border:1px solid var(--bronze); border-radius:var(--r-btn); background:transparent; color:var(--bronze); cursor:pointer; }
+  .pal button[aria-pressed="true"] { background:var(--bronze); color:var(--night); }
+  .prog { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:4px; margin:12px 0 0; padding:0; list-style:none; }
+  .prog button { width:100%; min-height:44px; padding:4px 2px; border:1px solid var(--rule); border-radius:var(--r-btn); background:var(--stone); color:var(--muted); cursor:pointer;
+    font:500 var(--fs-12)/1.25 var(--font-body); text-align:center; }
+  .prog button b { display:block; font:900 var(--fs-16)/1.1 var(--font-title); color:var(--parchment); }
+  .prog button.cur { border-color:var(--bronze); box-shadow:inset 0 0 0 1px var(--bronze); }
+  .prog button.done { background:var(--beat); border-color:var(--beat); color:var(--night); }
+  .prog button.done b { color:var(--night); }
+  #strip { margin-top:10px; }
+  .lead { color:var(--parchment); margin:18px 0 14px; max-width:var(--measure); }
+  .hint { margin:0 0 8px; max-width:var(--measure); font-size:var(--fs-14); color:var(--parchment); }
+  .warn { background:var(--stone); border:2px solid var(--bronze); border-radius:var(--r-panel); padding:10px 14px; margin:0 0 8px; max-width:var(--measure); font-size:var(--fs-14); color:var(--parchment); }
+  /* 每層一個區塊 */
+  .layer { margin:28px 0 0; padding:14px 0 0; border-top:3px double var(--head); scroll-margin-top:16px; transition:opacity .2s; }
+  .layer > h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 4px; color:var(--head); display:flex; gap:10px; flex-wrap:wrap; align-items:baseline; }
+  .layer > h2 .lst { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .layer.ldone > h2 .lst { color:var(--parchment); }
+  .layer > .why { margin:0 0 6px; color:var(--muted); font-size:var(--fs-14); max-width:var(--measure); }
+  .layer.dim { opacity:.55; }
+  .layer.dim:hover, .layer.dim:focus-within { opacity:1; }
+  .layer.dim > .why::after { content:"（上一層還沒答完，建議先做上一層；這層也可以先答）"; }
+  .card { background:var(--stone); border:1px solid var(--rule); border-left:4px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
+  .card.done { border-left-color:var(--beat); }
+  .card h3 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; color:var(--parchment); }
+  .card h3 .n { color:var(--muted); }
+  .card h3 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .card.done h3 .st { color:var(--parchment); font-weight:700; }
+  .how { color:var(--parchment); margin:4px 0 10px; max-width:var(--measure); }
+  .links { display:flex; flex-wrap:wrap; gap:6px 8px; }
+  .links a { display:inline-block; padding:5px 12px; border:1px solid var(--bronze); border-radius:var(--r-btn); color:var(--bronze); text-decoration:none; font-weight:500; font-size:var(--fs-14); }
+  .links a:hover { background:var(--bronze-wash); }
+  fieldset { border:0; border-top:1px solid var(--rule); padding:10px 0 0; margin:14px 0 0; }
+  legend { font-weight:700; padding:0; float:left; width:100%; margin-bottom:2px; color:var(--parchment); }
+  .qh { clear:both; color:var(--muted); font-size:var(--fs-14); margin:0 0 6px; max-width:var(--measure); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); color:var(--parchment); }
+  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; background:var(--night); color:var(--parchment); }
+  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:20px; }
+  .card.dec { border-left:4px double var(--head); }
+  .card.dec.done { border-left:4px solid var(--beat); }
+  .tag { display:inline-block; font:700 var(--fs-12)/1.5 var(--font-body); color:var(--night); background:var(--head); border-radius:var(--r-btn); padding:0 7px; letter-spacing:.1em; vertical-align:middle; margin-right:8px; }
+  .what { color:var(--parchment); margin:4px 0 8px; max-width:var(--measure); }
+  .opts { border-top:1px solid var(--rule); margin:10px 0 0; padding:8px 0 0; }
+  .opts label { display:flex; align-items:flex-start; gap:8px; margin:6px 0; font-size:var(--fs-14); max-width:var(--measure); }
+  .opts label input { margin-top:4px; flex:none; }
+  .opts b { color:var(--parchment); }
+  .opts .res { color:var(--muted); }
+  .cat { display:inline-block; font:700 var(--fs-12)/1.6 var(--font-body); color:var(--night); border-radius:var(--r-btn); padding:0 7px; margin-right:6px; vertical-align:middle; white-space:nowrap; }
+  .cat.game { background:var(--cat-game); } .cat.listen { background:var(--cat-listen); } .cat.env { background:var(--cat-env); }
+  .cats { display:inline-flex; gap:4px; margin-right:4px; } .cats .cat { margin-right:0; }
+  legend .cat { font-size:11px; }
+  .filt { display:flex; gap:4px; align-items:center; flex-wrap:wrap; font-size:var(--fs-14); color:var(--muted); margin:10px 0 0; }
+  .filt button { font:500 var(--fs-14)/1.3 var(--font-body); padding:5px 10px; border:1px solid var(--bronze); border-radius:var(--r-btn); background:transparent; color:var(--bronze); cursor:pointer; }
+  .filt button[aria-pressed="true"] { background:var(--bronze); color:var(--night); }
+  .legendrow { margin:8px 0 0; font-size:var(--fs-12); color:var(--muted); }
+  /* 篩選：只藏起來，不影響進度 */
+  [data-filter="game"] fieldset[data-cat]:not([data-cat="game"]) { display:none; }
+  [data-filter="game"] .card:not([data-cats~="game"]) { display:none; }
+  [data-filter="other"] fieldset[data-cat="game"] { display:none; }
+  [data-filter="other"] .card[data-cats="game"] { display:none; }
+  /* 右下角「層級」鈕：往下捲才出現，點開六格跳層；放在「複製結果」那一列上方，不擋按鈕 */
+  .fab { position:fixed; right:max(12px, env(safe-area-inset-right, 0px)); bottom:84px; z-index:6; display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .fab[hidden] { display:none !important; }
+  .fab > button { min-width:44px; min-height:44px; padding:6px 12px; border:1px solid var(--bronze); border-radius:22px; background:var(--stone); color:var(--bronze); font:700 var(--fs-14)/1.2 var(--font-body); cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+  .fabpanel .prog button { font-size:11px; padding:4px 0; white-space:nowrap; }
+  .fabpanel { width:min(380px, calc(100vw - 24px)); background:var(--night); border:1px solid var(--bronze); border-radius:var(--r-panel); padding:8px; box-shadow:0 4px 16px rgba(0,0,0,.3); }
+  .fabpanel .prog { margin:0 0 6px; }
+  .fabpanel .totop { width:100%; min-height:40px; border:1px solid var(--rule); border-radius:var(--r-btn); background:var(--stone); color:var(--parchment); font:500 var(--fs-14)/1.2 var(--font-body); cursor:pointer; }
+  .card.now { border:2px solid var(--bronze); border-left-width:6px; box-shadow:0 0 0 3px var(--bronze-wash); scroll-margin-top:16px; }
+  .nowtag { display:inline-block; font:700 var(--fs-12)/1.6 var(--font-body); color:var(--night); background:var(--bronze); border-radius:var(--r-btn); padding:0 8px; margin:0 0 6px; letter-spacing:.06em; }
+  .card.weak { opacity:.72; } .card.weak:hover, .card.weak:focus-within { opacity:1; }
+  .layer.dim .card.weak { opacity:1; }
+  details.old, details.past { margin:10px 0 0; border-top:1px dashed var(--rule); padding:8px 0 0; }
+  details.old summary, details.past summary { cursor:pointer; color:var(--muted); font-size:var(--fs-14); }
+  details.old ul, details.past ul { margin:6px 0 0; padding-left:1.2em; font-size:var(--fs-14); }
+  details.old li, details.past li { margin:4px 0; color:var(--parchment); }
+  details.past { margin:24px 0 0; max-width:var(--measure); }
+  #msg { color:var(--parchment); font-size:var(--fs-14); }
+  @media (max-width:520px) { .prog button { font-size:11px; } .card h3, .layer > h2 { display:block; } .card h3 .n { margin-right:6px; } .card h3 .st, .layer > h2 .lst { display:block; margin:2px 0 0; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div class="toprow">
+      <h1 class="ui-title">週末成果試玩清單</h1>
+      <div class="pal" role="group" aria-label="配色">配色
+        <button type="button" data-pal="A" title="陶罐紅黑">A 陶罐</button>
+        <button type="button" data-pal="B" title="大理石與青銅">B 大理石</button>
+        <button type="button" data-pal="C" title="夜裡的火光">C 火光</button>
+      </div>
+    </div>
+    <ol class="prog" id="prog" aria-label="六層進度，點一格跳到那一層"></ol>
+    <div class="filt" role="group" aria-label="篩選">顯示
+      <button type="button" data-filter="all">全部</button>
+      <button type="button" data-filter="game">只看遊戲內</button>
+      <button type="button" data-filter="other">只看其他</button>
+    </div>
+    <p class="legendrow"><span class="cat game">🎮 遊戲內</span>要開遊戲實際玩　<span class="cat listen">🎧 試聽／看頁面</span>不用玩遊戲　<span class="cat env">⚙️ 環境</span>網路、電腦設定　「決定」是要你選的事。篩選只是藏起來，進度照全部題目算。</p>
+  </header>
+  <div class="fab" id="fab" hidden>
+    <div class="fabpanel" id="fabpanel" hidden>
+      <ol class="prog" id="prog2" aria-label="六層，點一格跳到那一層"></ol>
+      <button type="button" class="totop" id="totop">↑ 回頂端</button>
+    </div>
+    <button type="button" id="fabbtn" aria-expanded="false" aria-controls="fabpanel">層級 ▴</button>
+  </div>
+  <p class="lead">2026-11-28 週末的試玩，加上幾題要你決定的事（標著「決定」，放在相關的那一層），照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試；上方六格每答完一層就亮一格，點格子可以跳過去；往下捲以後，右下角的「層級」鈕也能跳層或回頂端。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <p class="hint"><kbd>Esc</kbd> 暫停後，點一下畫面就能再鎖住滑鼠轉頭；這是剛修好的，請實際試一次。</p>
+  <div id="strip"></div>
+  <div id="list"></div>
+  <details class="past"><summary>以前的清單（需要時再看）</summary><ul>
+    <li><a href="playtest-2026-11-27.html">第 13 週試玩清單（11/27）↗</a>：七段計時表、催促（DRIVE）、照亮場景與敲暗號去留。這次已併進上面的分層清單。</li>
+    <li><a href="playtest-today.html">今日試玩清單（11/15 起）↗</a>：照亮場景整關、敲暗號重試、弓弦、空白鍵與 Alt 等較早的題目。</li>
+  </ul></details>
+  <div class="bar">
+    <button class="ui-btn primary" id="copy">複製結果</button>
+    <button class="ui-btn" id="reset">清除答案</button>
+    <span id="msg"></span>
+  </div>
+</main>
+<script src="troy-prologue/risset.js"></script>
+<script src="beatstrip.js"></script>
+<script>
+if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'));
+const LAYERS = [
+  { t:'第 1 層｜核心手感（影響全部）', why:'這層為什麼先試：踩拍準不準、鼓聽不聽得到，決定了潛行、關卡和教學怎麼設計。這層沒過，後面每一層都要跟著改。' },
+  { t:'第 2 層｜潛行循環（建立在第 1 層上）', why:'這層為什麼先試：找掩護、被抓、再試一次，是整關一直在重複的事。這個循環不順，關卡再長再漂亮也沒用。' },
+  { t:'第 3 層｜關卡長度與方向', why:'這層為什麼先試：開場要教多少、要不要加路標，都看整關多長、會不會迷路。' },
+  { t:'第 4 層｜開場教學（教的是第 1、2 層）', why:'這層為什麼先試：開場教的是踩拍和找掩護。前兩層一改，這裡就得跟著改，所以排在它們後面。' },
+  { t:'第 5 層｜包裝', why:'這層為什麼先試：鏡頭動畫和介面風格不影響玩法，裡層定了再決定也不遲。' },
+  { t:'第 6 層｜穩定', why:'這層為什麼先試：只關係到 12/24 現場能不能照常展示，跟其他設計無關，放最後確認。' },
+];
+// 題目代號：第 5 欄是新題自己的代號；第 6 欄（由下方自動補）讓舊題在前面插了新題後，仍沿用原本的「項目代號-序號」，舊作答不會跑掉
+const ITEMS = [
+  { id:'core', layer:0, title:'踩拍手感：判定、低鼓、越來越急（約 4 分鐘）',
+    how:'從頭玩到神殿廣場就停。重點在木馬肚子裡「跟著他敲」之後：出了木馬，每一步都踩著鼓走，留意畫面上的判定（踩準或踩歪）和耳朵聽到的對不對得上。一路上鼓聲會越來越急，那是上面疊的快鼓變多了；腳要踩的一直是同一個低鼓。',
+    links:[['七段版（玩到神殿廣場）','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['踩拍的判定準不準？', '這題在看你覺得踩在鼓上時，遊戲是不是也算你踩準。明明踩對卻算歪的話，請在備註寫是哪一段。',['準','有時不準','常常不準']],
+      ['聽不聽得出要踩的低鼓？', '這題在看最低沉的那層鼓（腳要踩的那層）清不清楚。請在備註寫你用耳機還是喇叭。',['聽得出','要很專心才聽得出','聽不出']],
+      ['鼓聲越來越急的感覺夠不夠？', '這題在看越靠近城門越緊張的感覺有沒有出來。快鼓只影響聽起來多急，不影響判定。',['夠','有一點','感覺不到','太吵']],
+    ]},
+  { id:'fail', layer:1, title:'找掩護、被抓、提示回來（約 4 分鐘）',
+    how:'掩護就是最響的那一擊，加上它後面約 0.6 秒的餘音；趁這時移動，衛兵比較聽不到。先試著抓幾次掩護。接著故意被衛兵抓幾次，例如在火光下走、跑步、踩歪；每次失敗畫面只會顯示一句原因，例如「奧德修斯在火光照得到的地方移動，被衛兵察覺了」。最後在同一區連續被抓 2 次，看提示有沒有變回完整。',
+    links:[['七段版','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['最響那一擊的掩護好不好抓？', '這題在看玩家聽不聽得出哪一擊最響，能不能趁那一下行動。',['好抓','要練幾次','抓不到'],null,'fail-cover'],
+      ['那一句原因看得懂嗎？', '這題在看玩家知不知道自己為什麼被抓、下次要怎麼改。',['看得懂','有時看不懂','看不懂']],
+      ['同區連續被抓 2 次後，提示有沒有回來？', '這題在看卡關的人會不會重新拿到完整提示。',['有回來','沒注意到','沒有回來']],
+    ]},
+  { id:'length', layer:2, title:'整關長度與方向（約 10 分鐘）',
+    how:'從頭玩到結尾，不用計時，憑感覺回答就好。完整的分段量測 12/3 會用試玩摘要工具做，這次先抓個感覺。',
+    links:[['七段版（整關）','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['整關的長度感覺如何？', '這題在看整關會不會拖，或一下就結束。',['剛好','有點長','太長','太短']],
+      ['有沒有迷路？', '這題在看玩家知不知道下一步往哪走。迷路的話請在備註寫是哪一段。',['沒有','迷路一兩次','常常不知道往哪走']],
+      ['哪一段最拖？', '這題在看要先縮短哪裡。',['都不拖','前段（巷子）','中段（廣場一帶）','後段（城門前）']],
+    ]},
+  { id:'opening', layer:3, title:'新開場：序、腹中四步、標題提示（約 2 分鐘）',
+    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。<kbd>Esc</kbd> 可以整段跳過。',
+    links:[['新開場（11/28 版，現在的預設）','http://localhost:8770/troy-prologue/index.html?map=final']],
+    old:[['舊開場：敘事頁 → 字卡 → 獨立校準頁 → 腹中練習（11/27 以前的流程）','http://localhost:8770/troy-prologue/index.html?map=final&intro=old']],
+    qs:[
+      ['腹中四步看得懂嗎？', '這題在看不用人解釋，玩家能不能自己學會踩拍和敲木板。',['一看就懂','有一步卡住','看不懂']],
+      ['從按開始到走出木馬，長度如何？', '這題在看開場會不會拖。程式玩家量到約 36～48 秒。',['剛好','有點長','太長','太短']],
+      ['序的聲音音量如何？', '這題在看序的四段聲音和之後的鼓聲比，會不會太小聲或太大聲。',['剛好','太小聲','太大聲','某一段不對']],
+      ['標題的耳機提示有沒有注意到？', '這題在看提示放在開始鍵上方，玩家會不會讀到。',['有注意到','沒注意到']],
+    ]},
+  { id:'storysound', layer:3, title:'序的聲音試聽（約 2 分鐘）',
+    how:'打開試聽頁，捲到「序的聲音」區塊，一段一段播：木輪拖過石板、城門關上、歡呼、祭典的鼓隔著木板傳進來。',
+    links:[['試聽頁','http://localhost:8770/troy-prologue/audio-test.html']],
+    qs:[
+      ['四段的音量平不平均？', '這題在看有沒有哪一段突然太大或太小。',['平均','有一段太大','有一段太小']],
+      ['聽起來像不像它要表現的東西？', '這題在看不看字，光聽能不能猜到是木輪、城門、歡呼、隔牆的鼓。哪一段不像寫在備註。',['都像','有一兩段不像','大多不像']],
+    ]},
+  { id:'cam', layer:4, reset:true, title:'鏡頭動畫：俯看木馬進城（約 30 秒）',
+    how:'序之後會從城門外高處飛過門頂、俯看街道和衛兵，天黑時降到木馬前，約 26 秒。<kbd>Esc</kbd> 或 <kbd>空白鍵</kbd> 跳過。<b>只會出現一次</b>：要再看，先按下面「重看鏡頭動畫」清掉紀錄，再點連結。',
+    links:[['鏡頭動畫版','http://localhost:8770/troy-prologue/index.html?map=final&intro=cam']],
+    qs:[
+      ['好不好看？', '這題在看這段值不值得當開場。',['好看','普通','不好看']],
+      ['看完對地圖方向有沒有幫助？', '這題在看俯看一遍後，玩家知不知道城門在哪、要往哪走。',['有幫助','一點點','沒幫助']],
+      ['會不會太長？', '這題在看 26 秒會不會讓人想跳過。',['剛好','太長','太短']],
+    ]},
+  { id:'ui2', layer:4, title:'介面：新配色的選單（約 2 分鐘）',
+    how:'打開遊戲，看標題畫面、選單和字卡。選單會換成這一頁也在用的 A「陶罐紅黑」配色（陶土底、黑字、赭紅重點），只改樣式、不改內容。畫面角色正在換，還沒換好前這個連結看到的仍是原本的選單，那時先跳過這題。',
+    links:[['新的預設選單（A 配色）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
+    old:[['原本的選單（ui=0，畫面換好 A 配色後才有這個參數）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=0'],
+         ['11/27 試做的暗底火光橘（ui=2）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=2']],
+    legacy:[['ui2-0','（舊題）ui=2 要改成預設嗎？'],['ui2-1','（舊題）ui=2 的字好不好讀？']],
+    qs:[
+      ['新配色的選單好不好看、看不看得清楚？', '這題在看換成 A 配色後，標題、選單和字卡在投影或遠看時順不順眼、讀不讀得清楚。',['好看也清楚','好看，但有地方看不清楚','看得清楚，但不好看','都不行'],null,'ui2-menuA'],
+    ]},
+  { id:'offline', layer:5, title:'離線也能玩（約 2 分鐘）',
+    how:'伺服器保持開著，拔掉網路線或關掉 Wi-Fi，再重新整理遊戲頁。3D 畫面和中文字都要正常。這一頁本身離線時字體可能變成系統字，不影響作答。',
+    links:[['七段版（離線試）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
+    qs:[
+      ['離線時 3D 和字正常嗎？', '這題在看 12/24 現場沒有網路時能不能照常展示。',['都正常','3D 出不來','字變了或缺字']],
+      ['Esc 暫停 → 繼續 → 點畫面，滑鼠恢復轉頭了嗎？', '這題在看剛修好的暫停問題：回到遊戲後點一下畫面，滑鼠能不能再轉頭。',['正常','點了也沒反應','要點好幾次'],null,'offline-esc'],
+    ]},
+];
+for (const it of ITEMS) { let off = 0; it.qs.forEach((q, k) => { if (q[4]) off++; else if (off) q[5] = it.id + '-' + (k - off); }); }
+const qkey = (it, q, k) => q[4] || q[5] || (it.id + '-' + k);
+// 決定題（使用者 11/28：要使用者決定的事也放進試玩清單、一起複製回來）。依據：docs/design/2026-11-15-final-gdd.md 第 4、11 節、2026-11-27-opening-and-tutorial.md
+// 選項：[名稱, 選了會變成什麼]；第一個是建議
+const DECS = [
+  { id:'dec-bow', layer:0, title:'弓弦聲要不要放進期末版',
+    what:'弓弦聲是查看試驗場裡試過的機制：按 <kbd>V</kbd> 空彈一下弓弦，落在踩得上的拍上，或最響一擊後的 0.6 秒內，聲音會被鼓蓋住，沒人理你；落在拍外，8 公尺內最近的衛兵會走過來查看，可以拿來把衛兵引開。企劃書預設不納入，因為弓是後面復仇那一章的東西。想先試一下再決定，點下面的連結。',
+    links:[['查看試驗場（按 V 彈弦）','http://localhost:8770/troy-prologue/index.html?lab=check']],
+    opts:[['不納入（建議）','期末版沒有弓弦，試驗場留著，寒假做復仇那一章再用。少一個按鍵要教。'],
+          ['納入','木馬之夜多一招：彈弦把衛兵引開。要補教學、提示和衛兵查看的路線，會擠掉第 2 週的其他工作。']] },
+  { id:'dec-reveal', layer:1, title:'最響的一擊照亮場景：只放後街，還是全關',
+    what:'最響的一擊落下時，畫面會短暫亮起來，讓你看清周圍。試驗場的結果是好玩、暗度可以接受；現在要決定只放在第 6 段後街，還是整關都有。',
+    opts:[['只放在第 6 段後街（建議）','後街本來就沒有火光，照亮會變成那一段的主題，其他段維持現狀。整關試玩結果好的話，之後再擴到全關。'],
+          ['全關都有','每一段都會在最響的一擊亮一下，比較看得清楚，但後街就少了自己的特色；閃爍的亮度上限要整關再檢查一次。']] },
+  { id:'dec-map', layer:2, title:'要不要加地圖或方向指引',
+    what:'11/26 你選了先不做，等這次試玩記下有沒有迷路再決定。一直顯示在角落的小地圖不在選項裡，因為它會搶走耳朵的注意力，也跟提示越來越少的設計衝突。',
+    opts:[['不加（建議，前提是剛才沒迷路）','繼續只靠聲音和街景找路，跟提示越來越少的設計一致。剛才迷路過的話，不建議選這個。'],
+          ['七格進度條加城門火光指方向','畫面上多一條七格進度，城門那邊有火光引路。不搶耳朵，但畫面上多一樣東西。'],
+          ['按 M 叫出地圖','平常看不到，卡住時按 M 才出現。最直接，但玩家會停下來看圖，不再靠聽。']] },
+  { id:'dec-knock', layer:3, title:'敲暗號：留在腹中當儀式，還是砍掉',
+    what:'敲暗號是照著同伴示範的節奏敲木板。第一次試玩時大家不知道怎麼敲，說明改過後還在重試。企劃書預設只留在腹中，當出暗門前的儀式，不做成整關指揮同伴。',
+    opts:[['留在腹中（建議；重試還是不會敲就砍）','放在腹中第 3 步「踩著鼓走到暗門」和第 4 步「開門」之間，照同伴的示範敲一次再開門。教法照企劃書的三條規則：示範前先亮提示、只看第一次敲的結果、敲錯 2 次就淡淡顯示正確敲法 1 秒。'],
+          ['砍掉','腹中四步不變，走到暗門直接開。開場短一點，也少教一件事。']] },
+  { id:'dec-calib', layer:3, title:'開場跟拍要按 8 下，還是 6 下',
+    what:'腹中第 2 步「跟著他敲」其實是在校準：跟著鼓點按空白鍵，量出這台電腦和耳機的延遲，之後的判定照這個數字修正。現在要按 8 下，這題看剛才玩開場時會不會覺得太久。',
+    opts:[['維持 8 下（建議，前提是剛才不覺得拖）','量延遲的次數多，數字比較穩。'],
+          ['改成 6 下','開場短一點；但量的次數少了兩次，延遲可能量得比較不準。']] },
+];
+// 分類：game＝要開遊戲實際玩、listen＝試聽或看頁面、env＝環境（網路、電腦設定）。項目給預設，個別題目可另外指定
+const CAT = { game:'🎮 遊戲內', listen:'🎧 試聽／看頁面', env:'⚙️ 環境' };
+const ITEM_CAT = { core:'game', fail:'game', length:'game', opening:'game', storysound:'listen', cam:'game', ui2:'listen', offline:'env' };
+const Q_CAT = { 'offline-esc':'game' };
+const catOf = (it, name) => Q_CAT[name] || ITEM_CAT[it.id];
+const pill = c => `<span class="cat ${c}">${CAT[c]}</span>`;
+const SHORT = ['核心手感', '潛行循環', '關卡長度', '開場教學', '包裝', '穩定'];
+const KEY = 'playtest-2026-11-28';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+
+// 配色切換：選了哪一組存在瀏覽器
+const palBtns = document.querySelectorAll('.pal button');
+function setPal(v) {
+  document.documentElement.dataset.pal = v;
+  palBtns.forEach(b => b.setAttribute('aria-pressed', b.dataset.pal === v ? 'true' : 'false'));
+  try { localStorage.setItem('playtest-palette', v); } catch (e) {}
+}
+palBtns.forEach(b => b.onclick = () => setPal(b.dataset.pal));
+setPal(document.documentElement.dataset.pal || 'A');
+
+// 每層一個區塊
+const list = document.getElementById('list'), prog = document.getElementById('prog'), prog2 = document.getElementById('prog2');
+const blocks = LAYERS.map((L, li) => {
+  const sec = document.createElement('section'); sec.className = 'layer'; sec.id = 'layer-' + (li + 1);
+  sec.innerHTML = `<h2>${L.t}<span class="lst"></span></h2><p class="why">${L.why}</p>`;
+  list.appendChild(sec);
+  const cell = document.createElement('li');
+  cell.innerHTML = `<button type="button" aria-label="第 ${li + 1} 層 ${SHORT[li]}"><b>${li + 1}</b>${SHORT[li]}</button>`;
+  cell.firstChild.onclick = () => sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  prog.appendChild(cell);
+  const cell2 = cell.cloneNode(true);
+  cell2.firstChild.onclick = () => { sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); setFab(false); };
+  prog2.appendChild(cell2);
+  return { sec, btn: cell.firstChild, btn2: cell2.firstChild };
+});
+ITEMS.forEach((it, i) => {
+  const c = document.createElement('article'); c.className = 'card'; c.id = 'c-' + it.id;
+  const cs = [...new Set(it.qs.map((q, k) => catOf(it, qkey(it, q, k))))];
+  c.dataset.cats = cs.join(' ');
+  let h = `<h3><span class="n">${i + 1}.</span><span class="cats">${cs.map(pill).join('')}</span>${it.title}<span class="st"></span></h3><div class="how">${it.how}</div><div class="links">`;
+  it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
+  h += '</div>';
+  it.qs.forEach((q, k) => {
+    const [qt, hint, opts, def] = q; const name = qkey(it, q, k);
+    if (saved[name] === undefined && def) saved[name] = def;
+    h += `<fieldset data-cat="${catOf(it, name)}"><legend>${pill(catOf(it, name))}${qt}</legend><div class="qh">${hint}</div>`;
+    opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
+    h += '</fieldset>';
+  });
+  if (it.old) h += `<details class="old"><summary>舊版對照（需要時再看）</summary><ul>${it.old.map(([t, u]) => `<li><a href="${u}">${t} ↗</a></li>`).join('')}</ul></details>`;
+  if (it.reset) h += `<p><button type="button" class="ui-btn" data-reset="1">重看鏡頭動畫（清掉「看過」紀錄）</button> <span class="qh" data-reset-msg></span></p>`;
+  h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
+  c.innerHTML = h; blocks[it.layer].sec.appendChild(c);
+});
+DECS.forEach((d, i) => {
+  const c = document.createElement('article'); c.className = 'card dec'; c.id = 'c-' + d.id; c.dataset.cats = 'dec';
+  let h = `<h3><span class="tag">決定</span>${d.title}<span class="st"></span></h3><div class="what"><b>這題在決定什麼：</b>${d.what}</div>`;
+  if (d.links) { h += '<div class="links">'; d.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; }); h += '</div>'; }
+  h += '<div class="opts">';
+  d.opts.forEach(([o, res]) => { h += `<label><input type="radio" name="${d.id}" value="${o}"${saved[d.id] === o ? ' checked' : ''}><span><b>${o}</b><br><span class="res">選了會：${res}</span></span></label>`; });
+  h += '</div>';
+  h += `<textarea placeholder="備註（選填）：選的理由、其他想法" data-note="${d.id}">${saved['note-' + d.id] || ''}</textarea>`;
+  c.innerHTML = h; blocks[d.layer].sec.appendChild(c);
+});
+save();
+
+function markNow() {
+  const cards = [...document.querySelectorAll('#list .card')];
+  const now = cards.find(c => !c.classList.contains('done'));
+  cards.forEach(c => {
+    const isNow = c === now;
+    c.classList.toggle('now', isNow);
+    c.classList.toggle('weak', !isNow);
+    let t = c.querySelector('.nowtag');
+    if (isNow && !t) { t = document.createElement('div'); t.className = 'nowtag'; t.textContent = '▶ 現在測這個'; c.prepend(t); }
+    if (!isNow && t) t.remove();
+  });
+}
+function refresh() {
+  const lt = LAYERS.map(() => [0, 0]);
+  ITEMS.forEach(it => {
+    const n = it.qs.filter((q, k) => saved[qkey(it, q, k)]).length;
+    lt[it.layer][0] += n; lt[it.layer][1] += it.qs.length;
+    const c = document.getElementById('c-' + it.id);
+    c.classList.toggle('done', n === it.qs.length);
+    c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
+  });
+  DECS.forEach(d => {
+    const ok = !!saved[d.id]; lt[d.layer][0] += ok ? 1 : 0; lt[d.layer][1] += 1;
+    const c = document.getElementById('c-' + d.id);
+    c.classList.toggle('done', ok);
+    c.querySelector('.st').textContent = ok ? '✓ 已決定' : '還沒選';
+  });
+  markNow();
+  let allPrevDone = true, cur = -1;
+  blocks.forEach((b, li) => {
+    const [n, tot] = lt[li], done = n === tot;
+    b.sec.classList.toggle('ldone', done);
+    b.sec.classList.toggle('dim', !allPrevDone);   // 上一層沒答完：淡色，但照樣能點、能答
+    b.sec.querySelector('.lst').textContent = done ? '✓ 這層答完' : `${n}／${tot} 題`;
+    b.btn.classList.toggle('done', done); b.btn2.classList.toggle('done', done);
+    b.btn.setAttribute('aria-label', `第 ${li + 1} 層 ${SHORT[li]}：${done ? '答完' : n + '／' + tot + ' 題'}`);
+    if (!done && cur < 0) cur = li;
+    if (!done) allPrevDone = false;
+  });
+  blocks.forEach((b, li) => { b.btn.classList.toggle('cur', li === cur); b.btn2.classList.toggle('cur', li === cur); });
+}
+list.addEventListener('click', e => { if (e.target.dataset.reset) { let ok = true; try { localStorage.removeItem('troy-intro-cam-seen'); } catch (err) { ok = false; } e.target.parentNode.querySelector('[data-reset-msg]').textContent = ok ? '已清掉，現在點連結就會再播一次。' : '清不掉：這個瀏覽器擋住了本機儲存。'; } });
+list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.target.name] = e.target.value; save(); refresh(); } });
+list.addEventListener('input', e => { if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
+refresh();
+
+const filtBtns = document.querySelectorAll('.filt button');
+function setFilter(v) {
+  document.documentElement.dataset.filter = v;
+  filtBtns.forEach(b => b.setAttribute('aria-pressed', b.dataset.filter === v ? 'true' : 'false'));
+  try { localStorage.setItem('playtest-filter', v); } catch (e) {}
+}
+filtBtns.forEach(b => b.onclick = () => setFilter(b.dataset.filter));
+let fv = 'all'; try { fv = localStorage.getItem('playtest-filter') || 'all'; } catch (e) {}
+setFilter(['all', 'game', 'other'].includes(fv) ? fv : 'all');
+
+const fab = document.getElementById('fab'), fabpanel = document.getElementById('fabpanel'), fabbtn = document.getElementById('fabbtn');
+function setFab(open) { fabpanel.hidden = !open; fabbtn.setAttribute('aria-expanded', open ? 'true' : 'false'); fabbtn.textContent = open ? '收起 ▾' : '層級 ▴'; }
+fabbtn.onclick = () => setFab(fabpanel.hidden);
+document.getElementById('totop').onclick = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); setFab(false); };
+function onScroll() { const show = window.scrollY > document.querySelector('.top').offsetHeight + 40; fab.hidden = !show; if (!show) setFab(false); }
+window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+// 打開頁面時直接捲到「現在測這個」
+{ const nowCard = document.querySelector('.card.now'); if (nowCard) requestAnimationFrame(() => { nowCard.scrollIntoView({ block: 'start' }); onScroll(); }); }
+
+document.getElementById('copy').onclick = async () => {
+  let out = '週末成果試玩結果（2026-11-28 清單，分層版）\n';
+  let ll = -1;
+  ITEMS.forEach((it, i) => {
+    if (it.layer !== ll) { ll = it.layer; out += `\n【${LAYERS[it.layer].t}】\n`; }
+    out += `\n${i + 1}. ${it.title}\n`;
+    it.qs.forEach((q, k) => { const nm = qkey(it, q, k); out += `- ${CAT[catOf(it, nm)].split(' ')[0]} ${q[0]}：${saved[nm] || '（未答）'}\n`; });
+    (it.legacy || []).forEach(([k, t]) => { if (saved[k]) out += `- ${t}：${saved[k]}\n`; });
+    if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
+    const next = ITEMS[i + 1];
+    if (!next || next.layer !== it.layer) DECS.filter(d => d.layer === it.layer).forEach(d => {
+      out += `\n【決定】${d.title}：${saved[d.id] || '（未選）'}\n`;
+      if (saved['note-' + d.id]) out += `- 備註：${saved['note-' + d.id]}\n`;
+    });
+  });
+  out += `\n（作答時用的配色：${document.documentElement.dataset.pal}）\n`;
+  const msg = document.getElementById('msg');
+  try { await navigator.clipboard.writeText(out); msg.textContent = '已複製，貼回對話即可。'; }
+  catch (e) { prompt('複製下面文字：', out); }
+};
+document.getElementById('reset').onclick = () => { if (confirm('清除所有答案？')) { saved = {}; save(); location.reload(); } };
+</script>
+</body>
+</html>

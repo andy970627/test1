@@ -1,0 +1,400 @@
+# 角色筆記：錄音與工具
+
+負責：`tools/playtest-recorder/`、`tools/telemetry/`、`tools/build-itch.*`、`.github/workflows/`。
+別人的檔（`prototypes/*` 的規則、聲音、畫面、`telemetry.js`）要改時回訊主對話，不自己改。
+
+## 1. 檔案結構與入口
+
+### 錄音工具 `tools/playtest-recorder/`
+| 檔案 | 作用 |
+|---|---|
+| `record.mjs` | 入口。開本機 http 伺服器（只服務設定檔的 `dir`）→ 無頭 Chromium 開頁 → 錄 PCM＋畫面＋每幀狀態 → ffmpeg 合成 mp4 → 呼叫 `analyze.mjs` |
+| `analyze.mjs` | 讀 `audio.wav`＋`timeline.json`，出頻譜圖、包絡、`analysis.json`、`report.md`。門檻表 `TH` 在第 37～47 行，設定檔 `analysis.thresholds` 可覆寫 |
+| `lib/inject.js` | 頁面載入前改寫 `AudioNode.prototype.connect`：接到 `destination` 的節點改接分接點，AudioWorklet 逐塊回傳 PCM；同時記 `start(when)` 預定起音 |
+| `profiles/*.mjs` | 每個原型一份：`troy-prologue`、`bow-risset`、`vengeance`。匯出 `dir`、`page`、`prepare`、`probe`（每幀 `{t, blind, alert, hunted, events}`）、可選 `bot`、`intervals`、`expectedBeats`、`analysis` |
+| `out/` | 輸出，**不進 git**（`.gitignore` 第 118 行） |
+
+常用：`node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 [--out tools/playtest-recorder/out/<名>]`
+只重跑分析：`node tools/playtest-recorder/analyze.mjs <輸出資料夾>`
+其他選項：`--cycle <秒>` 放慢循環、`--no-bot`、`--scenario <劇本.json>`、`--render-scale 0.5`、`--no-video`、`--no-analyze`、`--dir/--page`（無設定檔，只做頻譜、包絡、爆音、無聲）。
+
+輸出資料夾內容：`playtest.mp4`、`audio.wav`（44.1 kHz 立體聲 16-bit）、`spectrogram.png`、`spectrogram-marked.png`（盲區藍、警戒橘、追殺紅、低音拍黃刻度）、`envelope.png/.svg`（50 ms RMS）、`report.md`、`timeline.json`、`analysis.json`、`meta.json`、`shots/`（每 10 秒）；喇叭模擬另出 `audio-speaker.wav`、`spectrogram-speaker.png`、`analysis-speaker.json`。
+
+#### 9 項自動檢查（`analyze.mjs` 第 215～520 行；11/10 加 fireSync、第 1 項依模式）
+| # | id | 量什麼 | 門檻（預設） |
+|---|---|---|---|
+| 1 | `blind`（舊盲區版 `COVER_MODE = false`） | 盲區時整體音量比前後低多少 dB。盲區內取 [+0.10, 結束−0.03] 秒，前取 −1.0～−0.15 秒、後取 +0.25～+1.0 秒平均。盲區內有玩家動作音（`blindConfoundCues`）的那次照列、不計 | 中位 ≥ 10 dB 且每次 ≥ 6 dB |
+| 1' | `blind`（殘響掩護版 `COVER_MODE = true`） | 一般掩護窗：①突出＝窗開頭 [−0.01, +0.15] 秒 300～1200 Hz 峰值 − 窗前 1.0～0.15 秒平均；②餘韻＝從峰值後到全頻 50 ms 包絡回到「窗前包絡中位數 + 3 dB」，自窗開始算（`TH.coverTailBase` 可改 'mean'；另一種背景列在 `tailAltSec`）；③窗內整體比前後。警戒窗（低音拍之間）另判輕版突出 | 設計席 7.5：突出中位 ≥ 12、每次 ≥ 6 dB；餘韻中位 0.5～0.8 秒；警戒輕版 ≥ 8 dB；防呆：整體中位 ≥ −3 dB（`TH.cover*`；11/11 改） |
+| 1b | `fireSync` | 每幀 `game.fire` vs `FIRE_BASE + FIRE_P_GAIN × game.danger`（舊模式盲區幀＝`FIRE_BLIND`）；相鄰兩幀 fire 掉 > 0.05 而 danger 沒掉＝掉回；列 fire×danger、fire×p 相關係數 | 誤差 > 0.02 的幀 ≤ 1%，掉回 0 次 |
+| 2 | `onset` | 偵測到的起音 vs 規則拍點（`expectedBeats`，沒有就用 `start(when)` 排程）的誤差，正號＝聲音晚 | 中位 \|誤差\| ≤ 15 ms 且顯著拍（w ≥ 0.5）±30 ms 命中 ≥ 80% |
+| 3 | `alertLow` | 警戒時段三頻帶（低 20–250、中 250–2000、高 2–10k Hz）總功率，4096 點 FFT | 低頻帶最強；沒有警戒區段＝無資料 |
+| 4 | `clip` | 削峰樣本數（整數與浮點都看） | ≤ 0；喇叭模擬不判定（高通會抬峰值） |
+| 5 | `silence` | 低於 −60 dBFS 的連續段落、丟拍比例（±40 ms 找不到起音） | 無 ≥ 0.75 秒的無聲段且丟拍 ≤ 10%；音訊斷塊補 0 不算 |
+| 6 | `preBlindMid` | 盲區前 lead 秒內 1～3 kHz 峰值比再往前 1 秒平均高多少（預告音） | 每次 ≥ 6 dB、中位 ≥ 6 且八成達標；假驟降前必須 < 6 dB |
+| 7 | `bassMid` | 警戒段每個低音拍 [−0.02, +0.15] 秒 200～600 Hz 峰值比前 1 秒平均高多少 | 同上：中位 ≥ 6 dB 且八成達標 |
+| 8 | `stepBand` | 不合拍腳步 vs 合拍腳步在 1～4 kHz 的「突增量」中位差 | 差 ≥ 12 dB |
+
+6～8 是「喇叭可聽度」檢查（11/08 加），只有設定檔有 `analysis.speaker` 才跑；目前只有 `troy-prologue` 宣告（`preBlind {band [1000,3000], lead 0.4, minDb 6}`、`bassMid {[200,600], 6}`、`steps {[1000,4000], 12}`）。短時 FFT 1024 點、hop 256 ≈ 5.8 ms。
+
+#### 喇叭模擬
+主行程跑完後以 `--speaker` 子行程重跑全部檢查：先用 ffmpeg 兩級 `highpass=f=200:poles=2`（24 dB/oct，近似筆電喇叭聽不到的低頻），輸出 `analysis-speaker.json`；`report.md` 的檢查表多一欄「喇叭模擬」，另有一節「原始 vs 喇叭模擬」。高通頻率用環境變數 `SPEAKER_HP` 改。`alertLow` 在高通後本來就會不通過，看其他項。
+
+### 遙測工具 `tools/telemetry/`
+- `summarize.mjs`：`node tools/telemetry/summarize.mjs <檔或資料夾> [--bins 25] [--json]`。一局的數字由 `prototypes/telemetry.js` 的 `summarizeRun` 算（`require('../../prototypes/telemetry.js')`），本檔只做讀檔、去重（同局號留結束的那份）、合併、排版。
+- 輸出**每局**：每區用時與失敗（含失敗代碼）、盲區行動 成功/嘗試（成功率、第一次成功秒數）、安撫對拍成功率與完成次數、腳步合拍率、主動時間比例 N1（含各狀態秒數）、提示次數與階數、按鍵偏移（`bass`／`blind`／`beat` 各 n、平均、σ、中位，正＝晚按）、主觀三題（驟降、難度、好玩）與留言、幀率中位。
+- **依原型＋裝置合併**（喇叭／有線／藍牙分開）：上述各項合併（N1 時間加權）、每區平均用時、失敗原因、提示總數、主觀平均，加按鍵偏移直方圖文字版（預設每格 50 ms）。參考門檻：耳機 σ ≤ 80 ms、喇叭 σ ≤ 120 ms（`docs/design/2026-11-08-expert-lens.md`）。
+- `telemetry.test.js`：7 個測試，手算假資料。
+- **整夜驗證（11/10 夜加）**：
+  - `troy-bots.js`：木馬之夜程式玩家。`makeBot`（含 `opts.sigma` 起步誤差）與 `activeNow`（含 `ruler`）**逐字照搬** `risset.test.js`（提交 11b1944），只多死因、各區時間、高度警覺次數、兩把尺 N1。玩家：`forward` 只按前進、`perfect` 完美踩拍（舊版＝完美時機）、`sigma12`、`sigma25`。50 局對過規則角色的數字（σ 0.12 新 92%／舊 62%；同一把尺 N1 舊 77%／新 96%）。
+  - `overnight-sim.mjs`：`node tools/telemetry/overnight-sim.mjs [--n 500] [--modes cover,gap] [--bots forward,perfect,sigma] [--out x.json]`，每局約 0.1～0.3 秒，500 局 × 6 組約 10 分鐘。
+  - `overnight-report.mjs`：`--sim <json> --cover <錄音資料夾> --gap <錄音資料夾> --out <md>`，照設計席第 7 節門檻判過／不過，每個數字附來源指令。
+  - `overnight-run.sh`：一鍵跑程式玩家批次＋兩版錄音（各 90 秒；不停版會故意喘氣引起警戒）＋腳步測試段（45 秒 `--step-test`）＋報告（`N=`、`DUR=`、`TAG=`、`REPORT=` 可改），輸出 `tools/playtest-recorder/out/overnight-*-<TAG>`。
+  - `overnight.test.js`：5 個測試（彙整手算、同 seed 同局、σ 抽樣、報告判定照 7.5／7.8、表格）。
+
+### 打包 `tools/build-itch.sh`＋`build-itch.mjs`
+- `bash tools/build-itch.sh` → 站台 `dist/odyssey-series/`（結構同 `prototypes/`，不含 `*.test.js`）＋ `dist/odyssey-series.zip`（`index.html` 在 zip 根）。`dist/` 不進 git。
+- 原型清單 `PROTOS=(troy-prologue bow-risset vengeance bow-contest beggar-hall odyssey-series)`；清單外的新資料夾照帶並提醒。
+- three.js r128 用 `npm pack three@0.128.0` 抓一次，快取 `dist/.cache/`。
+- `build-itch.mjs`：HTML 片段包成完整文件、cdnjs three.js 換本地 `lib/three.min.js`、檢查相對 `.html/.js` 連結（只警告不擋）。`cave/` 資料夾（Unity WebGL）原樣保留。
+- 沒有 `zip` 指令時改用 `python3 -I` 壓縮（本機就是這條路）。
+
+### CI `.github/workflows/ci.yml`（一個檔，六個工作）
+觸發：任何 push、對 main 的 PR、手動。同一 ref 新的會取消舊的。
+| 工作 | 什麼時候跑 | 做什麼 |
+|---|---|---|
+| `changes` | 每次 | `dorny/paths-filter` 判斷 unity／web 有沒有改；推到 main、手動執行兩者都當成有改 |
+| `web-tests` | web 有改：`prototypes/**`、`tools/telemetry/**`、`tools/playtest-recorder/**`、`tools/build-itch.*`、`.github/workflows/**` | Node 22 跑 `node --test prototypes/*/*.test.js prototypes/odyssey-series/*.test.js tools/telemetry/*.test.js`＋`build-itch.sh` 打包檢查，約 30 秒 |
+| `core-tests` | unity 有改：`Assets/**`、`Packages/**`、`ProjectSettings/**`、`tools/CoreTests/**`、`tools/NightSim/**`、`tools/NightSimTests/**`、`tools/playtest/**`、`.github/workflows/**` | dotnet 10 跑 CoreTests、NightSimTests |
+| `unity-tests` | unity 有改，且不是一般分支 push（PR、main、手動） | game-ci `unity-test-runner@v4.3.2` EditMode；沒授權密鑰就略過 |
+| `webgl` | 同上，接在 unity-tests 後 | `unity-builder@v4.8.2` 建 WebGL、上傳成品 `BlindCave-WebGL`；有 `BUTLER_API_KEY`＋`ITCH_GAME` 才推 itch.io |
+| `playtest` | 同上，webgl 後（itch 上傳失敗照跑） | Playwright 1.49.1 跑 `tools/playtest/playtest.js` 截圖錄影，成品 `Playtest-Screens` |
+
+派工說的「四個工作流」大概指 web-tests／core-tests＋unity-tests／webgl／playtest 四類；實際只有 `ci.yml` 一個工作流檔。只改 `docs/` 時只跑 `changes`。
+
+## 2. 介面約定
+- **錄音設定檔 ↔ 原型**：`probe()`／`bot()` 會轉成字串送進頁面，只能用頁面全域：木馬之夜 `window.TroyDebug`、`window.RissetRules`、`window.RissetAudio`。規則或畫面角色改了這些全域名稱或欄位（`game.cycle.p`、`game.panic.active`…），設定檔要跟著改 → 請他們先通知。
+- **cue 名稱**：盲區干擾音清單 `blindConfoundCues`、腳步 `^step_?loud$`／`^step_?masked$` 對的是聲音層發的 cue 名。聲音角色改 cue 名要通知。
+- **期望拍**：`profiles/troy-prologue.mjs` 的 `expectedBeats` 自己抄了一份拍點公式（常數來自聲音層），規則改拍點公式要同步（稽核 P1、P2）。
+- **遙測**：`summarize.mjs` 依賴 `prototypes/telemetry.js` 匯出 `summarizeRun`、`stats`、`histogram`（畫面角色的檔）。事件名 `calm_ok`、`calm_bad`、`calm_done`、`tele_ok`、`tele_miss`、`step_masked`、`step_loud`、`hint`、`hunt`、`caught`；裝置代碼 `speaker`／`wired`／`bt`／`unknown`。新原型要在 `PROTO_NAMES`、`ZONE_NAMES` 加名稱。
+- **程式玩家**：`troy-bots.js` 的 `makeBot`／`activeNow` 是 `risset.test.js` 的逐字複本（11b1944）。規則角色改了那邊，要重新照搬（用 node 從測試檔擷取 `function makeBot(` 到 `function playthrough(`、`function activeNow(` 到 `/** 只按住前進鍵`）。最好請規則角色把玩家搬進可匯出的模組，兩邊共用。
+- **打包**：新原型資料夾要加進 `build-itch.sh` 的 `PROTOS` 和總首頁 `prototypes/index.html`（畫面角色）。
+
+## 3. 陷阱
+- 2026-11-09 本機沒有 `playwright` npm 套件（repo 與全域都沒有），只有瀏覽器快取 `%LOCALAPPDATA%\ms-playwright\chromium-1248/1254`。`record.mjs` 第 39～41 行找 `playwright` → `/opt/node-tools/...`（雲端路徑）→ `NODE_PATH`，本機跑會報「找不到 playwright」。裝的時候版本要對上快取的 Chromium 版號，否則會再下載瀏覽器。
+- 2026-11-09 `record.mjs` 第 40 行用 `:` 切 `NODE_PATH`，Windows 是 `;`，本機設 `NODE_PATH` 不會生效（聲音角色本機跑也碰到）；修法改用 `path.delimiter`，或把套件裝在 repo 或 `tools/playtest-recorder/` 下。
+- 2026-11-09 `analyze.mjs` 的 ffmpeg 預設找 `/usr/bin/ffmpeg`，找不到才用 PATH 的 `ffmpeg`；本機 PATH 有 8.1.1，可用 `FFMPEG` 環境變數指定。
+- 2026-11-09 錄音伺服器只服務原型自己的資料夾，`../telemetry.js`、`../nav.js` 會 404：錄影時頁面不記遙測（遙測設計第 8 節）。
+- 2026-11-08 「警戒低音拍 200～600 Hz」門檻 6 dB 偶爾差一點（樣本只有 3～4 拍），不通過時先看拍數再判斷。
+- 2026-11-07 無頭環境無 GPU，木馬之夜約 15 fps；音訊斷塊（每次 3～60 ms）補 0 並排除，報告會列。程式玩家的鍵盤事件 `isTrusted = false`。
+- 2026-11-07 程式玩家自己的動作也會發聲，盲區檢查要看「每次盲區」表裡盲區內還在響的 cue。
+- 2026-11-09 遙測版本號一律 `dev`：`build-itch.mjs` 還沒寫 `<meta name="odyssey-build">`。
+- 2026-11-09 改 `.github/workflows/**` 會同時觸發 web 與 unity 兩組（PR 上就會跑 Unity 約 25 分鐘），非必要不要和其他改動混在一起推。
+- 2026-11-10 `analyze.mjs` 是 CRLF 換行：用 node 字串取代改檔時要含 `\r\n`，否則比對不到；用 Edit 工具最穩。
+- 2026-11-10 掩護版的殘響不在 300～1200 Hz：重合擊在這個頻帶 50 ms 內就掉回背景，餘韻在全頻（多半是 200 Hz 以下），所以殘響量全頻包絡；喇叭模擬（200 Hz 高通）下殘響中位只剩 0.10 秒、第 1 項不通過，這是聲音本身的特性，不是量法錯。
+- 2026-11-10 背景要取窗前包絡的**中位數**：鼓聲不斷時窗前平均會被鼓點拉高。
+- 2026-11-10 `ANALYZE_COVER=1|0` 只換第 1 項的量法；fireSync 一律看規則實際模式（`RULE_COVER`），否則舊模式盲區照設計壓暗的火光會被誤判成掉回。
+- 2026-11-10 錄製中途偶爾「Page crashed」（60 秒留空檔版第一次），重錄就好。
+- **2026-11-10 本機錄製三條鐵則**（使用者 11/09 晚～11/10 一直被鎖滑鼠、喇叭一直響的原因）：
+  1. 無頭 Chromium 在 Windows 上，遊戲呼叫 `requestPointerLock` 會對**實體滑鼠**做 ClipCursor，把滑鼠鎖在左上角錄影視窗大小（640×360）。`record.mjs` 開頁一律加 `nolock=1`（第 167 行）。**不要加 `mute=1`**：它把總閘音量設 0，會錄到靜音。
+  2. `LAUNCH_ARGS` 預設加 `--mute-audio`（第 134 行；要聽才加 `--audible`）。已驗證不影響錄音：分接點在 `destination` 前，11/10 兩份 60 秒錄音峰值 −0.9 dBFS、檢查照常。
+  3. 錄完確認沒有殘留程式：`tasklist | grep -i headless` 應該沒有結果（`chrome-native-host.exe` 是 Chrome 擴充功能的，不是錄影留下的）。**錄完隔 5 秒再數**：11/10 夜錄完立刻數到 4 個，是瀏覽器正在關；幾秒後就 0。
+- 2026-11-10 夜 派工說「遊戲頁一律 `?mute=1&nolock=1`」：錄音工具**不加 `mute=1`**（會錄到靜音），用瀏覽器 `--mute-audio` 取代。其他角色在內建瀏覽器開頁照派工規矩。
+- 2026-11-10 夜 11/10 白天的兩份錄音（`cover-*-1110`）是聲音層讀不到規則掩護窗 `{from, to}` 的版本：掩護版重合擊沒排上（突出 +12.6 只是鼓點）、舊版靜音錯位 0.3 秒，都是那個 bug。聲音角色 11/10 晚修好後重合擊 +23.9 dB。拿數字比較時別用那兩份。
+- 2026-11-10 夜 餘韻的「背景」用中位數或平均差很多（同一窗 1.0 秒 vs 0.4 秒）。**總控 11/10 夜決定主判定用中位數**（和量出 1.3 秒、訂門檻同一把尺），平均並列當參考。
+- 2026-11-10 夜 σ 玩家改用規則角色的模型（t − e、起步時重抽、城門用真相位）。自己寫時踩過：停著每幀重抽誤差會系統性提早起步；城門用帶誤差的相位會卡死到逾時。
+- 2026-11-11 錄音程式玩家在殘響掩護版引不起警戒：連續走的腳步自動踩拍、聽不見；離拍腳步只在 STEP_R 2.5 m（含高度）內聽得到，木馬腹中離地面衛兵太遠。改成在衛兵正上方屏息到喘氣（loud，LOUD_R 8 m），喘氣要落在 p ≤ HIGH_P 才是起疑（進警戒），p 高只會高度警覺，所以快到上限時相位偏高先放開重來。90 秒內會進警戒（50 秒試錄：787 幀、6 個警戒窗）。
+- 2026-11-11 腳步檢查 1 步就判會被單一樣本左右（試錄 1 步 vs 2 步判了不過）：`TH.stepMinN` 3，兩種腳步各不到 3 步判無資料。要樣本就錄 `--step-test` 段（第 1 區離拍起步、走 0.12 秒就停；40 秒約 19 步離拍、25 步合拍）。
+- 2026-11-09 本角色在 worktree `C:\Users\恩\test1\.claude\worktrees\openrouter-api-key-setup-383957`（分支 `claude/gracious-bardeen-vwo4rr`）工作；不要寫 `C:\Users\恩\test1` 主資料夾，hook 會擋。
+
+## 4. 驗證方式
+| 改了什麼 | 跑什麼 | 看什麼 |
+|---|---|---|
+| `tools/telemetry/` | `node --test tools/telemetry/*.test.js` | 7 pass、0 fail |
+| 全部網頁測試（同 CI） | `node --test prototypes/*/*.test.js prototypes/odyssey-series/*.test.js tools/telemetry/*.test.js` | 0 fail |
+| 打包 | `bash tools/build-itch.sh` | 結尾「找不到的相對連結：0 個」、沒有「仍引用 cdnjs」警告、zip 大小 |
+| 錄音分析 | `record.mjs --profile troy-prologue --duration 90` 後讀 `report.md` | 8 項通過／不通過＋喇叭模擬欄；11/07 基準：盲區中位 36.5 dB、Risset 起音中位 2.3 ms 命中 96%、削峰 0、丟拍 2.7% |
+| 只改分析 | `analyze.mjs <舊輸出資料夾>` 重跑 | 和改前的 `analysis.json` 比數字 |
+| CI 設定 | 推上去看 Actions 的 `changes` 輸出 unity／web 是否如預期 | 只改 docs 時其餘工作都 skipped |
+
+## 5. 上次做到哪、未完成
+**2026-11-09 第一輪（筆記初稿）**
+- 本機環境：Node v24.22.1；Playwright Chromium 瀏覽器有（chromium-1248、1254，含 headless shell），但 **playwright npm 套件待裝**；ffmpeg 8.1.1 有（WinGet Gyan）；bash、curl、python3 3.14.6 有，`zip` 沒有（打包走 python）。
+- `node --test tools/telemetry/*.test.js`：7 pass、0 fail。
+- 本輪沒改任何程式。
+- 11/09 起回訊與派工認「test1 總控（Opus）」；原主對話改名「test1 設計席（Fable）」，只處理設計題。
+
+**未完成／候選工作**
+- 本機錄音要先裝 playwright 套件（版本對上已有的 Chromium），並把 `record.mjs` 第 40 行（`analyze.mjs` 第 479 行沒讀 `NODE_PATH`，只寫死雲端路徑，裝好套件就找得到）改用 `path.delimiter` → 主對話 11/09 說等試玩回饋後一起派。
+- 錄音伺服器根目錄改成 `prototypes/`，讓錄影時遙測與 nav 載得到。
+- `build-itch.mjs` 寫入 `<meta name="odyssey-build">`（提交編號），遙測版本號才不是 `dev`。
+- 稽核 P1、P2：期望拍改成直接引用規則層，並補追殺第 5 層與假驟降尾音。
+- `bow-risset`、`vengeance` 設定檔還沒宣告喇叭可聽度檢查（6～8 項）。
+- 11/12 期中報告要的頻譜圖與錄影：等主對話指定原型與段落。
+
+- 11/09 晚（總控）`record.mjs` 的 `NODE_PATH` 已改用 `path.delimiter`（提交 0193cdf）；剩本機裝 playwright 與 `fireSync` 檢查（兩件 11/10 都完成）。
+
+- 11/10 本機試錄通過：playwright@1.65.0（chromium revision 1254，對上本機快取，不用再下載）裝在 `%LOCALAPPDATA%\test1-node-tools`（`npm install --prefix`，repo 內無 package.json）。跑法（PowerShell）：`$env:NODE_PATH="$env:LOCALAPPDATA\test1-node-tools\node_modules"; $env:FFMPEG=(Get-Command ffmpeg).Source; $env:FFPROBE=(Get-Command ffprobe).Source; node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 30`。結果：錄 30 秒、中位 43.5 fps、錯誤 0、自動檢查 8 項全過、mp4 h264＋aac 約 38.9 秒（含聲音對齊位移 8.2 秒）。1.64.0 對應 1248、1.63.0 對應 1243。
+
+**2026-11-10 第二輪：殘響掩護版的錄音檢查（總控派工）**
+- 改了：`analyze.mjs`（第 1 項依 `COVER_MODE` 換量法、新增 `fireSync`、報告加「每次掩護窗」表與模式說明、`ANALYZE_COVER` 對照開關）、`profiles/troy-prologue.mjs`（`--cover cover|gap`、prepare 記 `coverMode`、probe 記 `fire`／`dg`）、`record.mjs`（預設 `--mute-audio`、`--audible`）、`README.md`（新選項）。
+- 驗證：兩模式各錄 60 秒，輸出 `tools/playtest-recorder/out/cover-cover-1110/`、`cover-gap-1110/`（不進 git）。
+  - 掩護版：第 1 項通過（突出中位 +12.6、最小 +10.9 dB；殘響中位 0.18 秒；整體比前後 +1.9 dB；6 個一般窗）；fireSync 通過（2236 幀誤差 0、掉回 0、fire×danger 1.0、fire×p −0.09）；其餘全過、腳步樣本不夠。喇叭模擬下第 1 項不通過（殘響 0.10 秒）。
+  - 舊盲區版：fireSync 通過（2383 幀、掉回 0）；第 1 項不通過——中位 30.1 dB，但 33.3、40.5、53.0 秒三個盲區聲音只靜約 0.3 秒或晚 0.3 秒才靜，都碰上循環長度 T 正在變，疑似聲音層的靜音和規則盲區對不上（已回報總控，不是本角色的檔）。
+  - 對照：舊版錄音用掩護量法跑 → 不通過（突出 +5.2、殘響 0、整體 −24.9 dB），門檻分得開。
+- 未完成：殘響門檻 0.12 秒只根據一次 60 秒錄音、6 個窗，下次多錄幾段再調；腳步檢查樣本太少時應判「無資料」而不是不通過（舊版 1 步就判了）。
+
+**2026-11-10 夜 第三輪：整夜自動驗證（新總控派工第 4 項）——腳本寫好、小樣本試跑過，等總控通知正式跑**
+- 新檔：`tools/telemetry/troy-bots.js`、`overnight-sim.mjs`、`overnight-report.mjs`、`overnight-run.sh`、`overnight.test.js`；改 `analyze.mjs`（掩護版門檻改設計席 7.5：突出 ≥ 12、餘韻 0.5～0.8 秒、警戒輕版 ≥ 8 dB；餘韻背景可選）。
+- 試跑（各 20 局、錄音各 20 秒，目前工作樹的規則與聲音）：只按前進 0%（過）；σ 0.12 100%（不過，上限 85%）；完美踩拍 100%、N1 88.6%；重合擊 +23.9 dB（過）；餘韻中位 1.0 秒（不過，上限 0.8；平均背景 0.4 秒）；喇叭模擬餘韻 0.5 秒；腳步差 17.3 dB（過）；20 秒錄不到警戒窗。
+- 全套測試 257 項全過（含新加 5 項）。
+- 正式跑：總控傳訊後 `bash tools/telemetry/overnight-run.sh`（背景，約 15 分鐘），報告寫 `docs/process/overnight-validation-2026-11-11.md`。
+- 11/10 夜（續）門檻改設計席 7.8：σ0.12 通關率 50～85% 作廢、只列不判；改判「σ0.12 通關時間中位 ≥ 完美 1.2 倍且每局高度警覺 ≥ 1 次」「σ0.25 比 σ0.12 通關率低 ≥ 10 個百分點或時間中位 ≥ 1.2 倍」。50 局初步：兩條都不過（1.01 倍、0.46 次；低 6 點、1.00 倍）。全套測試 260 項全過。
+- 等聲音角色殘響修改提交後，總控傳訊再正式跑 `bash tools/telemetry/overnight-run.sh`。
+
+**2026-11-11 凌晨 第四輪：整夜驗證正式跑完成**
+- 報告 `docs/process/overnight-validation-2026-11-11.md`（版本 37db718；程式玩家 500 局 × 8 組 44 秒；錄音不停 90 秒、留空檔 90 秒、腳步測試段 45 秒；殘留瀏覽器 0）。
+- 判定 13 項：過 6、不過 5、無資料 2。不過：完美踩拍 99.6%（2 局被看見）；σ0.12 時間 1.01 倍、高度警覺 0.55 次／局；警戒輕版 +7.3 dB（喇叭模擬 +7.6，只有 3 個警戒窗）；喇叭模擬餘韻 0.49 秒。過：只按前進 0%、σ0.25 比 σ0.12 低 12.8 點、餘韻 0.65 秒、重合擊 +22.5 dB、腳步測試段 25.8 dB（19／30 步）。
+- 只列：完美玩家通關時間舊版 87.9 秒、新版 44.1 秒；同一把尺 N1 舊 77.6%／新 95.1%；σ0.12 通關率新 93.2%／舊 70.0%。
+- 本輪改：錄音程式玩家不停版用喘氣引起警戒、`--step-test`、`TH.stepMinN`；報告加腳步步數、通關時間、餘韻兩位小數、本地日期、樣本限制說明。全套測試 286 項全過。
+- 未完成：警戒窗樣本少（3 個），要的話錄一段讓程式玩家多次引起起疑；完美玩家失敗的 2 局要記 seed 才能給規則角色查（`runGame` 目前沒記）。
+
+**2026-11-11 第五輪：照搬規則角色的程式玩家修正（0f21bf8），只重跑程式玩家**
+- `troy-bots.js` 的 `makeBot`／`activeNow` 重新從 `risset.test.js` 擷取，除註解外逐字相同（腳本比對 identical: true）：路線點同一幀轉向不停、踩拍起步判定涵蓋 1/144～1/30 秒。
+- 500 局：完美 100%（原 99.6%）、σ0.12 94.4%、σ0.25 83.8%、舊版完美通關時間 87.3 秒／新版 44.0 秒，和規則角色的表一致。報告判定 13 項：過 7、不過 4（σ0.12 代價、警戒輕版 ×2、喇叭餘韻）、無資料 2。錄音沒重錄（37db718）。
+- `overnight-sim.mjs` 的 JSON 多記 `rev`（提交＋規則檔／玩家檔有沒有未提交修改）；報告版本欄分「程式玩家」「錄音」，`--rec-rev` 指定沿用錄音的版本。
+
+**2026-11-11 第六輪：聲音 fe71b23 後整套重跑（程式玩家＋兩模式錄音＋腳步測試段，版本 c1d4aa3，木馬之夜檔案同 fe71b23）**
+- 判定 13 項：過 10、不過 1、無資料 2。唯一不過：σ0.12 錯了要付代價（時間 1.01 倍、高度警覺 0.59 次／局）——設計席 7.8 說這是回設計席的訊號，不改規則。
+- 錄音全過：重合擊 +23.0 dB（喇叭 +22.9）、餘韻 0.61 秒（喇叭 0.59）、警戒輕版 +11.5 dB（喇叭 +11.7，6 個警戒窗）、腳步測試段 24.9 dB（16／33 步）。兩段一般錄音腳步不足 3 步判無資料（正常，腳步看測試段）。
+- 程式玩家：完美 100%、σ0.12 94.4%、σ0.25 83.8%（低 10.6 點，過）；通關時間舊 87.3／新 44.0 秒。殘留瀏覽器 0。
+
+**2026-11-11 第七輪：巡邏中高頻 +2 dB 查證、木馬共鳴量測（總控派工）**
+- 查證結論 **(a) 走法不同，不是程式改動**。c1d4aa3 與 HEAD（3823b7c）各錄兩段 90 秒（`out/bisect-*`，從 git archive 匯出到暫存資料夾再用 `--dir` 錄，不動工作樹）：
+  - 第 2 區巡邏（34～42 秒）：四段＋整夜那段各頻段都在 ±0.3 dB（250 Hz～1 kHz 同版本也差 0.8 dB）。
+  - 第 1 區巡邏只有 5～7 秒，同為 c1d4aa3 的兩段高頻就差 7～8 dB，大於跨版本差；取決於那幾秒有沒有喘氣、屏息、腳步。聲音角色那段 `horse2-off-cover` 第 1 區多一聲 gasp。
+  - 工具：`tools/playtest-recorder/compare-bands.mjs <資料夾…>`，巡邏段（排除警戒、追殺、掩護窗前 0.3／後 0.8 秒）各頻段與分區，附各區音效次數。
+- 木馬共鳴（C2）：`analyze.mjs` 加 `horseBoom` 檢查；設定檔加 `--horse-test`（配 `--page "index.html?lab=horse"`；前半段擺到木馬旁 (8.5, 17.5) 2.5 m、後半段擺到 (38.5, 26.5) 32 m），probe 多記 `hd`（聲音層 `horseInfo().dist`）。
+  - ae48a4b、120 秒（`out/horse-c2-2`）：貼近那一擊後 0.5 秒 300～1200 Hz 比窗前 +26.8 dB、遠處 +9.1 dB，差 17.7 dB（≥ 3 過）；但貼近時共鳴峰值比重合擊峰值高 14.4 dB（喇叭模擬 13.4）→ 判不過（共鳴不能比重擊響）。聲音角色離線量的是差 3.7 dB，遊戲內貼近大很多，要聲音角色查 `HORSE_BOOM_GAIN`／`HORSE_BOOM_MIX`。
+- 陷阱：
+  - 2026-11-11 **錄音跑的時候不要改設定檔**：後面幾段會載入改到一半的檔（這輪 3 段因 `horse` 參數沒解構而失敗）。
+  - 2026-11-11 `horseInfo` 在 `TroyDebug.audio.raw` 上（畫面層包了一層），不在 `TroyDebug.audio`。
+  - 2026-11-11 HEAD 一直在動：要比版本就用 `git archive <提交> prototypes/troy-prologue | tar -x -C <暫存>`，以提交編號為準；`?lab=horse` 是 260a415／ed8a37f 才有。
+  - 2026-11-11 試驗場是固定 10 秒一圈，60 秒每個位置只有 2 窗；共鳴量測至少錄 120 秒。
+
+### 11/11 傍晚：全流程影片與試玩找問題（使用者直接要求）
+- `profiles/troy-prologue.mjs` 加 `--play-through`：把 troy-bots.js 的 makeBot（完美踩拍）原樣送進頁面，輸出轉成按鍵；失敗重來時重建玩家。
+- `out/fullrun-1111-b`：46.7 秒通關（第 1 區 5.4 秒、第 2 區 8.3 秒、第 3 區 9.6 秒、第 4 區 22.5 秒），警戒 0 次、出聲腳步 7 次沒有引起任何反應。
+- `out/fullrun-1111`（舊錄音玩家）：第 1 區後在第 2 區不動 280 秒，什麼事都沒發生。
+- 截圖：12 秒提示字幕壓到左下屏息標籤；32 秒城門處鏡頭穿進牆／門、全畫面雜訊顆粒；22 秒屏息貼在衛兵旁 alarm 0。
+- 11/11 總控派：預告音檢查（preBlindMid）只判視覺輔助強度 > 0 的盲區。probe 加 `va`（`RissetRules.visualAidFor(zone, game.visualAidMode, T)`）；舊錄音沒有 va 時，殘響掩護版第 4 區當 0。強度 0 的另列不判。fullrun-1111-b 重判：4／4 過（中位 +21.2 dB），第 4 區 4 次另列（+3.9～+6.8）；fullrun-1111 仍 8 項過；CI 測試 314 項全過。
+- 11/11 總控派：屏息聽（C1）錄音檢查。`--listen-test`（頁面 `index.html?lab=listen`）在聲音層建立前掛分接點：候選＝建立後馬上接往前第 2 個 GainNode 的 GainNode，候選裡第一個被衛兵 PannerNode 接上的＝guardListen，前一個建立的＝beatBus；量兩條線出口／入口功率（＝當下增益）和衛兵左右聲道。程式玩家站著不動，掩護窗前後依循環單雙號屏息／平常，其他時間每 2.5 秒切換。analyze 新增 `listenC1`。`out/listen-c1`（120 秒）：衛兵線 +6.0、鼓拍線 −6.0 dB；左右差成對比 48 次有 36 次變寬、中位只多 0.7 dB（衛兵多在正前後方）；最響一擊屏息 6 窗比平常 6 窗 −0.9 dB（容許 −1.5）→ 過。
+- 陷阱：第一版用「PannerNode 第一個接到的 GainNode」或只看建立順序，都會誤認成 beatBus（它也符合順序規則）。
+- 11/11 總控派：查看／追殺衛兵聲。`--lab-bot check|hunt`（頁面 `?lab=check`／`?lab=hunt`）：
+  - 查看：每 14 秒按 N，單號那次躲進北邊影子，雙號那次站著被發現。
+  - 追殺：往北跑進影子，衛兵 4 公尺內就屏息。
+  - 分接點另量衛兵總線 guardOut、總輸出 master、慢低音候選（第 2 個候選＝bassGain，平常 0.22）。
+  - 新工具 `guard-mix.mjs`；analyze 新增 `guardMix`，只列數字、不判。
+- 結果（`out/lab-check` 120 秒、`out/lab-hunt` 90 秒；分接點在輸出限制之前，看「比鼓」的相對值）：
+  - 喊人：比鼓 −6（追殺）／−12（查看）dB。疑問聲 −19、走到時吸氣 −22、沒找到時呼氣 −31（偏輕），搜索開始 −1 dB。
+  - 腳步：追殺時 3 公尺 −8 dB、4～7 公尺 −19 dB；查看中走近 4～7 公尺 −31 dB。巡邏腳步沒量到，試驗場的衛兵站崗不走。
+  - 慢低音增益：查看中衛兵 4 公尺 0.717、9 公尺 0.414，平常 0.23。和公式差不到 0.03，4→9 公尺差 4.8 dB。每秒峰值跟著低音拍起伏，不能拿來比距離。
+  - 喘：兩段都沒觸發 pant 事件（追殺玩家每次都被抓），沒量到。
+- 11/11 晚 總控派（HEAD e2b4713）：新舊鼓聲並排、查看／追殺重錄。
+  - 分接點修正：聲音層在 beatBus 與 guardListen 之間加了「躲」的節點，舊的建立順序規則失效，提示聲的 PannerNode 也會被誤認。改成：衛兵 PannerNode 接上的 X → guardOut → master 都是 GainNode，而且 guardOut 下一個建立的 GainNode（beatBus）第一條線接它自己的下一個（hideSplit）。屏息聽複驗 `out/listen-try2` 過：+6／−6，左右 16／16 次變寬、中位 +1.3 dB。
+  - 新鼓聲 `out/drums-new` 對舊鼓聲 `out/drums-old`（`?drums=old&clean=1`），都用 `--step-test` 錄 120 秒：
+    - 最響一擊突出：+21.2 對 +22.1 dB。
+    - 餘韻中位：新 0.2 秒（不過，要 0.5～0.8）、舊 0.6 秒。窗內比前後：新 +4.3、舊 +10 dB。
+    - 腳步差：新 27.2、舊 21.8 dB，兩個都過。
+    - 這兩段錄的時候電腦被別的工作階段佔用，幀率只有 29／20 fps。
+  - 查看 `out/lab-check2`（比鼓）：疑問聲 −3.4、喊人 −2、走到時吸氣 −13、沒找到的呼氣 −18.8 dB。查看中走近的腳步 >7 公尺 −3.9、4～7 公尺 −30.8 dB（走到後停下）。巡邏腳步 −45 dB（衛兵站崗，只有零星）。
+  - 追殺 `out/lab-hunt2`：腳步 3 公尺 −1.2、4～7 公尺 −14 dB。喊人 +14.7、搜索 +12 dB，分接點峰值 +11 dBFS（輸出限制之前）。實錄峰值 −0.9 dBFS 沒爆音，但限制器會把鼓壓下去：這段的掩護窗、預告音檢查都不過。
+  - 陷阱：錄的時候若有別的工作階段在跑 Chromium（例如聲音角色的 dn-check.mjs），那些 chrome-headless-shell 不是我的，不要關。
+- 11/11 深夜 總控派：第 18 節追殺聲音 18.5 驗收（HEAD 4bf449d）。新工具 `hunt-mix.mjs`；probe 加 `hm`（照 audio.js huntUpdate 的判法：none／escape／hide）、`sm`（stepMasked）。
+  - 追殺程式玩家：甩掉追兵 3 秒後呼叫 `g.retry()` 重擺場景，可以重複錄。
+  - 試驗場開場直接追殺，沒有喊聲，起點改用進入「逃」的那一刻。
+- 結果 `out/hunt18b`（試驗場 180 秒；逃 3 次，躲 40 秒）：
+  1. 逃：起音每秒 35 個（離線估 24～26，我的起音偵測連腳步、跑步都算）。三次都 1 秒內到穩定值的九成，之後變化 ≤ 9%，過。但開始前的密度沒有量，「從慢加速」看不出來。
+  2. 躲：1200 Hz 以上，躲比逃只低 6.9 dB（只算衛兵比總輸出低 15 dB 的幀），要 ≥ 10，不過；離線估差 27 dB。
+  3. 躲：追兵 2～4 公尺的腳步比同段鼓高 26.7 dB，過。但分接點量到 +10 dBFS（輸出限制之前），太響，會觸發限制器。
+  4. 躲：踩得上的起音比其他低 0.8 dB，要高 ≥ 4，不過。躲的時候起音每秒仍有 25 個左右，分不出哪個是哪一層。
+- 整關 `out/hunt18-full`（完美踩拍 90 秒）：沒被追殺過，這幾條量不到。
+- 11/12 總控派：重量（HEAD 161c863，聲音角色的躲時修正、186c34a 餘韻與喊聲音量）。
+  - 新鼓聲平常狀態 `out/drums-new2`：最響一擊突出 +20.8 dB、餘韻中位 0.5 秒（過）、窗內比前後 +5.7 dB、腳步差 25.4 dB，整項過。
+  - 追殺試驗場 `out/hunt18c`（180 秒，逃 2 次、躲 42 秒），18.5 四條全過：
+    1. 逃：每秒約 35 個起音，1 秒內到頂，變化 ≤ 6%。
+    2. 躲時 1200 Hz 以上比逃低 14.6 dB。
+    3. 躲時追兵 3 公尺腳步比鼓高 6 dB（−11.2 對 −17.2 dBFS），不再觸發限制。
+    4. 踩得上的拍高 23.1 dB。
+  - 第 4 條改量法：每段連續的「踩得上」時段取最響的起音，對上其他時段最響的起音。原本比全部起音的平均，因為踩得上的時段很寬、裡面也有小拍，平均分不出差別。同量法套在 `out/hunt18b`（修之前）是 −14.5 dB。
+  - 人聲（比鼓）：喊人 −18.1 dB（目標約 −6，太小）、搜索開始 +2.5 dB（太大）。
+- 11/12 總控派：新鼓聲第二步（三對二強拍，ed07b60＋規則 745d771 每圈 6 拍）對第一步（`out/drums-new2`，161c863），兩段都用 `--step-test` 錄 120 秒。第二步在 `out/drums-step2`。
+  | 項目 | 第一步 | 第二步 |
+  |---|---|---|
+  | 最響一擊突出（300～1200 Hz） | +20.8 dB | +22.5 dB |
+  | 餘韻中位 | 0.5 秒 | 0.6 秒 |
+  | 窗內比前後（窗內能量） | +5.7 dB | +7.4 dB |
+  | 腳步被蓋住（不合拍減合拍） | 25.4 dB | 26.7 dB |
+  | 踩得上的拍高多少（平常巡邏，每段最響比） | +11 dB | +2 dB（要 ≥ 4，不過） |
+  - `hunt-mix.mjs` 加 `--mask-mode none`：第 4 條改量平常巡邏（排除警戒）。
+- 11/12 總控派：查「踩得上的拍比其他拍高」第二步掉到 +2 dB 的原因。**結論：是量法問題，不是聽感問題。**
+  - 原量法：每段連續的 sm 真／假時段各取最響的「起音」再比。起音＝150 Hz 以上包絡相對前 30 毫秒最小值上升 2 倍。
+  - 證據 1：第二步「踩得上時段最響的起音」中位 −19.1 dB，比同時段規則大拍的逐拍峰值中位 −13.8 dB 還小。最大值不可能比中位數小，所以是起音偵測漏了大拍：前面的聲音還沒退，大拍上升不到 2 倍。落在規則大拍 ±20 毫秒內的響起音（> −15 dB）從第一步 285 個掉到 55 個。
+  - 證據 2：兩版各有約 270 個／2 分鐘的響起音不在任何規則拍上，它們不跟著主鼓 ×0.6 變小，就把「其他時段最響」撐住了。來源未查明：附近沒有音效事件，在一圈裡平均分布，第一步也有。
+  - 已排除：時段邊界錯貼（起音前後兩幀 sm 不一致的丟掉，結果 13.1／2.1，照舊）；錄音工具的每圈拍數（rulesT.RISSET_M 第二步＝6，正確）；強拍時間（加在既有的拍上，同時間）。
+  - 新量法（hunt-mix.mjs 的 4b 逐拍）：規則 beatsBetween 的每一拍（同時間合併），取錄音 [−5, +25] 毫秒的峰值，依那一拍的 sm 分組各取中位相減。印在原本第 4 條下面。
+  - 重量各版（平常巡邏）：
+    | 錄音 | 原量法 | 逐拍 |
+    |---|---|---|
+    | 第一步 drums-new2 | +13.1 | +8.9 |
+    | 第二步 drums-step2 | +2.1 | +8.7 |
+    | step2b | +1.4 | +9.4 |
+    | step2c | +1.9 | +12.2 |
+    | step2d | +2.9 | +12.6 |
+    | 6 拍不加強拍 drums-m6-nostep2 | +3.4 | +9.5 |
+    全部 ≥ 4，過。
+  - 和離線模擬（16～20 dB）的差：逐拍量的是實際輸出峰值，含前一拍的尾巴與其他聲音，踩不上的小拍底下墊著這些，所以差距小 7～10 dB。真耳朵聽到的應該比較接近實錄的 9～13 dB。
+  - 躲（hunt18c）用逐拍：+4.1 dB，剛好過；原量法是 +24.9。修之前的 hunt18b 逐拍是 +2.0。躲的這條比原本報的弱很多，邊緣。
+
+## 11/14 第 9 條：最響一擊的時刻對不對得上（`hit-align.mjs`，新）
+
+- 指令：`node tools/playtest-recorder/hit-align.mjs <錄音資料夾> [--tol 5] [--list] [--json]`（全過退出碼 0，不過 2）。
+- 一擊從哪來：事件裡有 `hit` 就用 hit（free 版）；沒有就用時間軸 `cyc` 加一那幀的 `cs`（現行 cycle 版，和 `hit-baseline.mjs` 同一定義，警戒中的交接不算）。`HIT_MODE` 是 `'free'` 卻沒有 hit 事件時，腳本直接報錯，不退回用循環交接。為此 `profiles/troy-prologue.mjs` 的 `rulesT` 也開始收字串常數。
+- 怎麼算有那一擊：只在規則時刻前後 15 毫秒內找。起音的條件是：比自己前 4～12 毫秒的最大值高 6 dB 以上，而且 4 毫秒內聲音大到接近視窗裡的最大值（差 6 dB 以內）。取符合條件的第一格，這樣搶在前面的腳步或別層的鼓不會被當成那一擊。偏差在 ±5 毫秒內、上升 6 dB 以上才算過。
+- **現況（cycle）**：
+
+| 錄音 | 過 | 偏差範圍（中位） | 被缺口排除 |
+|---|---|---|---|
+| hit9-cycle（11/14 HEAD 重錄，90 秒） | 11／11 | 1.0～2.8（1.8）毫秒 | 3 擊 |
+| drums-step2 | 19／19 | 0.7～2.5（1.7） | 0 |
+| drums-new2 | 19／19 | 0.7～2.5（1.6） | 0 |
+| drums-step2d | 19／19 | 0.4～2.7（1.8） | 0 |
+| drums-m6-nostep2 | 18／18 | 0.1～2.7（1.7） | 1 擊 |
+| hunt18c（追殺試驗場） | 13／13 | −1.8～2.1（1.7） | 2 擊 |
+
+- **反向對照**（故意把規則時刻挪開）：挪 −6 或 +8 毫秒，幾乎全部不過；挪 30 毫秒全部不過，所以這個檢查真的抓得到時刻錯開。挪 +6 毫秒時仍有 16～17／19 過，原因是錄音固定晚 1.7 毫秒，等於往後只剩約 3.3 毫秒的餘裕。
+- **量法有疑義的地方**：
+  1. **錄音缺口**：本機無頭錄音平均每秒約 4 個 128 格的缺口（約 2.9 毫秒、補 0；`meta.audio.gapFrames`，`gapList` 只存前 50 個）。一擊前後 20 毫秒內有 ≥ 64 格連續 0 就不計，大約一成五的一擊會被排除。hit9-cycle 的 c9 就是起音被缺口切掉，偏差顯示成 8 毫秒，這是錄音工具的問題，不是遊戲的問題。算進去的少於 10 擊就要重錄。
+  2. **固定晚 1.7 毫秒**：六份錄音都一樣，可能來自起音的定義（取峰值一半那個取樣）或排程的提前量，還沒拆開。不影響 ±5 毫秒的判定。之後 free 版如果偏差中位離開 1～2.5 毫秒，就要先查。
+  3. **只確認那一刻有明顯的最響起音，不分辨那是哪一層**：cycle 版的一擊本來就和每圈開頭各層的拍同時。free 版如果一擊和鼓拍錯開，要一起看上升 dB；一擊比旁邊的拍小時可能抓錯，到時候再重量。
+- free 版要接上的前提：錄音工具要收得到規則的 `hit` 事件（`type:'hit'`，或 cue 的 name 是 `hit`，要帶 `at`）。規則角色接上 `game.hit` 之後要先確認一次。
+- 自動化測試 348 項全過。這次錄完沒有留下自己開的無頭瀏覽器。
+
+## 11/17 發布與整關冒煙（`tools/smoke-full.mjs`，新）
+
+- **打包**：`build-itch.sh` 會把每個原型資料夾整個照抄，`level-troy.js`、`level-troy-final.js`、`level-editor.html`、`level-editor/core.js` 本來就會打包進去。我只把 `level-editor` 加進 `PROTOS` 清單，讓它變成必要資料夾（缺了會報錯），也不再印「不在清單」的提醒。`layer-ride/` 仍然不在清單裡，沒有動，要不要加由總控決定。打包結果是 37 個檔、zip 724K。
+- **冒煙指令**：`node tools/smoke-full.mjs [--root dist/odyssey-series] [--wait 3] [--md 表.md] [--json 結果.json]`。本機要先設 `NODE_PATH` 指到 test1-node-tools。腳本自己開隨機埠的伺服器，不碰 8765；瀏覽器帶 `--mute-audio`，網址加 `mute=1&nolock=1`。
+  - 開的頁：預設版、`?map=final&story=1`、編輯器、`switch.html` 上每個 .html 連結。
+  - 沒有 `level-troy-final.js` 時，最終地圖那幾頁標「待交卷」。
+  - 本站的 404、主控台錯誤、頁面例外都算失敗；外部網址（Google 字型）連不上只列警告。
+  - 退出碼：有頁失敗是 1，執行出錯是 2。
+- **結果（11/17）**：repo 的 prototypes 和打包出的 dist 都是 20 頁全過、待交卷 0。這時 `level-troy-final.js` 已在工作資料夾裡，還沒提交，是規則角色的半成品。
+  - 第一次測 dist 時有 4 頁失敗，原因是 Google 字型逾時、頁面等 `load` 等到 20 秒。之後改成等 `domcontentloaded`，外部連線失敗也只算警告。
+- **CI**：在 `web-tests` 工作裡加了三步：裝 Playwright（chromium）、冒煙測打包出的 dist、把冒煙表寫進執行摘要。路徑過濾也加上 `tools/smoke-full.mjs`。預估每次多 1～2 分鐘。還沒在 GitHub 上實際跑過，第一次推上去後要看結果。
+- **嚴格檢查**：`bash tools/cleancheck.sh tools/smoke-full.mjs tools/build-itch.sh .github/workflows/ci.yml tools/playtest-recorder/hit-align.mjs tools/playtest-recorder/profiles/troy-prologue.mjs` 全過，377 項。
+- 注意：在 PowerShell 打 `bash` 會叫到 WSL 而失敗，打包和嚴格檢查要用 Git Bash 跑。
+
+## 11/23 短展示版 `?map=demo` 驗收（`tools/playtest-recorder/demo-walk.mjs`，新）
+
+- 指令：`node tools/playtest-recorder/demo-walk.mjs [--root dist/odyssey-series] [--rounds 3] [--max 480] [--json 結果.json]`。程式玩家（makeBot，走地圖的 botRoute）的輸出只轉成鍵盤事件與滑鼠拖曳，只讀遊戲狀態、不寫座標或視角。事件是腳本送出的（isTrusted=false），和硬體按鍵不完全相同。
+- 打包：`build-itch.sh` 加了三份地圖檔的必要檢查；`smoke-full.mjs` 加 `?map=demo`。
+- 實走：原始、打包各連續 3 輪通關，字卡→木馬下→神殿廣場→城門→結局→空白鍵再玩，主控台 0 錯誤。每輪 39～65 秒是完美玩家，不代表真人時間。
+- 聲音（不出聲）：每輪開局字卡停 1.5 秒時仍在播的音源 0→24→24（原始）、0→24→28（打包）；遊玩段 RMS（訊號平均大小）−16.9／−16.8／−16.8 與 −17.2／−17.0／−17.1 dB，峰值都 −0.9 dB，沒有逐輪變大。每輪累計建立約 18～19 萬個節點（每秒約 3～4 千）。
+- 量不到：瀏覽器實際還活著的節點數（垃圾回收看不到；connect 減 disconnect 一直增加不代表洩漏）；`performance.memory` 在無頭下數值固定，不能當記憶體證據；3 輪太短，看不出長時間展示會不會累積；喇叭音量與聽感。
+- **編輯器競態（未修，屬畫面角色）**：`level-editor.html` 等 `level-troy.js` 最多 1.5 秒，逾時後 `start()` 走 `R.buildLevel()`，但 risset.js 先載入時沒有資料，會丟「resolveLevel：沒有關卡資料」。機器忙時冒煙兩次都抓到。
+- 編輯器重現數字：不加延遲 5／5 正常（`level-troy.js` 0.3～0.65 秒載完）；人為讓這個檔晚 1 秒回應 3／4 出錯、晚 2 秒 4／4 出錯。最後兩次冒煙（原始、打包）各 20 過 1 敗，敗的都是編輯器，當時機器忙。**所以 11/23 冒煙驗收還沒全綠**。建議修法（畫面角色）：`level-editor.html` 改成在 risset.js 之前同步載入 `level-troy.js`，和遊戲頁相同。
+- 流程失誤：第一次實走開瀏覽器時可用記憶體 1.09 GB，低於 1.5 GB 門檻，是指令把檢查和執行串在一起、沒有擋下。之後的執行都先過門檻。
+- 測試當下另有別的程式 `t6.js` 開著無頭瀏覽器，不是這個角色開的，沒有動。
+
+## 2026-11-24 短版追殺數據與校準檢查
+
+給「追殺緊張度」決策用（`docs/design/2026-11-23-competitor-design-review.md` 3.1）。只量、不改難度。
+
+### 程式玩家 500 局（`tools/telemetry/demo-hunt-sim.mjs`，新）
+- 指令：`node tools/telemetry/demo-hunt-sim.mjs [--n 500] [--bots sigma12,perfect,sigma25] [--json x.json]`，每組 500 局約 10 秒。
+- 版本：HEAD 741af9f 的 `prototypes/troy-prologue`（用 `git archive` 匯出到暫存資料夾再跑）。當時規則角色正在改 `risset.js`（校準偏差），工作樹那份跑到一半曾丟 `inputOffsetSec is not defined`，所以不用工作樹。
+- 條件：地圖 `level-troy-demo.js`、一局一條命、最多 600 秒、COVER_MODE 開、其他照規則預設。程式玩家照地圖 botRoute 走；σ 只模擬起步那一下的手誤。
+- 「人類視角」（錄音工具 `--human-cam`）只換畫出來的鏡頭，不影響移動與判定，Node 批次不必、也沒辦法模擬。
+- 「被發現」＝`g.hunted` 由假變真；「甩掉」＝由真變假而且還活著。
+
+| 項目 | σ0.12 | 完美踩拍 | σ0.25 |
+|---|---|---|---|
+| 通關率 | 98.4%（492／500） | 99.2% | 97.8% |
+| 通關時間中位（四分位；P90） | 38.2 秒（36.3～53.4；82.8） | 38.4（36.6～51.7；82.4） | 41.1（36.7～56.2；83.5） |
+| 被追殺過的局 | 9.8%（49 局，每局 0.11 次） | 10.8% | 10.6% |
+| 追殺時間佔遊玩時間 | 4.1% | 4.3% | 4.1% |
+| 追殺結局 | 55 次：甩掉 47（85.5%）、被抓 7（12.7%） | 54 次：甩掉 50、被抓 3 | 56 次：甩掉 45、被抓 10 |
+| 被發現到甩掉（中位；四分位；範圍） | 9.6 秒（9.3～9.7；7.5～11.7） | 9.6（9.3～9.7；7.5～9.9） | 9.6（9.5～9.7；7.6～11.8） |
+| 被追過的局：通關率／時間中位 | 83.7%／86.5 秒 | 92.6%／86.3 | 79.2%／89.5 |
+| 沒被追過的局：通關率／時間中位 | 100%／38.1 秒 | 100%／38.1 | 100%／38.3 |
+| 追殺發生在哪區 | 木馬下 40、神殿廣場 10、城門 5 | 47／4／3 | 41／13／2 |
+| 死因 | 動作太大被抓 7、逾時 1 | 3、逾時 1 | 9、被看見 1、逾時 1 |
+
+σ0.12 甩掉秒數分布：6～8 秒 5 次、8～10 秒 40 次、10～15 秒 2 次，其餘 0。
+
+怎麼讀：
+- 甩掉時間幾乎固定在 9～10 秒：程式玩家每次都「跑進最近影子的角落、追兵 3 公尺內屏息」，所以這是**這一種躲法**要花的時間，不代表真人的分布。真人可能用連踩 3 拍甩，也可能亂跑被抓。
+- 被追一次，通關時間從約 38 秒拉長到約 86 秒，被抓的機會是一到兩成。沒被追的局全部通關。
+- 約一成的局會被追，多半在第 1 區木馬下。連完美踩拍也有 10.8%，所以追殺比較像是路線或時機造成的，跟手準不準關係不大。要不要排一次固定的追殺進短版，可以拿這點來判斷。
+- 逾時那 1 局（三組都有）是程式玩家卡住，不是遊戲卡住，沒有追查。
+
+### 檢查（`tools/telemetry/demo-checks.test.js`，新，7 項）
+- 開場跟拍校準：`prototypes/troy-prologue/calibration.js` 在跑的時候已經出現（規則角色未提交）。假敲擊每拍抖動 ±12 毫秒：固定晚 60 毫秒量出 60 ± 15；不晚量出 0 ± 15；提早 40 毫秒量出負值；混一個晚 300 毫秒的誤觸仍在 60 ± 25；只敲 3 下時 `ok` 為假、`offsetMs` 為 0。檔案不存在、沒有 `estimate`、呼叫方式對不上時 skip。
+- stepRing 判定邏輯（純函式 `judge`）：前 20 秒開、23 秒後關判過；一直沒出現判 skip；23 秒後還開或前段太少判不過。
+- 追殺彙整用手算假資料驗算，另真跑 3 局確認同 seed 結果相同。
+- 瀏覽器實測：`node tools/playtest-recorder/demo-stepring-check.mjs [--root prototypes]`。開 `?map=demo&mute=1&nolock=1`，按空白鍵過字卡，之後不再輸入，每幀記 `#stepRing` 有沒有顯示。1～19 秒有 ≥ 90% 顯示、23～26 秒全部隱藏判過；前 20 秒一次都沒顯示判 skip（功能還沒接上）。退出碼：不過 1，過或 skip 0。
+- 錄音設定檔 `profiles/troy-prologue.mjs`：`--play-through` 支援 `?map=demo`（用 TroyLevelDemo 的 botRoute），遇到開場字卡（`#story`）會按空白鍵；沒有可見的「開始」按鈕時，開場改按空白鍵。
+
+### stepRing 瀏覽器實測：工作樹開不了局，沒量到
+- 18:00 前後的工作樹，`?map=demo` 按空白鍵後丟例外，遊戲沒有開始：`TypeError: Cannot read properties of undefined (reading 'length') at drainCalib (audio.js:2819)`，呼叫順序 `scheduleTo` → `tick` → `createAudio` → `makeAudio` → `startFromTop` → `demoStart`。這是聲音角色還沒提交的校準修改，不是本角色的檔。
+- 同一段腳本跑 HEAD 741af9f 匯出版，可以正常開局，但 HEAD 還沒有短版 stepRing。等聲音和畫面角色交卷後重跑 `demo-stepring-check.mjs`。
+- 冒煙測試（21 頁）只開頁面、不按開始，**抓不到這個例外**。之後可以考慮在冒煙裡加「按空白鍵開局 3 秒」。
+
+### 展示影片（11/26 提案備用）
+- 錄影前檢查資源：17:43 可用記憶體只有約 1.06 GB（門檻 1.5 GB），CPU 3%，顯卡記憶體 1.2／6 GB，沒有開 Premiere（只有 Adobe 背景服務）。當下先不錄，每 30 秒查一次；17:54 回到 2.7 GB 才開始。
+- 版本：HEAD 741af9f 匯出到暫存資料夾，再用 `--dir` 錄，因為工作樹開不了局。指令：`record.mjs --profile troy-prologue --dir <匯出>/prototypes/troy-prologue --page "index.html?map=demo" --play-through --sigma 0.12 --seed 3 --human-cam --aid on --duration 80 --no-analyze --out tools/playtest-recorder/out/demo-pitch-1124`。無頭、`--mute-audio`、`nolock=1`。
+- 結果：開局 0.8 秒 → 神殿廣場 3.7 秒 → 城門 37.5 秒 → 55.1 秒通關，之後停在結局畫面。中位 47.6 fps，錯誤 0。錄完沒有留下無頭瀏覽器。
+- **聲音不能用**：80 秒只錄到 62.9 秒的音訊，同步標記的位移從 2.1 秒一路漂到 18.2 秒，音訊時鐘大約只有實際時間的八成。重錄一次（`demo-pitch-1124b`，72 秒錄到 57.4 秒）一樣漂。推測是當時記憶體吃緊、音訊處理跟不上。`playtest.mp4` 的音畫前後會差好幾秒。
+- 可以用的：`tools/playtest-recorder/out/demo-pitch-1124/playtest-silent.mp4`（87 秒、無聲、h264，從 `video.webm` 轉出）。要配聲音，得在機器空閒時重錄，並確認同步標記分布在 1 秒內。畫面右上角有「相位 p（除錯）」條，不要的話重錄時加 `--phase-bar false`（設定檔判 `o.phaseBar !== false`；這個參數怎麼解析還沒驗證）。
+
+### 驗證數字（18:00 前後的工作樹，含其他角色未提交的改動）
+- `node --test prototypes/*/*.test.js`：381 項全過。`tools/telemetry/*.test.js`：19 項全過（含新加 7 項）。兩組合計（CI 範圍）400 項全過。
+- `bash tools/build-itch.sh`：44 個檔、zip 768K，找不到的相對連結 0 個，已帶 `calibration.js`。
+- 冒煙測試：原始 21 頁過、0 頁敗；打包 21 頁過、0 頁敗（不含按開始，見上）。
+
+## 11/28 離線、字體涵蓋檢查與 12/3 試玩摘要
+
+- **兩項檢查**：新檔 `tools/telemetry/troy-offline.test.js`。CI 的 web-tests 和 `cleancheck.sh` 都會跑 `tools/telemetry/*.test.js`，不用另外接線。
+  - 掃描清單：直接讀 `make-fonts.py` 的 SRC，再加上 `index.html` 的 script src／link href（含 document.write 字串裡的）與 CSS 裡的 url()、@import，一共 16 個以上的檔案。
+  - 離線：任何 http(s):// 網址都擋，包含註解；`//主機` 開頭的 src、href、url()、@import、fetch 也擋。XML 命名空間（three.min.js 的 `http://www.w3.org/1999/xhtml`）只是識別字、瀏覽器不會連，所以排除。
+  - 字體涵蓋：掃法和 make-fonts.py 相同（ASCII 加上所有 ≥ U+00A0 的字，註解也算），檢查 fonts.css、fonts-ui2.css 每一組字型的 unicode-range 有沒有涵蓋。用 `TROY_OFFLINE_ROOT=<暫存複本>` 可以指到別的資料夾。
+  - **make-fonts.py 沒改**：unicode-range 本身就是 Google 切出來的字表，直接拿來比，不用另外寫字表檔。
+  - 故意弄壞（都在暫存複本，不動 repo）：加 `<script src="https://cdn…">` 會擋；把 link 改成 `//fonts.example.com/a.css` 會擋；在 risset.js 加「鱷鱺」會擋，並提示重跑 make-fonts.py。
+  - **目前工作區的實況**：規則、聲音角色還沒提交的 risset.js、audio.js 多了 7 個字（奧斯奔歡軸啊跺），字體檢查會不過。他們提交前要重跑 `python -I prototypes/troy-prologue/vendor/make-fonts.py`（需要網路），或把那些字從註解拿掉。cleancheck 以 HEAD 為底，所以這次是過的。
+- **試玩摘要**：新檔 `tools/telemetry/playtest-summary.mjs`，加上測試 `playtest-summary.test.js`。
+  - 指令：`node tools/telemetry/playtest-summary.mjs <匯出數據.json> [--out 摘要.md] [--map final|demo|default]`，示範用 `--demo`。
+  - 現有工具：`summarize.mjs` 已經有每區時間和失敗次數；新寫的部分是被抓位置、可能迷路、手機版排版（不用表格），以及以程式玩家當基準。
+  - 限制：遙測沒記玩家座標，所以被抓位置寫的是被抓前 6 秒內最近一名查看或喊人的衛兵位置。可能迷路只按兩個條件判斷：停留超過程式玩家的 3 倍而且多 30 秒，或走回前一段。
+  - 要更準，需要畫面角色在 fail 事件帶 `x`、`z`，或每 2 秒記一次位置。
+  - 程式玩家（σ0.5）在七段版 30 局都沒被抓，所以示範在神殿廣場故意走向衛兵一次。示範輸出：
+    ### 示範：程式玩家（手很不準 σ0.5，失敗就重來這一區；在神殿廣場故意走向衛兵一次）跑七段版
+    
+    - 結果：通關，總共 2 分 13 秒
+    - 被抓：1 次；可能迷路：神殿廣場
+    
+    **1. 木馬腹中**　2 秒
+    
+    **2. 木馬下**　33 秒
+    
+    **3. 神殿廣場**　51 秒，被抓 1 次，⚠️可能迷路
+    - 開局第 37 秒：衛兵發現了你，之後被追上、抓住了。（衛兵在 (22, 10)）
+    - 迷路線索：停留 51 秒，程式玩家約 14 秒
+    
+    **4. 慶宴的街**　6 秒
+    
+    **5. 城牆下的窄巷**　9 秒
+    
+    **6. 沒有火的後街**　11 秒
+    
+    **7. 城門**　22 秒
+    
+    <sub>位置是被抓前最近一名查看或喊人的衛兵座標（公尺），遙測沒記玩家座標；迷路只按時間判斷。</sub>

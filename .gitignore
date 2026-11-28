@@ -112,3 +112,14 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# itch.io 打包輸出（tools/build-itch.sh）
+dist/
+tools/playtest-recorder/out/
+
+# Python 編譯快取
+__pycache__/
+*.pyc
+
+# Adobe Stock 授權圖只留本機，不放公開 repo（使用者 11/25）
+docs/process/proposal-assets/adobestock-*

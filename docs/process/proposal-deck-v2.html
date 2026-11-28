@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>木馬之夜　期末提案簡報（單人版）</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&display=swap">
+<style>
+/* 11/25 希臘陶器風淺色版：沙色底、赤陶色與墨色、回紋邊；語意色沿用「夜城訊號」（巡邏＝青、追殺＝紅、火把＝橘） */
+:root{
+  --night:#F4E9CF; --stone:#FFFBF0; --parchment:#2B1A12; --bronze:#9A4A1C;
+  --beat:#2F6F73; --torch:#C4561E; --blood:#A8281C; --mute:#6A5A48;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#D9CBA8;font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif;font-weight:500;color:var(--parchment)}
+.slide{width:1920px;height:1080px;background:var(--night);position:relative;overflow:hidden;
+  padding:96px 128px 120px;display:flex;flex-direction:column;gap:32px;margin:0 auto 24px;page-break-after:always}
+h1,h2{font-family:'Noto Serif TC','PMingLiU',serif;font-weight:900;letter-spacing:.04em;line-height:1.15}
+h1{font-size:128px}
+h2{font-size:64px}
+h3{font-size:36px;font-weight:600;line-height:1.3}
+p,li{font-size:32px;line-height:1.55}
+.mute{color:var(--mute)}
+.lead{font-size:40px;line-height:1.5}
+.beatband{height:28px;display:flex;gap:18px;align-items:center}
+.beatband i{display:block;width:14px;height:14px;border-radius:50%;background:#D8C7A0}
+.beatband i.on{background:var(--beat)}
+.beatband i.big{width:28px;height:28px;border-radius:4px;background:var(--bronze)}
+.grid{display:grid;gap:24px}
+.card{background:var(--stone);border:1px solid #E3D3B0;border-radius:6px;box-shadow:0 2px 8px rgba(90,50,20,.10);padding:28px 32px;display:flex;flex-direction:column;gap:10px}
+.card.beat{border-left:8px solid var(--beat)} .card.torch{border-left:8px solid var(--torch)}
+.card.blood{border-left:8px solid var(--blood)} .card.bronze{border-left:8px solid var(--bronze)}
+.tag{font-size:26px;color:var(--bronze);font-weight:600}
+table{border-collapse:collapse;width:100%}
+th,td{font-size:28px;line-height:1.4;text-align:left;padding:12px 18px;border-bottom:1px solid #D9C9A5;vertical-align:top}
+th{color:var(--bronze);font-weight:600}
+kbd{background:var(--stone);border:1px solid var(--bronze);border-radius:2px;padding:0 10px;font-size:28px}
+.eyebrow{font-size:26px;color:var(--bronze);font-weight:600;letter-spacing:.08em}
+.tight th,.tight td{padding:6px 18px}
+.foot{z-index:2;position:absolute;left:128px;right:128px;bottom:40px;display:flex;justify-content:space-between;font-size:24px;color:var(--mute)}
+.blank{border-bottom:2px solid var(--mute);display:inline-block;min-width:240px}
+.box{background:var(--stone);border:2px solid var(--bronze);border-radius:4px;padding:16px 22px;font-size:26px;line-height:1.4;text-align:center}
+.box.s{border-color:var(--beat)} .box.v{border-color:var(--torch)}
+.arrow{font-size:30px;color:var(--bronze);align-self:center}
+.dash{border:2px dashed var(--mute);border-radius:4px;padding:20px 28px}
+
+/* 希臘陶器風：沙色底、火把光暈、回紋邊 */
+.slide{background-image:radial-gradient(circle at 100% 0,rgba(232,137,59,.20),transparent 42%),radial-gradient(circle at 0 100%,rgba(154,74,28,.10),transparent 40%)}
+.slide::before{content:"";position:absolute;left:128px;right:128px;top:40px;height:18px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='18'%3E%3Cpath d='M0 3H8V15H16V3H24V15H32' fill='none' stroke='%239A4A1C' stroke-width='3'/%3E%3C/svg%3E");background-repeat:repeat-x;opacity:.85}
+h1,h2{color:#2B1A12}
+.eyebrow{display:inline-block;align-self:flex-start;background:#9A4A1C;color:#FFF6E3;border-radius:4px;padding:2px 14px;font-size:24px;letter-spacing:.06em}
+#s1{background-color:#B5532A;background-image:radial-gradient(circle at 85% 15%,rgba(255,200,120,.45),transparent 40%),radial-gradient(circle at 0 100%,rgba(60,20,10,.25),transparent 50%);--parchment:#FFF6E3;--mute:#F6DDBE;--bronze:#FFE2A8;color:#FFF6E3}
+#s1::before{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='18'%3E%3Cpath d='M0 3H8V15H16V3H24V15H32' fill='none' stroke='%23FFE2A8' stroke-width='3'/%3E%3C/svg%3E");opacity:.9}
+#s1 h1{color:#FFF6E3}
+#s1 .beatband i{background:rgba(255,246,227,.38)}
+#s1 .beatband i.on{background:#FFE2A8}
+#s1 .beatband i.big{background:#FFF6E3}
+#s1 .foot{color:#F6DDBE}
+#s1 .blank{border-bottom-color:#F6DDBE}
+
+/* 打磨：結論條、大數字、時間軸（參考計畫書與國文簡報的做法） */
+.bar{display:flex;align-items:center;gap:24px;background:var(--stone);border:1px solid #E3D3B0;border-radius:12px;padding:22px 32px;box-shadow:0 2px 8px rgba(90,50,20,.10)}
+.bar b{background:var(--bronze);color:#FFF6E3;border-radius:6px;padding:4px 18px;font-size:28px;white-space:nowrap}
+.bar span{font-size:34px;line-height:1.4}
+.stat{font-family:'Noto Serif TC','PMingLiU',serif;font-size:104px;font-weight:900;line-height:1.1;color:var(--bronze)}
+.tl{display:grid;grid-template-columns:repeat(5,1fr);position:relative;margin:4px 0 0}
+.tl::before{content:"";position:absolute;left:10%;right:10%;top:29px;height:6px;background:#D9C9A5}
+.tl div{text-align:center;position:relative;font-size:28px;line-height:1.35}
+.tl i{display:block;width:60px;height:60px;border-radius:12px;background:var(--stone);border:5px solid #D9C9A5;margin:0 auto 10px}
+.tl .now i{background:var(--bronze);border-color:var(--bronze)}
+.tl .end i{background:var(--blood);border-color:var(--blood)}
+.tl small{display:block;font-size:24px;color:var(--mute)}
+.outline{position:absolute;left:128px;bottom:140px;font-family:'Noto Serif TC','PMingLiU',serif;font-weight:900;font-size:130px;line-height:1;letter-spacing:.04em;color:transparent;-webkit-text-stroke:2px rgba(255,246,227,.55)}
+#s7 .card p{font-size:34px}
+#s7 h3.sub{font-size:36px;color:var(--bronze)}
+#s10 .card{padding:34px 36px}
+#s10 .card p{font-size:36px;line-height:1.5;text-wrap:balance}
+#s10 h3{font-size:44px}
+/* 目錄頁：大數字、兩欄、角落線條（參考使用者給的目錄範例） */
+.toc{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,auto);grid-auto-flow:column;gap:84px 72px;margin-top:36px;position:relative;z-index:1}
+.toc .it{display:flex;align-items:center;gap:28px}
+.toc .no{font-family:'Noto Serif TC','PMingLiU',serif;font-weight:900;font-size:128px;line-height:1;color:var(--bronze);min-width:170px;letter-spacing:-.02em}
+.toc h3{font-size:40px;line-height:1.25}
+.toc p{font-size:28px;line-height:1.4;color:var(--mute)}
+.hatch{position:absolute;right:0;bottom:0;width:640px;height:380px;z-index:0;opacity:.55;clip-path:polygon(50% 0,100% 100%,0 100%);background:repeating-linear-gradient(135deg,rgba(154,74,28,.55) 0 2px,transparent 2px 16px),repeating-linear-gradient(45deg,rgba(154,74,28,.55) 0 2px,transparent 2px 16px)}
+/* 封面圖：陶瓶放在拱形框裡；文字縮窄避開右側 */
+#s1 .cover-img{position:absolute;right:128px;top:150px;width:560px;height:720px;border-radius:280px 280px 14px 14px;overflow:hidden;border:6px solid #FFF6E3;box-shadow:0 10px 30px rgba(40,15,5,.35)}
+#s1 .cover-img img{width:100%;height:100%;object-fit:cover;object-position:50% 40%;display:block}
+#s1 .credit{position:absolute;right:128px;top:884px;width:560px;font-size:20px;line-height:1.4;color:#F6DDBE;text-align:right}
+#s1 > p{max-width:1400px}
+#s2 .side-img{position:absolute;right:128px;top:286px;width:470px;height:590px;border-radius:14px;overflow:hidden;border:6px solid #FFFBF0;box-shadow:0 8px 24px rgba(60,30,10,.25)}
+#s2 .side-img img{width:100%;height:100%;object-fit:cover;object-position:50% 55%;display:block}
+#s2 .side-credit{position:absolute;right:128px;top:888px;width:470px;font-size:20px;line-height:1.4;color:var(--mute);text-align:right}
+#s2 .card p{font-size:30px}
+/* 目錄頁右側木馬照、風險頁星空夜景 */
+#toc .toc{width:1130px;gap:72px 48px}
+#toc .toc .no{font-size:104px;min-width:136px}
+#toc .toc h3{font-size:38px}
+#toc .side-img{position:absolute;right:128px;top:250px;width:470px;height:640px;border-radius:14px;overflow:hidden;border:6px solid #FFFBF0;box-shadow:0 8px 24px rgba(60,30,10,.25);z-index:1}
+#toc .side-img img{width:100%;height:100%;object-fit:cover;object-position:72% 40%;display:block}
+#toc .side-credit{position:absolute;right:128px;top:902px;width:470px;font-size:20px;color:var(--mute);text-align:right}
+#s10{background-color:#14182a;background-image:linear-gradient(rgba(12,14,28,.55),rgba(12,14,28,.70)),url("proposal-assets/adobestock-560028141-naxos-night.jpg");background-size:cover;background-position:center}
+#s10::before{opacity:.5}
+#s10 h2{color:#FFF6E3}
+#s10 h3{color:#FFE2A8 !important}
+#s10 .foot{color:#E8DCC4}
+#s10 .s10-credit{position:absolute;right:128px;bottom:76px;font-size:20px;color:#CFC3AA}
+/* 編輯模式（F2 開關、Ctrl+S 存檔）：只在編輯時顯示提示列 */
+#editbar{position:fixed;left:0;right:0;top:0;z-index:99;background:#2B1A12;color:#FFF6E3;font:600 20px/1.6 'Noto Sans TC',sans-serif;padding:8px 24px;text-align:center}
+#editbar[hidden]{display:none}
+body.editing .slide [contenteditable],body.editing .slide{outline:none}
+body.editing .slide :is(h1,h2,h3,p,td,th,span,b,div):hover{box-shadow:0 0 0 2px rgba(217,138,43,.6)}
+/* 圖片重新配置：預期成果頁放木馬照橫幅、時程頁放星空夜景橫幅 */
+.banner{position:relative;height:190px;border-radius:12px;overflow:hidden;box-shadow:0 6px 18px rgba(60,30,10,.20)}
+.banner img{width:100%;height:100%;object-fit:cover;display:block}
+.banner small{position:absolute;right:14px;bottom:8px;font-size:18px;color:#FFF6E3;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+/* 收尾頁：星空夜景滿版 */
+#end{background-color:#14182a;background-image:linear-gradient(rgba(12,14,28,.35),rgba(12,14,28,.75)),url("proposal-assets/adobestock-560028141-naxos-night.jpg");background-size:cover;background-position:center 40%;justify-content:center}
+#end::before{opacity:.6}
+#end h1{color:#FFF6E3;font-size:140px}
+#end .lead{color:#F6DDBE;max-width:1200px}
+#end .foot{color:#E8DCC4}
+#end .end-credit{position:absolute;right:128px;bottom:76px;font-size:20px;color:#CFC3AA}
+/* 封面：木馬照滿版，左側赤陶漸層壓字 */
+#s1{background-image:linear-gradient(90deg,rgba(150,62,28,.97) 0%,rgba(165,70,32,.92) 45%,rgba(181,83,42,.45) 75%,rgba(181,83,42,.15) 100%),url("proposal-assets/adobestock-94337527-horse.jpg");background-size:cover;background-position:70% 35%}
+#s1 .cover-credit{position:absolute;right:128px;bottom:76px;font-size:20px;color:#FFF6E3;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.card ul.pts{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:4px}
+.card ul.pts li{font-size:30px;line-height:1.45;color:var(--mute)}
+#s2 .card ul.pts li,#s7 .card ul.pts li{font-size:28px;line-height:1.38}
+#s2 .card{padding:20px 30px;gap:6px}
+#s2 .card h3{font-size:34px}
+#route .card ul.pts li{font-size:28px;line-height:1.38}
+#route .card{padding:22px 30px;gap:6px}
+#s4 .card ul.pts li{font-size:28px;line-height:1.38}
+#s4 .card{padding:22px 28px;gap:8px}
+#s4 .bar span{font-size:30px}
+#s3 .grid > .card:nth-child(3){grid-column:span 2}
+.sched td,.sched th{font-size:26px}
+/* 11/25 文字稿套回：預期成果兩欄清單、時程圖表 */
+.two-col{columns:2;column-gap:56px;display:block!important}
+.two-col li{break-inside:avoid;margin-bottom:6px}
+.route9{display:grid;grid-template-columns:repeat(9,1fr);position:relative;margin-top:110px}
+.route9::before{content:"";position:absolute;left:5.5%;right:5.5%;top:44px;height:8px;background:#D9C9A5;border-radius:4px}
+.rn{text-align:center;position:relative;padding:0 4px}
+.rn i{display:flex;align-items:center;justify-content:center;width:96px;height:96px;margin:0 auto 22px;border-radius:50%;background:var(--stone);border:6px solid var(--bronze);font-style:normal;font-size:40px;font-weight:700;color:var(--bronze)}
+.rn.end i{background:#2B1A12;border-color:#2B1A12;color:#F5E9D2}
+.rn b{display:flex;align-items:flex-start;justify-content:center;min-height:80px;font-size:30px;line-height:1.3;margin-bottom:8px}
+.rn span{display:block;font-size:26px;line-height:1.35;color:var(--mute)}
+#s4 .s4bar{margin-top:110px}
+.gantt{display:grid;grid-template-columns:180px repeat(4,1fr);gap:14px 16px;margin-top:6px;align-items:stretch}
+.gl{font-size:26px;font-weight:700;display:flex;align-items:center;padding-left:14px;border-left:8px solid}
+.gc{display:flex;align-items:stretch}
+.chip{display:block;width:100%;border-radius:10px;padding:12px 16px;font-size:24px;line-height:1.4;color:#2B1A12;border:2px solid}
+.l-rule{border-color:var(--bronze)} .chip.l-rule{background:#F3E1C8}
+.l-sound{border-color:var(--beat)} .chip.l-sound{background:#DCEBEA}
+.l-view{border-color:var(--torch)} .chip.l-view{background:#F6DFCB}
+.l-test{border-color:var(--blood)} .chip.l-test{background:#F2D6D0}
+#s3 .card{padding:40px 44px;gap:14px}
+#s3 .card h3{font-size:46px}
+#s3 .card ul.pts li{font-size:38px;line-height:1.5}
+#s4 .card{padding:40px 48px}
+#s4 .card h3{font-size:46px}
+#s4 .card ul.pts li{font-size:40px;line-height:1.6}
+/* 11/26 結構調整：發想一條線、大字目標、之後規劃的虛線標記 */
+.pillars{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}
+#s3 .pillars .card h3{font-size:40px;line-height:1.35}
+#s3 .pillars .card p.mute{font-size:30px;line-height:1.5}
+#s3 .pillars .card{min-height:360px}
+.chain{display:flex;flex-direction:column;gap:6px;width:1150px;margin-top:6px}
+.ck{padding:20px 30px;gap:6px}
+.arr{font-size:34px;line-height:1;color:var(--bronze);padding-left:40px}
+.goal{font-family:"Noto Serif TC",serif;font-weight:900;font-size:76px;color:var(--bronze);margin:30px 0 40px;padding:26px 44px;border-left:12px solid var(--bronze);background:rgba(255,250,238,.7);border-radius:6px}
+.later{display:inline-block;font-style:normal;font-size:24px;line-height:1.3;color:var(--mute);border:3px dashed #B8A684;border-radius:8px;padding:4px 12px;margin-top:10px}
+.gl.l-later{border-left-style:dashed;border-color:#B8A684;color:var(--mute)}
+.chip.later-chip{background:transparent;border:3px dashed #B8A684;color:var(--mute)}
+/* 11/26 字體：內文 500；封面故事句與收尾句用霞鶩文楷 */
+#s1 .lead,#end .lead{font-family:'LXGW WenKai TC','Noto Serif TC',serif;font-weight:400}
+@media print{#editbar{display:none}}
+@media print{body{background:none}.slide{margin:0}}
+/* 第 13 週進度頁（11/26 晚加） */
+.w13shots{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.w13shots figure{display:flex;flex-direction:column;gap:12px}
+.w13shots img{width:100%;border-radius:6px;display:block;box-shadow:0 2px 8px rgba(90,50,20,.18)}
+.w13shots figcaption b{font-size:34px;display:block}
+.w13shots figcaption span{font-size:28px;color:var(--mute)}
+.w13row{display:flex;gap:44px;align-items:flex-start}
+.anno{position:relative;width:1056px;flex:none}
+.anno img{width:100%;display:block;border-radius:6px;box-shadow:0 2px 8px rgba(90,50,20,.18)}
+.pin{position:absolute;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;background:var(--torch);color:#FFF6E3;border:3px solid #FFF6E3;font:900 30px/46px 'Noto Serif TC',serif;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.legend{list-style:none;display:flex;flex-direction:column;gap:16px}
+.legend li{font-size:30px;line-height:1.4;display:flex;gap:14px}
+.legend li i{flex:none;width:44px;height:44px;border-radius:50%;background:var(--torch);color:#FFF6E3;font:900 26px/44px 'Noto Serif TC',serif;font-style:normal;text-align:center}
+.fill{display:inline-block;font-size:26px;color:var(--mute);border:3px dashed #B8A684;border-radius:8px;padding:6px 16px}
+.w13tbl th{font-size:28px} .w13tbl td{font-size:28px}
+.w13tbl td.wfill{border-bottom:2px dashed #B8A684}
+#w13e td{padding:9px 18px}
+.src{font-size:24px;color:var(--mute)}
+</style>
+</head>
+<body>
+
+<!-- 1 題目 -->
+<section class="slide" id="s1" style="justify-content:center">
+  <h1>木馬之夜</h1>
+  <div class="beatband" aria-hidden="true"><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i></div>
+  <p class="lead" style="max-width:1400px">特洛伊城慶祝勝利的那一夜，你從木馬肚子裡爬出來。<br>全城的鼓聲是唯一的掩護，踩著鼓點走到城門，把門打開。</p>
+  <p class="mute">期末專題提案</p>
+  <div class="cover-credit">背景：Adobe Stock（木馬）</div>
+  <div class="foot"><span>期末提案</span><span>1 / 8</span></div>
+</section>
+
+<!-- 2 項目 1：作品名稱與發想 -->
+<section class="slide" id="s2">
+  <span class="eyebrow">提案項目 1／6　作品名稱與發想</span>
+  <h2>用耳朵玩的潛行遊戲：木馬之夜</h2>
+  <div class="grid" style="grid-template-columns:1fr;gap:18px;width:1150px">
+    <div class="card bronze"><h3>創作動機</h3><ul class="pts"><li>靈感來自電影的原聲帶（Troy）</li><li>想把「無限加速」的感覺做成遊戲機制</li></ul></div>
+    <div class="card bronze"><h3>來源</h3><ul class="pts"><li>故事來自《奧德賽》的木馬屠城</li><li>聲音用 Risset 節奏（聽起來一直在加速的節奏錯覺）</li><li>參考 Nolan 2026 年的電影氛圍與演法</li></ul></div>
+  </div>
+  <div class="side-img"><img src="proposal-assets/eckersberg-ulysses-cave-1812.jpg" alt="埃克貝格畫作：奧德修斯一行人在獨眼巨人洞穴裡"></div>
+  <div class="side-credit">圖：埃克貝格〈尤利西斯逃離波呂斐摩斯洞穴〉1812（公共領域）</div>
+  <div class="foot"><span>期末提案</span><span>2 / 8</span></div>
+</section>
+
+<!-- 3 項目 2：目標與目的 -->
+<section class="slide" id="s3">
+  <span class="eyebrow">提案項目 2／6　目標與目的</span>
+  <h2>靠聲音判斷</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><h3>想做到的事</h3><ul class="pts"><li>設計新的潛行遊戲機制</li><li>讓人體驗「無限加速」：鼓聲聽起來一直在加速</li><li>靠聲音判斷情形並操作</li></ul></div>
+    <div class="card bronze"><h3>玩完的感覺</h3><ul class="pts"><li>鼓越來越急，最後一擊落下才鬆口氣</li><li>不用讀過荷馬也懂</li></ul></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>3 / 8</span></div>
+</section>
+
+<!-- 4 項目 3：預期成果 -->
+<section class="slide" id="s4">
+  <span class="eyebrow">提案項目 3／6　預期成果</span>
+  <h2>12/24 做到什麼程度</h2>
+  <div class="route9"><div class="rn end"><i>序</i><b>木馬進城</b><span>黑底故事字卡</span><em class="later">開場動畫<br>與教學</em></div><div class="rn "><i>1</i><b>木馬腹中</b><span>踩拍、敲暗號</span></div><div class="rn "><i>2</i><b>木馬下</b><span>等最響的一擊</span></div><div class="rn "><i>3</i><b>神殿廣場</b><span>影子與查看</span></div><div class="rn "><i>4</i><b>慶宴的街</b><span>蹲與跑</span></div><div class="rn "><i>5</i><b>城牆下的<br>窄巷</b><span>放倒、屏息</span></div><div class="rn "><i>6</i><b>沒有火的<br>後街</b><span>追殺與甩掉</span></div><div class="rn "><i>7</i><b>城門</b><span>推門閂</span></div><div class="rn end"><i>終</i><b>城門開了</b><span>黑底故事字卡</span></div></div>
+  <div class="bar s4bar"><b>全程</b><span>鼓聲越來越急；照亮場景；標題畫面一張</span></div>
+  <div class="foot"><span>期末提案</span><span>4 / 8</span></div>
+</section>
+
+<!-- 5 項目 4：操作流程與機制（玩法） -->
+<section class="slide" id="s5">
+  <span class="eyebrow">提案項目 4／6　操作流程與機制</span>
+  <h2>怎麼玩：聽、踩、等那一擊</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><span class="tag">1　聽</span><h3>找出踩得上的低鼓</h3><p class="mute">鼓聲裡有一條低而厚的鼓，腳步落在它上面，腳步聲就被蓋住。</p></div>
+    <div class="card torch"><span class="tag">2　踩</span><h3>踩歪一步，衛兵會過來看</h3><ul class="pts"><li>火把變橘色</li><li>退開，或躲進影子，就沒事</li></ul></div>
+    <div class="card bronze"><span class="tag">3　等那一擊</span><h3>最響的一擊落下後 0.6 秒</h3><ul class="pts"><li>所有鼓一起落下，衛兵察覺不到你</li><li>這時衝過火光，或從背後放倒衛兵</li><li>（0.6 秒是設計值）</li></ul></div>
+    <div class="card blood"><span class="tag">4　越來越急</span><h3>越深入城裡，鼓越密越快</h3><ul class="pts"><li>要在更吵、更急的聲音裡，找到同一條低鼓</li><li>被發現（火把變紅）就要跑、要躲</li></ul></div>
+  </div>
+  <p class="mute">按鍵：<kbd>W A S D</kbd> 走　<kbd>Shift</kbd> 跑　<kbd>Alt</kbd> 蹲　<kbd>空白鍵</kbd> 屏息　<kbd>E</kbd> 放倒衛兵、推門閂　<em class="later">開場動畫與教學</em></p>
+  <div class="foot"><span>期末提案</span><span>5 / 8</span></div>
+</section>
+
+<!-- 7 項目 5：工具與工作分配 -->
+<section class="slide" id="s7">
+  <span class="eyebrow">提案項目 5／6　工具與工作分配</span>
+  <h2>我決定方向，AI 負責動手</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:24px">
+    <div class="card bronze"><h3>我負責</h3><p class="mute">定方向、選方案、自己試玩，決定採不採用 AI 的建議。</p></div>
+    <div class="card beat"><h3>AI 負責</h3><ul class="pts"><li>Claude Code 拆工作、整合、跑測試</li><li>子代理各改指定的檔案</li><li>外部 AI（Gemini、Copilot）只提審查意見</li></ul></div>
+    <div class="card blood"><h3>AI 的界線</h3><ul class="pts"><li>開發代理不提交、不碰別人的檔案</li><li>檢查代理只回報、不改檔</li><li>要不要採用，由我決定</li></ul></div>
+  </div>
+  <h3 class="sub">一輪怎麼做</h3>
+  <div class="tl">
+    <div class="now"><i></i>我提需求</div>
+    <div><i></i>先寫設計文件</div>
+    <div><i></i>子代理各改檔</div>
+    <div><i></i>檢查代理試玩</div>
+    <div class="end"><i></i>我試玩、給回饋</div>
+  </div>
+  <div class="bar"><b>工具</b><span>瀏覽器直接玩；聲音用 Web Audio（瀏覽器內建的聲音功能）；畫面 3D；開發用 Claude Code</span></div>
+  <div class="foot"><span>期末提案</span><span>6 / 8</span></div>
+</section>
+
+<!-- 8 項目 6：開發時程 -->
+<section class="slide" id="s8">
+  <span class="eyebrow">提案項目 6／6　開發時程</span>
+  <h2>12/3 到 12/24：每週實作哪些功能</h2>
+  <div class="tl" style="grid-template-columns:repeat(4,1fr);margin-left:196px">
+    <div><i></i>12/3<small>第 13 週</small></div>
+    <div><i></i>12/10<small>第 14 週</small></div>
+    <div><i></i>12/17<small>第 15 週</small></div>
+    <div class="end"><i></i>12/24<small>第 16 週　展示</small></div>
+  </div>
+  <div class="gantt"><div class="gl l-rule">規則與關卡</div><div class="gc"><span class="chip l-rule">決定照亮場景、敲暗號去留</span></div><div class="gc"><span class="chip l-rule">照試玩結果調難度</span></div><div class="gc"><span class="chip l-rule">只修錯、不加功能</span></div><div class="gc"></div><div class="gl l-sound">聲音</div><div class="gc"><span class="chip l-sound">整關聽一次，定「越來越急」各段速度值</span></div><div class="gc"></div><div class="gc"><span class="chip l-sound">只修錯</span></div><div class="gc"></div><div class="gl l-view">畫面</div><div class="gc"></div><div class="gc"><span class="chip l-view">調畫面提示；做標題畫面</span></div><div class="gc"></div><div class="gc"></div><div class="gl l-test">測試與交付</div><div class="gc"><span class="chip l-test">自己整關試玩七段版，量每段時間、記卡關處</span></div><div class="gc"></div><div class="gc"><span class="chip l-test">錄示範影片</span></div><div class="gc"><span class="chip l-test">現場示範短版，七段版備用</span></div><div class="gl l-later">開場與教學</div><div class="gc" style="grid-column:span 4"><span class="chip later-chip">開場動畫與教學</span></div></div>
+  <div class="foot"><span>期末提案</span><span>7 / 8</span></div>
+</section>
+
+<!-- ===== 第 13 週進度（12/3 報告；11/26 晚先做骨架） ===== -->
+<section class="slide" id="w13a">
+  <span class="eyebrow">第 13 週進度｜原型說明 1：場景</span>
+  <h2>能實際操作的原型：七段地圖，從木馬走到城門</h2>
+  <div class="w13shots">
+    <figure><img src="proposal-assets/w13-art2-alley.png" alt="城牆下的窄巷"><figcaption><b>第 5 段　城牆下的窄巷</b><span>從背後放倒衛兵、屏息躲過</span></figcaption></figure>
+    <figure><img src="proposal-assets/w13-art2-back.png" alt="沒有火的後街"><figcaption><b>第 6 段　沒有火的後街</b><span>最暗的一段，靠耳朵找衛兵</span></figcaption></figure>
+    <figure><img src="proposal-assets/w13-art2-gate.png" alt="城門"><figcaption><b>第 7 段　城門</b><span>按住 E 推開門閂，城門就開</span></figcaption></figure>
+  </div>
+  <div class="bar"><b>畫面</b><span>3D 場景加強：材質、火光、霧、關鍵物件發光（11/26 選定）</span></div>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>1 / 5</span></div>
+</section>
+
+<section class="slide" id="w13b">
+  <span class="eyebrow">第 13 週進度｜原型說明 2：角色與介面</span>
+  <h2>畫面上要看的六樣東西</h2>
+  <div class="w13row">
+    <div class="anno"><img src="proposal-assets/w13-ui-plaza.png" alt="神殿廣場遊戲畫面"><span class="pin" style="left:152px;top:46px">1</span><span class="pin" style="left:600px;top:187px">2</span><span class="pin" style="left:528px;top:484px">3</span><span class="pin" style="left:46px;top:468px">4</span><span class="pin" style="left:116px;top:562px">5</span><span class="pin" style="left:758px;top:42px">6</span></div>
+    <ol class="legend">
+      <li><i>1</i><span>區名：現在在第幾區</span></li>
+      <li><i>2</i><span>衛兵：頭上燈色是狀態，橘＝走過來查看、紅＝追殺</span></li>
+      <li><i>3</i><span>提示句：發生什麼事、該按哪個鍵</span></li>
+      <li><i>4</i><span>屏息條：按住空白鍵或右鍵</span></li>
+      <li><i>5</i><span>身在暗處：站進影子裡會亮</span></li>
+      <li><i>6</i><span>右上橫條：鼓聲循環到哪，除錯用</span></li>
+    </ol>
+  </div>
+  <p class="src">玩家是第一人稱，畫面就是自己的眼睛。截圖：11/24 版本神殿廣場，畫面加強前。</p>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>2 / 5</span></div>
+</section>
+
+<section class="slide" id="w13c">
+  <span class="eyebrow">第 13 週進度｜本週四項</span>
+  <h2>第 13 週：自己整關試玩，定鼓聲速度</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><h3>本週目標與進度</h3><ul class="pts"><li>自己整關試玩七段版，量每段時間、記卡關處</li><li>整關聽一次，定「越來越急」各段速度</li><li>決定照亮場景、敲暗號留不留</li></ul><span class="fill">進度：12/3 前填</span></div>
+    <div class="card torch"><h3>AI 協作與應用</h3><ul class="pts"><li>AI 提建議、跑測試，我用試玩決定採不採用</li><li>實例見下一頁</li></ul></div>
+    <div class="card blood"><h3>遇到的問題與處理</h3><span class="fill">試玩後填</span></div>
+    <div class="card bronze"><h3>下週任務（第 14 週）</h3><ul class="pts"><li>照試玩結果調難度</li><li>調畫面提示</li><li>做標題畫面</li></ul></div>
+  </div>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>3 / 5</span></div>
+</section>
+
+<section class="slide" id="w13d">
+  <span class="eyebrow">第 13 週進度｜AI 協作與自主判斷</span>
+  <h2>AI 給建議，我用試玩決定採不採用</h2>
+  <table class="w13tbl">
+    <tr><th style="width:110px">日期</th><th>AI 的建議或結果</th><th style="width:300px">我的決定</th><th>為什麼</th></tr>
+    <tr><td>11/07</td><td>錄音分析全部通過，聲音訊號沒問題</td><td>不照單全收，自己用喇叭試</td><td>真耳朵聽不出驟降，關鍵聲音改搬到喇叭聽得到的音域</td></tr>
+    <tr><td>11/11</td><td>程式玩家測出「連續 4 步」不管踩得準不準</td><td>採用，改規則</td><td>測試抓到真漏洞；改成只算起步、踩歪扣 1 格</td></tr>
+    <tr><td>11/14</td><td>加速錯覺的第二步修改方案</td><td>退回，改做「鼓真的越打越快」</td><td>我試聽的感覺是「速度不夠快」，問題不在錯覺</td></tr>
+    <tr><td>11/24</td><td>程式玩家只有 9.8% 被追殺，先不加難度</td><td>採用，等真人試玩</td><td>程式玩家躲法固定，不代表真人</td></tr>
+  </table>
+  <p class="src">來源：production-log.md、status-board.md</p>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>4 / 5</span></div>
+</section>
+
+<section class="slide" id="w13e">
+  <span class="eyebrow">第 13 週進度｜試玩紀錄（12/3 前填）</span>
+  <h2>七段各花多久、卡在哪</h2>
+  <table class="w13tbl">
+    <tr><th style="width:110px">段</th><th style="width:420px">名稱</th><th style="width:260px">花了幾秒</th><th>卡關處</th></tr>
+    <tr><td>序</td><td>木馬進城（字卡）</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>1</td><td>木馬腹中</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>2</td><td>木馬下</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>3</td><td>神殿廣場</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>4</td><td>慶宴的街</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>5</td><td>城牆下的窄巷</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>6</td><td>沒有火的後街</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>7</td><td>城門</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr><tr><td>終</td><td>城門開了（字卡）</td><td class="wfill">&nbsp;</td><td class="wfill">&nbsp;</td></tr>
+  </table>
+  <div class="foot"><span>第 13 週進度（12/3）</span><span>5 / 5</span></div>
+</section>
+
+<!-- 收尾頁 -->
+<section class="slide" id="end">
+  <h1>謝謝聆聽</h1>
+  <div class="beatband" aria-hidden="true"><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="big"></i></div>
+  <p class="lead">《木馬之夜》：踩著鼓聲，從木馬走到城門。</p>
+  <div class="end-credit">背景：Adobe Stock（納克索斯島夜景）</div>
+  <div class="foot"><span>期末提案</span><span>8 / 8</span></div>
+</section>
+
+<!-- 7c 遊戲路線分析 -->
+<section class="slide" id="route">
+  <span class="eyebrow">備用｜遊戲路線分析</span>
+  <h2>網頁電腦版先做完，規則留好搬家的路</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:22px">
+    <div class="card beat"><span class="tag">平台</span><h3>網頁電腦版</h3><ul class="pts"><li>網頁版，開網址就能玩</li><li>鍵盤滑鼠、橫向畫面</li><li>五種動作要多個按鍵，也要戴耳機聽低鼓</li><li>不做畫面旋轉（老師不建議），手機版寒假再評估</li></ul></div>
+    <div class="card torch"><span class="tag">技術</span><h3>網頁，期末前不轉 Unity</h3><ul class="pts"><li>鼓聲用 Web Audio（瀏覽器內建的聲音功能）</li><li>畫面是 3D</li><li>規則是純計算，可用 Node 測試</li><li>老師指南不限工具，網頁版可交</li><li>到 12/24 只剩四週，轉平台留到寒假再評估</li></ul></div>
+    <div class="card bronze"><span class="tag">可移植性</span><h3>規則可以搬家</h3><ul class="pts"><li>程式分成規則、聲音、畫面三個模組</li><li>規則不知道聲音和畫面，換平台不用重寫規則</li><li>快要綁死某個平台時，先停下來再決定</li></ul></div>
+    <div class="card blood"><span class="tag">展示</span><h3>短版現場示範，影片備援</h3><ul class="pts"><li>12/24 用 2 到 3 分鐘短版現場操作</li><li>12/17 錄好示範影片</li><li>現場設備或網路出狀況，就改播影片</li></ul></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>備用 1 / 6</span></div>
+</section>
+
+<!-- 備用：和基本設計課作品連動 -->
+<section class="slide" id="ring">
+  <span class="eyebrow">備用｜加分項：和基本設計課作品連動</span>
+  <h2>擠住弦環＝屏息：12/10 之後的加分項</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:22px">
+    <div class="card beat"><h3>怎麼接</h3><ul class="pts"><li>麥克風聽弦環的聲音，不用接線</li><li>擠住不放＝屏息，放開換氣</li><li>只接這一個訊號，代替空白鍵</li></ul></div>
+    <div class="card torch"><h3>什麼時候做</h3><ul class="pts"><li>排在 12/10 之後</li><li>兩門課的老師都同意才做</li><li>老師沒同意就不做</li></ul></div>
+    <div class="card bronze"><h3>不依賴它</h3><ul class="pts"><li>弦環是基本設計「拆了再裝」的作品，12/22 評圖</li><li>遊戲沒有弦環照樣能玩</li></ul></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>備用 2 / 6</span></div>
+</section>
+
+<!-- 6 項目 4：操作流程與機制（七段） -->
+<section class="slide" id="s6">
+  <span class="eyebrow">備用｜操作流程與機制：七段</span>
+  <h2>七段流程：每段只教一件新事</h2>
+  <table class="tight">
+    <tr><th style="width:12%">段</th><th style="width:36%">名稱</th><th>教什麼</th></tr>
+    <tr><td>序</td><td>木馬進城</td><td>不能操作，三張字卡加旁白</td></tr>
+    <tr><td>1</td><td>木馬腹中</td><td>踩拍：踩準 4 步，暗門才開</td></tr>
+    <tr><td>2</td><td>木馬下</td><td>最響的一擊：等它落下再走出影子</td></tr>
+    <tr><td>3</td><td>神殿廣場</td><td>影子與查看</td></tr>
+    <tr><td>4</td><td>慶宴的街</td><td>蹲與跑</td></tr>
+    <tr><td>5</td><td>城牆下的窄巷</td><td>從背後放倒衛兵、屏息</td></tr>
+    <tr><td>6</td><td>沒有火的後街</td><td>追殺與甩掉，整關最暗</td></tr>
+    <tr><td>7</td><td>城門</td><td>綜合，推門閂要挑時機</td></tr>
+    <tr><td>終</td><td>城門開了</td><td>不能操作，一張字卡</td></tr>
+  </table>
+  <p class="mute">各段時長是目標，不是量到的數字；熟手不重來約 5 分鐘是推測。</p>
+  <div class="foot"><span>期末提案</span><span>備用 3 / 6</span></div>
+</section>
+
+<!-- 7b 項目 5：AI 協作怎麼驗證、修正、判斷 -->
+<section class="slide" id="s7b">
+  <span class="eyebrow">備用｜工具與工作分配：之後怎麼驗證</span>
+  <h2>AI 做的事，之後每週怎麼驗證、怎麼修正</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><span class="tag">測試驗證</span><h3>先測，再試玩</h3><p class="mute">每個機制先用自動測試驗算，再讓程式玩家自動通關，最後由我真人試玩。</p></div>
+    <div class="card torch"><span class="tag">修正紀錄</span><h3>每次修改都留紀錄</h3><p class="mute">檢查代理列出問題，修正後再測一次，每週寫進製作紀錄。</p></div>
+    <div class="card blood"><span class="tag">自主判斷</span><h3>試玩後由我決定</h3><p class="mute">AI 提出的方案，由我試玩後決定保留、修改或推翻。</p></div>
+    <div class="card bronze"><span class="tag">AI 建議怎麼用</span><h3>查證後才採用</h3><p class="mute">AI 的建議先對照資料查證，不符合就不採用，並記下原因。</p></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>備用 4 / 6</span></div>
+</section>
+
+<!-- 9 每週進度頁（固定四項，12/3 起填） -->
+<section class="slide" id="s9">
+  <span class="eyebrow">備用｜12/3 起每週更新這一頁</span>
+  <h2>本週進度：第 <span class="blank" style="min-width:80px"></span> 週</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:24px">
+    <div class="card beat"><h3>本週目標與進度</h3><p class="mute">　</p><p class="mute">　</p></div>
+    <div class="card torch"><h3>AI 協作與應用</h3><p class="mute">　</p><p class="mute">　</p></div>
+    <div class="card blood"><h3>遇到的問題與處理</h3><p class="mute">　</p><p class="mute">　</p></div>
+    <div class="card bronze"><h3>下週任務與規劃</h3><p class="mute">　</p><p class="mute">　</p></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>備用 5 / 6</span></div>
+</section>
+
+<!-- 備用：衛兵狀態 -->
+<section class="slide" id="b2">
+  <h2>衛兵的狀態：玩家要對付的就是這張圖</h2>
+  <div style="display:flex;flex-direction:row;gap:20px;align-items:center;flex-wrap:wrap">
+    <div class="box" style="border-color:var(--beat)">巡邏</div>
+    <span class="arrow">聽到踩歪、跑步聲 →</span>
+    <div class="box v">查看（橘火把）</div>
+    <span class="arrow">看到玩家超過 1.5 秒（設計值） →</span>
+    <div class="box" style="border-color:var(--blood)">追殺（紅火把）</div>
+  </div>
+  <div style="display:flex;flex-direction:row;gap:20px;align-items:center;flex-wrap:wrap">
+    <div class="box" style="border-color:var(--blood)">追殺</div>
+    <span class="arrow">玩家躲進影子 →</span>
+    <div class="box">搜索</div>
+    <span class="arrow">搜完沒找到（甩掉）→</span>
+    <div class="box" style="border-color:var(--beat)">回到巡邏</div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card"><p>查看走到聲音處沒看到人，回到巡邏。</p></div>
+    <div class="card"><p>搜索時玩家在影子裡出聲，再回到追殺。</p></div>
+    <div class="card"><p>追殺時被抓到，從這一段重來。</p></div>
+    <div class="card"><p>最響的一擊時從背後放倒衛兵，衛兵倒下。</p></div>
+  </div>
+  <div class="foot"><span>期末提案</span><span>備用 6 / 6</span></div>
+</section>
+
+
+<div id="editbar" hidden>編輯模式：直接點文字修改　｜　Ctrl+S 存檔　｜　F2 結束編輯</div>
+<script>
+/* 給使用者直接改字：F2 開關編輯模式，Ctrl+S 存回檔案（Edge 會請你選一次要覆蓋的檔案）。 */
+(function () {
+  var on = false, handle = null, bar = document.getElementById('editbar');
+  function setEdit(v) {
+    on = v;
+    document.querySelectorAll('.slide').forEach(function (s) {
+      if (v) s.setAttribute('contenteditable', 'true'); else s.removeAttribute('contenteditable');
+    });
+    bar.hidden = !v;
+    document.body.classList.toggle('editing', v);
+  }
+  function cleanHTML() {
+    var was = on; setEdit(false);
+    var html = '<!doctype html>\n' + document.documentElement.outerHTML;
+    if (was) setEdit(true);
+    return html;
+  }
+  async function save() {
+    var html = cleanHTML();
+    try {
+      if (window.showSaveFilePicker) {
+        if (!handle) handle = await window.showSaveFilePicker({
+          suggestedName: 'proposal-deck-v2.html',
+          types: [{ description: 'HTML', accept: { 'text/html': ['.html'] } }]
+        });
+        var w = await handle.createWritable(); await w.write(html); await w.close();
+        bar.textContent = '已存檔 ' + new Date().toLocaleTimeString() + '　｜　Ctrl+S 再存　｜　F2 結束編輯';
+        return;
+      }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    a.download = 'proposal-deck-v2.html'; a.click();
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F2') { e.preventDefault(); setEdit(!on); }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); save(); }
+  });
+})();
+</script>
+</body>
+</html>

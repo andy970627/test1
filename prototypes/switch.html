@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>試玩切換台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
+<link rel="stylesheet" href="ui-tokens.css">
+<script>if (new URLSearchParams(location.search).get('ui') !== '0') document.documentElement.classList.add('palA');</script>   <!-- 11/28 配色 A；?ui=0 舊樣子 -->
+<style>
+/* 本機試玩用：一頁切換木馬之夜各版本、試驗場、試聽頁、換層試驗場。只產生連結，不改遊戲。
+ * 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）。試驗場不用一格一格的卡片，改成「城區地圖」：
+ * 由西（木馬）往東（城門）五區排成一條路，每個試驗場掛在它所在的區底下（試驗場本來就綁區）。 */
+main { max-width: 1240px; margin: 0 auto; padding: 28px var(--gutter-r) 56px var(--gutter-l); }
+header .ui-title { margin-bottom: 8px; }
+.note { color: var(--muted); font-size: var(--fs-14); margin: 0 0 20px; max-width: 48em; }
+h2.sect { font: 900 var(--fs-20)/1.3 var(--font-title); letter-spacing: .04em; margin: 0 0 10px; }
+
+/* ---------- 整關設定 ---------- */
+.setup { display: grid; gap: 10px 28px; }
+@media (min-width: 960px) { .setup { grid-template-columns: 1fr auto; align-items: end; } }
+.opts { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: var(--fs-14); }
+.opts label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.go-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+code { color: var(--muted); font-size: var(--fs-12); word-break: break-all; }
+
+/* ---------- 城區地圖 ---------- */
+.map { margin: 28px 0 0; }
+.road { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; position: relative; }
+.zone { position: relative; padding: 0 0 22px 28px; }
+/* 路：手機直的、電腦橫的；每區一個路標點 */
+.zone::before { content: ""; position: absolute; left: 6px; top: 10px; bottom: 0; width: 2px; background: var(--rule); }
+.zone:last-child::before { display: none; }
+.zone::after { content: ""; position: absolute; left: 1px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--night); border: 2px solid var(--parchment); }
+@media (min-width: 1000px) {
+  .road { grid-template-columns: .8fr 1fr 1.6fr 1.15fr .8fr; }
+  .zone { padding: 28px 18px 0 0; }
+  .zone::before { left: 6px; right: 0; top: 7px; bottom: auto; width: auto; height: 2px; }
+  .zone:last-child::before { display: block; right: auto; width: 0; }
+  .zone::after { left: 0; top: 0; }
+}
+.zone .no { font-size: var(--fs-12); color: var(--muted); }
+.zone h3 { margin: 0 0 4px; font: 900 var(--fs-20)/1.3 var(--font-title); letter-spacing: .04em; }
+.zone .from { font-size: var(--fs-12); }
+.labs { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.labs a { display: block; padding: 8px 10px; background: var(--stone); border-radius: var(--r-panel); text-decoration: none; border: 1px solid transparent; }
+.labs a:hover { border-color: var(--bronze); }
+.labs b { display: block; font-weight: 500; color: var(--bronze); }
+.labs span { display: block; font-size: var(--fs-12); color: var(--muted); line-height: 1.55; }
+.labs .group { font-size: var(--fs-12); color: var(--muted); margin: 6px 0 0; }
+.zone .empty { font-size: var(--fs-12); color: var(--muted); margin: 10px 0 0; }
+
+/* ---------- 其他頁 ---------- */
+.more { display: grid; gap: 12px; margin-top: 28px; }
+@media (min-width: 960px) { .more { grid-template-columns: 1.4fr 1fr 1fr; } }
+.more .ui-panel { display: grid; gap: 8px; align-content: start; }
+.more .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--fs-14); }
+small { color: var(--muted); font-size: var(--fs-12); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 class="ui-title lg">試玩切換台</h1>
+    <p class="note">本機用（要先開本機伺服器）。連結都在同一分頁打開（內建瀏覽器面板擋新視窗），試完按上一頁回來，選擇會保留。試驗場裡按 <kbd>H</kbd>（或畫面右邊的「說明」）打開說明欄；每頁開場與面板最上面有「測／操作／看」三行。</p>
+  </header>
+
+  <section class="ui-panel" aria-labelledby="hFull">
+    <h2 class="sect" id="hFull">木馬之夜・整關</h2>
+    <div class="setup">
+      <div class="opts">
+        <label>版本 <select id="moves"><option value="">跑蹲版（預設：Shift 按住跑、Alt 按住蹲）</option><option value="0">報告版（?moves=0，報告數字用這個）</option></select></label>
+        <label>從 <select id="zone"><option value="">第 0 區（開場）</option><option value="1">第 1 區</option><option value="2">第 2 區</option><option value="3">第 3 區</option><option value="4">第 4 區</option></select> 開始</label>
+        <label><input type="checkbox" id="drums"> 舊鼓聲（?drums=old；報告版本來就是舊鼓聲）</label>
+        <label><input type="checkbox" id="horse"> 木馬新內容（腹中練習、木馬陰影、共鳴、結尾回頭）</label>
+        <label><input type="checkbox" id="reveal"> 照亮場景版（?reveal=1：平常很暗，最響的一擊照出衛兵；<kbd>[</kbd> <kbd>]</kbd> 調暗度）</label>
+        <label><input type="checkbox" id="nodrive"> 關掉越來越急（?drive=0）</label>
+        <label><input type="checkbox" id="tel"> 記錄試玩數據</label>
+        <label><input type="checkbox" id="mute"> 靜音</label>
+        <label><input type="checkbox" id="clean"> 錄影模式（不帶出存過的除錯開關、不放說明欄）</label>
+      </div>
+      <div class="go-row"><a class="ui-btn primary" id="play">開始玩</a> <a class="ui-btn" href="troy-prologue/index.html?map=final" title="期末企劃的七段地圖，含開頭與結尾的故事字卡">期末七段版</a></div>
+    </div>
+    <p style="margin:8px 0 0"><code id="url"></code></p>
+  </section>
+
+  <section class="map" aria-labelledby="hMap">
+    <h2 class="sect" id="hMap">試驗場・城區地圖</h2>
+    <p class="note">由西往東：從木馬肚子裡出發，穿過廣場和窄巷，走到城門。每個試驗場掛在它所在的區。</p>
+    <ol class="road">
+      <li class="zone">
+        <span class="no">第 0 區</span><h3>開場</h3>
+        <a class="from" data-zone="" href="#">從這裡玩整關 →</a>
+        <p class="empty">故事字卡與設定，沒有試驗場。</p>
+      </li>
+      <li class="zone">
+        <span class="no">第 1 區</span><h3>木馬腹中</h3>
+        <a class="from" data-zone="1" href="#">從這一區玩整關 →</a>
+        <ul class="labs">
+          <li><a href="troy-prologue/index.html?lab=belly"><b>腹中練習</b><span>站定後的第一步有沒有踩在鼓點上</span></a></li>
+        </ul>
+      </li>
+      <li class="zone">
+        <span class="no">第 2 區</span><h3>神殿廣場</h3>
+        <a class="from" data-zone="2" href="#">從這一區玩整關 →</a>
+        <ul class="labs">
+          <li><a href="troy-prologue/index.html?lab=horse"><b>木馬共鳴＋敲暗號</b><span><kbd>T</kbd> 跟著拍敲，三下＝引開、兩下＝現在；共鳴隨距離變小</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=run"><b>跑</b><span><kbd>Shift</kbd> 按住跑：只有最響的一擊蓋得住</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=check"><b>查看</b><span><kbd>N</kbd>／<kbd>M</kbd> 製造聲響、<kbd>V</kbd> 彈弓弦，讓走過來查看的衛兵找不到你</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=hunt"><b>追殺</b><span>聽追兵的腳步，躲開他的搜索</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=drive"><b>越來越急（DRIVE）</b><span><kbd>0</kbd>～<kbd>8</kbd> 切段、<kbd>K</kbd> 假裝追殺：聽鼓怎麼一路變急</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=flash"><b>最響一擊照亮場景</b><span>那一擊照出衛兵輪廓（整關版勾上面「照亮場景版」）</span></a></li>
+          <li class="group">走法（比三種）</li>
+          <li><a href="troy-prologue/index.html?lab=walk&amp;step=glide"><b>P0 現狀</b><span>按住滑著走</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=walk&amp;step=stride"><b>P1 步子跟著鼓</b><span>按住走，一步落在一個鼓點</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=walk&amp;step=manual"><b>P2 圈內自己踩</b><span>靠近衛兵時一步按一下</span></a></li>
+        </ul>
+      </li>
+      <li class="zone">
+        <span class="no">第 3 區</span><h3>城牆下的窄巷</h3>
+        <a class="from" data-zone="3" href="#">從這一區玩整關 →</a>
+        <ul class="labs">
+          <li><a href="troy-prologue/index.html?lab=crouch"><b>蹲</b><span><kbd>Alt</kbd> 按住蹲：慢但輕，矮東西擋得住視線</span></a></li>
+          <li><a href="troy-prologue/index.html?lab=listen"><b>屏息聽</b><span><kbd>空白鍵</kbd> 按住：聽衛兵從哪個方向來</span></a></li>
+        </ul>
+      </li>
+      <li class="zone">
+        <span class="no">第 4 區</span><h3>城門</h3>
+        <a class="from" data-zone="4" href="#">從這一區玩整關 →</a>
+        <p class="empty">推門閂（<kbd>E</kbd> 按住），整關最後一段；沒有單獨的試驗場。</p>
+      </li>
+    </ol>
+  </section>
+
+  <div class="more">
+    <section class="ui-panel" aria-labelledby="hListen">
+      <h2 class="sect" id="hListen">加速感試聽</h2>
+      <div class="row">
+        <label>版本 <select id="ill">
+          <option value="now">現行</option><option value="u1">U1 六層、淡到零（對照）</option><option value="v0">V0 不放最響的一擊</option>
+          <option value="v1">V1 最響一擊不固定</option><option value="v2">V2 加假的</option><option value="v3">V3 最響一擊拉回來</option><option value="v4">V4 三對二</option>
+        </select></label>
+        <label>一圈 <select id="cyc"><option value="10">10 秒</option><option value="12">12 秒</option><option value="6">6 秒</option><option value="20">20 秒</option></select></label>
+      </div>
+      <div class="row"><a class="ui-btn" id="listen">打開試聽頁</a></div>
+      <small>版本和試聽頁的選單相同；試聽頁按 <kbd>H</kbd> 有每一版要聽什麼、試聽題目。</small>
+    </section>
+    <section class="ui-panel" aria-labelledby="hLayer">
+      <h2 class="sect" id="hLayer">換層試驗場</h2>
+      <div class="row">
+        <a class="ui-btn" href="layer-ride/index.html">有聲部譜（先玩這個）</a>
+        <a class="ui-btn" href="layer-ride/index.html?aid=0">沒有聲部譜（真正考耳朵）</a>
+      </div>
+    </section>
+    <section class="ui-panel" aria-labelledby="hOther">
+      <h2 class="sect" id="hOther">其他</h2>
+      <div class="row">
+        <a class="ui-btn" href="level-editor.html">關卡編輯器（畫新的區）</a>
+        <a class="ui-btn" href="playtest-today.html">今日試玩清單</a>
+        <a class="ui-btn" href="index.html">原本的總首頁</a>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function gameUrl(zone) {
+  const q = new URLSearchParams();
+  if ($('moves').value) q.set('moves', $('moves').value);
+  if ($('drums').checked) q.set('drums', 'old');
+  if ($('horse').checked) q.set('horse', '1');
+  const z = zone === undefined ? $('zone').value : zone;
+  if (z) q.set('startZone', z);
+  if ($('tel').checked) q.set('telemetry', '1');
+  if ($('mute').checked) q.set('mute', '1');
+  if ($('clean').checked) q.set('clean', '1');
+  if ($('reveal').checked) q.set('reveal', '1');
+  if ($('nodrive').checked) q.set('drive', '0');
+  const s = q.toString();
+  return 'troy-prologue/index.html' + (s ? '?' + s : '');
+}
+function refresh() {
+  const u = gameUrl(); $('play').href = u; $('url').textContent = u;
+  $('listen').href = 'troy-prologue/audio-test.html?ill=' + $('ill').value + '&cycle=' + $('cyc').value;
+  // 地圖上每一區「從這一區玩整關」：照上面的整關設定，只換開始的區
+  document.querySelectorAll('a.from').forEach(a => { a.href = gameUrl(a.dataset.zone); });
+}
+// 記住上次的選擇（只存在這台電腦的瀏覽器；存不了就用預設）
+const KEYS = ['moves', 'drums', 'horse', 'zone', 'tel', 'mute', 'clean', 'reveal', 'nodrive', 'ill', 'cyc'];
+try { const s = JSON.parse(localStorage.getItem('switch-board') || '{}'); KEYS.forEach(k => { if (k in s) { const el = $(k); if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k]; } }); } catch (e) {}
+document.querySelectorAll('select, input').forEach(el => el.addEventListener('change', () => {
+  refresh();
+  try { const s = {}; KEYS.forEach(k => { const el = $(k); s[k] = el.type === 'checkbox' ? el.checked : el.value; }); localStorage.setItem('switch-board', JSON.stringify(s)); } catch (e) {}
+}));
+refresh();
+</script>
+</body>
+</html>
