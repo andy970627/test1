@@ -125,6 +125,7 @@
     DRIVE_HUNT_RISE: 2,    // 追殺：這麼多秒升到 DRIVE_MAX
     DRIVE_HUNT_FALL: 4,    // 甩掉：這麼多秒滑回
     // 區對段：11/17 起寫在關卡資料每一區的 driveSeg（level-troy.js），不再是常數
+    HINT_RECALL_FAILS: 2, // 11/28 期末企劃第 4 節：同一區連續被抓這麼多次，這一區的畫面提示回到完整（g.hintLevel）；過了這一區照原本的分區
     NOISE_R: 8,           // 11/15 弓弦引開 g.noise：沒被蓋住時，這麼近的衛兵（取最近一名）會來查看【假設】；比腳步兩倍（5）大，?lab=check 的衛兵在 6 公尺
     HUNT_START_DELAY: 0.8, // 第 17.2 節：疑心滿、追殺開始時先喊一聲（hunt_call），這段時間追兵站著不動；規則角色可在 0.6～1.0 內調
     CALL_LOOK_ONLY: false, // 第 16.1 節方向 (a)：追殺開始的喊聲叫來的衛兵只轉頭看、不走過來（查看的「走過去」跳過）
@@ -692,6 +693,43 @@
     return C;
   }
   const CAUSES = causesFor(T);
+  /**
+   * 11/28 期末企劃第 4 節「被抓後只講一件事」：失敗原因代號 → 一句話（說書人第三人稱、不用破折號、一句不加句號；docs/game-text.md 第 0 節）。
+   * 代號是這一次被盯上的那串事件裡最早的一個（g.failCause），畫面只顯示 g.failLine。move_high 依 COVER_MODE（殘響掩護版，預設開）分兩種說法。
+   */
+  function failLinesFor(K) {
+    K = K || T;
+    return {
+      seen: '奧德修斯走進了衛兵的視線',
+      radius: '奧德修斯在火光照得到的地方移動，被衛兵察覺了',
+      step: '奧德修斯的腳步沒落在鼓點上，被衛兵聽見了',
+      move_high: K.COVER_MODE ? '鼓聲最急的時候，奧德修斯的腳步沒落在鼓點上' : '鼓聲最急的時候，奧德修斯動了',
+      breath: '衛兵靠近時，奧德修斯沒有屏住呼吸',
+      gasp: '奧德修斯憋氣撐到極限，喘出了聲',
+      latch: '鼓聲還急的時候，奧德修斯推響了門閂',
+      loud: '一聲響動蓋過了鼓聲，被衛兵聽見了',
+      run: '奧德修斯在鼓聲蓋不住的時候奔跑',
+      takedown: '奧德修斯沒等最響的一擊就出手，衛兵察覺了',
+      fake: '鼓聲只是換手，奧德修斯卻以為可以走了',
+      calm_fast: '安撫衛兵時，奧德修斯按得太急',
+      calm_off: '安撫衛兵時，奧德修斯沒對準那聲慢慢的低音',
+      calm_slow: '奧德修斯安撫得太慢，衛兵喊了人',
+      noise: '弓弦聲沒被鼓聲蓋住'
+    };
+  }
+  const FAIL_LINES = failLinesFor(T);
+  /** 失敗原因代號 → 一句話（沒有對應就退回 seen 那句）。 */
+  function failLineFor(cause, K) { const L = K ? failLinesFor(K) : FAIL_LINES; return L[cause] || L.seen; }
+  /**
+   * 11/28 期末企劃第 4 節「連續被抓就把提示叫回來」：這一區的畫面提示等級（0～1，同 visualAid）。
+   * baseAid＝這一區原本的等級（visualAidFor）；streak＝在這一區連續被抓幾次；mode 不是 'auto'（畫面層強制開關或給數字）時不動。
+   * 同一區連續被抓 HINT_RECALL_FAILS 次起回到完整（1）。
+   */
+  function hintLevelFor(baseAid, streak, mode, K) {
+    K = K || T;
+    if (mode != null && mode !== 'auto') return baseAid;
+    return (streak | 0) >= K.HINT_RECALL_FAILS ? 1 : baseAid;
+  }
   // 11/17 起區名從關卡資料讀（每一區的 name）；區數由資料決定。沒載資料時是空陣列
   const ZONE_NAMES = Object.freeze(LEVEL_DATA && Array.isArray(LEVEL_DATA.zones) ? LEVEL_DATA.zones.map((z) => z.name) : []);
   /** 這一區是不是城門區（出口是 gate）。 */
@@ -862,9 +900,30 @@
       // 暗示階梯：每種機制 {fails（連續失敗次數，成功歸零）, level（1～3）, lastFail（上次算進去的音訊時間）}
       hints: {},
       visualAidMode: opts.visualAid == null ? 'auto' : opts.visualAid, // 畫面層可隨時改：'auto'|'on'|'off'|數字
-      visualAid: 1
+      visualAid: 1,
+      // 11/28 第 4 節：failStreak＝{zone（哪一區）, n（在那一區連續被抓幾次）}；hintLevel＝這一區此刻的提示等級（和 visualAid 同值）；
+      // failCause／failLine＝這次失敗只講的那一件事（代號／一句話），重來時清空。failReason、failCode 照舊（舊的整串訊息與代號）。
+      failStreak: { zone: null, n: 0 },
+      hintLevel: 1,
+      failCause: null,
+      failLine: null
     };
-    g.visualAid = visualAidFor(tierOf(g.zone), g.visualAidMode, K);
+    /** 11/28：這一區此刻的提示等級（連續被抓 HINT_RECALL_FAILS 次就回到完整），同時寫進 visualAid（畫面照舊讀 visualAid 就好）。 */
+    function refreshAid() {
+      const st = g.failStreak && g.failStreak.zone === g.zone ? g.failStreak.n : 0;
+      g.hintLevel = hintLevelFor(visualAidFor(tierOf(g.zone), g.visualAidMode, K), st, g.visualAidMode, K);
+      g.visualAid = g.hintLevel;
+    }
+    refreshAid();
+    // 11/28：這一次被盯上的那串事件（最早的在前）。所有衛兵都回到平靜（沒有查看、起疑、高度警覺、追殺）就清空。
+    let slipChain = [];
+    let loudWhy = null;   // 這一幀「大聲」的來源：'gasp'（憋氣到極限）／'latch'（門閂響）
+    let suspWhy = null;   // 這次起疑是因為什麼（呼叫 makeSuspicious 前設）
+    function slip(code) {
+      if (!code || code === 'call' || code === 'lab' || code === 'hunt') return;
+      if (code === 'loud' && loudWhy) code = loudWhy;
+      if (!slipChain.length || slipChain[slipChain.length - 1] !== code) slipChain.push(code);
+    }
     for (const k of Object.keys(Object.assign({}, hintLadderFor(Object.assign({}, K, { MOVES_MODE: false })), hintLadderFor(K)))) g.hints[k] = { fails: 0, level: 1, lastFail: -1e9 };
     let last = null;
     let latchNoiseAt = -1e9;
@@ -953,7 +1012,9 @@
       setActive();
       clearPanic();
       g.player.inBelly = !!level.zones[z].belly;
-      g.visualAid = visualAidFor(tierOf(z), g.visualAidMode, K);
+      slipChain = [];
+      if (!quiet && g.failStreak.zone !== z) g.failStreak = { zone: z, n: 0 };   // 換到下一區：連續被抓歸零（重來是 quiet，不歸零）
+      refreshAid();
       walking = false; lastStepT = -1e9; idleWatch = null;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
       // 教學順序（M9）。一區只主動教一件新事；起疑、高度警覺、追殺、腳步太吵是「第一次發生時」才教（要馬上會解）。
@@ -1088,10 +1149,17 @@
     function fail(reason, code) {
       if (g.phase !== 'play') return;
       g.phase = 'fail'; g.failReason = reason; g.failCode = code || null;
+      // 11/28 第 4 節：只講最早那一件事；連續被抓計數（同一區才累加）
+      const fromCode = code ? String(code).replace(/^(caught|belly)_/, '') : null;
+      g.failCause = slipChain[0] || fromCode || 'seen';
+      g.failLine = failLineFor(g.failCause, K);
+      if (g.failStreak.zone === g.zone) g.failStreak.n++; else g.failStreak = { zone: g.zone, n: 1 };
+      refreshAid();
       emit('sfx', 'caught'); emit('msg', reason);
     }
     function makeSuspicious(q, t) {
       if (q.state !== 'patrol') return;
+      if (!K.MOVES_MODE) slip(suspWhy || 'seen');
       // 第 13 節：開關開著時沒有起疑與安撫，改成過來查看你當時的位置（追殺中才注意到你的也一樣）
       if (K.MOVES_MODE) { enterCheck(q, t, { x: g.player.x, z: g.player.z }, g.hunted ? 'hunt' : 'susp'); return; }
       if (behindPlayer(q)) hintFail('listen');
@@ -1130,6 +1198,7 @@
      */
     function enterCheck(q, t, pos, cause) {
       if (!q || q.state !== 'patrol') return;
+      slip(cause === 'susp' ? (suspWhy || 'seen') : cause);
       q.suspHist = (q.suspHist || []).filter((x) => t - x < K.CALM_MEMORY);
       if (cause !== 'call') q.suspHist.push(t);   // 第 15.3 節：喊聲叫來的不算「同一人第三次」
       if (q.suspHist.length >= K.CALM_MEMORY_N) {
@@ -1164,6 +1233,7 @@
     /** cause：CAUSES 的代號；reason：當下的訊息。 */
     function startHunt(q, cause, reason) {
       cause = cause || 'seen';
+      slip(cause);
       // 暗示階梯：亂動 → 驟降；安撫失敗 → 安撫；被背後的衛兵發現 → 聽聲辨位（大聲的喘氣、門閂在發聲的地方就算過了）
       if (cause === 'move_high') hintFail('blind');
       else if (/^calm_/.test(cause)) hintFail('calm');
@@ -1333,7 +1403,7 @@
       c.anchor = { t, p: c.p, T: c.T, index: c.index, start: c.start };
       g.danger = dangerOf(g);
       g.fire = fireBrightness(g);
-      g.visualAid = visualAidFor(tierOf(g.zone), g.visualAidMode, K);
+      refreshAid();
       refreshBass(t);
     }
 
@@ -1386,6 +1456,7 @@
         preBlindCycle = c.index; emit('sfx', 'pre_blind');
       }
       let loud = false;
+      loudWhy = null;
 
       // 第 12 節第 5 點：跑完會喘（RUN_PANT_DUR 秒內不能屏息，呼吸聲傳 RUN_PANT_MUL 倍遠）
       const panting = K.MOVES_MODE && t < pl.pantUntil - 1e-9;
@@ -1408,7 +1479,7 @@
           if (q.active && dist3(q, pl) <= radiusAt(p, q.state !== 'patrol', K)) { pl.breathSaved = true; break; }
         }
         if (pl.breathT >= K.BREATH_MAX) {
-          pl.breathT = K.BREATH_MAX; pl.breathing = false; pl.breathLock = true; loud = true; pl.breathSaved = false;
+          pl.breathT = K.BREATH_MAX; pl.breathing = false; pl.breathLock = true; loud = true; loudWhy = 'gasp'; pl.breathSaved = false;
           emit('sfx', 'gasp'); hint('gasp'); hintFail('breath');
         }
       } else {
@@ -1616,7 +1687,9 @@
             emit('sfx', 'takedown'); hintOk('takedown');
           } else {
             emit('sfx', 'takedown_fail'); hintFail('takedown');
+            suspWhy = 'takedown';
             if (best.state === 'patrol') makeSuspicious(best, t);
+            suspWhy = null;
           }
         }
       }
@@ -1634,7 +1707,7 @@
             const s0 = Math.floor(before / K.GATE_NEED * 8 + 1e-9), s1 = Math.floor(g.gate.progress / K.GATE_NEED * 8 + 1e-9);
             for (let i = s0; i < Math.min(8, s1); i++) { emit('sfx', 'latch_step', { index: i }); hintOk('latch'); }
           } else if (t - latchNoiseAt >= K.LATCH_NOISE_GAP) {
-            latchNoiseAt = t; loud = true; emit('sfx', 'latch'); hintFail('latch');
+            latchNoiseAt = t; loud = true; loudWhy = loudWhy || 'latch'; emit('sfx', 'latch'); hintFail('latch');
           }
         }
       }
@@ -1803,7 +1876,7 @@
             if (q.state === 'patrol') makeAlerted(q, t, 'loud');
             else startHunt(q, 'loud', '那聲音太大了——衛兵衝過來！');
           }
-          else { if (q.state === 'patrol') makeSuspicious(q, t); q.lookAt = { x: pl.x, z: pl.z }; }
+          else { suspWhy = 'loud'; if (q.state === 'patrol') makeSuspicious(q, t); suspWhy = null; q.lookAt = { x: pl.x, z: pl.z }; }
           continue;
         }
         if (heardRun) {   // 不分快慢：巡邏的進高度警覺，起疑（安撫中）的直接追殺
@@ -1833,11 +1906,15 @@
         q.susp = Math.min(1, q.susp);
         if (q.susp >= 1 && q.state === 'patrol') {
           if (why === 'radius' || why === 'breath' || why === 'step') hintFail(why);
+          suspWhy = why || 'seen';
           makeSuspicious(q, t);
+          suspWhy = null;
         }
       }
       g.alerted = g.guards.some((q) => q.active && (q.state === 'alerted' || q.state === 'checking'));
       g.checking = g.guards.some((q) => q.active && q.state === 'checking');
+      // 11/28：大家都平靜了（沒人查看、起疑、高度警覺、追殺，也沒有警戒）→ 這串事件結束，下次被盯上重新記
+      if (slipChain.length && !g.hunted && !g.panic.active && !g.guards.some((q) => q.active && q.state !== 'patrol' && q.state !== 'down')) slipChain = [];
       if (g.phase !== 'play') return g;
 
       // 暗示階梯「聽聲辨位」的成功：背後的衛兵，3 秒內被你轉身面對（8 公尺內、正前方 ±40°）
@@ -2024,6 +2101,7 @@
       resetGuards(z);
       g.hunted = false; g.alerted = false; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
       g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
+      g.failCause = null; g.failLine = null; slipChain = [];
       g.gate.progress = 0; g.gate.pushing = false; g.gate.open = false;
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
@@ -2124,7 +2202,7 @@
     createLevel, buildLevel, resolveLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, zoneTier, isGateZone, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
-    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor, inputOffsetSec,
+    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor, failLinesFor, failLineFor, hintLevelFor, FAIL_LINES, inputOffsetSec,
     forward, yawTo, angDiff, inRect, mulberry32
   };
 });

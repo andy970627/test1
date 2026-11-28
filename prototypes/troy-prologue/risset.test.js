@@ -4661,3 +4661,101 @@ test('11/23 短展示關卡：程式玩家（σ0.12，40 局）通關率 ≥ 60%
   assert.equal(R.buildLevel().zones.length, 5);
   assert.equal(require('./level-troy-final.js').zones.length, 8);
 });
+
+// ---------- 11/28 期末企劃第 4 節：失敗與結尾的做法 ①②（提示叫回來、只講一件事） ----------
+test('11/28 hintLevelFor（純函式）：同一區連續被抓 2 次起回到完整（1）；1 次照原本；畫面強制開關或給數字時不動', () => {
+  assert.equal(K.HINT_RECALL_FAILS, 2);
+  for (const base of [0, 0.5, 1]) {
+    assert.equal(R.hintLevelFor(base, 0, 'auto'), base);
+    assert.equal(R.hintLevelFor(base, 1, 'auto'), base);
+    assert.equal(R.hintLevelFor(base, 2, 'auto'), 1);
+    assert.equal(R.hintLevelFor(base, 5, 'auto'), 1);
+    assert.equal(R.hintLevelFor(base, 3, 'off'), base, '畫面層強制 off 時照畫面的意思');
+    assert.equal(R.hintLevelFor(base, 3, 0.3), base);
+  }
+});
+
+/** 讓玩家站在 g2b 正前方 1.5 公尺不動，等到被抓。回傳用了幾幀。 */
+function standInFront(g, tRef) {
+  const q = g.guards.find((o) => o.id === 'g2b');
+  const f = R.forward(q.yaw);
+  g.player.x = q.x + f.x * 1.5; g.player.z = q.z + f.z * 1.5;
+  let n = 0;
+  while (g.phase === 'play' && n < 4000) { tRef.t += DT; g.step(tRef.t, {}); g.drain(); n++; }
+  return n;
+}
+
+test('11/28 連續被抓叫回提示（g.hintLevel）：同一區被抓 1 次不變、2 次起回到完整並同步 visualAid；重來不歸零；換到下一區回到該區原本的等級', () => {
+  const lv = R.buildLevel();
+  lv.zones[2].tier = 4;   // 把神殿廣場改成第 4 階（原本提示是 0），才看得出「叫回完整」
+  const g = R.createLevel({ level: lv, startZone: 2, T: { DYNAMIC: false } });
+  const tr = { t: 1 };
+  g.step(tr.t, {});
+  assert.equal(g.hintLevel, 0); assert.equal(g.visualAid, 0);
+  assert.equal(g.failStreak.n, 0);
+  standInFront(g, tr);
+  assert.equal(g.phase, 'fail');
+  assert.deepEqual(g.failStreak, { zone: 2, n: 1 });
+  assert.equal(g.hintLevel, 0, '被抓 1 次照原本');
+  g.retry(); tr.t += DT; g.step(tr.t, {});
+  assert.equal(g.hintLevel, 0);
+  standInFront(g, tr);
+  assert.deepEqual(g.failStreak, { zone: 2, n: 2 });
+  assert.equal(g.hintLevel, 1, '同一區連續 2 次：回到完整');
+  g.retry(); tr.t += DT; g.step(tr.t, {});
+  assert.equal(g.hintLevel, 1, '重來後這一區照樣完整');
+  assert.equal(g.visualAid, 1, 'visualAid 同步（畫面不用改就讀得到）');
+  // 走進出口到下一區（窄巷，第 3 階、COVER_MODE 下原本 0.5）
+  g.player.x = 30.7; g.player.z = 22; tr.t += DT; g.step(tr.t, {}); g.drain();
+  assert.equal(g.zone, 3);
+  assert.deepEqual(g.failStreak, { zone: 3, n: 0 }, '換區歸零');
+  assert.equal(g.hintLevel, R.visualAidFor(3, 'auto', g.T), '回到該區原本的等級');
+  // 畫面強制關掉提示時，被抓幾次都不叫回
+  const g2 = R.createLevel({ level: lv, startZone: 2, visualAid: 'off', T: { DYNAMIC: false } });
+  const tr2 = { t: 1 }; g2.step(tr2.t, {});
+  for (let k = 0; k < 2; k++) { standInFront(g2, tr2); g2.retry(); tr2.t += DT; g2.step(tr2.t, {}); }
+  assert.equal(g2.failStreak.n, 2); assert.equal(g2.hintLevel, 0);
+});
+
+test('11/28 只講一件事（g.failCause、g.failLine）：取這串事件最早的原因（先被聽見腳步、後被看見 → 講腳步）；每種原因都有一句、照 game-text 的寫法；重來清空；舊的 failReason／failCode 不變', () => {
+  // 對照表：每句說書人第三人稱或不用人稱、不用破折號、一句不加句號
+  const L = R.failLinesFor(K);
+  for (const [code, line] of Object.entries(L)) {
+    assert.ok(typeof line === 'string' && line.length >= 6 && line.length <= 26, code + ' 長度 ' + line.length);
+    assert.ok(!/——|—/.test(line), code + ' 不用破折號');
+    assert.ok(!/[。！？]$/.test(line), code + ' 一句不加句號');
+    assert.ok(!/你/.test(line), code + ' 說書人口吻，不寫「你」');
+  }
+  for (const c of ['seen', 'radius', 'step', 'move_high', 'breath', 'gasp', 'latch', 'loud', 'run', 'takedown']) assert.ok(L[c], '缺 ' + c);
+  for (const c of Object.keys(R.causesFor(K))) assert.ok(L[c], 'causesFor 的 ' + c + ' 要有一句');
+  assert.equal(R.failLineFor('沒有這種', K), L.seen);
+  assert.notEqual(R.failLinesFor(Object.assign({}, K, { COVER_MODE: false })).move_high, L.move_high);
+  // 實際被抓：站在衛兵前面
+  const g = R.createLevel({ startZone: 2, T: { DYNAMIC: false } });
+  const tr = { t: 1 }; g.step(tr.t, {});
+  standInFront(g, tr);
+  assert.equal(g.phase, 'fail');
+  assert.ok(L[g.failCause], 'failCause 在對照表裡：' + g.failCause);
+  assert.equal(g.failLine, L[g.failCause]);
+  assert.ok(typeof g.failReason === 'string' && /^caught_|^belly_/.test(g.failCode), '舊欄位照舊');
+  g.retry();
+  assert.equal(g.failCause, null); assert.equal(g.failLine, null);
+});
+
+test('11/28 只講一件事：最早的原因優先（程式玩家 σ0.25 × 60 局，一條命；被抓時 failCause 都在對照表裡，且至少一局和追上時的代號不同，表示講的是更早的那件事）', () => {
+  const L = R.failLinesFor(K);
+  let fails = 0, differ = 0;
+  const Bots = require('../../tools/telemetry/troy-bots.js');
+  for (let seed = 1; seed <= 60; seed++) {
+    const g = R.createLevel({ t0: (seed * 1.37) % 10, seed, T: { COVER_MODE: true } });
+    const bot = Bots.makeBot({ cover: true, sigma: 0.25, seed });
+    let t = 2; g.step(t, {}); g.step(t, { start: true });
+    while ((g.phase === 'play' || g.phase === 'intro') && t < 300) { t += DT; g.step(t, bot(g)); g.drain(); }
+    if (g.phase !== 'fail') continue;
+    fails++;
+    assert.ok(L[g.failCause], 'seed ' + seed + ' failCause ' + g.failCause);
+    if (g.failCause !== String(g.failCode).replace(/^(caught|belly)_/, '')) differ++;
+  }
+  assert.ok(fails >= 1, '取樣裡要有失敗');
+  assert.ok(differ >= 1, '至少一局講的是更早的原因（' + differ + '）');
+});
