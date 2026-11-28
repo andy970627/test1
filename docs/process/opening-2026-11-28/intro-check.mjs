@@ -74,6 +74,13 @@ if (ONLY === 'all' || ONLY === 'cam') {   // 鏡頭動畫：截 3 張、演出�
   const again = await ev('TroyDebug.cam.active');
   res.cam = { start: c0, end: c1, fpsCam: [f1, f2], fpsBelly: fg, secondTimeActive: again, errors: errs.slice(0, 5) };
 }
+if (ONLY === 'camseq') {   // 自己檢查用：每 3 秒拍一張，看整段有沒有貼牆
+  await open('&map=final&intro=cam&art=2');
+  await ev("document.getElementById('btnStart').click()"); await sleep(600);
+  await ev("document.getElementById('storySkip').click()"); await sleep(300);
+  for (let i = 1; i <= 8; i++) { await sleep(3000); await shot('seq-' + String(i * 3).padStart(2, '0') + 's'); }
+  res.camseq = { errors: errs.slice(0, 5) };
+}
 console.log(JSON.stringify(res, null, 1));
 ws.close(); chrome.kill(); srv.close(); await sleep(800); try { fs.rmSync(prof, { recursive: true, force: true }); } catch (e) {}
 process.exit(0);
