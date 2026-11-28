@@ -360,3 +360,41 @@
 - `node --test prototypes/*/*.test.js`：381 項全過。`tools/telemetry/*.test.js`：19 項全過（含新加 7 項）。兩組合計（CI 範圍）400 項全過。
 - `bash tools/build-itch.sh`：44 個檔、zip 768K，找不到的相對連結 0 個，已帶 `calibration.js`。
 - 冒煙測試：原始 21 頁過、0 頁敗；打包 21 頁過、0 頁敗（不含按開始，見上）。
+
+## 11/28 離線、字體涵蓋檢查與 12/3 試玩摘要
+
+- **兩項檢查**：新檔 `tools/telemetry/troy-offline.test.js`。CI 的 web-tests 和 `cleancheck.sh` 都會跑 `tools/telemetry/*.test.js`，不用另外接線。
+  - 掃描清單：直接讀 `make-fonts.py` 的 SRC，再加上 `index.html` 的 script src／link href（含 document.write 字串裡的）與 CSS 裡的 url()、@import，一共 16 個以上的檔案。
+  - 離線：任何 http(s):// 網址都擋，包含註解；`//主機` 開頭的 src、href、url()、@import、fetch 也擋。XML 命名空間（three.min.js 的 `http://www.w3.org/1999/xhtml`）只是識別字、瀏覽器不會連，所以排除。
+  - 字體涵蓋：掃法和 make-fonts.py 相同（ASCII 加上所有 ≥ U+00A0 的字，註解也算），檢查 fonts.css、fonts-ui2.css 每一組字型的 unicode-range 有沒有涵蓋。用 `TROY_OFFLINE_ROOT=<暫存複本>` 可以指到別的資料夾。
+  - **make-fonts.py 沒改**：unicode-range 本身就是 Google 切出來的字表，直接拿來比，不用另外寫字表檔。
+  - 故意弄壞（都在暫存複本，不動 repo）：加 `<script src="https://cdn…">` 會擋；把 link 改成 `//fonts.example.com/a.css` 會擋；在 risset.js 加「鱷鱺」會擋，並提示重跑 make-fonts.py。
+  - **目前工作區的實況**：規則、聲音角色還沒提交的 risset.js、audio.js 多了 7 個字（奧斯奔歡軸啊跺），字體檢查會不過。他們提交前要重跑 `python -I prototypes/troy-prologue/vendor/make-fonts.py`（需要網路），或把那些字從註解拿掉。cleancheck 以 HEAD 為底，所以這次是過的。
+- **試玩摘要**：新檔 `tools/telemetry/playtest-summary.mjs`，加上測試 `playtest-summary.test.js`。
+  - 指令：`node tools/telemetry/playtest-summary.mjs <匯出數據.json> [--out 摘要.md] [--map final|demo|default]`，示範用 `--demo`。
+  - 現有工具：`summarize.mjs` 已經有每區時間和失敗次數；新寫的部分是被抓位置、可能迷路、手機版排版（不用表格），以及以程式玩家當基準。
+  - 限制：遙測沒記玩家座標，所以被抓位置寫的是被抓前 6 秒內最近一名查看或喊人的衛兵位置。可能迷路只按兩個條件判斷：停留超過程式玩家的 3 倍而且多 30 秒，或走回前一段。
+  - 要更準，需要畫面角色在 fail 事件帶 `x`、`z`，或每 2 秒記一次位置。
+  - 程式玩家（σ0.5）在七段版 30 局都沒被抓，所以示範在神殿廣場故意走向衛兵一次。示範輸出：
+    ### 示範：程式玩家（手很不準 σ0.5，失敗就重來這一區；在神殿廣場故意走向衛兵一次）跑七段版
+    
+    - 結果：通關，總共 2 分 13 秒
+    - 被抓：1 次；可能迷路：神殿廣場
+    
+    **1. 木馬腹中**　2 秒
+    
+    **2. 木馬下**　33 秒
+    
+    **3. 神殿廣場**　51 秒，被抓 1 次，⚠️可能迷路
+    - 開局第 37 秒：衛兵發現了你，之後被追上、抓住了。（衛兵在 (22, 10)）
+    - 迷路線索：停留 51 秒，程式玩家約 14 秒
+    
+    **4. 慶宴的街**　6 秒
+    
+    **5. 城牆下的窄巷**　9 秒
+    
+    **6. 沒有火的後街**　11 秒
+    
+    **7. 城門**　22 秒
+    
+    <sub>位置是被抓前最近一名查看或喊人的衛兵座標（公尺），遙測沒記玩家座標；迷路只按時間判斷。</sub>
