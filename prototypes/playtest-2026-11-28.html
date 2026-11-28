@@ -94,6 +94,15 @@
   .fabpanel { width:min(380px, calc(100vw - 24px)); background:var(--night); border:1px solid var(--bronze); border-radius:var(--r-panel); padding:8px; box-shadow:0 4px 16px rgba(0,0,0,.3); }
   .fabpanel .prog { margin:0 0 6px; }
   .fabpanel .totop { width:100%; min-height:40px; border:1px solid var(--rule); border-radius:var(--r-btn); background:var(--stone); color:var(--parchment); font:500 var(--fs-14)/1.2 var(--font-body); cursor:pointer; }
+  .card.now { border:2px solid var(--bronze); border-left-width:6px; box-shadow:0 0 0 3px var(--bronze-wash); scroll-margin-top:16px; }
+  .nowtag { display:inline-block; font:700 var(--fs-12)/1.6 var(--font-body); color:var(--night); background:var(--bronze); border-radius:var(--r-btn); padding:0 8px; margin:0 0 6px; letter-spacing:.06em; }
+  .card.weak { opacity:.72; } .card.weak:hover, .card.weak:focus-within { opacity:1; }
+  .layer.dim .card.weak { opacity:1; }
+  details.old, details.past { margin:10px 0 0; border-top:1px dashed var(--rule); padding:8px 0 0; }
+  details.old summary, details.past summary { cursor:pointer; color:var(--muted); font-size:var(--fs-14); }
+  details.old ul, details.past ul { margin:6px 0 0; padding-left:1.2em; font-size:var(--fs-14); }
+  details.old li, details.past li { margin:4px 0; color:var(--parchment); }
+  details.past { margin:24px 0 0; max-width:var(--measure); }
   #msg { color:var(--parchment); font-size:var(--fs-14); }
   @media (max-width:520px) { .prog button { font-size:11px; } .card h3, .layer > h2 { display:block; } .card h3 .n { margin-right:6px; } .card h3 .st, .layer > h2 .lst { display:block; margin:2px 0 0; } }
 </style>
@@ -128,6 +137,10 @@
   <p class="hint"><kbd>Esc</kbd> 暫停後，點一下畫面就能再鎖住滑鼠轉頭；這是剛修好的，請實際試一次。</p>
   <div id="strip"></div>
   <div id="list"></div>
+  <details class="past"><summary>以前的清單（需要時再看）</summary><ul>
+    <li><a href="playtest-2026-11-27.html">第 13 週試玩清單（11/27）↗</a>：七段計時表、催促（DRIVE）、照亮場景與敲暗號去留。這次已併進上面的分層清單。</li>
+    <li><a href="playtest-today.html">今日試玩清單（11/15 起）↗</a>：照亮場景整關、敲暗號重試、弓弦、空白鍵與 Alt 等較早的題目。</li>
+  </ul></details>
   <div class="bar">
     <button class="ui-btn primary" id="copy">複製結果</button>
     <button class="ui-btn" id="reset">清除答案</button>
@@ -173,8 +186,9 @@ const ITEMS = [
       ['哪一段最拖？', '這題在看要先縮短哪裡。',['都不拖','前段（巷子）','中段（廣場一帶）','後段（城門前）']],
     ]},
   { id:'opening', layer:3, title:'新開場：序、腹中四步、標題提示（約 2 分鐘）',
-    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。<kbd>Esc</kbd> 可以整段跳過。想比較舊流程，開「舊開場」那個連結。',
-    links:[['新開場','http://localhost:8770/troy-prologue/index.html?map=final'],['舊開場（對照）','http://localhost:8770/troy-prologue/index.html?map=final&intro=old']],
+    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。<kbd>Esc</kbd> 可以整段跳過。',
+    links:[['新開場（11/28 版，現在的預設）','http://localhost:8770/troy-prologue/index.html?map=final']],
+    old:[['舊開場：敘事頁 → 字卡 → 獨立校準頁 → 腹中練習（11/27 以前的流程）','http://localhost:8770/troy-prologue/index.html?map=final&intro=old']],
     qs:[
       ['腹中四步看得懂嗎？', '這題在看不用人解釋，玩家能不能自己學會踩拍和敲木板。',['一看就懂','有一步卡住','看不懂']],
       ['從按開始到走出木馬，長度如何？', '這題在看開場會不會拖。程式玩家量到約 36～48 秒。',['剛好','有點長','太長','太短']],
@@ -196,12 +210,14 @@ const ITEMS = [
       ['看完對地圖方向有沒有幫助？', '這題在看俯看一遍後，玩家知不知道城門在哪、要往哪走。',['有幫助','一點點','沒幫助']],
       ['會不會太長？', '這題在看 26 秒會不會讓人想跳過。',['剛好','太長','太短']],
     ]},
-  { id:'ui2', layer:4, title:'介面風格：要不要改成預設（約 2 分鐘）',
-    how:'兩個連結各開一次，比較標題畫面、字卡和遊戲中的提示。新風格是暗色底配火光橘、文字改思源黑和霞鶩文楷，只改樣式、不改內容。',
-    links:[['新風格（ui=2）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=2'],['原本風格（對照）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
+  { id:'ui2', layer:4, title:'介面：新配色的選單（約 2 分鐘）',
+    how:'打開遊戲，看標題畫面、選單和字卡。選單會換成這一頁也在用的 A「陶罐紅黑」配色（陶土底、黑字、赭紅重點），只改樣式、不改內容。畫面角色正在換，還沒換好前這個連結看到的仍是原本的選單，那時先跳過這題。',
+    links:[['新的預設選單（A 配色）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
+    old:[['原本的選單（ui=0，畫面換好 A 配色後才有這個參數）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=0'],
+         ['11/27 試做的暗底火光橘（ui=2）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=2']],
+    legacy:[['ui2-0','（舊題）ui=2 要改成預設嗎？'],['ui2-1','（舊題）ui=2 的字好不好讀？']],
     qs:[
-      ['新風格要改成預設嗎？', '這題就是要決定 12/24 用哪一種介面。',['改成預設','維持原本','都可以']],
-      ['新風格的字好不好讀？', '這題在看暗底上的字在投影或遠看時清不清楚。',['好讀','有些太小或太淡','不好讀']],
+      ['新配色的選單好不好看、看不看得清楚？', '這題在看換成 A 配色後，標題、選單和字卡在投影或遠看時順不順眼、讀不讀得清楚。',['好看也清楚','好看，但有地方看不清楚','看得清楚，但不好看','都不行'],null,'ui2-menuA'],
     ]},
   { id:'offline', layer:5, title:'離線也能玩（約 2 分鐘）',
     how:'伺服器保持開著，拔掉網路線或關掉 Wi-Fi，再重新整理遊戲頁。3D 畫面和中文字都要正常。這一頁本身離線時字體可能變成系統字，不影響作答。',
@@ -290,6 +306,7 @@ ITEMS.forEach((it, i) => {
     opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
     h += '</fieldset>';
   });
+  if (it.old) h += `<details class="old"><summary>舊版對照（需要時再看）</summary><ul>${it.old.map(([t, u]) => `<li><a href="${u}">${t} ↗</a></li>`).join('')}</ul></details>`;
   if (it.reset) h += `<p><button type="button" class="ui-btn" data-reset="1">重看鏡頭動畫（清掉「看過」紀錄）</button> <span class="qh" data-reset-msg></span></p>`;
   h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
   c.innerHTML = h; blocks[it.layer].sec.appendChild(c);
@@ -306,6 +323,18 @@ DECS.forEach((d, i) => {
 });
 save();
 
+function markNow() {
+  const cards = [...document.querySelectorAll('#list .card')];
+  const now = cards.find(c => !c.classList.contains('done'));
+  cards.forEach(c => {
+    const isNow = c === now;
+    c.classList.toggle('now', isNow);
+    c.classList.toggle('weak', !isNow);
+    let t = c.querySelector('.nowtag');
+    if (isNow && !t) { t = document.createElement('div'); t.className = 'nowtag'; t.textContent = '▶ 現在測這個'; c.prepend(t); }
+    if (!isNow && t) t.remove();
+  });
+}
 function refresh() {
   const lt = LAYERS.map(() => [0, 0]);
   ITEMS.forEach(it => {
@@ -321,6 +350,7 @@ function refresh() {
     c.classList.toggle('done', ok);
     c.querySelector('.st').textContent = ok ? '✓ 已決定' : '還沒選';
   });
+  markNow();
   let allPrevDone = true, cur = -1;
   blocks.forEach((b, li) => {
     const [n, tot] = lt[li], done = n === tot;
@@ -355,6 +385,8 @@ fabbtn.onclick = () => setFab(fabpanel.hidden);
 document.getElementById('totop').onclick = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); setFab(false); };
 function onScroll() { const show = window.scrollY > document.querySelector('.top').offsetHeight + 40; fab.hidden = !show; if (!show) setFab(false); }
 window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+// 打開頁面時直接捲到「現在測這個」
+{ const nowCard = document.querySelector('.card.now'); if (nowCard) requestAnimationFrame(() => { nowCard.scrollIntoView({ block: 'start' }); onScroll(); }); }
 
 document.getElementById('copy').onclick = async () => {
   let out = '週末成果試玩結果（2026-11-28 清單，分層版）\n';
@@ -363,6 +395,7 @@ document.getElementById('copy').onclick = async () => {
     if (it.layer !== ll) { ll = it.layer; out += `\n【${LAYERS[it.layer].t}】\n`; }
     out += `\n${i + 1}. ${it.title}\n`;
     it.qs.forEach((q, k) => { const nm = qkey(it, q, k); out += `- ${CAT[catOf(it, nm)].split(' ')[0]} ${q[0]}：${saved[nm] || '（未答）'}\n`; });
+    (it.legacy || []).forEach(([k, t]) => { if (saved[k]) out += `- ${t}：${saved[k]}\n`; });
     if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
     const next = ITEMS[i + 1];
     if (!next || next.layer !== it.layer) DECS.filter(d => d.layer === it.layer).forEach(d => {
