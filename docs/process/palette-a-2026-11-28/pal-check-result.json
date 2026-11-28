@@ -1,0 +1,108 @@
+{
+ "ui0": {
+  "intro": {
+   "bg": "rgba(14, 19, 34, 0.95)",
+   "img": "none",
+   "color": "rgb(242, 236, 221)",
+   "h1": "rgb(242, 236, 221)",
+   "cls": "",
+   "btn": "rgb(201, 165, 92)"
+  },
+  "hud": {
+   "zone": "rgba(242, 236, 221, 0.68)",
+   "torch": "#E8893B",
+   "hintBg": "rgba(0, 0, 0, 0)"
+  },
+  "showcase375": {
+   "scrollW": 375,
+   "clientW": 375,
+   "cls": ""
+  },
+  "errors": []
+ },
+ "A": {
+  "intro": {
+   "bg": "rgb(239, 221, 195)",
+   "img": "repeating-linear-gradient(90deg, rgb(30,",
+   "color": "rgb(30, 22, 17)",
+   "h1": "rgb(30, 22, 17)",
+   "cls": "ui2 palA",
+   "btn": "rgb(154, 52, 18)"
+  },
+  "hud": {
+   "zone": "rgba(242, 236, 221, 0.68)",
+   "torch": "#E0865A",
+   "hintBg": "rgba(12, 14, 22, 0.78)"
+  },
+  "showcase375": {
+   "scrollW": 375,
+   "clientW": 375,
+   "cls": "palA"
+  },
+  "errors": []
+ },
+ "other": {
+  "index.html": {
+   "bg": "rgb(14, 19, 34)",
+   "cls": "",
+   "errors": []
+  },
+  "bard-table/index.html": {
+   "bg": "rgb(14, 19, 34)",
+   "cls": "",
+   "errors": []
+  },
+  "blind-cave-web/index.html": {
+   "bg": "rgb(0, 0, 0)",
+   "cls": "",
+   "errors": []
+  },
+  "troy-prologue/audio-test.html": {
+   "bg": "rgb(14, 19, 34)",
+   "cls": "",
+   "errors": []
+  },
+  "playtest-today.html": {
+   "bg": "rgb(14, 19, 34)",
+   "cls": "",
+   "errors": []
+  }
+ },
+ "how": [
+  {
+   "n": 1,
+   "cause": "radius",
+   "level": 1,
+   "line": null,
+   "why": "奧德修斯在火光照得到的地方移動，被衛兵察覺了",
+   "hintHidden": true,
+   "hintText": "",
+   "keys": []
+  },
+  {
+   "n": 2,
+   "cause": "move_high",
+   "level": 2,
+   "line": "鼓聲最急的時候先停下，等最響的那一擊再走",
+   "why": "鼓聲最急的時候，奧德修斯的腳步沒落在鼓點上",
+   "hintHidden": false,
+   "hintText": "鼓聲最急的時候先停下，等最響的那一擊再走",
+   "keys": []
+  },
+  {
+   "n": 3,
+   "cause": "radius",
+   "level": 3,
+   "line": "W A S D 在火光圈裡踩著鼓點走，被照到就停下",
+   "why": "奧德修斯在火光照得到的地方移動，被衛兵察覺了",
+   "hintHidden": false,
+   "hintText": "W A S D 在火光圈裡踩著鼓點走，被照到就停下",
+   "keys": [
+    "W A S D"
+   ]
+  }
+ ],
+ "seedZone2": 3,
+ "seedZone3": 3,
+ "howErrors": []
+}

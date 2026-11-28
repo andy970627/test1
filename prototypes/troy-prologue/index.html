@@ -2,8 +2,8 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="vendor/fonts/fonts.css">   <!-- 11/27 離線：字體放在專案裡（只含本頁用到的字），來源與授權見 vendor/LICENSES.md -->
 <link rel="stylesheet" href="../ui-tokens.css">
-<script>   // ?ui=2：介面風格統一試做（美術 C）；只有帶參數才加 class 並載霞鶩文楷（載不到退回系統楷書）
-if (new URLSearchParams(location.search).get('ui') === '2') { document.documentElement.classList.add('ui2'); document.write('<link rel="stylesheet" href="vendor/fonts/fonts-ui2.css">'); }
+<script>   // 11/28 起預設：介面風格（ui2，思源黑＋霞鶩文楷）＋配色 A「陶土紅黑」（palA，選單換淺陶土底，遊戲中保留深色）。?ui=0 回到舊樣子對照；?ui=2 和預設相同
+if (new URLSearchParams(location.search).get('ui') !== '0') { document.documentElement.classList.add('ui2', 'palA'); document.write('<link rel="stylesheet" href="vendor/fonts/fonts-ui2.css">'); }
 </script>
 <style>
 /* 畫面層：規則全在 risset.js（RissetRules），聲音全在 audio.js（RissetAudio）。
@@ -242,20 +242,21 @@ body.camIntro .hud, body.camIntro #msgs, body.camIntro #hint, body.camIntro .odn
 .ui2 {
   --text: "Noto Sans TC", "Source Han Sans TC", "Microsoft JhengHei", "PingFang TC", system-ui, sans-serif;
   --font-story: "LXGW WenKai TC", "LXGW WenKai", "霞鶩文楷 TC", "霞鶩文楷", "Kaiti TC", "BiauKai", "DFKai-SB", "標楷體", serif;
-  --ember: rgba(232, 137, 59, .28);        /* 火光暈（火把橘加透明，不是新顏色） */
-  --ember-line: rgba(232, 137, 59, .32);   /* 暖色細線 */
+  --ember: rgba(var(--torch-rgb), .28);        /* 火光暈（火把橘加透明，不是新顏色） */
+  --ember-line: rgba(var(--torch-rgb), .32);   /* 暖色細線 */
   --ui2-panel: rgba(12, 14, 22, .78);      /* 疊在 3D 上的深色底 */
+  --torch-rgb: 232, 137, 59;               /* 火把橘的 RGB（給半透明的暈與細線用）；配色 A 換成紅褐色 */
 }
 .ui2 body { font-weight: 500; }
 /* 全螢幕畫面（開場、暫停、失敗、成功）：深色底，下緣一層像火光照上來的暖光 */
-.ui2 .screen { background: radial-gradient(120% 70% at 50% 118%, rgba(232, 137, 59, .17), transparent 60%), rgba(10, 12, 20, .95); }
-.ui2 #story { background: radial-gradient(90% 60% at 50% 120%, rgba(232, 137, 59, .12), transparent 60%), #000; }
-.ui2 #story.demoCard, .ui2 #calib { background: radial-gradient(110% 70% at 50% 118%, rgba(232, 137, 59, .16), transparent 60%), rgba(10, 12, 20, .9); }
-.ui2 #win { background: transparent; } .ui2 #win.dark { background: radial-gradient(90% 60% at 50% 120%, rgba(232, 137, 59, .12), transparent 60%), #000; }
+.ui2 .screen { background: radial-gradient(120% 70% at 50% 118%, rgba(var(--torch-rgb), .17), transparent 60%), rgba(10, 12, 20, .95); }
+.ui2 #story { background: radial-gradient(90% 60% at 50% 120%, rgba(var(--torch-rgb), .12), transparent 60%), #000; }
+.ui2 #story.demoCard, .ui2 #calib:not(.inBelly) { background: radial-gradient(110% 70% at 50% 118%, rgba(var(--torch-rgb), .16), transparent 60%), rgba(10, 12, 20, .9); }
+.ui2 #win { background: transparent; } .ui2 #win.dark { background: radial-gradient(90% 60% at 50% 120%, rgba(var(--torch-rgb), .12), transparent 60%), #000; }
 /* 標題：題字照舊襯線粗體，加一點火光暈與一條短火線 */
 .ui2 .card h1 { text-shadow: 0 0 28px var(--ember), 0 2px 0 #000; }
-.ui2 .card h1::after { content: ""; display: block; width: 2.2em; height: 3px; margin-top: .28em; background: linear-gradient(90deg, var(--torch), rgba(232, 137, 59, 0)); }
-.ui2 .card h2, .ui2 #storyTitle, .ui2 #calibTitle { text-shadow: 0 0 18px rgba(232, 137, 59, .22); }
+.ui2 .card h1::after { content: ""; display: block; width: 2.2em; height: 3px; margin-top: .28em; background: linear-gradient(90deg, var(--torch), rgba(var(--torch-rgb), 0)); }
+.ui2 .card h2, .ui2 #storyTitle, .ui2 #calibTitle { text-shadow: 0 0 18px rgba(var(--torch-rgb), .22); }
 .ui2 .card h3.sect { color: var(--torch); border-bottom-color: var(--ember-line); letter-spacing: .12em; }
 .ui2 legend { color: var(--torch); }
 .ui2 fieldset, .ui2 #telBox, .ui2 #survey { border-color: var(--ember-line); background: rgba(35, 40, 56, .35); }
@@ -265,22 +266,22 @@ body.camIntro .hud, body.camIntro #msgs, body.camIntro #hint, body.camIntro .odn
 .ui2 #intro .col > p.lead ~ p:not(.dim):not(.modeCover):not(.modeGap) { font-weight: 400; font-size: 17px; }
 .ui2 #storyText p { font-weight: 400; font-size: 22px; line-height: 1.75; }
 .ui2 #storyTitle, .ui2 #win h2 { font-size: clamp(30px, 4.2vw, 46px); }
-.ui2 .storyArt { border: 1px solid var(--ember-line); background: radial-gradient(80% 80% at 50% 100%, rgba(232, 137, 59, .07), transparent 70%); }
+.ui2 .storyArt { border: 1px solid var(--ember-line); background: radial-gradient(80% 80% at 50% 100%, rgba(var(--torch-rgb), .07), transparent 70%); }
 .ui2 #storyPage { color: var(--torch); letter-spacing: .08em; }
 .ui2 #intro .col > p b { color: var(--torch); font-weight: 700; }   /* 敘事裡的重點句（今晚，由你打開城門）改用火光色標出 */
 /* 按鍵：鍵帽加深、底邊火把橘，像被火光照到的石塊 */
-.ui2 kbd, .ui2 #hint .k, .ui2 #failHint .k { background: linear-gradient(#2c3142, #1b1f2b); border-color: rgba(201, 165, 92, .7); border-bottom: 2px solid var(--torch); font-weight: 700; box-shadow: 0 0 8px rgba(232, 137, 59, .18); }
+.ui2 kbd, .ui2 #hint .k, .ui2 #failHint .k { background: linear-gradient(#2c3142, #1b1f2b); border-color: rgba(201, 165, 92, .7); border-bottom: 2px solid var(--torch); font-weight: 700; box-shadow: 0 0 8px rgba(var(--torch-rgb), .18); }
 .ui2 .keys dt { font-weight: 700; }
 .ui2 .keys dd { color: var(--parchment); }
 /* 按鈕：主要按鈕改火把橘 */
-.ui2 button.primary { background: var(--torch); border-color: var(--torch); color: var(--night); font-weight: 700; box-shadow: 0 0 16px rgba(232, 137, 59, .3); }
+.ui2 button.primary { background: var(--torch); border-color: var(--torch); color: var(--night); font-weight: 700; box-shadow: 0 0 16px rgba(var(--torch-rgb), .3); }
 .ui2 button.primary:hover { background: var(--parchment); border-color: var(--parchment); }
 .ui2 button:not(.primary) { color: var(--parchment); border-color: rgba(242, 236, 221, .35); }
-.ui2 button:not(.primary):hover { border-color: var(--torch); background: rgba(232, 137, 59, .12); }
+.ui2 button:not(.primary):hover { border-color: var(--torch); background: rgba(var(--torch-rgb), .12); }
 /* 抬頭顯示：區名、提示、訊息、屏息條都墊一層深色底、火光色細節，3D 再亮也讀得到 */
 .ui2 #zone { font-weight: 500; }
 .ui2 #zoneNo { color: var(--torch); letter-spacing: .12em; }
-.ui2 #zone b { text-shadow: 0 0 14px rgba(232, 137, 59, .25), 0 1px 3px #000; }
+.ui2 #zone b { text-shadow: 0 0 14px rgba(var(--torch-rgb), .25), 0 1px 3px #000; }
 .ui2 #hint { font-weight: 500; font-size: 18px; background: var(--ui2-panel); border-top: 1px solid var(--ember-line); border-radius: var(--r-panel); padding: 8px 16px; text-shadow: 0 1px 2px #000; }
 .ui2 #hint:empty { background: none; border: 0; padding: 0; }
 .ui2 #msgs div { background: var(--ui2-panel); border-left: 3px solid var(--torch); font-weight: 500; }
@@ -289,8 +290,37 @@ body.camIntro .hud, body.camIntro #msgs, body.camIntro #hint, body.camIntro .odn
 .ui2 #breath i { height: 6px; background: rgba(242, 236, 221, .16); border-radius: 3px; }
 .ui2 #phase { color: var(--parchment); font-weight: 500; }
 .ui2 #fail h2 { border-left-color: var(--blood); }
-.ui2 #failHint { border-left-color: var(--torch); background: rgba(232, 137, 59, .07); }
+.ui2 #failHint { border-left-color: var(--torch); background: rgba(var(--torch-rgb), .07); }
 @media (max-width: 640px) { .ui2 #hint { font-size: 15px; } .ui2 #storyText p { font-size: 19px; } }
+/* ---------- 11/28 配色 A「陶土紅黑」（使用者選定；色票同 playtest-2026-11-28.html 的 A）----------
+   選單類（開場、設定、暫停、失敗、過關、短版開場字卡、獨立的校準頁）換淺陶土底：底 #EFDDC3、卡片 #FAF1E2、字 #1E1611、重點紅褐 #9A3412、黑紅相間的飾帶。
+   疊在 3D 夜景上的（抬頭顯示、遊戲中提示、#lockHint、腹中面板、序的黑底字句、鏡頭動畫跳過鈕）底照舊深色，只把火把橘換成深底上看得清楚的紅褐色 #E0865A（對夜空墨 6.8:1）。
+   對比（文字／底）：#1E1611／#EFDDC3 13.4、／#FAF1E2 15.9；次要字 #5B4636／#EFDDC3 6.7；紅褐 #9A3412／#EFDDC3 5.5；按鈕字 #FAF1E2／#9A3412 6.5；警告 #8A4510／#EFDDC3 5.4；海青改 #1F5566／#EFDDC3 6.2 */
+.palA { --torch: #E0865A; --torch-rgb: 224, 134, 90; --warn: var(--torch); }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib:not(.inBelly)) {
+  --night: #EFDDC3; --stone: #FAF1E2; --parchment: #1E1611; --ash: #1E1611; --muted: #5B4636; --dim: #5B4636;
+  --bronze: #9A3412; --fire: #9A3412; --torch: #8A4510; --torch-rgb: 154, 52, 18; --beat: #1F5566; --moon: #1F5566;
+  --rule: rgba(30, 22, 17, .2); --line: rgba(30, 22, 17, .2); --bronze-wash: rgba(154, 52, 18, .1); --panel: #FAF1E2;
+  --ember: rgba(154, 52, 18, .12); --ember-line: rgba(154, 52, 18, .3);
+  --band: repeating-linear-gradient(90deg, #1E1611 0 14px, transparent 14px 18px, #9A3412 18px 22px, transparent 22px 26px);
+  color: var(--ash); color-scheme: light;
+}
+.palA :is(#intro, #pause, #fail, #win.dark, #story.demoCard, #calib:not(.inBelly)) { background: var(--band) top left / 100% 8px no-repeat local, #EFDDC3; }   /* local：飾帶跟著內容捲走，不壓在捲動中的字上 */
+.palA #win:not(.dark) { background: transparent; }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) :is(.card h1, .card h2, #storyTitle, #calibTitle, #storyText p) { text-shadow: none; }
+.palA :is(#intro, #pause, #fail, #win) .card h1::after { width: 6em; height: 6px; margin-top: .3em; background: repeating-linear-gradient(90deg, #1E1611 0 12px, #9A3412 12px 24px); }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) :is(.card h3.sect, legend) { color: var(--bronze); }
+.palA :is(#intro, #pause, #fail, #win) .col > p b { color: var(--bronze); }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) :is(fieldset, #telBox, #survey) { background: rgba(30, 22, 17, .04); border-color: var(--rule); }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) :is(kbd, #failHint .k) { background: var(--stone); color: var(--parchment); border-color: rgba(30, 22, 17, .45); border-bottom: 2px solid var(--bronze); box-shadow: none; }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) button.primary { background: var(--bronze); border-color: var(--bronze); color: #FAF1E2; box-shadow: none; }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) button.primary:hover { background: #1E1611; border-color: #1E1611; color: #FAF1E2; }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) button:not(.primary) { color: var(--parchment); border-color: rgba(30, 22, 17, .4); }
+.palA :is(#intro, #pause, #fail, #win, #story.demoCard, #calib) button:not(.primary):hover { border-color: var(--bronze); background: var(--bronze-wash); }
+.palA #intro .row.start { background: linear-gradient(to bottom, rgba(239, 221, 195, 0), #EFDDC3 16%); }
+.palA #intro .row.start .preflight { background: #EFDDC3; box-shadow: 0 -14px 14px #EFDDC3; }
+.palA #introStrip { border-radius: var(--r-panel); background: #1E1611; }   /* 拍帶照舊深色（讀頁面的夜色變數），墊一條黑色底，像陶器上的黑帶 */
+.palA #failHint { background: rgba(154, 52, 18, .07); }
 </style>
 
 <div id="stage"><canvas id="cv" aria-label="特洛伊城夜晚的第一人稱畫面"></canvas></div>
@@ -2439,8 +2469,8 @@ function curP() { return game && game.cycle ? game.cycle.p || 0 : 0; }
 const desync = () => game && game.cycle && (game.cycle.desync != null ? !!game.cycle.desync : curP() > num(K().DESYNC_P, .8));
 function lag(fn) { if (desync()) setTimeout(fn, num(K().DESYNC_LAG, .15) * 1000); else fn(); }
 
-const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'Shift': 'Shift', 'Alt': 'Alt', '空白鍵': '空白鍵', 'W A S D': 'W A S D' };
-const KEY_RE = /(空白鍵|Shift|Alt|W A S D|\bE\b|\bQ\b)/;
+const KEYNAMES = { 'E': 'E', 'Q': 'Q', 'V': 'V', 'Shift': 'Shift', 'Alt': 'Alt', '空白鍵': '空白鍵', 'W A S D': 'W A S D' };
+const KEY_RE = /(空白鍵|Shift|Alt|W A S D|\bE\b|\bQ\b|\bV\b)/;   // V：彈弓弦（失敗畫面第 3 階）
 // 提示排隊：一次一則，每則至少 HINT_MIN 秒；排隊中有下一則時，顯示滿 HINT_SKIP 秒後按任意鍵可提早換
 // （避免一進區就連發的提示互相覆蓋，屏息提示一定看得到）；同一則已在顯示或排隊中就不再排
 const HINT_MIN = 4000, HINT_SKIP = 1200, HINT_LAST = 7000;
@@ -4705,10 +4735,11 @@ function showOver() {
   if (game.phase === 'fail') {
     const why = game.failLine || game.failReason || game.reason || (game.fail && game.fail.reason) || '衛兵發現了你。';   // 11/28 失敗只講一句：規則的 g.failLine（最早的原因）；沒有時退回整串 failReason
     $('failWhy').textContent = why;
-    // 暗示階梯第 2、3 階：失敗畫面也寫出來（重來後再提示一次）
-    const L = HW.lastLadder, fh = $('failHint');
-    fh.innerHTML = ''; fh.hidden = !(L && performance.now() - L.at < 8000);
-    if (!fh.hidden) keyText(fh, L.a);
+    // 11/28 做法乙（規則 3b3d564）：第二行讀 g.failHowLine。同一種失誤在這一區第 1 次＝null（整行藏起來），第 2 次一句做法，第 3 次起做法前面加按鍵（keyText 框起來）
+    //   以前取 HW.lastLadder「8 秒內最近一次暗示」，會和原因錯配（原因是被看見，第二行卻講屏息），已拿掉
+    const how = game.failHowLine, fh = $('failHint');
+    fh.innerHTML = ''; fh.hidden = !how; fh.dataset.level = game.failHowLevel || 0;
+    if (how) keyText(fh, how);
     telSurveyShow('fail');
     setTimeout(() => { if (game && game.phase === 'fail') { $('fail').hidden = false; if (DEMO_ON) demoFocus('btnFromTop2'); } }, 500);
   } else {

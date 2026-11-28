@@ -5,6 +5,7 @@
 <title>作品集</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
 <link rel="stylesheet" href="ui-tokens.css">
+<script>if (new URLSearchParams(location.search).get('ui') !== '0') document.documentElement.classList.add('palA');</script>   <!-- 11/28 配色 A；?ui=0 舊樣子 -->
 <style>
 /* 作品集入口：各作品仍是獨立網頁，這裡只放連結。要用 tools/showcase-serve.py 開，/ext/ 的作品才讀得到。 */
 body { margin: 0; background: var(--night); color: var(--parchment); font-family: var(--font-body); }

@@ -38,6 +38,18 @@
   color-scheme: dark;
 }
 
+/* ---------- 11/28 配色 A「陶土紅黑」：<html class="palA"> 才套用（作品集入口、切換台、關卡編輯器預設加上，?ui=0 不加）----------
+   色票同 playtest-2026-11-28.html 的 A。其他頁沒有 palA，照舊深色（遊戲頁疊在畫面上的深色面板不受影響）。
+   對比：字 #1E1611／底 #EFDDC3 13.4；次要字 #5B4636 6.7；紅褐 #9A3412 5.5；按鈕字 #EFDDC3／#9A3412 5.5；警告 #8A4510 5.4；海青 #1F5566 6.2 */
+.palA {
+  --night: #EFDDC3; --stone: #FAF1E2; --parchment: #1E1611; --bronze: #9A3412; --beat: #1F5566; --torch: #8A4510; --blood: #B02A1E;
+  --muted: #5B4636; --rule: rgba(30, 22, 17, .2); --stone-2: rgba(30, 22, 17, .04); --bronze-wash: rgba(154, 52, 18, .1);
+  --beat-muted: rgba(30, 22, 17, .4);      /* 拍帶的淡小點 */
+  --band: repeating-linear-gradient(90deg, #1E1611 0 14px, transparent 14px 18px, #9A3412 18px 22px, transparent 22px 26px);   /* 黑紅相間的飾帶 */
+  color-scheme: light;
+}
+.palA body { background: var(--band) top left / 100% 8px no-repeat, var(--night); }
+
 /* ---------- 基本 ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--night); }

@@ -18,7 +18,7 @@
     try { var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; } catch (e) { return fb; }
   }
   function colors() {
-    return { beat: css('--beat', '#6FB3A6'), parchment: css('--parchment', '#F2ECDD'), stone: css('--stone', '#232838'), muted: 'rgba(242, 236, 221, .45)' };
+    return { beat: css('--beat', '#6FB3A6'), parchment: css('--parchment', '#F2ECDD'), stone: css('--stone', '#232838'), muted: css('--beat-muted', 'rgba(242, 236, 221, .45)') };   // 11/28 配色 A 的淺底頁用深色淡點
   }
 
   // ---------- 拍點來源 ----------

@@ -6,6 +6,7 @@
 <title>試玩切換台</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
 <link rel="stylesheet" href="ui-tokens.css">
+<script>if (new URLSearchParams(location.search).get('ui') !== '0') document.documentElement.classList.add('palA');</script>   <!-- 11/28 配色 A；?ui=0 舊樣子 -->
 <style>
 /* 本機試玩用：一頁切換木馬之夜各版本、試驗場、試聽頁、換層試驗場。只產生連結，不改遊戲。
  * 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）。試驗場不用一格一格的卡片，改成「城區地圖」：

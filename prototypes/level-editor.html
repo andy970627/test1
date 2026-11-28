@@ -6,6 +6,7 @@
 <title>關卡編輯器</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
 <link rel="stylesheet" href="ui-tokens.css">
+<script>if (new URLSearchParams(location.search).get('ui') !== '0') document.documentElement.classList.add('palA');</script>   <!-- 11/28 配色 A；?ui=0 舊樣子 -->
 <style>
 /* 木馬之夜的關卡編輯器（總控 11/17）：在瀏覽器裡用方格畫特洛伊城的區。純邏輯在 level-editor/core.js（Node 有測試）。
  * 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：青銅＝可以按、目前選中；海青＝過；火把橘＝提醒；血紅底＝不過。
@@ -42,6 +43,8 @@ header .ui-title { margin: 0 0 10px; }
 .status { position: absolute; left: 8px; top: 6px; font-size: var(--fs-12); color: var(--parchment); background: rgba(14, 19, 34, .85); padding: 2px 8px; border-radius: var(--r-btn); pointer-events: none; max-width: calc(100% - 16px); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; font-size: var(--fs-12); color: var(--muted); }
 .legend i { display: inline-block; width: 14px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 1px; }
+.palA .mapBox, .palA .legend { --night: #0E1322; --parchment: #F2ECDD; --muted: rgba(242, 236, 221, .68); --rule: rgba(242, 236, 221, .14); color-scheme: dark; }   /* 11/28 配色 A：地圖照舊深色（畫布用夜城的顏色畫），圖例墊同色底才看得到 */
+.palA .legend { background: var(--night); border-radius: var(--r-panel); padding: 6px 10px; }
 
 .side { display: grid; gap: 12px; }
 .panel { background: var(--stone); border-radius: var(--r-panel); padding: 12px 14px; font-size: var(--fs-14); }
