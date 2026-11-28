@@ -12,6 +12,7 @@
 
 量測：
 - `intro-time.mjs`：從按「開始」到走出木馬要多久，由程式玩家操作，序不按、讓它自己播。結果約 36～48 秒，低於 90 秒的目標。
+- `fail-check.mjs`：失敗畫面只顯示 failLine 一句、遙測 fail 事件帶 x 和 z、跳過序時叫 storyCueStop(0.3)。
 - `intro-check.mjs`：檢查四種情況，分別是舊流程開關、短展示、新流程的 Esc 跳過、鏡頭動畫（截圖、幀數、只出現一次）。
 
 用法：`ROOT=<prototypes 的路徑> node intro-time.mjs <輸出資料夾>`。

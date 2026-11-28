@@ -50,7 +50,7 @@
 - 每個跟拍輸入都要有畫面呈現（總綱第 5、6 節）：盲區凝結、月亮相位鐘、衛兵火焰低音心跳、合拍腳印、出聲時衛兵側頭、盾牌低音反光、攻擊那一側火把閃。強度乘 `visualAid`。
 
 ### 畫面給聲音的東西：11/28 新開場的掛點（照聲音角色 a7b5f7d 的介面）
-- 序（黑底一次一句，`STORY_CARDS.prologue`）：每換一句叫 `audio.raw.storyCue(name)`（`audio` 是畫面的包裝，模組本體在 `.raw`）；序結束或跳過叫 `audio.raw.storyCueStop(0.6)`。同時記在 `game.storyCue`／`game.storyCueN`（每換一句加 1）給自動驗證讀。整段序 `game.story` 仍是 `'intro'`（隔木板悶聲照舊；序聲音走自己的匯流排不受影響）。
+- 序（黑底一次一句，`STORY_CARDS.prologue`）：每換一句叫 `audio.raw.storyCue(name)`（`audio` 是畫面的包裝，模組本體在 `.raw`）；**跳過**（略過鈕或 Esc）時叫 `audio.raw.storyCueStop(0.3)`；自然播完不叫，最後一句的 `feast` 傳 `{dur}`（至少撐到序結束）。同時記在 `game.storyCue`／`game.storyCueN`（每換一句加 1）給自動驗證讀。整段序 `game.story` 仍是 `'intro'`（隔木板悶聲照舊；序聲音走自己的匯流排不受影響）。
   - `cart`「黃昏。特洛伊人拉著粗繩，把木馬拖進城門。」
   - `gate`「城門在木馬身後關上。」
   - `cheer`「全城點起火把，歌聲和鼓聲一路傳到城牆。」
@@ -266,7 +266,8 @@
   - ?intro=old 回舊流程（三張字卡、不校準、腹中練習要 ?horse=1）；?map=demo 只把校準說法換成「跟著同伴敲」。標題畫面開始鍵上方加耳機與鎖滑鼠一行，按鍵說明拿掉那兩句。
   - 量時間（程式玩家）：按開始到走出木馬 36～48 秒（序約 21 秒、聽 4 秒、敲 9 秒、走 5～12 秒）。
   - ?intro=cam：序之後放約 26 秒鏡頭（camRoute 全從關卡資料算：城門外越過門頂 → 各區 botRoute 倒著走 → 停在木馬前 9 公尺、從落點那側看），黃昏轉夜；Esc／空白鍵跳過；localStorage 'troy-intro-cam-seen' 記住看過。幀數：演出中 131～209、腹中遊戲 91～111（RTX 3060、1280×720）。
-  - 第二段（規則的 hintLevel、failCause／failLine，規則 b6a8afe 已提交）等總控轉介面約定再接，沒動。
+  - 第二段已接（總控轉規則 b6a8afe 約定）：失敗畫面 `#failWhy` 先顯示 `g.failLine`，null 時退回 `failReason`；暗示階梯那行（`#failHint`）照舊。① 提示叫回不用改：`aidTarget()` 本來就讀 `game.visualAid`；設定選單「視覺輔助」選強制開／關時 `aidTarget()` 直接回 1／0，不會叫回（和規則的設計一致）。
+  - 遙測 `fail` 事件多帶玩家 `x`、`z`（四捨五入到 0.1），給驗收的試玩摘要工具。無頭實測：被抓時 failLine「奧德修斯在火光照得到的地方移動，被衛兵察覺了」照樣顯示、fail 事件 `{code, reason, zone, x: 28.6, z: 12}`、序跳過叫 `storyCueStop(0.3)`。
 - （已由規則角色依模式切換）規則層提示文字仍寫「節奏斷掉的瞬間」（例如暗殺教學），不中斷模式下要改，屬規則角色。
 - 要人眼確認：邊緣白閃亮度、高度警覺暈和既有起疑暈（`#edge`）疊在一起會不會太橘、追殺衝刺速度線的量、火光基準亮度（FIRE_BASE 0.35 讓平常比以前暗）。
 

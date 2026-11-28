@@ -4472,7 +4472,7 @@ function cinBuild() {
 //   路線全從關卡資料算，改地圖不必重拉：城門外兩點 → 各區 botRoute 倒著走（城門區 → 木馬下）→ 各區起點 → 最後看著木馬（level.horse 的中心）。
 //   Esc 或空白鍵跳過；看過一次就記在這台電腦（localStorage），之後不再出現。演出時遊戲照跑、不收輸入：game.story = 'cam'（聲音角色只認 intro／outro，這個值＝照常）。
 const CAM_Q = INTRO_Q.includes('cam');
-const CAM_DUR = 26, CAM_EYE = 2.4, CAM_STOP = 9, CAM_SEEN_KEY = 'troy-intro-cam-seen';
+const CAM_DUR = 26, CAM_EYE = 3.6, CAM_STOP = 9, CAM_PROBE = 9, CAM_SEEN_KEY = 'troy-intro-cam-seen';
 const CAM_DUSK = new THREE.Color(0x5a3a30);   // 黃昏的天色，演到最後轉回夜色（場景原本的背景與霧）
 const CAMI = { active: false, t0: 0, curve: null, look: null, done: null, bg0: null, fog0: null, fogD0: 0, light: null, tmpL: new THREE.Vector3(), tmpA: new THREE.Vector3(), frames: 0 };
 function camSeen() { try { return localStorage.getItem(CAM_SEEN_KEY) === '1'; } catch (e) { return false; } }
@@ -4484,7 +4484,7 @@ function camRoute(L) {   // 回傳路線點（THREE.Vector3）；全部從關卡
     const gx0 = Math.min(+L.gate.x0, +L.gate.x1), gx1 = Math.max(+L.gate.x0, +L.gate.x1), gz = (+L.gate.z0 + +L.gate.z1) / 2;
     const s = L.gate.latch && Number.isFinite(+L.gate.latch.x) && +L.gate.latch.x > gx1 ? -1 : 1;   // 城外在門閂的另一側（final 地圖：門閂在西，城外在東）
     const gx = s > 0 ? gx1 : gx0;
-    pts.push(V3(gx + s * 14, gz, 11), V3(gx + s * 3, gz, 11.5), V3(gx - s * 5, gz, 7));
+    pts.push(V3(gx + s * 26, gz, 15), V3(gx + s * 6, gz, 13), V3(gx - s * 6, gz, 7.5));   // 從高處越過門頂往城裡看，門只佔畫面下方
   }
   for (let k = Z.length - 1; k > bz; k--) {
     const z = Z[k]; if (!z) continue;
@@ -4499,10 +4499,43 @@ function camRoute(L) {   // 回傳路線點（THREE.Vector3）；全部從關卡
     while (pts.length > 1 && flat(pts[pts.length - 1]) < CAM_STOP) pts.pop();
     const from = H.drop && Number.isFinite(+H.drop.x) ? H.drop : pts[pts.length - 1];   // 從玩家爬下來的那一側看（木馬下的落點方向，那邊是空地）
     const d = from ? Math.max(.001, flat(from)) : 0;
-    if (from) pts.push(V3(hc.x + (from.x - hc.x) / d * CAM_STOP, hc.z + (from.z - hc.z) / d * CAM_STOP, 2.8));
+    if (from) { const e = V3(hc.x + (from.x - hc.x) / d * CAM_STOP, hc.z + (from.z - hc.z) / d * CAM_STOP, 3.2); e.fixed = true; pts.push(e); }
   }
   const out = []; for (const p of pts) if (!out.length || out[out.length - 1].distanceTo(p) > .8) out.push(p);
-  return out;
+  // botRoute 是程式玩家貼著影子走的路，鏡頭照走會貼牆：每個點往兩側（和行進方向垂直）各探 CAM_PROBE 公尺找牆，移到兩面牆的中線；
+  //   只有一側有牆就離那面牆 3 公尺。矮的東西（low：木桶、水槽）不算牆，鏡頭在 3.6 公尺高看得過去。城門外那幾個高處的點不動。
+  const walls = arr(L.walls).filter(w => w && !w.low && Number.isFinite(+w.x0));
+  const inWall = (x, z) => walls.some(w => x >= Math.min(+w.x0, +w.x1) && x <= Math.max(+w.x0, +w.x1) && z >= Math.min(+w.z0, +w.z1) && z <= Math.max(+w.z0, +w.z1));
+  const probe = (p, nx, nz) => { for (let d = .25; d <= CAM_PROBE; d += .25) if (inWall(p.x + nx * d, p.z + nz * d)) return d; return null; };
+  //   先把街上那段每 1.5 公尺取一點（轉角才不會被樣條切過牆角），各自移到中線，再前後平均 5 點去掉抖動，最後每 3 公尺留一點給樣條。
+  const keep = p => p.y > CAM_EYE + .5 || p.fixed;   // 城門外高處的點、最後停在木馬前的點不動
+  const dense = [];
+  for (let i = 0; i < out.length; i++) {
+    const p = out[i], q = out[i + 1]; dense.push(p);
+    if (!q || keep(p) || keep(q)) continue;
+    const n = Math.floor(p.distanceTo(q) / 1.5);
+    for (let k = 1; k < n; k++) dense.push(p.clone().lerp(q, k / n));
+  }
+  const cen = dense.map((p, i) => {
+    if (keep(p)) return p;
+    const a = dense[Math.max(0, i - 1)], b = dense[Math.min(dense.length - 1, i + 1)];
+    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz); if (len < .01) return p;
+    const nx = -dz / len, nz = dx / len, dl = probe(p, nx, nz), dr = probe(p, -nx, -nz);
+    let off = 0;
+    if (dl != null && dr != null) off = (dl - dr) / 2;
+    else if (dl != null && dl < 3) off = dl - 3;
+    else if (dr != null && dr < 3) off = 3 - dr;
+    return new THREE.Vector3(p.x + nx * off, p.y, p.z + nz * off);
+  });
+  const smoothPts = cen.map((p, i) => {
+    if (keep(p)) return p;
+    const v = new THREE.Vector3(); let n = 0;
+    for (let k = i - 2; k <= i + 2; k++) { const q = cen[k]; if (q && !keep(q)) { v.add(q); n++; } }
+    return v.multiplyScalar(1 / n);
+  });
+  const res = [];
+  for (const p of smoothPts) { const last = res[res.length - 1]; if (!last || keep(p) || keep(last) || last.distanceTo(p) >= 3) res.push(p); }
+  return res;
 }
 function camStart(done) {
   const pts = game && game.level ? camRoute(game.level) : [];
