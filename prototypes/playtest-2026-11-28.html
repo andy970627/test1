@@ -1,47 +1,88 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-pal="A">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>週末成果試玩清單</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@400;500&display=swap">
 <link rel="stylesheet" href="ui-tokens.css">
+<script>try { var pv = localStorage.getItem('playtest-palette'); if (pv === 'A' || pv === 'B' || pv === 'C') document.documentElement.dataset.pal = pv; } catch (e) {}</script>
 <style>
-  /* 介面照設計系統方向 A「夜城訊號」（ui-tokens.css）：頁首題字＋拍帶；完成用海青；可按的用青銅 */
-  main { max-width:980px; margin:0 auto; padding:28px var(--gutter-r) 96px var(--gutter-l); }
-  header .ui-title { margin:0 0 14px; }
-  .lead { color:var(--muted); margin:14px 0 20px; max-width:var(--measure); }
-  .card { background:var(--stone); border:1px solid transparent; border-left:3px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
+  /* 三組配色（2026-11-28 比較用），蓋過 ui-tokens.css 的同名變數；不用外部字體，字型退回系統的宋體與黑體 */
+  /* A 陶罐紅黑：陶土底、黑釉字、赭紅重點；完成＝黑釉 */
+  :root[data-pal="A"] { --night:#EFDDC3; --stone:#FAF1E2; --parchment:#1E1611; --muted:#5B4636; --bronze:#9A3412; --beat:#1E1611; --head:#9A3412;
+    --rule:rgba(30,22,17,.20); --stone-2:rgba(30,22,17,.04); --bronze-wash:rgba(154,52,18,.10); --band:#1E1611; --band-2:#9A3412; }
+  /* B 大理石與青銅：石白底、青銅綠重點、金色標題與完成 */
+  :root[data-pal="B"] { --night:#EEEBE4; --stone:#FBFAF7; --parchment:#1F2326; --muted:#4E5559; --bronze:#2D6A5C; --beat:#7A5A10; --head:#7A5A10;
+    --rule:rgba(31,35,38,.16); --stone-2:rgba(31,35,38,.04); --bronze-wash:rgba(45,106,92,.10); --band:#2D6A5C; --band-2:#B08A2E; }
+  /* C 夜裡的火光：近黑底、亮羊皮紙字、火光橘重點；主要文字對底 18:1 */
+  :root[data-pal="C"] { --night:#0A0907; --stone:#17130E; --parchment:#FFF3DC; --muted:#D9C9AE; --bronze:#FFB04D; --beat:#8FE3C2; --head:#FFC66B;
+    --rule:rgba(255,243,220,.22); --stone-2:rgba(255,243,220,.05); --bronze-wash:rgba(255,176,77,.14); --band:#FFB04D; --band-2:#3A2A14; }
+  html { background:var(--night); }
+  main { max-width:980px; margin:0 auto; padding:0 var(--gutter-r) 96px var(--gutter-l); }
+  /* 頁首：題字＋配色切換＋六格進度（捲動時黏在上方） */
+  .top { position:sticky; top:0; z-index:5; background:var(--night); padding:14px 0 10px; border-bottom:1px solid var(--rule); }
+  .top::before { content:""; display:block; height:8px; margin:0 0 12px; border-radius:2px;
+    background:repeating-linear-gradient(90deg, var(--band) 0 14px, transparent 14px 18px, var(--band-2) 18px 22px, transparent 22px 26px); }
+  .toprow { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
+  .toprow .ui-title { color:var(--parchment); font-size:clamp(24px, 5vw, 36px); margin:0; flex:1 1 auto; }
+  .pal { display:flex; gap:4px; align-items:center; font-size:var(--fs-14); color:var(--muted); }
+  .pal button { font:500 var(--fs-14)/1.3 var(--font-body); padding:5px 10px; border:1px solid var(--bronze); border-radius:var(--r-btn); background:transparent; color:var(--bronze); cursor:pointer; }
+  .pal button[aria-pressed="true"] { background:var(--bronze); color:var(--night); }
+  .prog { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:4px; margin:12px 0 0; padding:0; list-style:none; }
+  .prog button { width:100%; min-height:44px; padding:4px 2px; border:1px solid var(--rule); border-radius:var(--r-btn); background:var(--stone); color:var(--muted); cursor:pointer;
+    font:500 var(--fs-12)/1.25 var(--font-body); text-align:center; }
+  .prog button b { display:block; font:900 var(--fs-16)/1.1 var(--font-title); color:var(--parchment); }
+  .prog button.cur { border-color:var(--bronze); box-shadow:inset 0 0 0 1px var(--bronze); }
+  .prog button.done { background:var(--beat); border-color:var(--beat); color:var(--night); }
+  .prog button.done b { color:var(--night); }
+  #strip { margin-top:10px; }
+  .lead { color:var(--parchment); margin:18px 0 14px; max-width:var(--measure); }
+  .warn { background:var(--stone); border:2px solid var(--bronze); border-radius:var(--r-panel); padding:10px 14px; margin:0 0 8px; max-width:var(--measure); font-size:var(--fs-14); color:var(--parchment); }
+  /* 每層一個區塊 */
+  .layer { margin:28px 0 0; padding:14px 0 0; border-top:3px double var(--head); scroll-margin-top:190px; transition:opacity .2s; }
+  .layer > h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 4px; color:var(--head); display:flex; gap:10px; flex-wrap:wrap; align-items:baseline; }
+  .layer > h2 .lst { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .layer.ldone > h2 .lst { color:var(--parchment); }
+  .layer > .why { margin:0 0 6px; color:var(--muted); font-size:var(--fs-14); max-width:var(--measure); }
+  .layer.dim { opacity:.55; }
+  .layer.dim:hover, .layer.dim:focus-within { opacity:1; }
+  .layer.dim > .why::after { content:"（上一層還沒答完，建議先做上一層；這層也可以先答）"; }
+  .card { background:var(--stone); border:1px solid var(--rule); border-left:4px solid var(--rule); border-radius:var(--r-panel); padding:16px 18px; margin:12px 0; }
   .card.done { border-left-color:var(--beat); }
-  .card h2 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
-  .card h2 .n { color:var(--muted); }
-  .card h2 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
-  .card.done h2 .st { color:var(--beat); }
+  .card h3 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 6px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; color:var(--parchment); }
+  .card h3 .n { color:var(--muted); }
+  .card h3 .st { margin-left:auto; font:500 var(--fs-14)/1.4 var(--font-body); color:var(--muted); }
+  .card.done h3 .st { color:var(--parchment); font-weight:700; }
   .how { color:var(--parchment); margin:4px 0 10px; max-width:var(--measure); }
   .links { display:flex; flex-wrap:wrap; gap:6px 8px; }
   .links a { display:inline-block; padding:5px 12px; border:1px solid var(--bronze); border-radius:var(--r-btn); color:var(--bronze); text-decoration:none; font-weight:500; font-size:var(--fs-14); }
   .links a:hover { background:var(--bronze-wash); }
   fieldset { border:0; border-top:1px solid var(--rule); padding:10px 0 0; margin:14px 0 0; }
-  legend { font-weight:500; padding:0; float:left; width:100%; margin-bottom:2px; }
+  legend { font-weight:700; padding:0; float:left; width:100%; margin-bottom:2px; color:var(--parchment); }
   .qh { clear:both; color:var(--muted); font-size:var(--fs-14); margin:0 0 6px; max-width:var(--measure); }
-  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); }
-  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; }
-  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .warn { background:var(--stone); border:1px solid var(--bronze); border-radius:var(--r-panel); padding:10px 14px; margin:0 0 18px; max-width:var(--measure); font-size:var(--fs-14); }
-  .layer { margin:30px 0 4px; }
-  .layer h3 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 4px; color:var(--bronze); }
-  .layer p { margin:0; color:var(--muted); font-size:var(--fs-14); max-width:var(--measure); }
-  #msg { color:var(--beat); font-size:var(--fs-14); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); color:var(--parchment); }
+  textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; background:var(--night); color:var(--parchment); }
+  .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:20px; }
+  #msg { color:var(--parchment); font-size:var(--fs-14); }
+  @media (max-width:520px) { .prog button { font-size:11px; } .layer { scroll-margin-top:230px; } .card h3, .layer > h2 { display:block; } .card h3 .n { margin-right:6px; } .card h3 .st, .layer > h2 .lst { display:block; margin:2px 0 0; } }
 </style>
 </head>
 <body>
 <main>
-  <header>
-    <h1 class="ui-title lg">週末成果試玩清單</h1>
-    <div id="strip"></div>
+  <header class="top">
+    <div class="toprow">
+      <h1 class="ui-title">週末成果試玩清單</h1>
+      <div class="pal" role="group" aria-label="配色">配色
+        <button type="button" data-pal="A" title="陶罐紅黑">A 陶罐</button>
+        <button type="button" data-pal="B" title="大理石與青銅">B 大理石</button>
+        <button type="button" data-pal="C" title="夜裡的火光">C 火光</button>
+      </div>
+    </div>
+    <ol class="prog" id="prog" aria-label="六層進度，點一格跳到那一層"></ol>
   </header>
-  <p class="lead">2026-11-28 週末的試玩，照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <p class="lead">2026-11-28 週末的試玩，照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試；上方六格每答完一層就亮一格，點格子可以跳過去。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
   <p class="warn"><b>先別按 <kbd>Esc</kbd>：</b>現在按 Esc 回到遊戲後滑鼠不會動，死亡時的聲音也太大，這兩個問題正在修。修好前要暫停，請直接切到別的視窗。開場也先別用 Esc 跳過。</p>
+  <div id="strip"></div>
   <div id="list"></div>
   <div class="bar">
     <button class="ui-btn primary" id="copy">複製結果</button>
@@ -127,16 +168,37 @@ const ITEMS = [
 ];
 for (const it of ITEMS) { let off = 0; it.qs.forEach((q, k) => { if (q[4]) off++; else if (off) q[5] = it.id + '-' + (k - off); }); }
 const qkey = (it, q, k) => q[4] || q[5] || (it.id + '-' + k);
+const SHORT = ['核心手感', '潛行循環', '關卡長度', '開場教學', '包裝', '穩定'];
 const KEY = 'playtest-2026-11-28';
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
-const list = document.getElementById('list');
-let lastLayer = -1;
+
+// 配色切換：選了哪一組存在瀏覽器
+const palBtns = document.querySelectorAll('.pal button');
+function setPal(v) {
+  document.documentElement.dataset.pal = v;
+  palBtns.forEach(b => b.setAttribute('aria-pressed', b.dataset.pal === v ? 'true' : 'false'));
+  try { localStorage.setItem('playtest-palette', v); } catch (e) {}
+}
+palBtns.forEach(b => b.onclick = () => setPal(b.dataset.pal));
+setPal(document.documentElement.dataset.pal || 'A');
+
+// 每層一個區塊
+const list = document.getElementById('list'), prog = document.getElementById('prog');
+const blocks = LAYERS.map((L, li) => {
+  const sec = document.createElement('section'); sec.className = 'layer'; sec.id = 'layer-' + (li + 1);
+  sec.innerHTML = `<h2>${L.t}<span class="lst"></span></h2><p class="why">${L.why}</p>`;
+  list.appendChild(sec);
+  const cell = document.createElement('li');
+  cell.innerHTML = `<button type="button" aria-label="第 ${li + 1} 層 ${SHORT[li]}"><b>${li + 1}</b>${SHORT[li]}</button>`;
+  cell.firstChild.onclick = () => sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  prog.appendChild(cell);
+  return { sec, btn: cell.firstChild };
+});
 ITEMS.forEach((it, i) => {
-  if (it.layer !== lastLayer) { lastLayer = it.layer; const L = document.createElement('div'); L.className = 'layer'; L.innerHTML = `<h3>${LAYERS[it.layer].t}</h3><p>${LAYERS[it.layer].why}</p>`; list.appendChild(L); }
-  const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
-  let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
+  const c = document.createElement('article'); c.className = 'card'; c.id = 'c-' + it.id;
+  let h = `<h3><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h3><div class="how">${it.how}</div><div class="links">`;
   it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
   h += '</div>';
   it.qs.forEach((q, k) => {
@@ -148,21 +210,37 @@ ITEMS.forEach((it, i) => {
   });
   if (it.reset) h += `<p><button type="button" class="ui-btn" data-reset="1">重看鏡頭動畫（清掉「看過」紀錄）</button> <span class="qh" data-reset-msg></span></p>`;
   h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
-  c.innerHTML = h; list.appendChild(c);
+  c.innerHTML = h; blocks[it.layer].sec.appendChild(c);
 });
 save();
+
 function refresh() {
+  const lt = LAYERS.map(() => [0, 0]);
   ITEMS.forEach(it => {
     const n = it.qs.filter((q, k) => saved[qkey(it, q, k)]).length;
+    lt[it.layer][0] += n; lt[it.layer][1] += it.qs.length;
     const c = document.getElementById('c-' + it.id);
     c.classList.toggle('done', n === it.qs.length);
     c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
   });
+  let allPrevDone = true, cur = -1;
+  blocks.forEach((b, li) => {
+    const [n, tot] = lt[li], done = n === tot;
+    b.sec.classList.toggle('ldone', done);
+    b.sec.classList.toggle('dim', !allPrevDone);   // 上一層沒答完：淡色，但照樣能點、能答
+    b.sec.querySelector('.lst').textContent = done ? '✓ 這層答完' : `${n}／${tot} 題`;
+    b.btn.classList.toggle('done', done);
+    b.btn.setAttribute('aria-label', `第 ${li + 1} 層 ${SHORT[li]}：${done ? '答完' : n + '／' + tot + ' 題'}`);
+    if (!done && cur < 0) cur = li;
+    if (!done) allPrevDone = false;
+  });
+  blocks.forEach((b, li) => b.btn.classList.toggle('cur', li === cur));
 }
 list.addEventListener('click', e => { if (e.target.dataset.reset) { let ok = true; try { localStorage.removeItem('troy-intro-cam-seen'); } catch (err) { ok = false; } e.target.parentNode.querySelector('[data-reset-msg]').textContent = ok ? '已清掉，現在點連結就會再播一次。' : '清不掉：這個瀏覽器擋住了本機儲存。'; } });
 list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.target.name] = e.target.value; save(); refresh(); } });
 list.addEventListener('input', e => { if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
 refresh();
+
 document.getElementById('copy').onclick = async () => {
   let out = '週末成果試玩結果（2026-11-28 清單，分層版）\n';
   let ll = -1;
@@ -172,6 +250,7 @@ document.getElementById('copy').onclick = async () => {
     it.qs.forEach((q, k) => { out += `- ${q[0]}：${saved[qkey(it, q, k)] || '（未答）'}\n`; });
     if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
   });
+  out += `\n（作答時用的配色：${document.documentElement.dataset.pal}）\n`;
   const msg = document.getElementById('msg');
   try { await navigator.clipboard.writeText(out); msg.textContent = '已複製，貼回對話即可。'; }
   catch (e) { prompt('複製下面文字：', out); }
