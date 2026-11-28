@@ -166,7 +166,7 @@ body.demoMode #win .card { transition: opacity .8s; }
 #story.seqCard #storyText p.on { opacity: 1; }
 #story.seqCard .storyFoot { position: fixed; right: calc(20px + var(--sr)); bottom: calc(20px + var(--sb)); }
 #story.seqCard #storySkip { background: transparent; border-color: var(--rule); color: var(--dim); }
-#calib.inBelly { background: transparent; align-items: end; pointer-events: none; }
+#calib.inBelly { background: transparent; align-items: end; pointer-events: none; transition: opacity var(--pace-fade, .3s); }   /* 11/28 腹中字的節奏：面板淡入淡出 */
 #calib.inBelly .storyCard { width: min(560px, 100%); pointer-events: auto; background: rgba(10, 12, 20, .74); border-radius: var(--r-panel); padding: 14px 18px; margin-bottom: 9vh; justify-items: center; text-align: center; }
 #calib.inBelly #calibGo { display: none; }
 #calib.inBelly #calibText p { font-size: 17px; }
@@ -2160,6 +2160,21 @@ function storyCueStop() {   // 跳過序：0.3 秒內收掉還在響的序聲音
 const INTRO = { seen: false, step: 0, timer: 0, marks: {} };
 const INTRO_LISTEN_MS = 4000;
 const INTRO_TEXT = { listen: '聽。', tap: '跟著他敲。', walk: '踩著它走到暗門。' };
+// 11/28 使用者回報「腹中四步的字切換太快，看不完」：腹中每段字（提示列、校準面板的標題與說明、他點點頭、沒跟上、暗門的字）照同一套節奏。
+//   最短停留 = max(MIN_MS, 中文字數 × PER_CHAR_MS)；還沒停滿就排隊，停滿才淡出（FADE_MS）、換下一段淡入（FADE_MS）。
+//   「踩著它走到暗門。」一直留到玩家開始踩（腹中第一個腳步事件）或暗門打開。「他點點頭。」停滿最短時間自動往下，空白鍵可提早（停 NOD_SKIP_MS 之後才收，免得跟拍的最後一下直接跳過）。
+const INTRO_PACE = { MIN_MS: 2500, PER_CHAR_MS: 250, FADE_MS: 300, NOD_SKIP_MS: 600 };
+document.documentElement.style.setProperty('--pace-fade', INTRO_PACE.FADE_MS / 1000 + 's');
+function paceMs(text) { const n = (String(text || '').match(/[\u3400-\u9fff]/g) || []).length; return Math.max(INTRO_PACE.MIN_MS, n * INTRO_PACE.PER_CHAR_MS); }
+function introPacing() { return INTRO_NEW && INTRO.step >= 1 && !!(game && game.player && game.player.inBelly); }
+const PACE_LOG = [];   // 自動量測讀：每段字出現、收起的時間（毫秒，performance.now）
+function paceOn(where, text) { const e = { where, text: String(text), on: performance.now(), off: null }; PACE_LOG.push(e); if (PACE_LOG.length > 80) PACE_LOG.shift(); return e; }
+function paceOff(e) { if (e && e.off == null) e.off = performance.now(); }
+function introWalkGo() {   // 玩家開始踩或暗門打開：「踩著它走到暗門。」可以照一般節奏離開
+  if (INTRO.walkGo || INTRO.step < 3) return;
+  INTRO.walkGo = true; introMark('walkGo');
+  if (hintCur === INTRO_TEXT.walk) hintRearm();
+}
 function introMark(k) { INTRO.marks[k] = performance.now(); }
 function introAfterPrologue() {
   clearTimeout(INTRO.timer);
@@ -2173,13 +2188,14 @@ function introTap() {
   clearTimeout(INTRO.timer);
   if (!game || INTRO.step !== 1) return;
   if (CAL.done || CAL_OFF || MUTE || !calibEstimator() || !calibClickFn()) { CAL.done = true; return introWalk(); }
-  INTRO.step = 2; introMark('tap'); clearHints();
-  calibShowBelly();
+  INTRO.step = 2; introMark('tap');
+  hintFadeOut(() => { hintCur = null; paceOff(hintPace); $('hint').textContent = ''; if (game && INTRO.step === 2) calibShowBelly(); });   // 只收掉「聽。」，排隊中的規則提示留著   // 「聽。」淡出，再淡入校準面板
 }
 function introWalk() {
   clearTimeout(INTRO.timer);
-  INTRO.step = 3; introMark('walk');
-  clearHints(); queueHint(INTRO_TEXT.walk);
+  INTRO.step = 3; INTRO.walkGo = false; introMark('walk');
+  const held = hintQ.filter(t => t !== INTRO_TEXT.walk); clearHints(); hintQ.push(...held);   // 第 1、2 步排隊的規則提示接在第 3 步的字後面
+  hintQ.unshift(INTRO_TEXT.walk); nextHint();
   lockPointer();
 }
 window.addEventListener('keydown', e => {                // 第 1 步「聽」：只聽，按鍵不收；Esc 整段跳過
@@ -2214,6 +2230,7 @@ function calibDots(n) {
   [...box.children].forEach((el, i) => el.classList.toggle('on', i < n));
 }
 function calibUi(msg, go, skip) {
+  if (CAL.mode === 'belly' && (msg || '') !== $('calibMsg').textContent) { paceOff(CAL.paceMsg); CAL.paceMsg = msg ? paceOn('calibMsg', msg) : null; CAL.msgAt = performance.now(); }
   $('calibMsg').textContent = msg || '';
   $('calibGo').hidden = !go; if (go) $('calibGo').textContent = go;
   $('calibSkip').hidden = !skip;
@@ -2227,7 +2244,10 @@ function calibShowBelly() {   // 11/28 做法丙第二步：校準搬進腹中�
   $('calibTitle').textContent = INTRO_TEXT.tap;
   $('calibText').innerHTML = '<p>身邊的同伴用指節輕敲木板數拍。</p><p><kbd>空白鍵</kbd> 敲</p>';
   calibDots(0); calibUi('', null, true);
-  $('calib').hidden = false;
+  $('calib').style.opacity = 0; $('calib').hidden = false;
+  requestAnimationFrame(() => { if (CAL.mode === 'belly') $('calib').style.opacity = 1; });
+  CAL.paceText = [paceOn('calib', INTRO_TEXT.tap), paceOn('calib', $('calibText').textContent)];
+  CAL.openAt = performance.now();
   calibDuck(true);
   calibBegin();
 }
@@ -2243,14 +2263,22 @@ function calibShow() {
 }
 function calibHalt() { clearInterval(CAL.poll); clearTimeout(CAL.auto); CAL.poll = CAL.auto = 0; }
 function calibClose(start) {
-  calibHalt(); CAL.open = false; CAL.phase = 'idle'; $('calib').hidden = true;
+  const belly = CAL.mode === 'belly';
+  calibHalt(); CAL.open = false; CAL.phase = 'idle';
+  if (!belly) $('calib').hidden = true;
   const a = CAL.inst; CAL.inst = null;                 // 校準專用的聲音層用完就丟（還在敲的拍一起停）
   if (a) { try { if (typeof a.calibStop === 'function') a.calibStop(); if (typeof a.dispose === 'function') a.dispose(); else if (typeof a.stop === 'function') a.stop(); } catch (e) {} }
   if (CAL.mode === 'belly') {   // 腹中校準：不重開局，偏差直接帶進這一局，接第 3 步
-    CAL.mode = null; $('calib').classList.remove('inBelly'); $('calibTitle').textContent = CAL_TEXT0.title; $('calibText').innerHTML = CAL_TEXT0.html;
-    calibDuck(false);
+    CAL.mode = null; calibDuck(false);
     if (game && CAL.offsetMs != null) game.inputOffsetMs = CAL.offsetMs;
-    introWalk(); return;
+    (CAL.paceText || []).forEach(paceOff); paceOff(CAL.paceMsg); CAL.paceText = null; CAL.paceMsg = null;
+    $('calib').style.opacity = 0;   // 淡出，再出第 3 步的字
+    setTimeout(() => {
+      $('calib').hidden = true; $('calib').style.opacity = ''; $('calib').classList.remove('inBelly');
+      $('calibTitle').textContent = CAL_TEXT0.title; $('calibText').innerHTML = CAL_TEXT0.html; $('calibMsg').textContent = '';
+      if (game) introWalk();   // 淡出期間回了開場（backToIntro）就不接
+    }, INTRO_PACE.FADE_MS);
+    return;
   }
   if (start) startFromTop();
 }
@@ -2297,7 +2325,10 @@ function calibFinish() {
     const o = Math.round(+est.offsetMs);
     CAL.offsetMs = o; CAL.spreadMs = Number.isFinite(+est.spreadMs) ? Math.round(+est.spreadMs) : null; CAL.done = true; CAL.phase = 'done';
     calibUi(CAL.mode === 'belly' ? '他點點頭。' : '已校準 ' + (o >= 0 ? '+' : '−') + Math.abs(o) + ' 毫秒', CAL.mode === 'belly' ? null : '開始（空白鍵）', false);
-    CAL.auto = setTimeout(() => { if (CAL.open && CAL.phase === 'done') calibClose(true); }, CAL_AUTO_MS);
+    const autoMs = CAL.mode === 'belly'   // 腹中：「他點點頭。」停滿最短時間，標題與說明也要停滿
+      ? Math.max(paceMs('他點點頭。'), paceMs($('calibText').textContent) - (performance.now() - (CAL.openAt || 0)))
+      : CAL_AUTO_MS;
+    CAL.auto = setTimeout(() => { if (CAL.open && CAL.phase === 'done') calibClose(true); }, autoMs);
   } else {
     CAL.phase = 'retry';
     const n = CAL.taps.length;
@@ -2306,6 +2337,9 @@ function calibFinish() {
   }
 }
 function calibPrimary() {
+  const shown = performance.now() - (CAL.msgAt || 0);
+  if (CAL.mode === 'belly' && CAL.phase === 'retry' && shown < paceMs($('calibMsg').textContent)) return;   // 「沒跟上」停滿才收空白鍵
+  if (CAL.mode === 'belly' && CAL.phase === 'done' && shown < INTRO_PACE.NOD_SKIP_MS) return;               // 跟拍的最後一下不算提早
   if (CAL.phase === 'ready' || CAL.phase === 'retry') calibBegin();
   else if (CAL.phase === 'done') calibClose(true);
 }
@@ -2416,20 +2450,41 @@ function queueHint(text) {
   text = String(text);
   if (text === hintCur || hintQ.includes(text)) return;
   hintQ.push(text);
+  if (introHold()) return;   // 腹中第 1、2 步：規則的提示先排隊，等「踩著它走到暗門。」之後再出
   if (hintCur == null) nextHint();
-  else if (performance.now() - hintAt >= HINT_MIN) nextHint();        // 目前這則已經顯示夠久
-  else { clearTimeout(hintTimer); hintTimer = setTimeout(nextHint, HINT_MIN - (performance.now() - hintAt)); }
+  else hintRearm();
+}
+function introHold() { return introPacing() && (INTRO.step === 1 || INTRO.step === 2); }
+// 目前這則最少要停多久：腹中照 INTRO_PACE（「踩著它走到暗門。」在玩家開始踩之前不走＝Infinity）；其他地方照 HINT_MIN
+function hintMin() {
+  if (!introPacing() || hintCur == null) return HINT_MIN;
+  if (hintCur === INTRO_TEXT.walk && !INTRO.walkGo) return Infinity;
+  return paceMs(hintCur);
+}
+function hintRearm() {   // 依目前這則已經顯示多久，重排下一次換字
+  clearTimeout(hintTimer);
+  const min = hintMin(); if (!Number.isFinite(min)) return;
+  const wait = (hintQ.length ? min : Math.max(min, HINT_LAST)) - (performance.now() - hintAt);
+  if (wait <= 0) nextHint(); else hintTimer = setTimeout(nextHint, wait);
+}
+let hintPace = null, hintFading = false;
+function hintFadeOut(then) {   // 腹中：淡出 FADE_MS 再做下一件事；其他地方直接做
+  clearTimeout(hintTimer);
+  if (!introPacing() || hintCur == null) { then(); return; }
+  hintFading = true; $('hint').style.transition = 'opacity ' + INTRO_PACE.FADE_MS + 'ms'; $('hint').style.opacity = 0; paceOff(hintPace);
+  hintTimer = setTimeout(() => { hintFading = false; then(); }, INTRO_PACE.FADE_MS);
 }
 function nextHint() {
   clearTimeout(hintTimer);
+  if (hintCur != null && !hintFading && introPacing()) { hintFadeOut(() => { hintCur = null; nextHint(); }); return; }   // 淡出完才換下一段
   const text = hintQ.shift();
-  if (text == null) { hintCur = null; $('hint').style.opacity = 0; return; }
+  if (text == null) { hintCur = null; paceOff(hintPace); $('hint').style.opacity = 0; return; }
   showHint(text);
 }
-function skipHint() {                                   // 任意鍵：排隊中有下一則才換
-  if (hintCur != null && hintQ.length && performance.now() - hintAt >= HINT_SKIP) nextHint();
+function skipHint() {                                   // 任意鍵：排隊中有下一則才換（腹中要停滿最短時間）
+  if (hintCur != null && hintQ.length && performance.now() - hintAt >= Math.max(HINT_SKIP, hintMin())) nextHint();
 }
-function clearHints() { hintQ.length = 0; hintCur = null; clearTimeout(hintTimer); $('hint').textContent = ''; $('hint').style.opacity = 0; }
+function clearHints() { hintQ.length = 0; hintCur = null; hintFading = false; clearTimeout(hintTimer); paceOff(hintPace); $('hint').textContent = ''; $('hint').style.opacity = 0; }
 function keyText(el, text) {                       // 把「按 Q」「按住 E」裡的鍵名框起來
   String(text).split(KEY_RE).forEach(part => {
     if (KEYNAMES[part]) { const k = document.createElement('span'); k.className = 'k'; k.textContent = part; el.appendChild(k); }
@@ -2443,10 +2498,12 @@ function showHint(text) {
   h.innerHTML = '';
   // 把「按 Q」「按住 E」裡的鍵名框起來
   keyText(h, text);
+  paceOff(hintPace); hintPace = introPacing() ? paceOn('hint', text) : null;
+  if (introPacing()) { h.style.transition = 'none'; h.style.opacity = 0; void h.offsetWidth; h.style.transition = 'opacity ' + INTRO_PACE.FADE_MS + 'ms'; }   // 腹中：淡入
+  else h.style.transition = '';
   h.style.opacity = 1;
   placeWhisper();
-  clearTimeout(hintTimer);
-  hintTimer = setTimeout(nextHint, hintQ.length ? HINT_MIN : HINT_LAST);   // 沒有下一則就留久一點再淡出
+  hintRearm();   // 沒有下一則就留久一點再淡出
 }
 // 新提示進來時如果目前這則已無後續、正在等 HINT_LAST，queueHint 會依顯示時間決定立刻換或等滿 HINT_MIN
 function hintState() { return { cur: hintCur, queue: hintQ.slice(), shownMs: hintCur == null ? 0 : performance.now() - hintAt };
@@ -2608,6 +2665,7 @@ function drain() {
     if (!e) continue;
     if (e.type === 'sfx' && e.a === 'horse_signal') cinSignal();           // 木馬第 3 批：同伴落地的時機
     if (e.type === 'sfx' && horseOn()) bellyEvent(e);                     // 木馬第 1 批：腹中練習的畫面
+    if (e.type === 'sfx' && INTRO.step >= 3 && !INTRO.walkGo && (e.a === 'trapdoor_open' || (game.player && game.player.inBelly && ['step_masked', 'step_loud', 'belly_hush'].includes(e.a)))) introWalkGo();   // 11/28 開始踩或暗門開了
     if (e.type === 'sfx' && (e.a === 'step_loud' || (e.a && e.a.name === 'step_loud'))) { VIS.stepFlash = 1; tiltGuards(e.x, e.z); }   // 這一步被聽到了
     if (e.type === 'sfx' && e.a === 'step_masked') spawnPrint(e.x, e.z);
     if (e.type === 'sfx' && movesOn()) movesEvent(e);                               // 搭配動作：跑步波紋、試驗場計數                // 合拍：腳印發亮
@@ -4860,7 +4918,7 @@ if (DEMO_ON) {
   }, true);
   $('intro').hidden = true; demoCard();
 }
-window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL, intro: INTRO, story: STORY, cam: CAMI, lock: LOCK, lockState: () => ({ locked, lockFailed, hint: !$('lockHint').hidden, paused }) };   // intro／story：11/28 新開場的步驟、時間點與序的聲音事件（自動驗證讀）   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
+window.TroyDebug = { backToIntro, get game() { return game; }, get audio() { return audio; }, get actx() { return actx; }, hintState, V, keys, scene, vis: VIS, hw: HW, collectBeats, telemetry: TEL, cin: CIN, calib: CAL, intro: INTRO, story: STORY, cam: CAMI, lock: LOCK, pace: PACE_LOG, paceConst: INTRO_PACE, lockState: () => ({ locked, lockFailed, hint: !$('lockHint').hidden, paused }) };   // intro／story：11/28 新開場的步驟、時間點與序的聲音事件（自動驗證讀）   // calib：短展示開場校準的狀態（自動驗證讀）   // collectBeats 給自動驗證用
 requestAnimationFrame(loop);
 })();
 </script>

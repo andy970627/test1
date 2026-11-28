@@ -63,12 +63,13 @@ let done = false, s1 = false, s2 = false, s3 = false;
 while (Date.now() - T0 < 150000) {
   const st = await ev('({ out: window.__log.out, step: TroyDebug.intro.step, story: TroyDebug.story.kind, cal: TroyDebug.calib.open && TroyDebug.calib.phase, belly: TroyDebug.game && TroyDebug.game.belly })');
   if (!s1 && st.story === 'prologue' && Date.now() - T0 > 1500) { await shot('1-序第一句'); s1 = true; }
+  if (process.env.INJECT && !globalThis.__inj && st.cal === 'listen') { globalThis.__inj = 1; await ev("TroyDebug.game.out.push({ type: 'hint', a: '踩著鼓點走，腳步聲會被蓋過。' })"); }   // 校準中塞一則規則提示，看它會不會蓋掉腹中的字
   if (!s2 && st.cal === 'listen') { await sleep(1200); await shot('2-跟著他敲'); s2 = true; }
   if (!s3 && st.step === 3) { await sleep(1500); await shot('3-踩著它走'); s3 = true; }
   if (st.out) { done = true; break; }
   await sleep(200);
 }
-const res = await ev(`({ log: window.__log, marks: TroyDebug.intro.marks, cues: TroyDebug.story.cues, offsetMs: TroyDebug.calib.offsetMs, belly: TroyDebug.game.belly, inputOffsetMs: TroyDebug.game.inputOffsetMs, hint: TroyDebug.hintState() })`);
+const res = await ev(`({ pace: TroyDebug.pace.map(e => ({ where: e.where, text: e.text, ms: e.off == null ? null : Math.round(e.off - e.on), at: Math.round(e.on - window.__log.t0) })), log: window.__log, marks: TroyDebug.intro.marks, cues: TroyDebug.story.cues, offsetMs: TroyDebug.calib.offsetMs, belly: TroyDebug.game.belly, inputOffsetMs: TroyDebug.game.inputOffsetMs, hint: TroyDebug.hintState() })`);
 res.errors = errs.slice(0, 8); res.done = done;
 console.log(JSON.stringify(res, null, 1));
 ws.close(); chrome.kill(); srv.close(); await sleep(800); try { fs.rmSync(prof, { recursive: true, force: true }); } catch (e) {}

@@ -14,6 +14,7 @@
 - `intro-time.mjs`：從按「開始」到走出木馬要多久，由程式玩家操作，序不按、讓它自己播。結果約 36～48 秒，低於 90 秒的目標。
 - `fail-check.mjs`：失敗畫面只顯示 failLine 一句、遙測 fail 事件帶 x 和 z、跳過序時叫 storyCueStop(0.3)。
 - `intro-check.mjs camseq`：鏡頭動畫每 3 秒拍一張，用來自己檢查整段有沒有貼牆。
+- `intro-time.mjs` 11/28 晚加了 `pace` 欄，記腹中每段字實際停留的毫秒數；`INJECT=1` 會在校準中塞一則規則提示。三次加一次塞提示的結果在 `pace-result.json`。
 - `lock-check.mjs`（11/28 晚，使用者回報「按 Esc 回來後滑鼠不會跟著動」）：六條會按 Esc 的路徑加一條「頁面不給鎖」。無頭模式拿不到真的滑鼠鎖定，改在頁面載入前換上假的鎖定：要 1 秒內有真的點擊、而且玩家按 Esc 解除後超過 1 秒才鎖得到（比 Chrome 嚴，Esc 解除後一律要點擊）。結果在 `lock-check-result.json`。
 - `intro-check.mjs`：檢查四種情況，分別是舊流程開關、短展示、新流程的 Esc 跳過、鏡頭動畫（截圖、幀數、只出現一次）。
 
