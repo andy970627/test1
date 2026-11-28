@@ -64,6 +64,15 @@
   label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); color:var(--parchment); }
   textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; background:var(--night); color:var(--parchment); }
   .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:20px; }
+  .card.dec { border-left:4px double var(--head); }
+  .card.dec.done { border-left:4px solid var(--beat); }
+  .tag { display:inline-block; font:700 var(--fs-12)/1.5 var(--font-body); color:var(--night); background:var(--head); border-radius:var(--r-btn); padding:0 7px; letter-spacing:.1em; vertical-align:middle; margin-right:8px; }
+  .what { color:var(--parchment); margin:4px 0 8px; max-width:var(--measure); }
+  .opts { border-top:1px solid var(--rule); margin:10px 0 0; padding:8px 0 0; }
+  .opts label { display:flex; align-items:flex-start; gap:8px; margin:6px 0; font-size:var(--fs-14); max-width:var(--measure); }
+  .opts label input { margin-top:4px; flex:none; }
+  .opts b { color:var(--parchment); }
+  .opts .res { color:var(--muted); }
   #msg { color:var(--parchment); font-size:var(--fs-14); }
   @media (max-width:520px) { .prog button { font-size:11px; } .layer { scroll-margin-top:230px; } .card h3, .layer > h2 { display:block; } .card h3 .n { margin-right:6px; } .card h3 .st, .layer > h2 .lst { display:block; margin:2px 0 0; } }
 </style>
@@ -81,7 +90,7 @@
     </div>
     <ol class="prog" id="prog" aria-label="六層進度，點一格跳到那一層"></ol>
   </header>
-  <p class="lead">2026-11-28 週末的試玩，照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試；上方六格每答完一層就亮一格，點格子可以跳過去。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <p class="lead">2026-11-28 週末的試玩，加上幾題要你決定的事（標著「決定」，放在相關的那一層），照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試；上方六格每答完一層就亮一格，點格子可以跳過去。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
   <p class="hint"><kbd>Esc</kbd> 暫停後，點一下畫面就能再鎖住滑鼠轉頭；這是剛修好的，請實際試一次。</p>
   <div id="strip"></div>
   <div id="list"></div>
@@ -170,6 +179,32 @@ const ITEMS = [
 ];
 for (const it of ITEMS) { let off = 0; it.qs.forEach((q, k) => { if (q[4]) off++; else if (off) q[5] = it.id + '-' + (k - off); }); }
 const qkey = (it, q, k) => q[4] || q[5] || (it.id + '-' + k);
+// 決定題（使用者 11/28：要使用者決定的事也放進試玩清單、一起複製回來）。依據：docs/design/2026-11-15-final-gdd.md 第 4、11 節、2026-11-27-opening-and-tutorial.md
+// 選項：[名稱, 選了會變成什麼]；第一個是建議
+const DECS = [
+  { id:'dec-bow', layer:0, title:'弓弦聲要不要放進期末版',
+    what:'弓弦聲是查看試驗場裡試過的機制：按 <kbd>V</kbd> 空彈一下弓弦，落在踩得上的拍上，或最響一擊後的 0.6 秒內，聲音會被鼓蓋住，沒人理你；落在拍外，8 公尺內最近的衛兵會走過來查看，可以拿來把衛兵引開。企劃書預設不納入，因為弓是後面復仇那一章的東西。想先試一下再決定，點下面的連結。',
+    links:[['查看試驗場（按 V 彈弦）','http://localhost:8770/troy-prologue/index.html?lab=check']],
+    opts:[['不納入（建議）','期末版沒有弓弦，試驗場留著，寒假做復仇那一章再用。少一個按鍵要教。'],
+          ['納入','木馬之夜多一招：彈弦把衛兵引開。要補教學、提示和衛兵查看的路線，會擠掉第 2 週的其他工作。']] },
+  { id:'dec-reveal', layer:1, title:'最響的一擊照亮場景：只放後街，還是全關',
+    what:'最響的一擊落下時，畫面會短暫亮起來，讓你看清周圍。試驗場的結果是好玩、暗度可以接受；現在要決定只放在第 6 段後街，還是整關都有。',
+    opts:[['只放在第 6 段後街（建議）','後街本來就沒有火光，照亮會變成那一段的主題，其他段維持現狀。整關試玩結果好的話，之後再擴到全關。'],
+          ['全關都有','每一段都會在最響的一擊亮一下，比較看得清楚，但後街就少了自己的特色；閃爍的亮度上限要整關再檢查一次。']] },
+  { id:'dec-map', layer:2, title:'要不要加地圖或方向指引',
+    what:'11/26 你選了先不做，等這次試玩記下有沒有迷路再決定。一直顯示在角落的小地圖不在選項裡，因為它會搶走耳朵的注意力，也跟提示越來越少的設計衝突。',
+    opts:[['不加（建議，前提是剛才沒迷路）','繼續只靠聲音和街景找路，跟提示越來越少的設計一致。剛才迷路過的話，不建議選這個。'],
+          ['七格進度條加城門火光指方向','畫面上多一條七格進度，城門那邊有火光引路。不搶耳朵，但畫面上多一樣東西。'],
+          ['按 M 叫出地圖','平常看不到，卡住時按 M 才出現。最直接，但玩家會停下來看圖，不再靠聽。']] },
+  { id:'dec-knock', layer:3, title:'敲暗號：留在腹中當儀式，還是砍掉',
+    what:'敲暗號是照著同伴示範的節奏敲木板。第一次試玩時大家不知道怎麼敲，說明改過後還在重試。企劃書預設只留在腹中，當出暗門前的儀式，不做成整關指揮同伴。',
+    opts:[['留在腹中（建議；重試還是不會敲就砍）','放在腹中第 3 步「踩著鼓走到暗門」和第 4 步「開門」之間，照同伴的示範敲一次再開門。教法照企劃書的三條規則：示範前先亮提示、只看第一次敲的結果、敲錯 2 次就淡淡顯示正確敲法 1 秒。'],
+          ['砍掉','腹中四步不變，走到暗門直接開。開場短一點，也少教一件事。']] },
+  { id:'dec-calib', layer:3, title:'開場跟拍要按 8 下，還是 6 下',
+    what:'腹中第 2 步「跟著他敲」其實是在校準：跟著鼓點按空白鍵，量出這台電腦和耳機的延遲，之後的判定照這個數字修正。現在要按 8 下，這題看剛才玩開場時會不會覺得太久。',
+    opts:[['維持 8 下（建議，前提是剛才不覺得拖）','量延遲的次數多，數字比較穩。'],
+          ['改成 6 下','開場短一點；但量的次數少了兩次，延遲可能量得比較不準。']] },
+];
 const SHORT = ['核心手感', '潛行循環', '關卡長度', '開場教學', '包裝', '穩定'];
 const KEY = 'playtest-2026-11-28';
 let saved = {};
@@ -214,6 +249,16 @@ ITEMS.forEach((it, i) => {
   h += `<textarea placeholder="備註（選填）：任何感覺、問題、原話" data-note="${it.id}">${saved['note-' + it.id] || ''}</textarea>`;
   c.innerHTML = h; blocks[it.layer].sec.appendChild(c);
 });
+DECS.forEach((d, i) => {
+  const c = document.createElement('article'); c.className = 'card dec'; c.id = 'c-' + d.id;
+  let h = `<h3><span class="tag">決定</span>${d.title}<span class="st"></span></h3><div class="what"><b>這題在決定什麼：</b>${d.what}</div>`;
+  if (d.links) { h += '<div class="links">'; d.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; }); h += '</div>'; }
+  h += '<div class="opts">';
+  d.opts.forEach(([o, res]) => { h += `<label><input type="radio" name="${d.id}" value="${o}"${saved[d.id] === o ? ' checked' : ''}><span><b>${o}</b><br><span class="res">選了會：${res}</span></span></label>`; });
+  h += '</div>';
+  h += `<textarea placeholder="備註（選填）：選的理由、其他想法" data-note="${d.id}">${saved['note-' + d.id] || ''}</textarea>`;
+  c.innerHTML = h; blocks[d.layer].sec.appendChild(c);
+});
 save();
 
 function refresh() {
@@ -224,6 +269,12 @@ function refresh() {
     const c = document.getElementById('c-' + it.id);
     c.classList.toggle('done', n === it.qs.length);
     c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
+  });
+  DECS.forEach(d => {
+    const ok = !!saved[d.id]; lt[d.layer][0] += ok ? 1 : 0; lt[d.layer][1] += 1;
+    const c = document.getElementById('c-' + d.id);
+    c.classList.toggle('done', ok);
+    c.querySelector('.st').textContent = ok ? '✓ 已決定' : '還沒選';
   });
   let allPrevDone = true, cur = -1;
   blocks.forEach((b, li) => {
@@ -251,6 +302,11 @@ document.getElementById('copy').onclick = async () => {
     out += `\n${i + 1}. ${it.title}\n`;
     it.qs.forEach((q, k) => { out += `- ${q[0]}：${saved[qkey(it, q, k)] || '（未答）'}\n`; });
     if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
+    const next = ITEMS[i + 1];
+    if (!next || next.layer !== it.layer) DECS.filter(d => d.layer === it.layer).forEach(d => {
+      out += `\n【決定】${d.title}：${saved[d.id] || '（未選）'}\n`;
+      if (saved['note-' + d.id]) out += `- 備註：${saved['note-' + d.id]}\n`;
+    });
   });
   out += `\n（作答時用的配色：${document.documentElement.dataset.pal}）\n`;
   const msg = document.getElementById('msg');
