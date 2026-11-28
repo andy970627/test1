@@ -4759,3 +4759,80 @@ test('11/28 只講一件事：最早的原因優先（程式玩家 σ0.25 × 60 
   assert.ok(fails >= 1, '取樣裡要有失敗');
   assert.ok(differ >= 1, '至少一局講的是更早的原因（' + differ + '）');
 });
+
+// ---------- 11/28 期末企劃第 4 節做法乙：失敗畫面第二行「下次怎麼做」照 failCause 取（第 1 次沒有、第 2 次一句、第 3 次加按鍵） ----------
+/** 在衛兵聽不到的角落按住屏息直到喘出聲（暗示階梯 breath 先墊到第 1 次失敗，這次喘就發第 2 階）。回傳最後一個暗示階梯事件。 */
+function gaspOnce(g, tRef) {
+  g.hints.breath.fails = Math.max(1, g.hints.breath.fails); g.hints.breath.lastFail = -1e9;
+  g.player.x = 13; g.player.z = 27;   // 離兩名衛兵都超過 LOUD_R（8 公尺），喘出聲也沒人聽見
+  // 對齊循環（g.cycle.p：這一輪走到幾成）：喘完時剛好在一輪的 1 成處，這時站到衛兵前面，最早的原因是「被看見」，不是沒屏息
+  const want = ((0.1 * g.cycle.T - K.BREATH_MAX) % g.cycle.T + g.cycle.T) % g.cycle.T / g.cycle.T;
+  for (let k = 0; k < 2000 && Math.abs(g.cycle.p - want) > DT / g.cycle.T; k++) { tRef.t += DT; g.step(tRef.t, {}); g.drain(); }
+  let last = null, n = 0;
+  while (n < 1200) {
+    tRef.t += DT; g.step(tRef.t, { breath: true }); n++;
+    for (const e of g.drain()) if (e.type === 'hint' && e.key && e.level >= 2) last = { key: e.key, level: e.level, at: tRef.t };
+    if (g.player.breathLock) break;
+  }
+  tRef.t += DT; g.step(tRef.t, {}); g.drain();
+  return last;
+}
+test('11/28 做法乙：重現錯配（舊畫面第二行取最近 8 秒發的暗示階梯＝屏息，原因卻是被看見）；改後 failHowLine 跟著 failCause：第 1 次 null、第 2 次一句、第 3 次加按鍵', () => {
+  const g = R.createLevel({ startZone: 2, T: { DYNAMIC: false } });
+  const tr = { t: 1 }; g.step(tr.t, {}); g.drain();
+  const H = () => R.failHowFor(K);   // 用到才取：改前的程式先跑到錯配那兩條斷言
+  for (let k = 1; k <= 3; k++) {
+    const lad = gaspOnce(g, tr);
+    standInFront(g, tr);
+    assert.equal(g.phase, 'fail');
+    // 錯配：舊的第二行（8 秒內最近的暗示階梯）在講屏息，原因卻不是屏息
+    assert.ok(lad && lad.key === 'breath' && tr.t - lad.at < 8, '第 ' + k + ' 次：舊畫面第二行會顯示屏息的暗示 ' + JSON.stringify(lad) + ' t=' + tr.t.toFixed(2) + ' ' + g.player.breathLock);
+    assert.ok(!/^(breath|gasp)$/.test(g.failCause), '原因不是屏息：' + g.failCause);
+    // 改後：第二行跟著原因走
+    assert.equal(g.failHowLevel, k >= 3 ? 3 : k >= 2 ? 2 : 1);
+    assert.equal(g.failHowLine, k === 1 ? null : R.failHowLineFor(g.failCause, g.failHowLevel, K));
+    if (k >= 2) assert.ok(g.failHowLine.length > 0 && g.failHowLine !== R.failHowLineFor('breath', g.failHowLevel, K));
+    if (k === 2) assert.equal(g.failHowLine, H()[g.failCause].text);
+    if (k === 3) assert.equal(g.failHowLine, H()[g.failCause].keys);
+    g.retry(); tr.t += DT; g.step(tr.t, {}); g.drain();
+    assert.equal(g.failHowLine, null, '重來清空');
+  }
+});
+test('11/28 做法乙：做法對照表（每個原因都有、寫法照 game-text 操作提示：第 3 階按鍵放最前面、不用破折號、一句不加句號）；門檻常數和提示叫回同值；換區歸零、成功一次歸零', () => {
+  assert.equal(K.FAIL_HOW_FAILS, 2);
+  assert.equal(K.FAIL_HOW_FAILS, K.HINT_RECALL_FAILS, '畫面提示叫回的那一次，文字做法也出現');
+  for (const KK of [K, Object.assign({}, K, { COVER_MODE: false })]) {
+    const H = R.failHowFor(KK), L = R.failLinesFor(KK);
+    for (const c of Object.keys(L)) assert.ok(H[c], '原因 ' + c + ' 要有做法');
+    for (const [c, o] of Object.entries(H)) for (const line of [o.text, o.keys]) {
+      assert.ok(line.length >= 6 && line.length <= 30, c + ' 長度 ' + line.length + '：' + line);
+      assert.ok(!/——|—/.test(line) && !/[。！？]$/.test(line), c + ' 寫法：' + line);
+      assert.ok(!/奧德修斯/.test(line), c + ' 做法是提示口吻，不是說書人');
+    }
+    for (const [c, o] of Object.entries(H)) assert.ok(/^(W A S D|空白鍵|Shift|E|Q|V)( |、)/.test(o.keys), c + ' 第 3 階按鍵放最前面：' + o.keys);
+  }
+  assert.deepEqual([0, 1, 2, 3, 7].map((n) => R.failHowLevelFor(n)), [1, 1, 2, 3, 3]);
+  assert.equal(R.failHowLineFor('step', 1), null);
+  assert.equal(R.failHowLineFor('沒有這種', 2), R.failHowFor(K).seen.text);
+  // 換區歸零：在第 2 區被抓 2 次，走進第 3 區
+  const g = R.createLevel({ startZone: 2, T: { DYNAMIC: false } });
+  const tr = { t: 1 }; g.step(tr.t, {});
+  standInFront(g, tr); g.retry(); tr.t += DT; g.step(tr.t, {});
+  standInFront(g, tr);
+  assert.equal(g.failHowLevel, g.causeFails.n[g.failCause] >= 2 ? 2 : 1);
+  const c0 = g.failCause;
+  g.retry(); tr.t += DT; g.step(tr.t, {});
+  assert.equal(g.causeFails.zone, 2, '重來不歸零');
+  g.player.x = 30.7; g.player.z = 22; tr.t += DT; g.step(tr.t, {}); g.drain();
+  assert.equal(g.zone, 3);
+  assert.deepEqual(g.causeFails, { zone: 3, n: {} }, '換區歸零');
+  // 成功一次歸零：對應暗示階梯那一格 hintOk
+  const g2 = R.createLevel({ startZone: 2, T: { DYNAMIC: false } });
+  g2.causeFails = { zone: 2, n: { breath: 2, gasp: 1, step: 2 } };
+  g2.player.x = 13; g2.player.z = 27;
+  const t2 = { t: 1 }; g2.step(t2.t, {}); g2.drain();
+  g2.player.breathSaved = true; g2.player.breathing = true;   // 假裝這口氣救了他：放開時 hintOk('breath')
+  t2.t += DT; g2.step(t2.t, {}); g2.drain();
+  assert.deepEqual(g2.causeFails.n, { step: 2 }, '屏息成功一次：breath、gasp 歸零，其他不動');
+  assert.ok(R.FAIL_HOW_LADDER[c0] || ['loud', 'run', 'noise'].includes(c0));
+});

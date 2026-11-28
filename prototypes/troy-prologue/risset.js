@@ -125,6 +125,7 @@
     DRIVE_HUNT_RISE: 2,    // 追殺：這麼多秒升到 DRIVE_MAX
     DRIVE_HUNT_FALL: 4,    // 甩掉：這麼多秒滑回
     // 區對段：11/17 起寫在關卡資料每一區的 driveSeg（level-troy.js），不再是常數
+    FAIL_HOW_FAILS: 2,    // 11/28 做法乙：同一種失誤（同一個 failCause）在這一區被抓這麼多次，失敗畫面才多一行做法（g.failHowLine）；再多一次加上按鍵。和 HINT_RECALL_FAILS 同值，畫面提示叫回的那一次文字做法也出現
     HINT_RECALL_FAILS: 2, // 11/28 期末企劃第 4 節：同一區連續被抓這麼多次，這一區的畫面提示回到完整（g.hintLevel）；過了這一區照原本的分區
     NOISE_R: 8,           // 11/15 弓弦引開 g.noise：沒被蓋住時，這麼近的衛兵（取最近一名）會來查看【假設】；比腳步兩倍（5）大，?lab=check 的衛兵在 6 公尺
     HUNT_START_DELAY: 0.8, // 第 17.2 節：疑心滿、追殺開始時先喊一聲（hunt_call），這段時間追兵站著不動；規則角色可在 0.6～1.0 內調
@@ -730,6 +731,48 @@
     if (mode != null && mode !== 'auto') return baseAid;
     return (streak | 0) >= K.HINT_RECALL_FAILS ? 1 : baseAid;
   }
+  /**
+   * 11/28 期末企劃第 4 節做法乙（使用者選定）：失敗畫面第二行「下次怎麼做」，和第一行原因（g.failCause）講同一件事。
+   * 每個原因代號兩種寫法：text＝第 2 次（一句做法，不寫按鍵）；keys＝第 3 次起（按鍵放最前面、只寫動作；docs/game-text.md 第 0 節操作提示）。
+   * 寫法：提示的語氣（第二人稱或不用人稱）、不用破折號、一句不加句號。數字從常數生成。
+   */
+  function failHowFor(K) {
+    K = K || T;
+    const cover = !!K.COVER_MODE;
+    const hit = cover ? '最響的那一擊' : '鼓聲斷掉的那一下';
+    return {
+      seen: { text: '別停在衛兵面前，從陰影或他背後繞過去', keys: 'W A S D 繞到衛兵背後或走進陰影，別停在他面前' },
+      radius: { text: '火光照得到的地方要踩著鼓點走，被照到就停下', keys: 'W A S D 在火光圈裡踩著鼓點走，被照到就停下' },
+      step: { text: '先站定，等鼓點落下再起步', keys: 'W A S D 在鼓點落下時起步，之後按住不放' },
+      move_high: cover ? { text: '鼓聲最急的時候先停下，等最響的那一擊再走', keys: 'W A S D 鼓聲最急時放開，最響的那一擊落下再按' }
+        : { text: '鼓聲最急的時候站著別動，等鼓聲斷掉再走', keys: 'W A S D 鼓聲最急時放開，鼓聲斷掉再按' },
+      breath: { text: '衛兵靠近時屏住呼吸，站著別動', keys: '空白鍵 衛兵靠近時按住屏息，他走遠再放開' },
+      gasp: { text: '憋氣有上限，鼓聲慢下來就換氣', keys: '空白鍵 鼓聲慢下來就放開換氣，一次最多撐約 ' + num(K.BREATH_MAX) + ' 秒' },
+      latch: { text: '鼓聲慢的時候才推門閂，快起來就放手', keys: 'E 鼓聲慢時按住推門閂，一快就放開' },
+      loud: { text: '大的聲響要等' + hit + '才蓋得住', keys: 'Shift、E 這類大動作，等' + hit + '落下再按' },
+      run: { text: '平常用走的，' + hit + '或被追的時候才跑', keys: 'Shift 只在' + hit + '落下時點一下，平常放開' },
+      takedown: { text: '等' + hit + '落下，再從背後出手', keys: 'E 在' + hit + '落下時按，人要在他背後 ' + num(K.TAKEDOWN_R) + ' 公尺內' },
+      fake: { text: '沒聽到那聲預告的輕響，就不要動', keys: 'W A S D 先放開，聽到預告的輕響、鼓聲真的斷掉再按' },
+      calm_fast: { text: '跟著最低的那聲慢慢按，不要連按', keys: 'Q 最低的那聲每響一下按一次，不要連按' },
+      calm_off: { text: '等最低的那聲響起再按', keys: 'Q 最低的那聲響起的那一下才按' },
+      calm_slow: { text: '最低的那聲一響就按，別等', keys: 'Q 每響一聲按一下，' + num(K.CALM_TIMEOUT) + ' 秒內對準 ' + num(K.CALM_NEED) + ' 次' },
+      noise: { text: '等' + hit + '再拉弓弦', keys: 'V 在' + hit + '落下時才彈弓弦' }
+    };
+  }
+  /** 第二行那一句：level 1（或以下）＝沒有（null）；2＝text；3 起＝keys。沒有對應的原因退回 seen。 */
+  function failHowLineFor(cause, level, K) {
+    if (!(level >= 2)) return null;
+    const H = failHowFor(K), o = H[cause] || H.seen;
+    return level >= 3 ? o.keys : o.text;
+  }
+  /** 第二行用第幾階：同一種失誤在這一區被抓第 n 次 → n 小於 FAIL_HOW_FAILS 為 1，等於為 2，再多為 3。 */
+  function failHowLevelFor(n, K) {
+    K = K || T;
+    return n >= K.FAIL_HOW_FAILS + 1 ? 3 : n >= K.FAIL_HOW_FAILS ? 2 : 1;
+  }
+  /** 原因代號 → 暗示階梯的哪一格（那一格成功一次，這個原因的次數就歸零，第二行收掉；照現有暗示階梯）。沒有對應格的原因只在換區時歸零。 */
+  const FAIL_HOW_LADDER = { seen: 'radius', radius: 'radius', step: 'step', move_high: 'blind', breath: 'breath', gasp: 'breath',
+    latch: 'latch', takedown: 'takedown', fake: 'fake', calm_fast: 'calm', calm_off: 'calm', calm_slow: 'calm' };
   // 11/17 起區名從關卡資料讀（每一區的 name）；區數由資料決定。沒載資料時是空陣列
   const ZONE_NAMES = Object.freeze(LEVEL_DATA && Array.isArray(LEVEL_DATA.zones) ? LEVEL_DATA.zones.map((z) => z.name) : []);
   /** 這一區是不是城門區（出口是 gate）。 */
@@ -906,7 +949,11 @@
       failStreak: { zone: null, n: 0 },
       hintLevel: 1,
       failCause: null,
-      failLine: null
+      failLine: null,
+      // 11/28 做法乙：causeFails＝{zone, n: {原因代號: 在這一區被抓幾次}}；failHowLevel＝這次第二行用第幾階（0＝沒有失敗）；failHowLine＝第二行那一句（第 1 階是 null）
+      causeFails: { zone: null, n: {} },
+      failHowLevel: 0,
+      failHowLine: null
     };
     /** 11/28：這一區此刻的提示等級（連續被抓 HINT_RECALL_FAILS 次就回到完整），同時寫進 visualAid（畫面照舊讀 visualAid 就好）。 */
     function refreshAid() {
@@ -967,6 +1014,8 @@
     }
     /** 暗示階梯：key 這件事成功一次 → 退回第 1 階。 */
     function hintOk(key) {
+      // 11/28 做法乙：對應這一格的失敗原因，次數歸零（同一種失誤成功一次，第二行就收掉）
+      if (g.causeFails) for (const c in g.causeFails.n) if (FAIL_HOW_LADDER[c] === key || (key === 'check' && FAIL_HOW_LADDER[c] === 'calm')) delete g.causeFails.n[c];
       const H = g.hints[key]; if (!H) return;
       H.fails = 0; H.level = 1; H.lastFail = -1e9;
     }
@@ -1014,6 +1063,7 @@
       g.player.inBelly = !!level.zones[z].belly;
       slipChain = [];
       if (!quiet && g.failStreak.zone !== z) g.failStreak = { zone: z, n: 0 };   // 換到下一區：連續被抓歸零（重來是 quiet，不歸零）
+      if (!quiet && g.causeFails.zone !== z) g.causeFails = { zone: z, n: {} };   // 做法乙：同上，換區歸零、重來不歸零
       refreshAid();
       walking = false; lastStepT = -1e9; idleWatch = null;
       if (!quiet) { emit('msg', level.zones[z].name); emit('sfx', 'checkpoint'); }
@@ -1153,6 +1203,10 @@
       const fromCode = code ? String(code).replace(/^(caught|belly)_/, '') : null;
       g.failCause = slipChain[0] || fromCode || 'seen';
       g.failLine = failLineFor(g.failCause, K);
+      if (g.causeFails.zone !== g.zone) g.causeFails = { zone: g.zone, n: {} };
+      const nc = g.causeFails.n[g.failCause] = (g.causeFails.n[g.failCause] || 0) + 1;
+      g.failHowLevel = failHowLevelFor(nc, K);
+      g.failHowLine = failHowLineFor(g.failCause, g.failHowLevel, K);
       if (g.failStreak.zone === g.zone) g.failStreak.n++; else g.failStreak = { zone: g.zone, n: 1 };
       refreshAid();
       emit('sfx', 'caught'); emit('msg', reason);
@@ -2102,6 +2156,7 @@
       g.hunted = false; g.alerted = false; g.huntSteps = 0; g.huntSlowUntil = 0; g.huntIdleT = 0;
       g.stillT = 0; g.failReason = null; g.failCode = null; huntCause = null;
       g.failCause = null; g.failLine = null; slipChain = [];
+      g.failHowLevel = 0; g.failHowLine = null;
       g.gate.progress = 0; g.gate.pushing = false; g.gate.open = false;
       g.phase = 'play'; g.retries++;
       latchNoiseAt = -1e9;
@@ -2202,7 +2257,7 @@
     createLevel, buildLevel, resolveLevel, horseShadowFor,
     phaseAt, cycleIndex, inBlind, blindLen, radiusAt, bassBeatNear,
     zoneMul, zoneTier, isGateZone, driveFor, cycleTargetFor, layerBeats, layerCount, beatPhases, layerGain, beatsBetween, alertBlindAt, fireBrightness, dangerOf, blindWindows, coverWindows: blindWindows,
-    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor, failLinesFor, failLineFor, hintLevelFor, FAIL_LINES, inputOffsetSec,
+    stepMasked, nextStepAt, nearestMaskBeat, visualAidFor, failLinesFor, failLineFor, hintLevelFor, FAIL_LINES, failHowFor, failHowLineFor, failHowLevelFor, FAIL_HOW_LADDER, inputOffsetSec,
     forward, yawTo, angDiff, inRect, mulberry32
   };
 });
