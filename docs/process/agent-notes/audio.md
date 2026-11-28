@@ -530,3 +530,22 @@ node tools/playtest-recorder/record.mjs --profile troy-prologue --duration 90 --
   - `node --test prototypes/*/*.test.js`：381 過（新增 4 條校準測試）；稍後 `bash tools/cleancheck.sh` 383 過、嚴格檢查通過（規則角色同時加了測試）。
 - **試驗場**：`prototypes/troy-prologue/audio-test.html?trial=calib`（測試時加 `&mute=1`）。自己開一個 AudioContext 和一份聲音層（遊戲各層全部靜音），不碰上面試聽用的 ctx。按「播放校準節拍」，畫面列出回傳的拍點時間、瀏覽器回報的輸出延遲；空白鍵或「敲」收敲擊，顯示離最近一拍幾毫秒、中位數，有 `RissetCalib` 時直接呼叫 `estimate` 顯示結果。
 - **待真耳朵**：跟拍鼓點音量跟腳步一樣小，展示場地吵的時候聽不聽得到；預備的金屬和框鼓分不分得出「預備」和「開始敲」；換藍牙耳機後量到的偏差合不合理（預期 +100～+250 毫秒，超過 150 毫秒會被規則夾住）。
+- **11/28：序的四段聲音（黑底一次一句；開場分析 `2026-11-27-opening-and-tutorial.md` 第 3 節做法甲，使用者 11/28 選定）**（未提交；`audio.js`、`audio.test.js`、`audio-test.html`）：
+  - **介面（和畫面角色對齊）**：`audio.storyCue(name, t?, { dur? })` → `{ name, t, dur }`，不認得的名稱回傳 null；`audio.storyCueStop(fade = 0.3)` 跳過序時收掉還在響的序聲音。名稱與順序（`RissetAudio.STORY_CUE_ORDER`、`RissetAudio.STORY_CUES` 有長度與那一句）：
+    | 名稱 | 字卡那一句 | 長度 | 聲音 |
+    |---|---|---|---|
+    | `cart` | 木輪拖過石板 | 5.5 秒 | 低沉的滾動地鳴（由遠而近再過去）、輪子壓過石縫一下一下的低鼓、木軸吱嘎 |
+    | `gate` | 城門關上 | 3.8 秒 | 門軸長長一聲吱、1.55 秒轟的一聲撞上、2.35 秒門閂落下（木頭加一點銅） |
+    | `cheer` | 歡呼 | 5.0 秒 | 一大群人的「啊」（三段母音共振的雜訊，往上揚）湧上來，拍手與跺腳中段最密 |
+    | `feast` | 祭典的鼓隔著木板傳進來 | 7.0 秒 | 外面的節慶鼓（低鼓加框鼓，每分鐘 112 拍）經 520 Hz 低通，很遠的人聲、木板低鳴 |
+    - 四段共 21.3 秒（加上字卡停頓，序在 30 秒內）。建議畫面每翻一句就呼叫那一句的 `storyCue`；要長一點可傳 `{ dur }`（`feast` 可以撐到序結束、進腹中前再 `storyCueStop`）。
+    - 全部 Web Audio 即時合成，用現有鼓的音色（`playHit`）與濾波雜訊，不用音檔。
+    - 走自己的匯流排（第一次呼叫才建，乾聲加一點大廳殘響），直接到輸出、不經過 master，所以不受 `game.story === 'intro'` 那層「隔著木板」的低通影響（祭典的鼓自己有低通）。常數 `STORY_CUE_GAIN` 0.9、`STORY_FEAST_LP` 520，都是【假設】。
+  - **試聽頁**：`audio-test.html` 新區塊「序的聲音」，四顆按鈕逐段播、「四段依序播」（每段之間停 0.8 秒）、「停止」；沒按「開始」也能直接按；`?mute=1` 不出聲。試聽題加一題。
+  - 驗證：
+    - Node 測試 1 條（名稱與順序、每段 3～8 秒、共 ≤ 30 秒、祭典低通 < 1200 Hz）。
+    - 離線（`audio-story-cue-check.mjs`，`--mute-audio`；遊戲聲音全關、只剩那一段）：cart −22.6、gate −22.0、cheer −24.4、feast −21.3 dB；峰值 cart 0.49、gate 0.85、feast 0.82、cheer 0.38；feast 與 gate 高頻少（隔著木板、撞擊為主），cheer 高頻多；結束 1.5 秒後殘留都 ≤ 0.0014；沒有非數值。
+    - 無頭試聽頁 `?mute=1`：四顆按鈕都按過、依序播顯示正在播 cart、停止後顯示已停止，沒有錯誤。
+    - 不帶序時排程和 HEAD 相同：`audio-zone-check.mjs`（拿掉衛兵、DRIVE 關、固定亂數），第 1～4 區各 20 秒，20 秒內全部相同（只差錄音結束那一刻預排的拍，同前）。
+    - `bash tools/cleancheck.sh audio.js audio.test.js audio-test.html`：402 過，嚴格檢查通過。
+  - 第二批（腹中只剩低鼓、暗門打開時鼓聲湧進來）與終章三層退聲照派工排在之後，這次沒做。

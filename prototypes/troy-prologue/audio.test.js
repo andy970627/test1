@@ -255,3 +255,17 @@ test('校準時鐘約定：判定的輸入時間＝ currentTime −（outputLate
   assert.match(html, /pend\.actAt\s*=\s*actx\.currentTime\s*-\s*\(actx\.outputLatency\s*\|\|\s*actx\.baseLatency\s*\|\|\s*0\)/,
     'index.html 判定的輸入時間算法變了：calibClicks 的時鐘說明（audio.js、agent-notes/audio.md）要跟著改');
 });
+
+// 序：黑底一次一句、每句一段聲音（開場分析 2026-11-27 第 3 節做法甲）。名稱要和畫面角色對齊
+test('序的四段聲音：名稱 cart、gate、cheer、feast 照順序，每段 3～8 秒、都有字卡那一句', () => {
+  assert.deepStrictEqual(A.STORY_CUE_ORDER, ['cart', 'gate', 'cheer', 'feast']);
+  let total = 0;
+  for (const n of A.STORY_CUE_ORDER) {
+    const c = A.STORY_CUES[n];
+    assert.ok(c && c.dur >= 3 && c.dur <= 8, n + ' 的長度 ' + (c && c.dur));
+    assert.ok(typeof c.text === 'string' && c.text.length > 0, n + ' 沒有那一句');
+    total += c.dur;
+  }
+  assert.ok(total <= 30, '序要在 30 秒內聽完（分析第 3 節做法甲），四段共 ' + total + ' 秒');
+  assert.ok(C.STORY_FEAST_LP > 0 && C.STORY_FEAST_LP < 1200, '祭典的鼓要隔著木板（低通）');
+});

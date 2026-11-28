@@ -276,6 +276,9 @@
     STORY_END_FADE: 0.25,      // 終：最後一擊之後幾秒內全部靜下來
     STORY_WIND_IN: 3,          // 終：靜下來之後，城外的風聲幾秒淡入
     STORY_WIND_GAIN: 0.12,
+    // 序：黑底一次一句、每句一段聲音（開場與教學分析 2026-11-27 第 3 節做法甲；只有畫面呼叫 storyCue 才響，不帶序時輸出不變）
+    STORY_CUE_GAIN: 0.9,       // 四段聲音的整體音量（走自己的匯流排，直接到輸出，不受序字卡的「隔著木板」低通影響）【假設】
+    STORY_FEAST_LP: 520,       // 祭典的鼓隔著木板：只留這以下
     F_SEED: 20261112,          // 時間表的固定亂數種子（同一個網址每次聽到的順序一樣）
     // 弓弦（docs/design/2026-11-14-style-and-input-ideas.md 第 1.1、1.3 節；最小原型，只有呼叫 bowDraw／bowRelease／bowPluck 才響，預設版不呼叫）
     BOW_FULL: 1.2,             // 拉滿要幾秒；張力 = 1 − (1 − 經過 ÷ BOW_FULL)²（一開始升得快、快滿時變慢，像弦越來越緊）【假設】
@@ -472,6 +475,14 @@
     else wind = WIND_AT[mix] || null;
     return { mix: mix, tier: tier, gate: gate, intro: Z.teach === 'blind', wind: wind };
   }
+  // 序的四段聲音：名稱 → 長度（秒）與字卡上的那一句（畫面角色照名稱對齊；文字只給試聽頁顯示，正式文字以畫面為準）
+  var STORY_CUES = {
+    cart:  { dur: 5.5, text: '木輪拖過石板' },
+    gate:  { dur: 3.8, text: '城門關上' },
+    cheer: { dur: 5.0, text: '歡呼' },
+    feast: { dur: 7.0, text: '祭典的鼓隔著木板傳進來' }
+  };
+  var STORY_CUE_ORDER = ['cart', 'gate', 'cheer', 'feast'];
   function phaseAt(t, T, t0) { return frac((t - t0) / T); }
   // 第 k 層、第 c 個循環的所有拍點（絕對時間），規則與測試可用
   function beatTimes(k, c, T, t0) {
@@ -2936,6 +2947,100 @@
       var dt = Math.max(0, t - bow.t0), u = bowTension(dt);
       return { drawing: true, held: +dt.toFixed(2), tension: +u.toFixed(3), pitch: Math.round(bowPitch(u)), full: dt >= C.BOW_FULL, creaking: dt >= C.BOW_FULL + C.BOW_CREAK_AFTER };
     }
+    // ---------- 序的四段聲音（storyCue）：第一次呼叫才建自己的匯流排（乾聲＋一點大廳殘響，直接到輸出），沒呼叫的遊戲完全不經過 ----------
+    var sc = { bus: null, nodes: [] };
+    function scBus() {
+      if (sc.bus) return sc.bus;
+      sc.bus = ctx.createGain(); sc.bus.gain.value = C.STORY_CUE_GAIN; sc.bus.connect(comp);
+      var v = ctx.createConvolver(); v.buffer = makeIR(3.2, 2.4);
+      var send = ctx.createGain(); send.gain.value = 0.4; sc.bus.connect(send); send.connect(v);
+      var vo = ctx.createGain(); vo.gain.value = 0.45; v.connect(vo); vo.connect(comp);
+      return sc.bus;
+    }
+    function scEnv(dest, t, dur, aIn, aOut) {   // 一段聲音自己的淡入淡出外層
+      var g = ctx.createGain(); g.connect(dest);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + aIn);
+      g.gain.setValueAtTime(1, t + dur - aOut); g.gain.linearRampToValueAtTime(0, t + dur);
+      return g;
+    }
+    function scLoop(dest, t, dur, type, f, q, peak, fadeIn, fadeOut) {   // 一直響的濾波雜訊（地鳴、人群），自己淡入淡出
+      var src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), g = ctx.createGain();
+      src.buffer = noiseBuf; src.loop = true; flt.type = type; flt.frequency.value = f; flt.Q.value = q;
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + fadeIn);
+      g.gain.setValueAtTime(peak, t + dur - fadeOut); g.gain.linearRampToValueAtTime(0, t + dur);
+      src.connect(flt); flt.connect(g); g.connect(dest); src.start(t, Math.random()); src.stop(t + dur + 0.05);
+      if (collect) collect.push(src);
+      return { flt: flt, g: g };
+    }
+    var STORY_PLAY = {
+      cart: function (d, t, dur) {      // 木輪拖過石板：低沉的滾動地鳴、輪子壓過石縫一下一下的悶響、木軸吱嘎；由遠而近再過去
+        var o = scEnv(d, t, dur, 1.6, 1.4);
+        var r = scLoop(o, t, dur, 'lowpass', 140, 0.8, 0.55, 0.8, 0.8);
+        r.flt.frequency.setValueAtTime(110, t); r.flt.frequency.linearRampToValueAtTime(220, t + dur * 0.55); r.flt.frequency.linearRampToValueAtTime(130, t + dur);   // 靠近時亮一點
+        for (var x = t + 0.25, i = 0; x < t + dur - 0.3; x += 0.42 + 0.12 * Math.sin(i * 1.7), i++) {
+          playHit(o, 0.02, x, 0.42 + 0.12 * Math.sin(i));                      // 石縫：低鼓
+          noise(o, x + 0.01, 'bandpass', 380, 1.2, 0.12, 0.002, 0.07);         // 石頭碰撞的一點顆粒
+        }
+        for (var c = t + 0.7; c < t + dur - 0.6; c += 1.25) {                  // 木軸吱嘎：鋸齒波滑音經帶通
+          tone(o, c, 'sawtooth', 210, 150, 0.45, 0.05, 0.05, 0.4);
+          noise(o, c, 'bandpass', 900, 6, 0.04, 0.05, 0.35);
+        }
+      },
+      gate: function (d, t, dur) {      // 城門關上：厚重的門軸長長一聲吱、轟的一聲撞上、門閂落下
+        var o = scEnv(d, t, dur, 0.05, 0.6);
+        tone(o, t, 'sawtooth', 330, 170, 1.45, 0.07, 0.15, 1.3);               // 門軸
+        noise(o, t, 'bandpass', 520, 8, 0.05, 0.2, 1.25);
+        var tb = t + 1.55;                                                      // 撞上
+        tone(o, tb, 'sine', 62, 34, 0.5, 0.9, 0.003, 1.2);
+        tone(o, tb, 'triangle', 120, 70, 0.25, 0.35, 0.002, 0.6);
+        noise(o, tb, 'lowpass', 320, 0.7, 0.7, 0.002, 0.9);
+        noise(o, tb, 'bandpass', 900, 1, 0.18, 0.001, 0.15);
+        var tc = t + 2.35;                                                      // 門閂：木頭加一點銅
+        playHit(o, 0.3, tc, 0.5);
+        tone(o, tc + 0.01, 'sine', 1180, 1150, 0.05, 0.05, 0.001, 0.25);
+        tone(o, tc + 0.01, 'sine', 1750, 1720, 0.05, 0.03, 0.001, 0.18);
+      },
+      cheer: function (d, t, dur) {     // 歡呼：一大群人的「啊」（三段母音共振的雜訊）湧上來，零星拍手、跺腳，再慢慢退
+        var o = scEnv(d, t, dur, 1.2, 1.6);
+        [[700, 4, 0.5], [1150, 5, 0.3], [2500, 6, 0.12]].forEach(function (f) {
+          var v = scLoop(o, t, dur, 'bandpass', f[0], f[1], f[2], 1.3, 1.6);
+          v.flt.frequency.setValueAtTime(f[0] * 0.92, t); v.flt.frequency.linearRampToValueAtTime(f[0] * 1.06, t + 1.6); v.flt.frequency.linearRampToValueAtTime(f[0], t + dur);   // 聲音往上揚
+        });
+        scLoop(o, t, dur, 'lowpass', 300, 0.7, 0.25, 1.3, 1.6);                // 人群的低頻厚度
+        for (var k = 0; k < 46; k++) {                                          // 拍手與跺腳，中段最密
+          var u = Math.random(), x = t + 0.6 + (dur - 1.6) * (0.5 + 0.5 * Math.sin(Math.PI * (u - 0.5)));
+          if (k % 4 === 0) playHit(o, 0.05, x, 0.25); else playHit(o, 0.625, x, 0.18 + 0.12 * Math.random());
+        }
+      },
+      feast: function (d, t, dur) {     // 祭典的鼓隔著木板傳進來：外面的節慶鼓（低鼓加框鼓，每分鐘 112 拍）只剩低頻，很遠的人聲
+        var lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = C.STORY_FEAST_LP; lp.Q.value = 0.9;
+        var o = scEnv(lp, t, dur, 1.4, 1.8); lp.connect(d);
+        var beat = 60 / 112, pat = [[0, 0.02, 0.8], [0.5, 0.375, 0.35], [1, 0.02, 0.55], [1.5, 0.375, 0.35], [1.75, 0.375, 0.25], [2, 0.02, 0.8], [2.5, 0.375, 0.35], [3, 0.375, 0.45], [3.5, 0.375, 0.3]];
+        for (var bar = 0; bar * 4 * beat < dur; bar++) pat.forEach(function (h) { var x = t + (bar * 4 + h[0]) * beat; if (x < t + dur - 0.2) playHit(o, h[1], x, h[2]); });
+        scLoop(o, t, dur, 'bandpass', 600, 0.7, 0.12, 2, 1.8);                 // 很遠的人群
+        tone(o, t, 'sine', 55, 55, 0, 0.12, 1.5, dur - 1.5);                    // 木板本身的低鳴
+      }
+    };
+    function storyCue(name, t, opts) {   // 序的一段聲音；回傳 { name, t, dur }，不認得的名稱回傳 null
+      var spec = STORY_CUES[name], play = STORY_PLAY[name];
+      if (!spec || !play) return null;
+      t = Math.max(ctx.currentTime, t == null ? ctx.currentTime : +t);
+      var dur = (opts && isFinite(opts.dur) && opts.dur > 1) ? +opts.dur : spec.dur;
+      var prev = collect, nodes = []; collect = nodes;
+      try { play(scBus(), t, dur); } finally { collect = prev; }
+      sc.nodes.push({ t: t, end: t + dur + 3, nodes: nodes });
+      sc.nodes = sc.nodes.filter(function (r) { return r.end > ctx.currentTime; });
+      if (log) log.push({ type: 'storyCue', name: name, t: t, dur: dur });
+      return { name: name, t: t, dur: dur };
+    }
+    function storyCueStop(fade) {        // 畫面跳過序時：fade 秒內收掉所有還在響的序聲音
+      if (!sc.bus) return;
+      var now = ctx.currentTime, f = fade == null ? 0.3 : Math.max(0.01, +fade);
+      sc.bus.gain.cancelScheduledValues(now); sc.bus.gain.setValueAtTime(sc.bus.gain.value, now); sc.bus.gain.linearRampToValueAtTime(0, now + f);
+      sc.nodes.forEach(function (r) { r.nodes.forEach(function (n) { try { n.stop(now + f + 0.02); } catch (e) {} }); }); sc.nodes = [];
+      sc.bus.gain.setValueAtTime(C.STORY_CUE_GAIN, now + f + 0.05);   // 收完回到原音量，下次呼叫照常
+      if (log) log.push({ type: 'storyCueStop', t: now });
+    }
     var api = {
       CONST: C,
       INSTRUMENTS: INST_NAME,
@@ -2947,6 +3052,8 @@
       bowDraw: bowDraw, bowRelease: bowRelease, bowPluck: bowPluck, bowCancel: bowCancel, bowInfo: bowInfo,
       // 敲暗號（畫面角色 ?lab=horse 用；預設版不呼叫）
       knock: knock, horseReply: horseReply,
+      // 序：黑底一次一句、每句一段聲音（畫面呼叫；名稱 cart／gate／cheer／feast，見 STORY_CUES）
+      storyCue: storyCue, storyCueStop: storyCueStop,
       // 催促 DRIVE：試聽頁用 setDrive(0～1) 蓋過 state.drive（可每幀呼叫，不重排已排好的拍，之後的拍照新值）；setDrive(null) 回到照 state。遊戲不呼叫，直接傳 state.drive
       setDrive: function (v) { ill.drive = v == null ? null : Math.max(0, Math.min(1, +v || 0)); }, getDrive: function () { return driveNow(); },
       phase: function (t) { return frac(Pof(t == null ? ctx.currentTime : t)); },
@@ -3249,5 +3356,5 @@
     });
   }
 
-  return { createAudio: createAudio, calibClicks: calibClicksLive, calibPlan: calibPlan, calibTempo: calibTempo, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, zoneSound: zoneSound, ZONE_MIX_NAMES: ZONE_MIX_NAMES, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
+  return { createAudio: createAudio, calibClicks: calibClicksLive, calibPlan: calibPlan, calibTempo: calibTempo, phaseAt: phaseAt, beatTimes: beatTimes, decode: decode, CONST: C, THEME: THEME, midiHz: midiHz, horseBoomGain: horseBoomGain, newDrumGains: newDrumGains, driveDrumGains: driveDrumGains, STORY_CUES: STORY_CUES, STORY_CUE_ORDER: STORY_CUE_ORDER, zoneSound: zoneSound, ZONE_MIX_NAMES: ZONE_MIX_NAMES, bowTension: bowTension, bowPitch: bowPitch, knockReplyGain: knockReplyGain };
 });

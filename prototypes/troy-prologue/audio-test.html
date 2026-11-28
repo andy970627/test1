@@ -107,6 +107,13 @@ input[type=range] { flex:1; }
     <div class="note" id="bowLog"></div>
   </section>
   <section>
+    <b>序的聲音（開場分析 2026-11-27 第 3 節做法甲：黑底一次一句、每句一段聲音；遊戲裡由畫面呼叫 storyCue）</b>
+    <div id="storyBtns"></div>
+    <div><button id="storyAll">四段依序播（每段之間停 0.8 秒）</button> <button id="storyStopBtn">停止</button></div>
+    <div class="note">按一段就從頭播那一段；沒按「開始」也可以直接按（會自動開始）。網址加 ?mute=1 時不出聲。</div>
+    <div class="note" id="storyNow">—</div>
+  </section>
+  <section>
     <b>木馬（HORSE_MODE，設計 2026-11-11 方向 A、C2）</b>
     <label><input id="horse" type="checkbox"> 開木馬</label>
     <label><input id="belly" type="checkbox"> 在腹中</label>
@@ -298,6 +305,30 @@ if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'), { ru
     }).join('<br>');
   }
   $('dash').onclick = function (e) { doDash(e); };
+  // ---------- 序的四段聲音：逐段或依序播放（名稱照 RissetAudio.STORY_CUE_ORDER，和畫面角色對齊） ----------
+  var storyTimer = [];
+  function storyReady() { if (!ctx) $('start').onclick(); else audio.resume && audio.resume(); return !!(audio && audio.storyCue); }
+  function storyPlay(name) {
+    if (!storyReady()) { $('storyNow').textContent = '這個聲音檔沒有 storyCue'; return null; }
+    var r = audio.storyCue(name), sp = RissetAudio.STORY_CUES[name];
+    if (r) $('storyNow').textContent = '正在播：' + name + '（' + sp.text + '，' + r.dur.toFixed(1) + ' 秒）';
+    return r;
+  }
+  function storyClear() { storyTimer.forEach(clearTimeout); storyTimer = []; }
+  (RissetAudio.STORY_CUE_ORDER || []).forEach(function (n, i) {
+    var b = document.createElement('button'); b.textContent = (i + 1) + '. ' + RissetAudio.STORY_CUES[n].text + '（' + n + '）';
+    b.onclick = function () { storyClear(); storyPlay(n); };
+    $('storyBtns').appendChild(b);
+  });
+  $('storyAll').onclick = function () {
+    storyClear(); if (!storyReady()) return;
+    var at = 0;
+    RissetAudio.STORY_CUE_ORDER.forEach(function (n) {
+      storyTimer.push(setTimeout(function () { storyPlay(n); }, at * 1000));
+      at += RissetAudio.STORY_CUES[n].dur + 0.8;
+    });
+  };
+  $('storyStopBtn').onclick = function () { storyClear(); if (audio && audio.storyCueStop) audio.storyCueStop(0.3); $('storyNow').textContent = '已停止'; };
   // ---------- 弓弦：放開（或空彈）的時刻離最近的最響一擊多遠 ----------
   var bows = [];
   function hitsNear(t) {               // G 版用時間表（hitsAround）；其他版本從排程紀錄找已排好的最響一擊
@@ -598,6 +629,7 @@ if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'), { ru
       ]
     ],
     "questions": [
+      "序的四段聲音：沒看字也聽得出是木輪、城門、歡呼、隔著木板的鼓嗎？哪一段最不像？",
       "H1、H2 哪一個的鼓才算夠快？還是都不夠？",
       "H3 有沒有一路越來越快的感覺？H4 一階一階跳，和 H3 連續升，哪個比較好？",
       "速度上去之後，還聽不聽得出「又從頭來了」？",
