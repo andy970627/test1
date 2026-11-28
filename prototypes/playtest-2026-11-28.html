@@ -37,6 +37,7 @@
   .prog button.done b { color:var(--night); }
   #strip { margin-top:10px; }
   .lead { color:var(--parchment); margin:18px 0 14px; max-width:var(--measure); }
+  .hint { margin:0 0 8px; max-width:var(--measure); font-size:var(--fs-14); color:var(--parchment); }
   .warn { background:var(--stone); border:2px solid var(--bronze); border-radius:var(--r-panel); padding:10px 14px; margin:0 0 8px; max-width:var(--measure); font-size:var(--fs-14); color:var(--parchment); }
   /* 每層一個區塊 */
   .layer { margin:28px 0 0; padding:14px 0 0; border-top:3px double var(--head); scroll-margin-top:190px; transition:opacity .2s; }
@@ -81,7 +82,7 @@
     <ol class="prog" id="prog" aria-label="六層進度，點一格跳到那一層"></ol>
   </header>
   <p class="lead">2026-11-28 週末的試玩，照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試；上方六格每答完一層就亮一格，點格子可以跳過去。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
-  <p class="warn"><b>先別按 <kbd>Esc</kbd>：</b>現在按 Esc 回到遊戲後滑鼠不會動，死亡時的聲音也太大，這兩個問題正在修。修好前要暫停，請直接切到別的視窗。開場也先別用 Esc 跳過。</p>
+  <p class="hint"><kbd>Esc</kbd> 暫停後，點一下畫面就能再鎖住滑鼠轉頭；這是剛修好的，請實際試一次。</p>
   <div id="strip"></div>
   <div id="list"></div>
   <div class="bar">
@@ -129,7 +130,7 @@ const ITEMS = [
       ['哪一段最拖？', '這題在看要先縮短哪裡。',['都不拖','前段（巷子）','中段（廣場一帶）','後段（城門前）']],
     ]},
   { id:'opening', layer:3, title:'新開場：序、腹中四步、標題提示（約 2 分鐘）',
-    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。想比較舊流程，開「舊開場」那個連結。',
+    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。<kbd>Esc</kbd> 可以整段跳過。想比較舊流程，開「舊開場」那個連結。',
     links:[['新開場','http://localhost:8770/troy-prologue/index.html?map=final'],['舊開場（對照）','http://localhost:8770/troy-prologue/index.html?map=final&intro=old']],
     qs:[
       ['腹中四步看得懂嗎？', '這題在看不用人解釋，玩家能不能自己學會踩拍和敲木板。',['一看就懂','有一步卡住','看不懂']],
@@ -145,7 +146,7 @@ const ITEMS = [
       ['聽起來像不像它要表現的東西？', '這題在看不看字，光聽能不能猜到是木輪、城門、歡呼、隔牆的鼓。哪一段不像寫在備註。',['都像','有一兩段不像','大多不像']],
     ]},
   { id:'cam', layer:4, reset:true, title:'鏡頭動畫：俯看木馬進城（約 30 秒）',
-    how:'序之後會從城門外高處飛過門頂、俯看街道和衛兵，天黑時降到木馬前，約 26 秒。可以按 <kbd>空白鍵</kbd> 跳過。<b>只會出現一次</b>：要再看，先按下面「重看鏡頭動畫」清掉紀錄，再點連結。',
+    how:'序之後會從城門外高處飛過門頂、俯看街道和衛兵，天黑時降到木馬前，約 26 秒。<kbd>Esc</kbd> 或 <kbd>空白鍵</kbd> 跳過。<b>只會出現一次</b>：要再看，先按下面「重看鏡頭動畫」清掉紀錄，再點連結。',
     links:[['鏡頭動畫版','http://localhost:8770/troy-prologue/index.html?map=final&intro=cam']],
     qs:[
       ['好不好看？', '這題在看這段值不值得當開場。',['好看','普通','不好看']],
@@ -164,6 +165,7 @@ const ITEMS = [
     links:[['七段版（離線試）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
     qs:[
       ['離線時 3D 和字正常嗎？', '這題在看 12/24 現場沒有網路時能不能照常展示。',['都正常','3D 出不來','字變了或缺字']],
+      ['Esc 暫停 → 繼續 → 點畫面，滑鼠恢復轉頭了嗎？', '這題在看剛修好的暫停問題：回到遊戲後點一下畫面，滑鼠能不能再轉頭。',['正常','點了也沒反應','要點好幾次'],null,'offline-esc'],
     ]},
 ];
 for (const it of ITEMS) { let off = 0; it.qs.forEach((q, k) => { if (q[4]) off++; else if (off) q[5] = it.id + '-' + (k - off); }); }
