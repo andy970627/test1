@@ -27,6 +27,10 @@
   label { display:inline-flex; align-items:center; gap:6px; margin:2px 16px 2px 0; cursor:pointer; font-size:var(--fs-14); }
   textarea { width:100%; min-height:48px; margin-top:10px; padding:8px; resize:vertical; }
   .bar { position:sticky; bottom:0; background:var(--night); padding:12px 0; border-top:1px solid var(--rule); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .warn { background:var(--stone); border:1px solid var(--bronze); border-radius:var(--r-panel); padding:10px 14px; margin:0 0 18px; max-width:var(--measure); font-size:var(--fs-14); }
+  .layer { margin:30px 0 4px; }
+  .layer h3 { font:900 var(--fs-20)/1.3 var(--font-title); letter-spacing:.04em; margin:0 0 4px; color:var(--bronze); }
+  .layer p { margin:0; color:var(--muted); font-size:var(--fs-14); max-width:var(--measure); }
   #msg { color:var(--beat); font-size:var(--fs-14); }
 </style>
 </head>
@@ -36,7 +40,8 @@
     <h1 class="ui-title lg">週末成果試玩清單</h1>
     <div id="strip"></div>
   </header>
-  <p class="lead">2026-11-28 週末做好的六項。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則第 2 項的「重看鏡頭動畫」鈕會清不到）。一項一項試：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <p class="lead">2026-11-28 週末的試玩，照「影響越多其他設計的越先試」排成六層：最裡面是踩拍手感，往外依序是潛行、關卡、開場教學、包裝、穩定。裡層沒過，外層多半要跟著改，所以請從第 1 層照順序試。先在專案資料夾開本機伺服器（<code>py tools/showcase-serve.py --port 8770</code>），再用 <b>http://localhost:8770/playtest-2026-11-28.html</b> 打開這一頁（要用 localhost，不要用 127.0.0.1，否則鏡頭動畫那項的「重看」鈕會清不到）。每項：點連結 → 照「怎麼試」玩 → 按上一頁回來作答。全部試完按最下面「複製結果」，貼回對話。答案存在這台電腦的瀏覽器裡，關掉再開也還在。建議戴耳機。</p>
+  <p class="warn"><b>先別按 <kbd>Esc</kbd>：</b>現在按 Esc 回到遊戲後滑鼠不會動，死亡時的聲音也太大，這兩個問題正在修。修好前要暫停，請直接切到別的視窗。開場也先別用 Esc 跳過。</p>
   <div id="list"></div>
   <div class="bar">
     <button class="ui-btn primary" id="copy">複製結果</button>
@@ -48,9 +53,42 @@
 <script src="beatstrip.js"></script>
 <script>
 if (window.OdysseyBeat) OdysseyBeat.mount(document.getElementById('strip'));
+const LAYERS = [
+  { t:'第 1 層｜核心手感（影響全部）', why:'這層為什麼先試：踩拍準不準、鼓聽不聽得到，決定了潛行、關卡和教學怎麼設計。這層沒過，後面每一層都要跟著改。' },
+  { t:'第 2 層｜潛行循環（建立在第 1 層上）', why:'這層為什麼先試：找掩護、被抓、再試一次，是整關一直在重複的事。這個循環不順，關卡再長再漂亮也沒用。' },
+  { t:'第 3 層｜關卡長度與方向', why:'這層為什麼先試：開場要教多少、要不要加路標，都看整關多長、會不會迷路。' },
+  { t:'第 4 層｜開場教學（教的是第 1、2 層）', why:'這層為什麼先試：開場教的是踩拍和找掩護。前兩層一改，這裡就得跟著改，所以排在它們後面。' },
+  { t:'第 5 層｜包裝', why:'這層為什麼先試：鏡頭動畫和介面風格不影響玩法，裡層定了再決定也不遲。' },
+  { t:'第 6 層｜穩定', why:'這層為什麼先試：只關係到 12/24 現場能不能照常展示，跟其他設計無關，放最後確認。' },
+];
+// 題目代號：第 5 欄是新題自己的代號；第 6 欄（由下方自動補）讓舊題在前面插了新題後，仍沿用原本的「項目代號-序號」，舊作答不會跑掉
 const ITEMS = [
-  { id:'opening', title:'新開場：序、腹中四步、標題提示（約 2 分鐘）',
-    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。<kbd>Esc</kbd> 可以整段跳過。想比較舊流程，開「舊開場」那個連結。',
+  { id:'core', layer:0, title:'踩拍手感：判定、低鼓、越來越急（約 4 分鐘）',
+    how:'從頭玩到神殿廣場就停。重點在木馬肚子裡「跟著他敲」之後：出了木馬，每一步都踩著鼓走，留意畫面上的判定（踩準或踩歪）和耳朵聽到的對不對得上。一路上鼓聲會越來越急，那是上面疊的快鼓變多了；腳要踩的一直是同一個低鼓。',
+    links:[['七段版（玩到神殿廣場）','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['踩拍的判定準不準？', '這題在看你覺得踩在鼓上時，遊戲是不是也算你踩準。明明踩對卻算歪的話，請在備註寫是哪一段。',['準','有時不準','常常不準']],
+      ['聽不聽得出要踩的低鼓？', '這題在看最低沉的那層鼓（腳要踩的那層）清不清楚。請在備註寫你用耳機還是喇叭。',['聽得出','要很專心才聽得出','聽不出']],
+      ['鼓聲越來越急的感覺夠不夠？', '這題在看越靠近城門越緊張的感覺有沒有出來。快鼓只影響聽起來多急，不影響判定。',['夠','有一點','感覺不到','太吵']],
+    ]},
+  { id:'fail', layer:1, title:'找掩護、被抓、提示回來（約 4 分鐘）',
+    how:'掩護就是最響的那一擊，加上它後面約 0.6 秒的餘音；趁這時移動，衛兵比較聽不到。先試著抓幾次掩護。接著故意被衛兵抓幾次，例如在火光下走、跑步、踩歪；每次失敗畫面只會顯示一句原因，例如「奧德修斯在火光照得到的地方移動，被衛兵察覺了」。最後在同一區連續被抓 2 次，看提示有沒有變回完整。',
+    links:[['七段版','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['最響那一擊的掩護好不好抓？', '這題在看玩家聽不聽得出哪一擊最響，能不能趁那一下行動。',['好抓','要練幾次','抓不到'],null,'fail-cover'],
+      ['那一句原因看得懂嗎？', '這題在看玩家知不知道自己為什麼被抓、下次要怎麼改。',['看得懂','有時看不懂','看不懂']],
+      ['同區連續被抓 2 次後，提示有沒有回來？', '這題在看卡關的人會不會重新拿到完整提示。',['有回來','沒注意到','沒有回來']],
+    ]},
+  { id:'length', layer:2, title:'整關長度與方向（約 10 分鐘）',
+    how:'從頭玩到結尾，不用計時，憑感覺回答就好。完整的分段量測 12/3 會用試玩摘要工具做，這次先抓個感覺。',
+    links:[['七段版（整關）','http://localhost:8770/troy-prologue/index.html?map=final']],
+    qs:[
+      ['整關的長度感覺如何？', '這題在看整關會不會拖，或一下就結束。',['剛好','有點長','太長','太短']],
+      ['有沒有迷路？', '這題在看玩家知不知道下一步往哪走。迷路的話請在備註寫是哪一段。',['沒有','迷路一兩次','常常不知道往哪走']],
+      ['哪一段最拖？', '這題在看要先縮短哪裡。',['都不拖','前段（巷子）','中段（廣場一帶）','後段（城門前）']],
+    ]},
+  { id:'opening', layer:3, title:'新開場：序、腹中四步、標題提示（約 2 分鐘）',
+    how:'從標題畫面開始。先看開始鍵上方的「戴上耳機、點一下畫面鎖滑鼠」；序是黑底，一次出一句，每句配一段聲音；接著在木馬肚子裡照四步走：聽 → 跟著他敲 → 踩著鼓走到暗門 → 開門。想比較舊流程，開「舊開場」那個連結。',
     links:[['新開場','http://localhost:8770/troy-prologue/index.html?map=final'],['舊開場（對照）','http://localhost:8770/troy-prologue/index.html?map=final&intro=old']],
     qs:[
       ['腹中四步看得懂嗎？', '這題在看不用人解釋，玩家能不能自己學會踩拍和敲木板。',['一看就懂','有一步卡住','看不懂']],
@@ -58,56 +96,53 @@ const ITEMS = [
       ['序的聲音音量如何？', '這題在看序的四段聲音和之後的鼓聲比，會不會太小聲或太大聲。',['剛好','太小聲','太大聲','某一段不對']],
       ['標題的耳機提示有沒有注意到？', '這題在看提示放在開始鍵上方，玩家會不會讀到。',['有注意到','沒注意到']],
     ]},
-  { id:'cam', reset:true, title:'鏡頭動畫：俯看木馬進城（約 30 秒）',
-    how:'序之後會從城門外高處飛過門頂、俯看街道和衛兵，天黑時降到木馬前，約 26 秒。<kbd>Esc</kbd> 或 <kbd>空白鍵</kbd> 跳過。<b>只會出現一次</b>：要再看，先按下面「重看鏡頭動畫」清掉紀錄，再點連結。',
-    links:[['鏡頭動畫版','http://localhost:8770/troy-prologue/index.html?map=final&intro=cam']],
-    qs:[
-      ['好不好看？', '這題在看這段值不值得當開場。',['好看','普通','不好看']],
-      ['看完對地圖方向有沒有幫助？', '這題在看俯看一遍後，玩家知不知道城門在哪、要往哪走。',['有幫助','一點點','沒幫助']],
-      ['會不會太長？', '這題在看 26 秒會不會讓人想跳過。',['剛好','太長','太短']],
-    ]},
-  { id:'storysound', title:'序的聲音試聽（約 2 分鐘）',
+  { id:'storysound', layer:3, title:'序的聲音試聽（約 2 分鐘）',
     how:'打開試聽頁，捲到「序的聲音」區塊，一段一段播：木輪拖過石板、城門關上、歡呼、祭典的鼓隔著木板傳進來。',
     links:[['試聽頁','http://localhost:8770/troy-prologue/audio-test.html']],
     qs:[
       ['四段的音量平不平均？', '這題在看有沒有哪一段突然太大或太小。',['平均','有一段太大','有一段太小']],
       ['聽起來像不像它要表現的東西？', '這題在看不看字，光聽能不能猜到是木輪、城門、歡呼、隔牆的鼓。哪一段不像寫在備註。',['都像','有一兩段不像','大多不像']],
     ]},
-  { id:'ui2', title:'介面風格：要不要改成預設（約 2 分鐘）',
+  { id:'cam', layer:4, reset:true, title:'鏡頭動畫：俯看木馬進城（約 30 秒）',
+    how:'序之後會從城門外高處飛過門頂、俯看街道和衛兵，天黑時降到木馬前，約 26 秒。可以按 <kbd>空白鍵</kbd> 跳過。<b>只會出現一次</b>：要再看，先按下面「重看鏡頭動畫」清掉紀錄，再點連結。',
+    links:[['鏡頭動畫版','http://localhost:8770/troy-prologue/index.html?map=final&intro=cam']],
+    qs:[
+      ['好不好看？', '這題在看這段值不值得當開場。',['好看','普通','不好看']],
+      ['看完對地圖方向有沒有幫助？', '這題在看俯看一遍後，玩家知不知道城門在哪、要往哪走。',['有幫助','一點點','沒幫助']],
+      ['會不會太長？', '這題在看 26 秒會不會讓人想跳過。',['剛好','太長','太短']],
+    ]},
+  { id:'ui2', layer:4, title:'介面風格：要不要改成預設（約 2 分鐘）',
     how:'兩個連結各開一次，比較標題畫面、字卡和遊戲中的提示。新風格是暗色底配火光橘、文字改思源黑和霞鶩文楷，只改樣式、不改內容。',
     links:[['新風格（ui=2）','http://localhost:8770/troy-prologue/index.html?map=final&art=2&ui=2'],['原本風格（對照）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
     qs:[
       ['新風格要改成預設嗎？', '這題就是要決定 12/24 用哪一種介面。',['改成預設','維持原本','都可以']],
       ['新風格的字好不好讀？', '這題在看暗底上的字在投影或遠看時清不清楚。',['好讀','有些太小或太淡','不好讀']],
     ]},
-  { id:'fail', title:'被抓時只講一句原因（約 3 分鐘）',
-    how:'故意被衛兵抓幾次，例如在火光下走、跑步、踩歪。每次失敗畫面只會顯示一句原因，例如「奧德修斯在火光照得到的地方移動，被衛兵察覺了」。再試一次：在同一區連續被抓 2 次，看畫面提示有沒有變回完整。',
-    links:[['七段版','http://localhost:8770/troy-prologue/index.html?map=final']],
-    qs:[
-      ['那一句原因看得懂嗎？', '這題在看玩家知不知道自己為什麼被抓、下次要怎麼改。',['看得懂','有時看不懂','看不懂']],
-      ['同區連續被抓 2 次後，提示有沒有回來？', '這題在看卡關的人會不會重新得到完整提示。',['有回來','沒注意到','沒有回來']],
-    ]},
-  { id:'offline', title:'離線也能玩（約 2 分鐘）',
+  { id:'offline', layer:5, title:'離線也能玩（約 2 分鐘）',
     how:'伺服器保持開著，拔掉網路線或關掉 Wi-Fi，再重新整理遊戲頁。3D 畫面和中文字都要正常。這一頁本身離線時字體可能變成系統字，不影響作答。',
     links:[['七段版（離線試）','http://localhost:8770/troy-prologue/index.html?map=final&art=2']],
     qs:[
       ['離線時 3D 和字正常嗎？', '這題在看 12/24 現場沒有網路時能不能照常展示。',['都正常','3D 出不來','字變了或缺字']],
     ]},
 ];
+for (const it of ITEMS) { let off = 0; it.qs.forEach((q, k) => { if (q[4]) off++; else if (off) q[5] = it.id + '-' + (k - off); }); }
+const qkey = (it, q, k) => q[4] || q[5] || (it.id + '-' + k);
 const KEY = 'playtest-2026-11-28';
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
 const list = document.getElementById('list');
+let lastLayer = -1;
 ITEMS.forEach((it, i) => {
+  if (it.layer !== lastLayer) { lastLayer = it.layer; const L = document.createElement('div'); L.className = 'layer'; L.innerHTML = `<h3>${LAYERS[it.layer].t}</h3><p>${LAYERS[it.layer].why}</p>`; list.appendChild(L); }
   const c = document.createElement('section'); c.className = 'card'; c.id = 'c-' + it.id;
   let h = `<h2><span class="n">${i + 1}.</span>${it.title}<span class="st"></span></h2><div class="how">${it.how}</div><div class="links">`;
   it.links.forEach(([t, u]) => { h += `<a href="${u}">${t} ↗</a>`; });
   h += '</div>';
-  it.qs.forEach(([q, hint, opts, def], k) => {
-    const name = it.id + '-' + k;
+  it.qs.forEach((q, k) => {
+    const [qt, hint, opts, def] = q; const name = qkey(it, q, k);
     if (saved[name] === undefined && def) saved[name] = def;
-    h += `<fieldset><legend>${q}</legend><div class="qh">${hint}</div>`;
+    h += `<fieldset><legend>${qt}</legend><div class="qh">${hint}</div>`;
     opts.forEach(o => { h += `<label><input type="radio" name="${name}" value="${o}"${saved[name] === o ? ' checked' : ''}>${o}</label>`; });
     h += '</fieldset>';
   });
@@ -118,7 +153,7 @@ ITEMS.forEach((it, i) => {
 save();
 function refresh() {
   ITEMS.forEach(it => {
-    const n = it.qs.filter((_, k) => saved[it.id + '-' + k]).length;
+    const n = it.qs.filter((q, k) => saved[qkey(it, q, k)]).length;
     const c = document.getElementById('c-' + it.id);
     c.classList.toggle('done', n === it.qs.length);
     c.querySelector('.st').textContent = n === it.qs.length ? '✓ 完成' : `${n}／${it.qs.length} 題`;
@@ -129,10 +164,12 @@ list.addEventListener('change', e => { if (e.target.type === 'radio') { saved[e.
 list.addEventListener('input', e => { if (e.target.dataset.note) { saved['note-' + e.target.dataset.note] = e.target.value; save(); } });
 refresh();
 document.getElementById('copy').onclick = async () => {
-  let out = '週末成果試玩結果（2026-11-28 清單）\n';
+  let out = '週末成果試玩結果（2026-11-28 清單，分層版）\n';
+  let ll = -1;
   ITEMS.forEach((it, i) => {
+    if (it.layer !== ll) { ll = it.layer; out += `\n【${LAYERS[it.layer].t}】\n`; }
     out += `\n${i + 1}. ${it.title}\n`;
-    it.qs.forEach(([q], k) => { out += `- ${q}：${saved[it.id + '-' + k] || '（未答）'}\n`; });
+    it.qs.forEach((q, k) => { out += `- ${q[0]}：${saved[qkey(it, q, k)] || '（未答）'}\n`; });
     if (saved['note-' + it.id]) out += `- 備註：${saved['note-' + it.id]}\n`;
   });
   const msg = document.getElementById('msg');
